@@ -27,10 +27,11 @@ struct SFZNotePlayerPluginParams {
   float previewMidi;
   float previewVelocity;
   float detection;
-  static constexpr std::uint32_t kHash = 0xdfb4bbc5u;
-  static constexpr std::uint32_t kFloatCount = 20u;
+  float preset;
+  static constexpr std::uint32_t kHash = 0x3785c6edu;
+  static constexpr std::uint32_t kFloatCount = 21u;
 };
-static_assert(20u == 0u || sizeof(SFZNotePlayerPluginParams) == sizeof(float) * 20u);
+static_assert(21u == 0u || sizeof(SFZNotePlayerPluginParams) == sizeof(float) * 21u);
 
 } // namespace effetune::generated
 

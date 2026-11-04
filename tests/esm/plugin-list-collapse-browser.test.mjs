@@ -4,7 +4,9 @@ import test from 'node:test';
 import { chromium } from 'playwright';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-const moduleUrl = 'data:text/javascript;base64,' + Buffer.from(read('../../js/ui/plugin-list/collapse-manager.js')).toString('base64');
+const settingsUrl = 'data:text/javascript;base64,' + Buffer.from(read('../../js/settings-storage.js')).toString('base64');
+const moduleUrl = 'data:text/javascript;base64,' + Buffer.from(read('../../js/ui/plugin-list/collapse-manager.js')
+  .replace('../../settings-storage.js', settingsUrl)).toString('base64');
 const css = read('../../css/effetune-theme.css') + read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '');
 const sidebarMarkup = read('../../effetune.html').split('<div class="main-container">')[1]
     .split('<div class="pipeline" id="pipeline">')[0];

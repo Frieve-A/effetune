@@ -153,7 +153,79 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.eventFraction = new Float32Array(capacity);
         this.eventRawDeviation = new Float32Array(capacity);
         this.eventDeviation = new Float32Array(capacity);
+        this.midiSnapshot = null;
+        this.midiClockAnchors = [];
+        this.midiEventKeys = new Array(capacity);
+        this.midiEventPositions = new Float64Array(capacity);
         this.clearHistory();
+    }
+
+    // Keep the MIDI display clock separate from the detector's clock and lens annotations.
+    handleMidiSnapshot(snapshot) {
+        if (!snapshot) {
+            this.midiSnapshot = null;
+            this.midiClockAnchors = [];
+            this.midiBeatWallTime = null;
+            this.midiBeatPosition = null;
+            this.midiBeatSource = null;
+            return;
+        }
+        const time = this.audioNow();
+        const source = snapshot.clockSource ?? snapshot.source;
+        const sourceChanged = !this.midiSnapshot || this.midiClockSource !== source;
+        const detectorChanged =
+            this.midiAnalysisGeneration !== this.activeGeneration || this.midiTelemetrySource !== this.telemetrySource;
+        if (sourceChanged) {
+            this.midiFirstSerial = this.eventSerial;
+            this.midiEventKeys.fill(undefined);
+            this.midiClockAnchors = [];
+        }
+        const anchor = { time, position: snapshot.position, speed: snapshot.speed,
+            running: snapshot.playing, start: time };
+        if (!sourceChanged && detectorChanged) {
+            // Rebased detector frames continue at the last processed frame, omitting suspended wall time.
+            // Keep old projections and map only the new detector interval to the current song position.
+            anchor.start = this.snapshot ? this.frameBase * this.snapshot.hopSeconds : time;
+            while (this.midiClockAnchors.length && this.midiClockAnchors.at(-1).start >= anchor.start) this.midiClockAnchors.pop();
+        }
+        const previous = this.midiClockAnchors.at(-1);
+        if (previous && !detectorChanged && previous.speed === anchor.speed && previous.running === anchor.running) {
+            anchor.start = previous.start;
+            this.midiClockAnchors[this.midiClockAnchors.length - 1] = anchor;
+        } else {
+            this.midiClockAnchors.push(anchor);
+            if (this.midiClockAnchors.length > 64) this.midiClockAnchors.shift();
+        }
+        this.midiSnapshot = snapshot;
+        this.midiClockSource = source;
+        this.midiAnalysisGeneration = this.activeGeneration;
+        this.midiTelemetrySource = this.telemetrySource;
+    }
+
+    midiEventPosition(index) {
+        if (this.midiEventKeys[index] !== this.eventKeys[index]) {
+            const { position } = this.midiClockAt(this.eventTime[index]);
+            this.midiEventPositions[index] = this.midiSnapshot.beatAt(position).quarter;
+            this.midiEventKeys[index] = this.eventKeys[index];
+        }
+        return this.midiEventPositions[index];
+    }
+
+    midiClockAt(time) {
+        let anchor = this.midiClockAnchors[0];
+        for (const candidate of this.midiClockAnchors) {
+            if (candidate.start > time) break;
+            anchor = candidate;
+        }
+        return { position: anchor.position + (anchor.running ? (time - anchor.time) * anchor.speed : 0),
+            speed: anchor.speed };
+    }
+
+    displayedTempo(column, time) {
+        if (!this.midiSnapshot) return this.tempogramAdopted[column];
+        if (time < this.midiClockAnchors[0].start) return 0;
+        const clock = this.midiClockAt(time);
+        return this.midiSnapshot.beatAt(clock.position).bpm * clock.speed;
     }
 
     reset() {
@@ -174,6 +246,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.eventReference.fill(null);
         this.eventTimed.fill(0);
         this.eventSerial = 0;
+        this.midiFirstSerial = 0;
+        this.midiEventKeys?.fill(undefined);
         this.lensDisplay = null;
     }
 
@@ -933,10 +1007,11 @@ class RhythmAnalyzerPlugin extends PluginBase {
     // Visits stored onsets with from <= u <= to, newest first. The ring is in arrival order, which is
     // close to clock order, so the scan stops one beat below the range.
     forEachEvent(from, to, visit, beforeSerial = this.eventSerial, displayed = false) {
-        const oldest = this.oldestSerial();
+        const midi = displayed && this.midiSnapshot;
+        const oldest = midi ? Math.max(this.oldestSerial(), this.midiFirstSerial) : this.oldestSerial();
         for (let serial = beforeSerial - 1; serial >= oldest; serial--) {
             const index = serial % RHYTHM_ANALYZER_EVENT_CAPACITY;
-            const u = displayed ? this.displayedEvent(index).u : this.eventU[index];
+            const u = midi ? this.midiEventPosition(index) : displayed ? this.displayedEvent(index).u : this.eventU[index];
             if (!displayed && u < from - 1) break;
             if (u >= from && u <= to) visit(index);
         }
@@ -1258,9 +1333,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
             markerColor: options.markerColor
                 ? bpm => options.markerColor(rhythmAnalyzerBpmPosition(bpm)) : () => read('graph-trace')
         });
-        const gateOpen = this.snapshot?.tickGateOpen === true;
+        const midi = this.midiSnapshot;
+        const gateOpen = midi ? midi.playing : this.snapshot?.tickGateOpen === true;
         const period = this.snapshot?.periodSeconds;
-        const bpm = period > 0 ? 60 / period : NaN;
+        const bpm = midi ? midi.beat.bpm * midi.speed : period > 0 ? 60 / period : NaN;
         const color = options.markerColor
             ? options.markerColor(rhythmAnalyzerBpmPosition(Number.isFinite(bpm) ? bpm : 120)) : read('graph-trace');
         const style = options.beatStyle;
@@ -1271,11 +1347,19 @@ class RhythmAnalyzerPlugin extends PluginBase {
         if (options.showBeat !== false) {
             // Continue the fade between telemetry frames, but only a detected beat
             // can start a new pulse. Paused telemetry therefore fades to transparency.
-            const ageMs = this.ledBeat !== null
+            const now = performance.now();
+            if (midi && (this.midiBeatPosition !== midi.position || this.midiBeatSource !== midi.source)) {
+                this.midiBeatPosition = midi.position;
+                this.midiBeatSource = midi.source;
+                this.midiBeatWallTime = now;
+            }
+            const ageMs = midi ? (midi.beat.quarter % 1) * 60000 / bpm +
+                (midi.playing ? 0 : now - (this.midiBeatWallTime ?? now)) : this.ledBeat !== null
                 ? Math.max(0, (this.snapshot.frameCount * this.snapshot.hopSeconds - this.ledBeat) * 1000 +
-                    (this.columnFrameTime === null ? 0 : performance.now() - this.columnFrameTime)) : Infinity;
+                    (this.columnFrameTime === null ? 0 : now - this.columnFrameTime)) : Infinity;
             const decayMs = Math.max(0, ageMs - (style?.beatHoldTime ?? 0));
-            const level = this.ledStrength * Math.exp(-decayMs / (style?.beatDecayTime ?? RHYTHM_ANALYZER_LED_FADE_SECONDS * 1000));
+            const strength = midi ? (midi.playing || midi.paused ? 1 : 0) : this.ledStrength;
+            const level = strength * Math.exp(-decayMs / (style?.beatDecayTime ?? RHYTHM_ANALYZER_LED_FADE_SECONDS * 1000));
             const size = radius / 0.38;
             const draw = options.drawSignal ?? ((target, paint) => paint(target));
             draw(context, target => {
@@ -1285,6 +1369,16 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     strokeColor: style && !style.beatUsePalette ? style.beatStrokeColor : color,
                     fillOpacity: style?.beatFillOpacity ?? 0.3, strokeOpacity: style?.beatStrokeOpacity ?? 1 },
                     (canvas.width - size) / 2, canvas.height / 2, size, lineWidth);
+                const phase = midi ? midi.beat.quarter : this.displayU;
+                if (style?.beatOrbitDot !== false && (midi ? midi.playing || midi.paused : gateOpen) && Number.isFinite(phase)) {
+                    const angle = 2 * Math.PI * (phase % 1) - Math.PI / 2;
+                    target.beginPath();
+                    target.arc(canvas.width / 2 + Math.cos(angle) * radius,
+                        canvas.height / 2 + Math.sin(angle) * radius, Math.max(2 * scale, lineWidth), 0, 2 * Math.PI);
+                    target.fillStyle = style && !style.beatUsePalette ? style.beatStrokeColor : color;
+                    target.globalAlpha = style?.beatStrokeOpacity ?? 1;
+                    target.fill();
+                }
                 target.restore();
             }, { palette: style?.beatUsePalette !== false });
         }
@@ -1293,7 +1387,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             const fit = options.showBeat !== false && style?.beatFitBpm &&
                 style.align === 'center' && (style.verticalAlign ?? 'middle') === 'middle';
             context.save();
-            context.globalAlpha = this.snapshot?.confidence ?? 0;
+            context.globalAlpha = midi ? 1 : this.snapshot?.confidence ?? 0;
             options.drawBpm?.(context, `${value} BPM`, color, fit ? Math.max(1, radius - lineWidth / 2 - 6 * scale) : undefined);
             context.restore();
         }
@@ -1337,11 +1431,13 @@ class RhythmAnalyzerPlugin extends PluginBase {
 
     _headerItems(lens, palette, markerColor) {
         const snapshot = this.snapshot;
-        const gateOpen = snapshot?.tickGateOpen === true;
+        const midi = this.midiSnapshot;
+        const gateOpen = !!midi || snapshot?.tickGateOpen === true;
         const period = snapshot?.periodSeconds;
-        const bpm = period > 0 ? 60 / period : NaN;
+        const bpm = midi ? midi.beat.bpm * midi.speed : period > 0 ? 60 / period : NaN;
+        const unavailable = !midi && snapshot?.analysisAvailable === false;
         const value = (number, text) => (Number.isFinite(number) ? text : RHYTHM_ANALYZER_DASH);
-        const tempo = snapshot?.analysisAvailable === false ? 'Analysis unavailable at this sample rate'
+        const tempo = unavailable ? 'Analysis unavailable at this sample rate'
             : `${Number.isFinite(bpm) ? `${bpm.toFixed(1)} BPM  ` : ''}${gateOpen ? 'LOCKED' : 'searching'}`;
         const comb = snapshot?.strongestBpm > 0 ? snapshot.strongestBpm : NaN;
         const span = this.sp;
@@ -1350,8 +1446,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 // A closed gate has a hollow lamp; a previously shown pending event may still flash.
                 { lamp: true, level: gateOpen || this.ledLevel > 0 ? this.ledLevel : null,
                     minimumLevel: 0, color: gateOpen ? markerColor(Number.isFinite(bpm) ? bpm : 120) : palette.strongGrid },
-                { text: tempo, slot: snapshot?.analysisAvailable === false ? tempo : '000.0 BPM  searching',
-                    opacity: Number.isFinite(bpm) ? snapshot.confidence : 1,
+                { text: tempo, slot: unavailable ? tempo : '000.0 BPM  searching',
+                    opacity: midi ? 1 : Number.isFinite(bpm) ? snapshot.confidence : 1,
                     color: Number.isFinite(bpm) ? markerColor(bpm) : palette.label }
             ],
             [
@@ -1576,7 +1672,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         }
         const { strip, main, echo, lens: lensRect } = rects;
         const views = [];
-        const displayU = this.displayU ?? this.beatClock;
+        const displayU = this.midiSnapshot?.beat.quarter ?? this.displayU ?? this.beatClock;
         if (main) views.push({ ...main, uRight: displayU, span, echo: false, dpr });
         const rowCount = echo ? Math.floor(echo.height / (22 * dpr)) : 0;
         const rows = !echo ? 0 : rowCount < 4 ? 4 : rowCount > 6 ? 6 : rowCount;
@@ -1674,7 +1770,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
     _eventPoint(index, view) {
         const strength = this.eventStrength[index] > 1 ? 1 : this.eventStrength[index];
         const displayed = this.displayedEvent(index);
-        const x = view.left + (displayed.u - view.uRight + view.span) / view.span * view.width;
+        const u = this.midiSnapshot ? this.midiEventPosition(index) : displayed.u;
+        const x = view.left + (u - view.uRight + view.span) / view.span * view.width;
         const band = this.eventBand[index];
         let y;
         let radius;
@@ -1711,13 +1808,13 @@ class RhythmAnalyzerPlugin extends PluginBase {
             context.fillRect(xOf(start), view.top, xOf(end) - xOf(start), view.height);
             if (!widest || end - start > widest.end - widest.start) widest = { start, end };
         };
-        const segments = Array.from(this.segments.values(), segment => {
+        const segments = this.midiSnapshot ? [{ startU: 0, endU: to, offset: 0, reanchor: false }] : Array.from(this.segments.values(), segment => {
             const offset = segment.displayOffset ?? 0;
             return { ...segment, startU: segment.startU + offset, offset: segment.offset + offset,
                 endU: segment.epoch === this.clockAnchor?.epoch && this.snapshot?.analysisValid
                     ? Math.max(segment.endU + offset, this.displayU ?? segment.endU + offset) : segment.endU + offset };
         });
-        if (!this.clockAnchor && this.forwardTail.length) segments.push({ startU: from, endU: to,
+        if (!this.midiSnapshot && !this.clockAnchor && this.forwardTail.length) segments.push({ startU: from, endU: to,
             offset: this.forwardOffset + this.displayTimelineOffset, reanchor: false });
         for (const segment of segments) {
             if (segment.endU <= cursor) continue;
@@ -1846,10 +1943,13 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const image = this._tempogramImage(palette.label, tempogramColor);
         const head = this.tempogramHead;
         const columnAt = step => (head + 1 + step) % columns;
+        const tempoAt = step => this.displayedTempo(columnAt(step),
+            this.columnOriginTime + (this.columnIndex - columns + 1 + step) * RHYTHM_ANALYZER_COLUMN_SECONDS);
         const right = strip.left + strip.width;
         let last = columns - 1;
-        while (last >= 0 && !(this.tempogramAdopted[columnAt(last)] > 0)) last--;
-        const adopted = this.snapshot?.periodSeconds > 0 ? 60 / this.snapshot.periodSeconds
+        while (last >= 0 && !(tempoAt(last) > 0)) last--;
+        const adopted = this.midiSnapshot ? this.midiSnapshot.beat.bpm * this.midiSnapshot.speed
+            : this.snapshot?.periodSeconds > 0 ? 60 / this.snapshot.periodSeconds
             : last < 0 ? 0 : this.tempogramAdopted[columnAt(last)];
         drawSignal(context, target => {
             target.save();
@@ -1875,10 +1975,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 target.setLineDash(factor === 1 ? [] : [2 * dpr, 2 * dpr]);
                 for (let step = 1; step < columns; step++) {
                     const column = columnAt(step);
-                    const previous = this.tempogramAdopted[columnAt(step - 1)] * factor;
-                    const current = this.tempogramAdopted[column] * factor;
+                    const previous = tempoAt(step - 1) * factor;
+                    const current = tempoAt(step) * factor;
                     if (!(previous > 0 && current > 0)) continue;
-                    target.globalAlpha = opacity * this.tempogramConfidence[column];
+                    target.globalAlpha = opacity * (this.midiSnapshot ? 1 : this.tempogramConfidence[column]);
                     target.strokeStyle = markerColor(current);
                     target.beginPath();
                     target.moveTo(xOf(step - 1), yOf(previous));
@@ -1887,10 +1987,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 }
                 // Extend the latest committed tempo at draw time only; the stored audio-time buckets stay intact.
                 if (adopted > 0) {
-                    target.globalAlpha = opacity * (this.snapshot?.confidence ?? 0);
+                    target.globalAlpha = opacity * (this.midiSnapshot ? 1 : this.snapshot?.confidence ?? 0);
                     target.strokeStyle = markerColor(adopted * factor);
                     target.beginPath();
-                    target.moveTo(last < 0 ? strip.left : xOf(last), yOf(adopted * factor));
+                    target.moveTo(last < 0 ? this.midiSnapshot ? right : strip.left : xOf(last), yOf(adopted * factor));
                     target.lineTo(right, yOf(adopted * factor));
                     target.stroke();
                 }
@@ -1910,7 +2010,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         for (const [bpm, label] of [[adopted, 'adopted'], [adopted * 2, '×2'], [adopted / 2, '×½']]) {
             if (bpm > RHYTHM_ANALYZER_MIN_BPM && bpm < 480) {
                 context.save();
-                context.globalAlpha = this.snapshot?.confidence ?? 0;
+                context.globalAlpha = this.midiSnapshot ? 1 : this.snapshot?.confidence ?? 0;
                 write(label, right - pad, clampY(yOf(bpm) - 0.6 * fontSize), markerColor(bpm), 'right');
                 context.restore();
             }
@@ -2085,7 +2185,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
             const column = (this.tempogramHead + 1 + step) % columns;
             let bin = Math.floor(48 * Math.log2(bpm / RHYTHM_ANALYZER_MIN_BPM));
             bin = bin < 0 ? 0 : bin > RHYTHM_ANALYZER_TEMPOGRAM_BINS - 1 ? RHYTHM_ANALYZER_TEMPOGRAM_BINS - 1 : bin;
-            const adopted = this.tempogramAdopted[column];
+            const adopted = this.displayedTempo(column,
+                this.columnOriginTime + (this.columnIndex - columns + 1 + step) * RHYTHM_ANALYZER_COLUMN_SECONDS);
             return {
                 cursor: `${format.number(bpm, 1)} BPM · ${format.time(-(columns - 1 - step + frame.scroll) * RHYTHM_ANALYZER_COLUMN_SECONDS * 1000)}`,
                 rows: [

@@ -8,6 +8,7 @@ import {
   showAudioConfigDialog
 } from '../../js/electron/audioIntegration.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import { getAndroidBridge } from '../../js/android/bridge.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -116,6 +117,76 @@ function createLocalStorage(initial = {}) {
     }
   };
 }
+
+test('MIDI selection refreshes on demand, retains disconnected choice and applies without audio reset', async () => {
+  const document = createFakeDocument();
+  let changed, requests = 0;
+  let inputs = [{ key: 'Virtual', name: 'Virtual', connected: true }];
+  const manager = {
+    listInputs: () => inputs, isSupported: () => true,
+    getDeviceDisplayName: key => key,
+    onChange(callback) { changed = callback; return () => { changed = null; }; },
+    async ensureMidiAccess() { requests++; }, async syncRuntime() {}, async setDialogOpen() {}
+  };
+  const applied = [];
+  const harness = createAudioHarness({ window: {
+    app: { async ensureMidiControllerManager() { return manager; }, async applyMidiInputPreference(key) { applied.push(key); } },
+    audioManager: { reset() { assert.fail('MIDI-only selection must not reset audio'); } }
+  } });
+  await withGlobals({ window: harness.window, document }, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(true, { inputDeviceId: 'mic1', outputDeviceId: 'out1' });
+      assert.equal(requests, 0);
+      await document.getElementById('refresh-midi-input').dispatchEvent('click');
+      assert.equal(requests, 1);
+      const select = document.getElementById('midi-input-device');
+      select.value = 'Virtual';
+      await select.dispatchEvent('change');
+      inputs = [];
+      changed();
+      assert.equal(select.value, 'Virtual');
+      assert.match(select.children.at(-1).textContent, /disconnected/);
+      inputs = [{ key: 'Virtual', name: '<unsafe name>', connected: true }];
+      changed();
+      assert.equal(select.children.at(-1).textContent, '<unsafe name>');
+      await document.getElementById('apply-button').dispatchEvent('click');
+    });
+  });
+  assert.deepEqual(applied, ['Virtual']);
+  assert.deepEqual(harness.calls.filter(call => call[0] === 'saveAudioPreferences'), [
+    ['saveAudioPreferences', { midiInputDeviceKey: 'Virtual' }, { applyInPlace: 'midi-input' }]
+  ]);
+  assert.equal(changed, null);
+});
+
+test('Android audio settings omit performance MIDI without starting or applying its saved input', async t => {
+  const document = createFakeDocument();
+  const resetCalls = [];
+  const harness = createAudioHarness({ window: {
+    location: { origin: 'https://appassets.androidplatform.net' },
+    effetuneAndroid: { postMessage() {} },
+    app: {
+      ensureMidiControllerManager() { assert.fail('Performance MIDI settings must stay unavailable'); },
+      applyMidiInputPreference() { assert.fail('Android audio changes must not start performance MIDI'); }
+    },
+    audioManager: { async reset(preferences) { resetCalls.push(preferences); return ''; } }
+  } });
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    t.mock.method(getAndroidBridge(), 'request', async command => {
+      if (command === 'audio.devices') return { inputs: [{ id: 1, label: 'Mic' }], outputs: [{ id: 2, label: 'Speaker' }] };
+      assert.equal(command, 'snapshot.get');
+      return { sampleRate: 48000, channelCount: 2 };
+    });
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(false, { midiInputDeviceKey: 'Saved keyboard', sampleRate: 48000 });
+      assert.equal(document.getElementById('midi-input-device'), null);
+      assert.equal(document.getElementById('refresh-midi-input'), null);
+      await document.getElementById('apply-button').dispatchEvent('click');
+    });
+  });
+  assert.equal(resetCalls.length, 1);
+  assert.equal(Object.hasOwn(resetCalls[0], 'midiInputDeviceKey'), false);
+});
 
 test('audio preferences load and save honor Electron and Web storage availability', async () => {
   assert.equal(await loadAudioPreferences(false), null);
@@ -724,6 +795,7 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
 
   const saved = harness.calls.find(call => call[0] === 'saveAudioPreferences')[1];
   assert.deepEqual(saved, {
+    midiInputDeviceKey: '',
     inputDeviceId: 'mic1',
     outputDeviceId: 'out1',
     inputDeviceLabel: 'Mic One',

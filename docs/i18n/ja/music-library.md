@@ -18,7 +18,13 @@ Music Libraryが保存するのは、アプリ内のカタログ、アートワ�
 
 Music Libraryは、MP3、WAV、OGG、FLAC、Opus、M4A、AACなどの一般的な音声ファイル拡張子をインデックス化します。また、外部CUEシートを使い、同じフォルダにあるアルバム単位のWAVまたはFLACを曲ごとに分けて登録できます。
 
+Music Libraryは `.dsf` と `.dff` ファイルも登録します。登録済みのフォルダにあるファイルを見つけるには、再スキャンしてください。再生の対応範囲は[DSDファイル](music-player.md#dsd-files)をご覧ください。
+
 MP4、WebM、M4V、MOV、MKV、3GPファイルも登録するには、**設定 > 環境設定... > 一般** の **Music Libraryに動画ファイル形式を含める** を有効にして、フォルダを追加または再スキャンしてください。初期状態では無効です。設定を変えても、登録済みのカタログはすぐには変わりません。動画ファイル内の音声コーデックを含め、実際に再生できるかどうかはブラウザやOSのデコーダーによります。動画の表示については[音楽プレーヤーガイド](music-player.md#video)をご覧ください。
+
+MIDI/KAR（`.mid`、`.midi`、`.kar`）とMusicXML（`.musicxml`、`.xml`、`.mxl`）ファイルを登録するには、同じ設定画面で **Music LibraryにMIDIファイルを含める** を有効にして、フォルダを追加または再スキャンしてください。初期状態では無効です。設定を変えても、登録済みのカタログはすぐには変わりません。音を鳴らすには、SoundFont Playerを追加して音源を読み込んでください。詳しくは[MIDIファイル](music-player.md#midiファイル)と[MusicXMLファイル](music-player.md#musicxml-files)をご覧ください。 MIDIとMusicXMLの再生・ライブラリ登録は、デスクトップアプリとWeb/PWA版で利用できます。Androidアプリでは対応していません。
+
+これらの設定はMusic Libraryだけに適用されます。対応ファイルを音楽プレーヤーで直接開くことはできます。
 
 ## Music Libraryを開く
 

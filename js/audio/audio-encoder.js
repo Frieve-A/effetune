@@ -74,6 +74,19 @@ function quantizePcm16(raw) {
   return Math.round(sample < 0 ? sample * 0x8000 : sample * 0x7fff);
 }
 
+function quantizePcm24(raw) {
+  const sample = raw < -1 ? -1 : raw > 1 ? 1 : raw;
+  return Math.round(sample < 0 ? sample * 0x800000 : sample * 0x7fffff);
+}
+
+function quantizeFlacPcm24(raw) {
+  // @mediabunny/flac-encoder1.64.0 encoder.ts/bridge.c and mediabunny1.64.0
+  // sample.ts convert f32 to s32, then arithmetically shift by eight.
+  // Keep its asymmetric negative rounding; WAV PCM24 uses a different rule.
+  const integer = Math.round(raw * 0x80000000);
+  return (integer < -0x80000000 ? -0x80000000 : integer > 0x7fffffff ? 0x7fffffff : integer) >> 8;
+}
+
 function createWavEncoding(audioBuffer, sampleFormat) {
   const formatCode = sampleFormat === 'float32' ? 3 : 1;
   const bitsPerSample = sampleFormat === 'pcm16' ? 16 : sampleFormat === 'pcm24' ? 24 : 32;
@@ -126,7 +139,7 @@ function writeWavFrames(wav, sampleFormat, startFrame, endFrame) {
       if (sampleFormat === 'pcm16') {
         wav.view.setInt16(offset, quantizePcm16(raw), true);
       } else if (sampleFormat === 'pcm24') {
-        const integer = Math.round(sample < 0 ? sample * 0x800000 : sample * 0x7fffff) & 0xffffff;
+        const integer = quantizePcm24(raw) & 0xffffff;
         wav.view.setUint8(offset, integer & 0xff);
         wav.view.setUint8(offset + 1, (integer >> 8) & 0xff);
         wav.view.setUint8(offset + 2, (integer >> 16) & 0xff);
@@ -212,14 +225,36 @@ export class AudioEncoder {
     }
   }
 
-  async encode(audioBuffer, settings, { onProgress, signal } = {}) {
+  trimTrailingEncodedZeros(audioBuffer, settings, minimumSeconds) {
+    if (!Number.isFinite(minimumSeconds) || minimumSeconds < 0) return audioBuffer;
+    const format = settings.format === 'wav' ? settings.wavSampleFormat : settings.flacSampleFormat;
+    const quantize = format === 'float32' ? value => value : format === 'pcm16' ? quantizePcm16 :
+      settings.format === 'flac' ? quantizeFlacPcm24 : quantizePcm24;
+    let length = Math.min(audioBuffer.length, Math.max(1, Math.ceil(minimumSeconds * audioBuffer.sampleRate)));
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+      const samples = audioBuffer.getChannelData(channel);
+      for (let frame = audioBuffer.length - 1; frame >= length; frame--) {
+        if (quantize(samples[frame]) !== 0) { length = frame + 1; break; }
+      }
+    }
+    if (length === audioBuffer.length) return audioBuffer;
+    const trimmed = this.createOfflineContext(audioBuffer.numberOfChannels, length, audioBuffer.sampleRate)
+      .createBuffer(audioBuffer.numberOfChannels, length, audioBuffer.sampleRate);
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+      trimmed.getChannelData(channel).set(audioBuffer.getChannelData(channel).subarray(0, length));
+    }
+    return trimmed;
+  }
+
+  async encode(audioBuffer, settings, { onProgress, signal, trimTrailingZerosAfterSeconds } = {}) {
     const { definition, normalized } = preflightOfflineOutput(audioBuffer, settings);
     throwIfAborted(signal);
-    const outputBuffer = await this.resampleAudioBuffer(audioBuffer, normalized.sampleRate, {
+    const resampled = await this.resampleAudioBuffer(audioBuffer, normalized.sampleRate, {
       signal,
       onProgress
     });
     throwIfAborted(signal);
+    const outputBuffer = this.trimTrailingEncodedZeros(resampled, normalized, trimTrailingZerosAfterSeconds);
     reportProgress(onProgress, 'encoding', 0);
 
     const blob = normalized.format === 'wav'

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   resetWebAppConfigRuntimeForTests,
@@ -22,7 +25,7 @@ function createConsole(calls) {
   };
 }
 
-test('Electron grants ordinary MIDI permission without granting SysEx', () => {
+test('Electron grants SysEx only to its trusted app main frame while ordinary controller access stays separate', () => {
   const source = readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
   const allowlist = /const GRANTED_PERMISSIONS = \[([^\]]+)\]/.exec(source);
   assert.ok(allowlist);
@@ -33,6 +36,30 @@ test('Electron grants ordinary MIDI permission without granting SysEx', () => {
   assert.match(source, /setPermissionCheckHandler\([\s\S]+GRANTED_PERMISSIONS\.includes\(permission\)/);
   assert.match(source, /setPermissionRequestHandler\([\s\S]+GRANTED_PERMISSIONS\.includes\(permission\)/);
   assert.doesNotMatch(allowlist[0], /midiSysex/);
+  const start = source.indexOf('  const GRANTED_PERMISSIONS =');
+  const end = source.indexOf('\n  browserController =', start);
+  let check, request;
+  const appUrl = new URL('../../effetune.html', import.meta.url).href;
+  const mainWindow = { webContents: { getURL: () => appUrl, session: {
+    setPermissionCheckHandler(handler) { check = handler; },
+    setPermissionRequestHandler(handler) { request = handler; }
+  } } };
+  vm.runInNewContext(source.slice(start, end), { mainWindow, path, pathToFileURL,
+    __dirname: fileURLToPath(new URL('../../electron', import.meta.url)) });
+  const contents = mainWindow.webContents, details = { isMainFrame: true, requestingUrl: appUrl };
+  assert.equal(check(contents, 'midiSysex', 'file://', details), true);
+  let allowed;
+  request(contents, 'midiSysex', value => { allowed = value; }, details);
+  assert.equal(allowed, true);
+  for (const [target, frame] of [[{}, details], [null, details], [contents, { ...details, isMainFrame: false }],
+    [contents, { ...details, requestingUrl: 'https://example.com/' }], [contents, undefined]]) {
+    assert.equal(check(target, 'midiSysex', 'file://', frame), false);
+    request(target, 'midiSysex', value => { allowed = value; }, frame);
+    assert.equal(allowed, false);
+  }
+  contents.getURL = () => 'https://example.com/';
+  assert.equal(check(contents, 'midiSysex', 'file://', details), false);
+
 });
 
 function parseAttributes(source) {
@@ -510,6 +537,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       useInputWithPlayer: true,
       useWasmDsp: true,
       gaplessPlayback: true,
+      midiInputDeviceKey: '',
       outputChannels: 2,
       latencyHint: 'interactive'
     });
@@ -522,6 +550,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       useInputWithPlayer: true,
       useWasmDsp: true,
       gaplessPlayback: true,
+      midiInputDeviceKey: '',
       outputChannels: 2,
       latencyHint: 'interactive'
     });

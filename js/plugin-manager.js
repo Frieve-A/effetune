@@ -81,7 +81,8 @@ export class PluginManager {
                 'plugins/frequency-preview.js',
                 'plugins/graph-readout.js',
                 'plugins/multires-spectrum.js',
-                'plugins/theme-palette.js'
+                'plugins/theme-palette.js',
+                'plugins/sfz-instrument.js'
             ]
                 .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
             const cssUrls = ['plugins/spectrum-overlay.css', 'plugins/graph-readout.css']
@@ -177,6 +178,11 @@ export class PluginManager {
                 console.error('Error loading graph readout:', error);
             }
             
+            await loadScriptWithProgress(jsUrls.shift());
+
+            await loadScriptWithProgress(jsUrls.shift());
+
+            // Both SFZ instruments share this asset lifecycle base.
             await loadScriptWithProgress(jsUrls.shift());
 
             // Load remaining JS files in parallel with error handling

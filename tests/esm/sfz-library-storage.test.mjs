@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { SfzLibraryService, enumerateSfzDirectory, listSfzFolderFiles } from '../../js/sfz/service.js';
 import { decodeSfzBank, encodeSfzBank } from '../../js/sfz/bank.js';
-import { SFZ_REGION_FIELDS } from '../../js/sfz/asset.js';
+import { SFZ_REGION_FIELDS, SFZ_TABLE_HEADER_WORDS } from '../../js/sfz/asset.js';
 import { SFZ_MAX_SUPPORTED_BYTES, getSfzMaxBytes, normalizeSfzSizeLimitMiB } from '../../js/sfz/limits.js';
 import { maxIrLibraryBytesForName } from '../../js/ir-library/ir-library-limits.js';
 import { openIrLibraryBackend } from '../../js/ir-library/ir-library-factory.js';
@@ -44,6 +45,25 @@ test('SFZ library persists dependencies only, reopens, prepares native-rate bank
   await reopened.remove(entry.id);
   assert.deepEqual(await reopened.list(), []);
   assert.equal(backend.files.has(`${entry.id}.sfzbank`), false);
+});
+
+test('declared fingerprints resolve renamed granted samples and survive browser save/reopen', async () => {
+  const backend = new MemoryBackend(), service = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  const sample = Uint8Array.of(1, 2, 3, 4), md5 = createHash('md5').update(sample).digest('hex');
+  const definition = encode(`<region> sample=old.wav md5=${md5}`);
+  const entry = await service.importFolderFiles([file('a.sfz', definition), file('renamed.wav', sample)], 'a.sfz', {
+    decode: bytes => { assert.deepEqual(new Uint8Array(bytes), sample); return pcm(); }
+  });
+  const bank = decodeSfzBank(backend.files.get(`${entry.id}.sfzbank`));
+  assert.deepEqual([...bank.files.keys()], ['a.sfz', 'renamed.wav']);
+  assert.deepEqual(bank.files.get('a.sfz'), definition, 'Original authored name and fingerprint remain unchanged');
+  const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  assert.equal((await reopened.prepare(entry.id, { decode: pcm })).regionCount, 1);
+  const other = await new SfzLibraryService(new MemoryBackend(), { onDiagnostic: null }).open();
+  await assert.rejects(other.importFolderFiles([file('a.sfz', definition), file('renamed.wav', Uint8Array.of(9))], 'a.sfz', { decode: pcm }),
+    { code: 'sample-integrity' });
+  await assert.rejects(other.importFolderFiles([file('a.sfz', definition), file('renamed.wav', sample)], 'a.sfz',
+    { decode: pcm, isCurrent: () => false }), { code: 'cancelled' });
 });
 
 test('SFZ import rejects raw and decoded capacity before persisting and excludes absent samples', async () => {
@@ -141,15 +161,16 @@ test('built-in SFZ waveforms import and reopen with playable cycles without miss
   assert.equal(first.warnings, undefined);
   assert.deepEqual(first.descriptor.payload, second.descriptor.payload);
   assert.deepEqual([...decodeSfzBank(backend.files.get(`${entry.id}.sfzbank`)).files.keys()], ['synth.sfz']);
-  const parsed = new Float32Array(first.descriptor.payload, 64);
+  const parsed = new Float32Array(first.descriptor.payload, 32 + SFZ_TABLE_HEADER_WORDS * 4);
   assert.equal(parsed[SFZ_REGION_FIELDS.indexOf('pitch_keycenter')], 60, 'Generated cycles use their middle-C reference');
   assert.equal(parsed[SFZ_REGION_FIELDS.indexOf('loop_mode')], 2, 'Generated waveforms sustain as loops');
 });
 
 test('SFZ preparation honors declared original rates and rejects huge decoded headers before decode', async () => {
-  const wav = new Uint8Array(44);
+  const wav = new Uint8Array(50);
   const view = new DataView(wav.buffer);
   wav.set(encode('RIFF'), 0); wav.set(encode('WAVEfmt '), 8); wav.set(encode('data'), 36);
+  view.setUint32(4, 42, true); view.setUint16(20, 1, true); view.setUint16(34, 16, true);
   view.setUint32(16, 16, true); view.setUint16(22, 1, true); view.setUint32(24, 44100, true);
   view.setUint16(32, 2, true); view.setUint32(40, 6, true);
   const backend = new MemoryBackend();
@@ -217,21 +238,22 @@ test('SFZ capacity snapshots include raw banks, decoded footprints and cached pr
   const largerPcm = () => ({ sampleRate: 44100, channels: [new Float32Array(400)] });
   await assert.rejects(service.importFolderFiles(files, 'a.sfz', { decode: largerPcm }), error => error.code === 'too-large');
   assert.equal(backend.files.size, 0);
-  maxBytes = 4096;
+  // A successful v3 bank reserves its 128-voice modulation and trial state.
+  maxBytes = 1024 * 1024;
   const entry = await service.importFolderFiles(files, 'a.sfz', { decode: () => {
     maxBytes = 1024;
     return largerPcm();
   } });
   assert.equal((await service.list()).length, 1, 'the running import retains its starting limit');
   await assert.rejects(service.prepare(entry.id, { decode: largerPcm }), error => error.code === 'too-large');
-  maxBytes = 4096;
+  maxBytes = 1024 * 1024;
   assert.ok((await service.prepare(entry.id)).descriptor.footprintBytes > 1024);
   const reopened = await new SfzLibraryService(backend, { onDiagnostic: null, getMaxBytes: () => maxBytes }).open();
   maxBytes = 1024;
   await assert.rejects(reopened.prepare(entry.id, { decode: largerPcm }), error => error.code === 'too-large');
 
   const longDefinition = `${'//'.padEnd(2000, 'x')}\n<region> sample=one.wav key=60`;
-  maxBytes = 4096;
+  maxBytes = 1024 * 1024;
   const rawEntry = await service.importFolderFiles([file('a.sfz', encode(longDefinition)), files[1]], 'a.sfz', { decode: pcm });
   maxBytes = 1024;
   await assert.rejects(service.prepare(rawEntry.id), error => error.code === 'too-large');
@@ -285,4 +307,68 @@ test('SFZ size policy reads app settings and keeps IR namespace limits unchanged
   await assert.rejects(nativeIr.writeAtomic(name, bytes), /too large/);
   await assert.rejects(nativeIr.read(name), /too large/);
   assert.deepEqual(requests, ['sfz-library']);
+});
+
+function loadingDirectiveWav() {
+  const frames = 32, bytes = new Uint8Array(44 + frames * 2), view = new DataView(bytes.buffer);
+  bytes.set(encode('RIFF'), 0); view.setUint32(4, bytes.length - 8, true);
+  bytes.set(encode('WAVEfmt '), 8); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 44100, true);
+  view.setUint32(28, 88200, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  bytes.set(encode('data'), 36); view.setUint32(40, frames * 2, true);
+  return bytes;
+}
+
+class StreamSourceMemoryBackend extends MemoryBackend {
+  async writeSfzBankFile(name, blob) { this.files.set(name, new File([blob], name, { lastModified: 0 })); }
+  async readSfzBankFile(name) {
+    const stored = this.files.get(name);
+    return stored ? new File([stored], name, { lastModified: 0 }) : null;
+  }
+}
+
+test('small saved web SFZ loading directives select streaming with original range and storage settings', async () => {
+  for (const directive of ['load_mode=1', 'load_start=0 load_end=15']) {
+    const backend = new StreamSourceMemoryBackend(), id = 'c'.repeat(24);
+    const sources = new Map([['a.sfz', encode(`<region> sample=one.wav key=60 ${directive}`)], ['one.wav', loadingDirectiveWav()]]);
+    await backend.writeAtomic(`${id}.sfzbank`, encodeSfzBank('a.sfz', sources));
+    await backend.writeAtomic('index.json', encode(JSON.stringify({ version: 1, entries: [{ id, name: 'a.sfz', regionCount: 1 }] })));
+    const service = await new SfzLibraryService(backend, { onDiagnostic: null, getMaxBytes: () => 16 * 1024 * 1024 }).open();
+    let calls = 0, decoded = 0;
+    const prepared = await service.prepare(id, {
+      decode() { decoded++; return { sampleRate: 44100, channels: [new Float32Array(32)] }; },
+      async prepareStreamedBank(candidate) {
+        calls++;
+        assert.equal(candidate.parsed.regions[0].load_mode, directive.startsWith('load_mode') ? 1 : undefined);
+        assert.equal(candidate.parsed.regions[0].load_end, directive.startsWith('load_start') ? 15 : undefined);
+        assert.equal((await candidate.createSampleReader('one.wav')).size, sources.get('one.wav').length);
+        return { descriptor: { footprintBytes: 128 }, regionCount: 1 };
+      }
+    });
+    assert.equal(calls, 1); assert.equal(decoded, 0); assert.equal(prepared.regionCount, 1);
+  }
+});
+
+test('small new web SFZ imports preserve loading directives through the capable stored source route', async () => {
+  for (const directive of ['load_mode=1', 'load_start=0 load_end=15']) {
+    const backend = new StreamSourceMemoryBackend();
+    const service = await new SfzLibraryService(backend, { onDiagnostic: null, getMaxBytes: () => 16 * 1024 * 1024 }).open();
+    let calls = 0, decoded = 0;
+    const entry = await service.importFolderFiles([
+      new File([encode(`<region> sample=one.wav key=60 ${directive}`)], 'a.sfz', { lastModified: 0 }),
+      new File([loadingDirectiveWav()], 'one.wav', { lastModified: 0 })
+    ], 'a.sfz', {
+      decode() { decoded++; return { sampleRate: 44100, channels: [new Float32Array(32)] }; },
+      async prepareStreamedBank(candidate) {
+        calls++;
+        assert.equal(candidate.parsed.regions[0].load_mode, directive.startsWith('load_mode') ? 1 : undefined);
+        assert.equal(candidate.parsed.regions[0].load_end, directive.startsWith('load_start') ? 15 : undefined);
+        assert.equal((await candidate.createSampleReader('one.wav')).size, 108);
+        return { descriptor: { footprintBytes: 128 }, regionCount: 1 };
+      }
+    });
+    assert.equal(calls, 1); assert.equal(decoded, 0); assert.equal(entry.streamedSource, true);
+    const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+    assert.equal((await reopened.list())[0].id, entry.id);
+  }
 });

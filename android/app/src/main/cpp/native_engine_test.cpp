@@ -1,3 +1,4 @@
+#include "../../../../../dsp/plugins/others/soundfont_player/effects_fixture.h"
 #include "AutomationCatalog.h"
 #include "native_engine.h"
 #include "pcm_resampler.h"
@@ -244,7 +245,8 @@ void playerGainTests() {
     check(sample == 0, "Output gain remains independent of player volume");
 }
 void registryTests() {
-  check(registry::count() == 112, "All registered kernels linked");
+  check(registry::count() == generated::kAutomationEffects.size(),
+        "All registered kernels linked");
   for (std::uint32_t index = 0; index < registry::count(); ++index) {
     const auto *type = registry::at(index);
     auto engine = std::make_unique<Engine>();
@@ -406,6 +408,55 @@ void assetTests() {
         "Clear prepared IR asset");
 }
 
+void samplePlayerAssetTests() {
+  const std::vector<std::uint8_t> payload(kFxDryPayload.begin(),
+                                          kFxDryPayload.end());
+  const std::vector<std::pair<std::string, std::vector<float>>> players{
+      {"SFZNotePlayerPlugin", {.5F, -30, 3, 28, 91, 32, 0,  100, 0, 0, 1,
+                               1,   1,   0, 18, 0,  0,  -1, 100, 0, -1}},
+      {"SoundFontPlayerPlugin", {0, 64, 0, 0}}};
+  for (const auto maxFrames : {64, 4096}) {
+    NativeEngine native(48000, maxFrames);
+    for (const auto &[type, parameters] : players) {
+      const auto ids = native.configure(
+          {type}, {parameters}, {registry::find(type.c_str())->paramsHash},
+          descriptor());
+      const auto kind = type == "SFZNotePlayerPlugin" ? ET_SAMPLE_PLAYER_NOTE
+                                                      : ET_SAMPLE_PLAYER_MAIN;
+      std::uint64_t additional = 0;
+      check(et_sample_player_preparation_bytes(
+                payload.data(), payload.size(), payload.size(),
+                ET_ASSET_F32_MULTICH, 48000, 2, maxFrames, 0, &additional,
+                kind) == ET_OK &&
+                additional > 0 && additional <= UINT32_MAX - payload.size(),
+            "Target-native sample player preparation cost");
+      const auto required =
+          static_cast<std::uint32_t>(payload.size() + additional);
+      AssetBeginInfo info{1,
+                          static_cast<std::uint32_t>((payload.size() - 32) / 4),
+                          0,
+                          0,
+                          1,
+                          0,
+                          0,
+                          2,
+                          required - 1,
+                          static_cast<std::uint32_t>(payload.size())};
+      check(
+          native.setAsset(ids[0], 0, info, payload, ET_ASSET_F32_MULTICH) ==
+              ET_ERR_OOM,
+          "Sample player native preparation respects the caller memory budget");
+      info.footprintBytes = required;
+      check(
+          native.setAsset(ids[0], 0, info, payload, ET_ASSET_F32_MULTICH) ==
+              ET_OK,
+          "Sample player admits exactly the complete target-native footprint");
+      check(native.setAsset(ids[0], 0, {}, {}, 0) == ET_OK,
+            "Clear prepared sample player asset");
+    }
+  }
+}
+
 void temporalTests() {
   NativeEngine native(8000, 64);
   const std::vector<std::pair<std::string, std::vector<float>>> effects{
@@ -468,13 +519,16 @@ int main() {
     resamplerTests();
     captureTests();
     assetTests();
+    samplePlayerAssetTests();
     temporalTests();
     pipelineTests();
     playerGainTests();
     registryTests();
-    std::puts("Android runtime: bounded PCM, generation, clock, Section, timed "
-              "params, power, "
-              "stream recovery, resampling and 112 kernels passed.");
+    std::printf(
+        "Android runtime: bounded PCM, generation, clock, Section, timed "
+        "params, power, "
+        "stream recovery, resampling and %u kernels passed.\n",
+        registry::count());
     return 0;
   } catch (const std::exception &error) {
     std::fprintf(stderr, "Android runtime test failed: %s\n", error.what());

@@ -4,6 +4,11 @@ const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
 const fileAccess = require('../../electron/file-access.cjs');
+const { EventEmitter } = require('node:events');
+const {
+  LIBRARY_PLAYBACK_CHANNELS,
+  registerLibraryServiceIpc
+} = require('../../electron/library-service-coordinator.cjs');
 
 const {
   createTempDir,
@@ -468,6 +473,47 @@ async function invokeAllDelegates(handlers, event) {
   assert.deepEqual(await handlers.get('save-pipeline-state-to-file')(event, { pipeline: [] }), { success: true });
 }
 
+test('background processing status reads Chromium and sender window settings only for the main frame', async () => {
+  await withHarness({}, async ({ electron, constants, ipcMain, moduleUnderTest }) => {
+    const switchNames = [];
+    electron.app.commandLine = { hasSwitch(name) { switchNames.push(name); return true; } };
+    moduleUnderTest.registerIpcHandlers();
+    const handler = ipcMain.handlers.get('get-background-processing-status');
+    const contents = constants.getMainWindow().webContents;
+    contents.getBackgroundThrottling = () => false;
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    assert.deepEqual(handler(event), {
+      rendererBackgroundingDisabled: true, backgroundThrottling: false
+    });
+    assert.deepEqual(switchNames, ['disable-renderer-backgrounding']);
+    assert.throws(() => handler({ sender: contents, senderFrame: {} }), /Only the main window/);
+    assert.throws(() => handler({ sender: {}, senderFrame: contents.mainFrame }), /Only the main window/);
+    delete contents.getBackgroundThrottling;
+    electron.app.commandLine.hasSwitch = () => false;
+    assert.deepEqual(handler(event), {
+      rendererBackgroundingDisabled: false, backgroundThrottling: null
+    });
+  });
+});
+
+test('background processing status includes desktop power facts for the main frame', async () => {
+  await withHarness({}, async ({ electron, ipcMain, moduleUnderTest }) => {
+    electron.app.commandLine = { hasSwitch: () => true };
+    moduleUnderTest.registerIpcHandlers({ getDesktopPowerStatus: () => ({
+      powerSavingOff: true, rendererPid: 77,
+      rendererPowerThrottling: { applied: true, pid: 77, controlMask: 1, stateMask: 0 }
+    }) });
+    const status = ipcMain.handlers.get('get-background-processing-status')(ipcMain.fileEvent());
+    assert.deepEqual(status, {
+      rendererBackgroundingDisabled: true,
+      backgroundThrottling: null,
+      powerSavingOff: true,
+      rendererPid: 77,
+      rendererPowerThrottling: { applied: true, pid: 77, controlMask: 1, stateMask: 0 }
+    });
+  });
+});
+
 test('MSIX config saves preserve preferences without registering login items or downloading NSIS updates', async () => {
   await withHarness({ isMsix: true, platform: 'win32' }, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
@@ -512,6 +558,23 @@ test('Windows system links require MSIX, exact URIs and the main renderer frame'
   }
 });
 
+test('desktop audio activity accepts only the main frame', async () => {
+  await withHarness({}, async ({ ipcMain, moduleUnderTest }) => {
+    const activity = [];
+    moduleUnderTest.registerIpcHandlers({ onDesktopAudioActivity: active => activity.push(active) });
+    const report = ipcMain.listeners.get('desktop-audio-activity');
+    const valid = ipcMain.fileEvent();
+    report(valid, { processingActive: true, playbackActive: false });
+    report(valid, { processingActive: 'true', playbackActive: true });
+    report({ sender: valid.sender, senderFrame: {} }, { processingActive: true });
+    report({ sender: {}, senderFrame: valid.senderFrame }, { processingActive: true });
+    assert.deepEqual(activity, [
+      { processingActive: true, playbackActive: false },
+      { processingActive: false, playbackActive: true }
+    ]);
+  });
+});
+
 test('prepare-local-playback-source delegates to the main-owned converter', async () => {
   await withHarness({}, async ({ ipcMain, moduleUnderTest }) => {
     const paths = [];
@@ -526,6 +589,43 @@ test('prepare-local-playback-source delegates to the main-owned converter', asyn
     result = { success: false, code: 'alacRequiresMacDesktop' };
     assert.deepEqual(await prepare(ipcMain.fileEvent(), 'another.mp4'), result);
     assert.deepEqual(paths, ['original.m4a', 'another.mp4']);
+  });
+});
+
+test('library M4A playback preparation accepts the resolved file without a file dialog grant', async () => {
+  await withHarness({}, async ({ ipcMain, constants, tempDir, moduleUnderTest }) => {
+    const playbackPath = path.join(tempDir, 'library.m4a');
+    const siblingPath = path.join(tempDir, 'unselected.m4a');
+    fs.writeFileSync(playbackPath, 'audio');
+    fs.writeFileSync(siblingPath, 'other audio');
+    const paths = [];
+    const result = { success: true, path: playbackPath, byteLength: 5, converted: false };
+    moduleUnderTest.registerIpcHandlers({
+      alacPlaybackSource: { async prepare(filePath) { paths.push(filePath); return result; } }
+    });
+    const coordinator = new EventEmitter();
+    coordinator.start = async () => ({ kind: 'inactive' });
+    coordinator.resolveSequenceEntrySource = async () => ({ kind: 'electron-file', path: playbackPath });
+    const dispose = registerLibraryServiceIpc({
+      ipcMain: { ...ipcMain, removeHandler: channel => ipcMain.handlers.delete(channel) },
+      coordinator,
+      getMainWindow: constants.getMainWindow
+    });
+    try {
+      const event = ipcMain.fileEvent();
+      const prepare = ipcMain.handlers.get('prepare-local-playback-source');
+      await assert.rejects(prepare(event, playbackPath), /Select this file/);
+      assert.deepEqual(paths, []);
+      const source = await ipcMain.handlers.get(LIBRARY_PLAYBACK_CHANNELS.resolveSequenceEntrySource)(
+        event, { sequenceId: 'sequence-1', entryInstanceId: 'entry-1' }
+      );
+      assert.deepEqual(await prepare(event, source.path), result);
+      assert.deepEqual(paths, [playbackPath]);
+      await assert.rejects(prepare(event, siblingPath), /Select this file/);
+      assert.throws(() => fileAccess.assertPath(playbackPath, 'write'), /Select this file/);
+    } finally {
+      dispose();
+    }
   });
 });
 
@@ -608,6 +708,7 @@ test('registers core handlers and delegates file, config, update, path, and URL 
       success: true,
       preferences: {
         inputDeviceId: '__effetune_no_audio_input__',
+        midiInputDeviceKey: '',
         outputDeviceId: 'speaker1',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
@@ -665,7 +766,7 @@ test('file IPC rejects foreign frames and unselected paths before file operation
     const event = ipcMain.fileEvent();
     const target = path.join(tempDir, 'private.txt');
     fs.writeFileSync(target, 'private');
-    for (const channel of ['read-file', 'read-file-bytes', 'save-file', 'begin-atomic-file-write', 'fileExists']) {
+    for (const channel of ['read-file', 'read-file-bytes', 'read-midi-wrd', 'save-file', 'begin-atomic-file-write', 'fileExists']) {
       const handler = ipcMain.handlers.get(channel);
       for (const denied of [{}, { ...event, sender: {} }, { ...event, senderFrame: {} }]) {
         assert.throws(() => handler(denied, target), /cannot access files/);
@@ -676,12 +777,35 @@ test('file IPC rejects foreign frames and unselected paths before file operation
     }
     assert.equal(calls.some(call => call[0] === 'fileHandlers.readFile' || call[0] === 'fileHandlers.saveFile'), false);
     const foreignDrop = { ...event, senderFrame: {} };
+    const replies = [];
+    for (const dropEvent of [foreignDrop, event]) {
+      Object.defineProperty(dropEvent, 'returnValue', {
+        set(value) { replies.push(value); }
+      });
+    }
     ipcMain.listeners.get('grant-dropped-file')(foreignDrop, target);
-    assert.equal(foreignDrop.returnValue, false);
+    assert.deepEqual(replies.splice(0), [false]);
+    assert.throws(() => fileAccess.assertPath(target, 'read'), /Select this file/);
     ipcMain.listeners.get('grant-dropped-file')(event, target);
-    assert.equal(event.returnValue, true);
+    assert.deepEqual(replies.splice(0), [true]);
+    ipcMain.listeners.get('grant-dropped-file')(event, 'invalid\0path');
+    assert.deepEqual(replies.splice(0), [false]);
     assert.equal((await ipcMain.handlers.get('read-file')(event, target)).success, true);
     assert.equal((await ipcMain.handlers.get('save-file')(event, target, 'changed')).success, false);
+  });
+});
+
+test('MIDI WRD reads derive the sibling from an authorized MIDI path without granting arbitrary sidecar access', async () => {
+  await withHarness({}, async ({ ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const midiPath = path.join(tempDir, 'Song.mid'), wrdPath = path.join(tempDir, 'Song.wrd');
+    fs.writeFileSync(midiPath, 'MIDI');
+    fs.writeFileSync(wrdPath, 'Lyrics');
+    const read = ipcMain.handlers.get('read-midi-wrd'), event = ipcMain.fileEvent();
+    await assert.rejects(read(event, midiPath), /Select this file/);
+    fileAccess.grantRead(midiPath);
+    assert.equal(new TextDecoder().decode(await read(event, midiPath)), 'Lyrics');
+    assert.throws(() => fileAccess.assertPath(wrdPath, 'read'), /Select this file/);
   });
 });
 
@@ -1413,6 +1537,38 @@ test('IPC handlers manage macOS microphone access and audio preference edge case
   });
 });
 
+test('named audio and renderer settings use the active settings directory and reject other frames', async () => {
+  const profile = require('../../electron/settings-profile.cjs');
+  await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
+    profile.configureSettingsProfile(['--settings-name=Speakers']);
+    try {
+      moduleUnderTest.registerIpcHandlers();
+      const directory = profile.getSettingsPath(tempDir);
+      assert.equal(ipcMain.handlers.get('getPath')({}, 'settings'), directory);
+      assert.equal(ipcMain.handlers.get('getPath')({}, 'userData'), tempDir);
+      assert.equal((await ipcMain.handlers.get('save-config')({}, { autoLaunch: true })).success, true);
+      assert.deepEqual(calls.find(call => call[0] === 'app.setLoginItemSettings')[1],
+        profile.getLoginItemSettings(true));
+      assert.deepEqual(await ipcMain.handlers.get('save-audio-preferences')({}, {
+        inputDeviceId: '__effetune_no_audio_input__', sampleRate: 48000
+      }), { success: true });
+      assert.equal(fs.existsSync(path.join(tempDir, 'audio-preferences.json')), false);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'audio-preferences.json'), 'utf8')).sampleRate, 48000);
+      assert.equal((await ipcMain.handlers.get('load-audio-preferences')()).preferences.sampleRate, 48000);
+      const event = ipcMain.fileEvent();
+      ipcMain.listeners.get('settings-storage')(event, { operation: 'set', key: 'theme', value: 'paper' });
+      assert.equal(event.returnValue.ok, true);
+      ipcMain.listeners.get('settings-storage')(event, { operation: 'get', key: 'theme' });
+      assert.deepEqual(event.returnValue, { ok: true, value: 'paper' });
+      const foreign = { ...event, senderFrame: {} };
+      ipcMain.listeners.get('settings-storage')(foreign, { operation: 'set', key: 'theme', value: 'midnight' });
+      assert.deepEqual(foreign.returnValue, { ok: false });
+    } finally {
+      profile.configureSettingsProfile([]);
+    }
+  });
+});
+
 test('audio preference IPC skips reload only for a verified renderer-managed silent-input handoff', async () => {
   await withHarness({}, async ({ calls, ipcMain, moduleUnderTest, tempDir }) => {
     moduleUnderTest.registerIpcHandlers();
@@ -1445,6 +1601,7 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       JSON.parse(fs.readFileSync(path.join(tempDir, 'audio-preferences.json'), 'utf8')),
       {
         ...silentPreferences,
+        midiInputDeviceKey: '',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
         gaplessPlayback: true
@@ -1510,6 +1667,7 @@ test('audio preference IPC persists a verified output-device fallback without re
       JSON.parse(fs.readFileSync(preferencesPath, 'utf8')),
       {
         ...defaultOutputPreferences,
+        midiInputDeviceKey: '',
         inputDeviceLabel: '',
         gaplessPlayback: true
       }

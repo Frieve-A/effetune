@@ -1,5 +1,5 @@
-Component notices from Netty tag netty-4.2.19.Final, license/.
-Source: https://github.com/netty/netty/tree/netty-4.2.19.Final/license
+Component notices from Netty tag netty-4.2.20.Final, license/.
+Source: https://github.com/netty/netty/tree/netty-4.2.20.Final/license
 
 The application redistributes these Netty classes and their incorporated code:
 - logging/MessageFormatter and logging adapters: SLF4J (QOS.ch)

@@ -203,7 +203,7 @@ Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll
 
 ### Limitaciones
 
-- Se detectan 11 tipos de acordes y sus inversiones: mayor, menor, disminuido, aumentado, séptima mayor, séptima menor, séptima de dominante, séptima disminuida, séptima semidisminuida, sus2 y sus4. Los nombres de notas y acordes usan # o ♭ según la tonalidad estimada a partir de las observaciones acumuladas; hasta disponer de esa estimación, se usan sostenidos.
+- Se detectan 11 tipos de acordes y sus inversiones: mayor, menor, disminuido, aumentado, séptima mayor, séptima menor, séptima de dominante, séptima disminuida, séptima semidisminuida, sus2 y sus4. Los nombres de notas y acordes usan # o ♭ según la tonalidad local actual; hasta disponer de esa estimación, se usan sostenidos.
 - La validación con interpretaciones reales de pop y rock es limitada; utiliza las estimaciones como ayuda al escuchar.
 
 ## Oscilloscope

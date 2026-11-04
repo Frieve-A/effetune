@@ -227,12 +227,23 @@ async function storeClient(env, productId) {
   });
 }
 
-async function runCli(args, env) {
-  try {
-    // CLI output can contain an upload SAS URL. Never forward stdout/stderr or exec errors.
-    await execute('msstore', args, { env, timeout: 600_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
-  } catch {
-    throw new Error('Microsoft Store CLI did not confirm completion. The saved submission intent must be reconciled.');
+export async function uploadWithStoreCli(packagePath, productId, env, executeCommand = execute) {
+  for (const [stage, args] of [
+    ['configuration', ['reconfigure', '--tenantId', required(env, 'MSSTORE_TENANT_ID'),
+      '--sellerId', required(env, 'MSSTORE_SELLER_ID'), '--clientId', required(env, 'MSSTORE_CLIENT_ID'),
+      '--clientSecret', required(env, 'MSSTORE_CLIENT_SECRET')]],
+    ['package upload', ['publish', packagePath, '--appId', productId, '--noCommit']]
+  ]) {
+    try {
+      // CLI output and exec errors can contain credentials or an upload SAS URL.
+      await executeCommand('msstore', args, { env, timeout: 600_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+    } catch (error) {
+      const exit = Number.isInteger(error.code) ? ` (exit ${error.code})` : '';
+      const signal = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGABRT'].includes(error.signal)
+        ? ` (signal ${error.signal})` : '';
+      throw new Error(`Microsoft Store CLI ${stage} did not confirm completion${exit}${signal}. ` +
+        'The saved submission intent must be reconciled.');
+    }
   }
 }
 
@@ -340,14 +351,9 @@ async function submit(env) {
         const cliHome = path.join(evidence.temporary, 'cli-home');
         await fs.mkdir(cliHome);
         const cliEnv = { ...env, HOME: cliHome, XDG_DATA_HOME: path.join(cliHome, '.local/share') };
-        try {
-          await runCli(['reconfigure', '--tenantId', required(env, 'MSSTORE_TENANT_ID'),
-            '--sellerId', required(env, 'MSSTORE_SELLER_ID'), '--clientId', required(env, 'MSSTORE_CLIENT_ID'),
-            '--clientSecret', required(env, 'MSSTORE_CLIENT_SECRET')], cliEnv);
-          await runCli(['publish', evidence.packagePath, '--appId', identity.productId, '--noCommit'], cliEnv);
-        } finally {
-          await runCli(['reconfigure', '--reset'], cliEnv);
-        }
+        // The owning private keyring session and temporary directory provide cleanup;
+        // CLI reconfigure --reset is interactive even when launched without a terminal.
+        await uploadWithStoreCli(evidence.packagePath, identity.productId, cliEnv);
       } finally {
         await fs.rm(evidence.temporary, { recursive: true, force: true });
       }

@@ -102,6 +102,70 @@ inline float firDot(const float *coefficients, const float *samples,
   return sum;
 }
 
+struct FirDotPair {
+  float first, second;
+};
+
+// Adjacent polyphase filters share PCM loads, keeping each dot's original sums.
+inline FirDotPair firDotPair(const float *a, const float *b, const float *samples,
+                             std::uint32_t length) noexcept {
+  std::uint32_t tap = 0u;
+  float lanesA[4], lanesB[4];
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+  auto a0 = _mm_setzero_ps(), a1 = _mm_setzero_ps();
+  auto b0 = _mm_setzero_ps(), b1 = _mm_setzero_ps();
+  for (; tap + 8u <= length; tap += 8u) {
+    const auto x0 = _mm_loadu_ps(samples + tap), x1 = _mm_loadu_ps(samples + tap + 4u);
+    a0 = _mm_add_ps(a0, _mm_mul_ps(_mm_loadu_ps(a + tap), x0));
+    a1 = _mm_add_ps(a1, _mm_mul_ps(_mm_loadu_ps(a + tap + 4u), x1));
+    b0 = _mm_add_ps(b0, _mm_mul_ps(_mm_loadu_ps(b + tap), x0));
+    b1 = _mm_add_ps(b1, _mm_mul_ps(_mm_loadu_ps(b + tap + 4u), x1));
+  }
+  _mm_storeu_ps(lanesA, _mm_add_ps(a0, a1));
+  _mm_storeu_ps(lanesB, _mm_add_ps(b0, b1));
+#elif (defined(__clang__) || defined(__GNUC__)) &&                                                 \
+    (defined(__wasm_simd128__) || defined(__SSE2__) || defined(__aarch64__))
+  using Quad = float __attribute__((vector_size(16)));
+  Quad a0 = {}, a1 = {}, b0 = {}, b1 = {};
+  const auto load = [](const float *source) {
+    Quad values;
+    std::memcpy(&values, source, sizeof(values));
+    return values;
+  };
+  for (; tap + 8u <= length; tap += 8u) {
+    const auto x0 = load(samples + tap), x1 = load(samples + tap + 4u);
+    a0 += load(a + tap) * x0;
+    a1 += load(a + tap + 4u) * x1;
+    b0 += load(b + tap) * x0;
+    b1 += load(b + tap + 4u) * x1;
+  }
+  const auto sumA = a0 + a1, sumB = b0 + b1;
+  std::memcpy(lanesA, &sumA, sizeof(lanesA));
+  std::memcpy(lanesB, &sumB, sizeof(lanesB));
+#else
+  float a0[4] = {}, a1[4] = {}, b0[4] = {}, b1[4] = {};
+  for (; tap + 8u <= length; tap += 8u)
+    for (auto lane = 0u; lane < 4u; ++lane) {
+      const auto x0 = samples[tap + lane], x1 = samples[tap + lane + 4u];
+      a0[lane] += a[tap + lane] * x0;
+      a1[lane] += a[tap + lane + 4u] * x1;
+      b0[lane] += b[tap + lane] * x0;
+      b1[lane] += b[tap + lane + 4u] * x1;
+    }
+  for (auto lane = 0u; lane < 4u; ++lane) {
+    lanesA[lane] = a0[lane] + a1[lane];
+    lanesB[lane] = b0[lane] + b1[lane];
+  }
+#endif
+  FirDotPair result{(lanesA[0] + lanesA[1]) + (lanesA[2] + lanesA[3]),
+                    (lanesB[0] + lanesB[1]) + (lanesB[2] + lanesB[3])};
+  for (; tap < length; ++tap) {
+    result.first += a[tap] * samples[tap];
+    result.second += b[tap] * samples[tap];
+  }
+  return result;
+}
+
 // Symmetric FIRs need one multiplication per pair; samples and coefficients stay double precision.
 template <typename Sample>
 inline double firSymmetric(const double *coefficients, const Sample *samples,

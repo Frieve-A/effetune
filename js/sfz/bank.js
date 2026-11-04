@@ -2,7 +2,8 @@ import { normalizeSfzPath, sfzError } from './parser.js';
 import { SFZ_DEFAULT_MAX_BYTES, requireSfzMaxBytes } from './limits.js';
 import { parseIrAudioHeader } from '../ir-library/audio-header-metadata.js';
 
-const MAGIC = 0x315a4653;
+export const SFZ_BANK_MAGIC = 0x315a4653;
+const MAGIC = SFZ_BANK_MAGIC;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const WARNING_CODES = new Set(['invalid-regions', 'missing-samples', 'unsupported-regions',
@@ -89,17 +90,7 @@ export function estimateSfzBankBytes(selectedPath, sizes) {
   return 12 + encoder.encode(JSON.stringify({ selectedPath, files })).byteLength + offset;
 }
 
-export function decodeSfzBank(bytes, { maxBytes = SFZ_DEFAULT_MAX_BYTES } = {}) {
-  requireSfzMaxBytes(maxBytes);
-  if (bytes?.byteLength > maxBytes) throw sfzError('too-large', 'The SFZ bank is too large to load.');
-  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 12) {
-    throw sfzError('prepare', 'Invalid SFZ bank.');
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const metadataLength = view.getUint32(8, true);
-  if (view.getUint32(0, true) !== MAGIC || view.getUint32(4, true) !== 1 ||
-      metadataLength > bytes.byteLength - 12) throw sfzError('prepare', 'Invalid SFZ bank header.');
-  const metadata = JSON.parse(decoder.decode(bytes.subarray(12, 12 + metadataLength)));
+export function validateSfzBankIndex(metadata, dataBytes) {
   if (!Array.isArray(metadata.files) || metadata.files.length > 10000) throw sfzError('prepare', 'Invalid SFZ bank file list.');
   if (metadata.warnings !== undefined && (!Array.isArray(metadata.warnings) || metadata.warnings.length > WARNING_CODES.size ||
       metadata.warnings.some(warning => !WARNING_CODES.has(warning?.code) ||
@@ -111,16 +102,31 @@ export function decodeSfzBank(bytes, { maxBytes = SFZ_DEFAULT_MAX_BYTES } = {}) 
   for (const entry of metadata.files) {
     const path = normalizeSfzPath(entry.path);
     if (files.has(path) || entry.offset !== expectedOffset || !Number.isSafeInteger(entry.length) ||
-        entry.length < 0 || entry.offset + entry.length > bytes.byteLength - 12 - metadataLength) {
+        entry.length < 0 || !Number.isSafeInteger(entry.offset + entry.length) || entry.offset + entry.length > dataBytes) {
       throw sfzError('prepare', 'Invalid SFZ bank file range.');
     }
-    files.set(path, bytes.subarray(12 + metadataLength + entry.offset, 12 + metadataLength + entry.offset + entry.length));
+    files.set(path, Object.freeze({ offset: entry.offset, length: entry.length }));
     expectedOffset += entry.length;
   }
-  if (expectedOffset !== bytes.byteLength - 12 - metadataLength) throw sfzError('prepare', 'Invalid SFZ bank size.');
+  if (expectedOffset !== dataBytes) throw sfzError('prepare', 'Invalid SFZ bank size.');
   const selectedPath = normalizeSfzPath(metadata.selectedPath);
   if (!files.has(selectedPath)) throw sfzError('prepare', 'The SFZ bank has no selected instrument.');
   return { selectedPath, files, warnings: metadata.warnings || [] };
+}
+
+export function decodeSfzBank(bytes, { maxBytes = SFZ_DEFAULT_MAX_BYTES } = {}) {
+  requireSfzMaxBytes(maxBytes);
+  if (bytes?.byteLength > maxBytes) throw sfzError('too-large', 'The SFZ bank is too large to load.');
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 12) throw sfzError('prepare', 'Invalid SFZ bank.');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const metadataLength = view.getUint32(8, true);
+  if (view.getUint32(0, true) !== MAGIC || view.getUint32(4, true) !== 1 ||
+      metadataLength > bytes.byteLength - 12) throw sfzError('prepare', 'Invalid SFZ bank header.');
+  const metadata = JSON.parse(decoder.decode(bytes.subarray(12, 12 + metadataLength)));
+  const bank = validateSfzBankIndex(metadata, bytes.byteLength - 12 - metadataLength);
+  const offset = 12 + metadataLength;
+  return { ...bank, files: new Map([...bank.files].map(([path, entry]) =>
+    [path, bytes.subarray(offset + entry.offset, offset + entry.offset + entry.length)])) };
 }
 
 export async function identifySfzBank(bytes) {

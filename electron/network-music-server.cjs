@@ -10,7 +10,7 @@ const { serveRemoteResource } = require('./network-music-resource.cjs');
 const { CONTENT, CONNECTION, SsdpAdvertisement, xml, parseXml, descendants, value, didl, didlItem, interfaces, isLanAddress, networkUrl } = require('./network-music-upnp.cjs');
 const { SEARCH_CAPS, SORT_CAPS, parseSearch, parseSort } = require('./network-music-content.cjs');
 
-const TYPES = Object.freeze({ '.flac': 'audio/flac', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.webm': 'audio/webm' });
+const TYPES = Object.freeze({ '.dsf': 'audio/x-dsf', '.dff': 'audio/x-dff', '.flac': 'audio/flac', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.webm': 'audio/webm' });
 const SOURCE_PROTOCOLS = [...new Set(Object.values(TYPES))].map(type => `http-get:*:${type}:*`).join(',');
 const ACTIONS = {
   ContentDirectory: {

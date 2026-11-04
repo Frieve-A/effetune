@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const fileHandlers = require('./file-handlers');
+const { getSettingsPath } = require('./settings-profile.cjs');
 
 function getConfigPath() {
-  const userDataPath = fileHandlers.getUserDataPath();
+  const userDataPath = getSettingsPath(fileHandlers.getUserDataPath());
   return path.join(userDataPath, 'config.json');
 }
 
@@ -22,7 +23,7 @@ function loadConfig() {
 
 function saveConfig(config) {
   try {
-    const userDataPath = fileHandlers.getUserDataPath();
+    const userDataPath = getSettingsPath(fileHandlers.getUserDataPath());
     const filePath = getConfigPath();
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
@@ -39,4 +40,4 @@ module.exports = {
   getConfigPath,
   loadConfig,
   saveConfig,
-}; 
+};

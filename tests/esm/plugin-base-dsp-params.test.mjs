@@ -271,6 +271,19 @@ test('PluginBase replays every retained WASM asset to a recreated worklet in ins
   assert.notEqual(messages[0].message.payload, plugin.getWasmAssets().get(3).payload);
 });
 
+test('PluginBase retains sample provider factories only in runtime asset snapshots', () => {
+  const runtime = loadPluginBase(), plugin = createPlugin(runtime);
+  const factory = () => { throw new Error('The factory is resolved by the sample control path only'); };
+  const revision = plugin.setWasmAsset(0, { payload: new ArrayBuffer(32), footprintBytes: 64,
+    sampleProviderFactory: factory });
+  const descriptor = plugin.getWasmAssets().get(0);
+  assert.equal(descriptor.sampleProviderFactory, factory);
+  assert.equal(plugin.getWasmAssetRevisionDescriptor(0, revision).sampleProviderFactory, factory);
+  assert.equal(JSON.stringify(descriptor).includes('sampleProviderFactory'), false);
+  assert.equal(Object.hasOwn(plugin.getParameters(), 'sampleProviderFactory'), false);
+  assert.ok(runtime.messages.every(message => !Object.hasOwn(message, 'sampleProviderFactory')));
+});
+
 test('PluginBase routes descriptor changes only to instance-scoped asset targets', () => {
   const runtime = loadPluginBase();
   const plugin = createPlugin(runtime);
@@ -895,4 +908,50 @@ test('PluginBase capacity notice has matching effect-name translations in every 
       `${locale} capacity notice placeholders`
     );
   }
+});
+
+test('a context replacement keeps its user revision while selecting the exact replay descriptor and retaining its predecessor', () => {
+  const runtime = loadPluginBase(), plugin = createPlugin(runtime);
+  plugin.id = 7;
+  const source = { payload: new ArrayBuffer(16), footprintBytes: 128,
+    preparationContext: { sampleRate: 48000, processingChannels: 2, maxFrames: 128, minimumPhysicalBpm: 0 } };
+  const revision = plugin.setWasmAsset(0, source), node = runtime.windowRef.workletNode;
+  plugin._handleMessage({ data: { type: 'assetState', pluginId: 7, slot: 0, state: 3, operationRevision: revision } });
+  const old = plugin._getWasmAssetRevisionDescriptor(0, revision);
+  const candidate = { ...source, payload: new ArrayBuffer(32), footprintBytes: 256,
+    preparationContext: { ...source.preparationContext, minimumPhysicalBpm: 15 } };
+  const epoch = plugin.reprepareWasmAssetContext(0, candidate, node, { operationRevision: revision });
+  assert.equal(plugin.getWasmAssetOperationRevision(0), revision);
+  assert.equal(plugin._getWasmAssetRevisionDescriptor(0, revision), old);
+  assert.equal(plugin.getWasmAssetRevisionDescriptor(0, revision, epoch, node).payload.byteLength, 32);
+  assert.equal(runtime.messages.at(-1).preparationContext.minimumPhysicalBpm, 15);
+  plugin._handleMessage({ data: { type: 'assetState', pluginId: 7, slot: 0, state: 3,
+    operationRevision: revision, replayEpoch: epoch } });
+  assert.equal(plugin.getWasmAssetRevisionDescriptor(0, revision).payload.byteLength, 32);
+  const before = runtime.messages.length;
+  assert.equal(plugin.reprepareWasmAssetContext(0, source, node,
+    { operationRevision: revision, isCurrent: () => false }), false);
+  assert.equal(runtime.messages.length, before);
+});
+
+
+test('a pending context replay aborts its old epoch before replacement and ignores its late READY', () => {
+  const runtime = loadPluginBase(), plugin = createPlugin(runtime);
+  plugin.id = 7;
+  const revision = plugin.setWasmAsset(0, { payload: new ArrayBuffer(16), footprintBytes: 128 });
+  const node = runtime.windowRef.workletNode;
+  const epoch = plugin.reprepareWasmAssetContext(0, { payload: new ArrayBuffer(32), footprintBytes: 256 }, node,
+    { operationRevision: revision, replacePending: true });
+  const abort = runtime.messages.at(-1);
+  assert.equal(abort.type, 'clearPluginAsset');
+  assert.equal(abort.operationRevision, revision);
+  assert.notEqual(abort.replayEpoch, epoch);
+  plugin._handleMessage({ data: { type: 'assetState', pluginId: 7, slot: 0, state: 3, operationRevision: revision } });
+  assert.equal(runtime.messages.at(-1), abort, 'old READY cannot release or resurrect the candidate');
+  plugin._handleMessage({ data: { type: 'assetState', pluginId: 7, slot: 0, state: 0,
+    operationRevision: revision, replayEpoch: abort.replayEpoch } });
+  assert.equal(runtime.messages.at(-1).type, 'setPluginAsset');
+  assert.equal(runtime.messages.at(-1).replayEpoch, epoch);
+  assert.equal(runtime.messages.at(-1).payload.byteLength, 32);
+  assert.equal(plugin.getWasmAssetOperationRevision(0), revision);
 });

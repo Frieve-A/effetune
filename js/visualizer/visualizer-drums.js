@@ -30,6 +30,7 @@ export class DrumsDisplay {
     }
 
     handleTelemetry(frame) {
+        this.midiSnapshot = null;
         const snapshot = window.RhythmAnalyzerPlugin?.prototype.parseTelemetryFrame(frame);
         if (!snapshot || snapshot.displayMode !== 'drums') return;
         if (frame.source !== this.telemetrySource) {
@@ -70,12 +71,25 @@ export class DrumsDisplay {
     }
 
     stepLevels(now) {
+        if (this.midiSnapshot) {
+            this.levels.fill(0);
+            for (const hit of this.midiSnapshot.hits) {
+                if (hit.band === undefined) continue;
+                const fade = Math.max(0, 1 - (this.midiSnapshot.position - hit.time) * 1000 / FADE_MS);
+                this.levels[hit.band] = Math.max(this.levels[hit.band], hit.velocity * fade * fade);
+            }
+            return this.levels;
+        }
         for (let lane = 0; lane < this.hits.length; lane++) {
             const hit = this.hits[lane];
             const remaining = Math.max(0, 1 - Math.max(0, now - hit.time) / FADE_MS);
             this.levels[lane] = hit.strength * remaining * remaining;
         }
         return this.levels;
+    }
+
+    handleMidiSnapshot(snapshot) {
+        this.midiSnapshot = snapshot;
     }
 
     drawGraph(now) {

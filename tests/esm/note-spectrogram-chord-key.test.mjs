@@ -347,7 +347,7 @@ test('unknown Key removes both its text and chord collision obstacle, and known 
   }
 });
 
-test('cumulative key signatures spell retained chords and hover pitches without changing their identity', () => {
+test('local key signatures spell retained chords and hover pitches without changing their identity', () => {
   const p = plugin();
   p.activeGeneration = 1;
   p.canvas = { width: 400, height: 300 };
@@ -358,9 +358,9 @@ test('cumulative key signatures spell retained chords and hover pitches without 
   const readout = () => p._readNote(.5, 5);
   assert.ok(readout().cursor.startsWith('A#4 +0¢'));
   const cases = [
-    { local: 7, overall: 5, chord: 'D♭m7b5/B♭', note: 'B♭4 +0¢' },
-    { local: 24, overall: 5, chord: 'D♭m7b5/B♭', note: 'B♭4 +0¢' },
-    { local: 5, overall: 7, chord: 'C#m7b5/A#', note: 'A#4 +0¢' }
+    { local: 7, overall: 5, chord: 'C#m7b5/A#', note: 'A#4 +0¢' },
+    { local: 24, overall: 5, chord: 'C#m7b5/A#', note: 'A#4 +0¢' },
+    { local: 5, overall: 7, chord: 'D♭m7b5/B♭', note: 'B♭4 +0¢' }
   ];
   for (const [frame, expected] of cases.entries()) {
     p.handleChordKeyTelemetry(chord(frame, expected));
@@ -373,7 +373,7 @@ test('cumulative key signatures spell retained chords and hover pitches without 
     assert.ok(readout().cursor.startsWith(expected.note));
     assert.ok(p.confirmedChords.every(value => value === 'C#m7b5/A#'), 'history retains canonical roots and bass');
   }
-  p.handleChordKeyTelemetry(chord(3, { overall: 6 }));
+  p.handleChordKeyTelemetry(chord(3, { local: 6, overall: 5 }));
   assert.equal(p._noteReadout(65.25), 'E#4 +25¢', 'diatonic E# follows the F# major signature');
   assert.equal(p._noteReadout(64.75), 'E#4 −25¢', 'existing cent readouts are preserved');
   p.handleTelemetry(pitch(0, { generation: 2 }));
@@ -409,7 +409,7 @@ test('shared chord and Key rendering preserves the display palette without paint
     p._drawChordLane(context, 260, 260 / width, 0, horizontal);
     p._drawKeys(context, 400, 260);
     assert.deepEqual(context.texts.map(text => [text.value, text.color]),
-      [['B♭/D', 'rgb(10, 20, 30)'], ['Key: G major', 'rgb(7, 20, 30)']]);
+      [['A#/D', 'rgb(10, 20, 30)'], ['Key: G major', 'rgb(7, 20, 30)']]);
     assert.ok(context.bars.every(bar => bar.h === 2 && bar.color === 'rgb(10, 20, 30)'),
       'only colored duration bars may be painted, never lane or label backgrounds');
   }

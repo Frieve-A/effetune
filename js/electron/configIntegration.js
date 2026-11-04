@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 ﻿import {
   AUTO_LANGUAGE_PREFERENCE,
   LANGUAGE_OPTIONS,
@@ -30,6 +31,7 @@ import { SFZ_SIZE_LIMIT_MIB_OPTIONS, normalizeSfzSizeLimitMiB } from '../sfz/lim
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
 import { getRemoteControlSettings } from '../remote/remote-control-settings.js';
 import { NetworkMusicSettings } from '../network-music/settings-view.js';
+import { isAndroidHost } from '../android/bridge.js';
 
 import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
 
@@ -61,10 +63,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.startupView = startupViews.includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   config.libraryIncludeVideo = config.libraryIncludeVideo === true;
+  config.libraryIncludeMidi = config.libraryIncludeMidi === true;
   config.videoAutoRotate = config.videoAutoRotate !== false;
   let visualizerHdr = false;
   try {
-    visualizerHdr = window.localStorage?.getItem('effetune_visualizer_hdr') === 'true';
+    visualizerHdr = getSettingsStorage()?.getItem('effetune_visualizer_hdr') === 'true';
   } catch (error) {
     console.warn('Failed to load Visualizer HDR setting:', error);
   }
@@ -109,6 +112,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
   }
 
   const electronStartupSections = isElectron ? `
+      <div class="device-section">
+        <div class="checkbox-container">
+          <input type="checkbox" id="allow-multiple-instances" aria-describedby="allow-multiple-instances-help" ${config.allowMultipleInstances === true ? 'checked' : ''}>
+          <label for="allow-multiple-instances" id="config-allow-multiple-instances-label"></label>
+        </div>
+        <div class="power-mode-help" id="allow-multiple-instances-help"></div>
+      </div>
       <div class="device-section">
         ${isMsix ? `
         <div class="power-mode-help" id="store-startup-help"></div>
@@ -313,6 +323,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
             </div>
             <div class="power-mode-help" id="library-include-video-help"></div>
           </div>
+          ${!isAndroidHost() ? `<div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="library-include-midi" aria-describedby="library-include-midi-help" ${config.libraryIncludeMidi ? 'checked' : ''}>
+              <label for="library-include-midi" id="library-include-midi-label"></label>
+            </div>
+            <div class="power-mode-help" id="library-include-midi-help"></div>
+          </div>` : ''}
           ${electronGeneralSections}`,
     startup: `
           ${electronStartupSections}
@@ -1508,6 +1525,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
     if (autoLaunchLabel) autoLaunchLabel.textContent = t('dialog.config.autoLaunch');
+    const multipleInstancesLabel = document.getElementById('config-allow-multiple-instances-label');
+    if (multipleInstancesLabel) multipleInstancesLabel.textContent = t('dialog.config.allowMultipleInstances');
+    const multipleInstancesHelp = document.getElementById('allow-multiple-instances-help');
+    if (multipleInstancesHelp) multipleInstancesHelp.textContent = t('dialog.config.allowMultipleInstancesHelp');
     for (const [id, key] of [
       ['network-remote-control-title', 'dialog.remoteControl.title'],
       ['network-remote-control-enabled-label', 'dialog.remoteControl.enabled'],
@@ -1586,6 +1607,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('library-include-video-label').textContent = t('dialog.config.libraryIncludeVideo');
     document.getElementById('library-include-video-help').textContent = t('dialog.config.libraryIncludeVideoHelp');
+    const libraryMidiLabel = document.getElementById('library-include-midi-label');
+    if (libraryMidiLabel) libraryMidiLabel.textContent = t('dialog.config.libraryIncludeMidi');
+    const libraryMidiHelp = document.getElementById('library-include-midi-help');
+    if (libraryMidiHelp) libraryMidiHelp.textContent = t('dialog.config.libraryIncludeMidiHelp');
     document.getElementById('video-auto-rotate-label').textContent = t('dialog.config.videoAutoRotate');
     document.getElementById('video-auto-rotate-help').textContent = t('dialog.config.videoAutoRotateHelp');
     document.getElementById('visualizer-hdr-label').textContent = t('dialog.config.visualizerHdr');
@@ -1679,6 +1704,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   function syncConfigControls() {
     const autoLaunch = document.getElementById('auto-launch');
     if (autoLaunch) autoLaunch.checked = Boolean(config.autoLaunch);
+    const multipleInstances = document.getElementById('allow-multiple-instances');
+    if (multipleInstances) multipleInstances.checked = config.allowMultipleInstances === true;
     const startMin = document.getElementById('start-min');
     if (startMin) startMin.checked = Boolean(config.startMinimized);
     const tray = document.getElementById('tray');
@@ -1691,6 +1718,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (visualSync) visualSync.checked = isVisualSyncEnabled(config);
     const libraryIncludeVideo = document.getElementById('library-include-video');
     if (libraryIncludeVideo) libraryIncludeVideo.checked = config.libraryIncludeVideo === true;
+    const libraryIncludeMidi = document.getElementById('library-include-midi');
+    if (libraryIncludeMidi) libraryIncludeMidi.checked = config.libraryIncludeMidi === true;
     const videoAutoRotate = document.getElementById('video-auto-rotate');
     if (videoAutoRotate) videoAutoRotate.checked = config.videoAutoRotate !== false;
     const visualizerHdrInput = document.getElementById('visualizer-hdr');
@@ -1861,6 +1890,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     });
   }
   const autoLaunch = document.getElementById('auto-launch');
+  document.getElementById('allow-multiple-instances')?.addEventListener('change', async e => {
+    await save({ allowMultipleInstances: e.target.checked });
+  });
   if (autoLaunch) {
     autoLaunch.addEventListener('change', async e => {
       await save({ autoLaunch: e.target.checked });
@@ -1900,6 +1932,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
   document.getElementById('library-include-video').addEventListener('change', async e => {
     await save({ libraryIncludeVideo: e.target.checked });
   });
+  document.getElementById('library-include-midi')?.addEventListener('change', async e => {
+    await save({ libraryIncludeMidi: e.target.checked });
+  });
   document.getElementById('video-auto-rotate').addEventListener('change', async e => {
     if (!await save({ videoAutoRotate: e.target.checked })) return;
     window.uiManager?.audioPlayer?.ui?.refreshVideoRotation?.();
@@ -1907,7 +1942,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   document.getElementById('visualizer-hdr').addEventListener('change', e => {
     const enabled = e.target.checked;
     try {
-      window.localStorage.setItem('effetune_visualizer_hdr', String(enabled));
+      getSettingsStorage().setItem('effetune_visualizer_hdr', String(enabled));
     } catch (error) {
       console.error('Failed to save Visualizer HDR setting:', error);
       e.target.checked = visualizerHdr;

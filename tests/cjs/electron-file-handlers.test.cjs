@@ -116,8 +116,8 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
     filters: [{ name: 'Audio Files', extensions: ['mp3'] }]
   });
   assert.deepEqual(playback.calls[0][2].filters, [{
-    name: 'Audio and Video Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4, M4V, MOV, MKV, 3GP)',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp']
+    name: 'Music and Video Files',
+    extensions: ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl']
   }]);
 
   const offline = createHarness();
@@ -126,8 +126,8 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
     filters: [{ name: 'Audio Files', extensions: ['mp3'] }]
   });
   assert.deepEqual(offline.calls[0][2].filters, [{
-    name: 'Audio Files for Processing (MP3, WAV, OGG, FLAC, M4A, AAC)',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac']
+    name: 'Music Files for Processing',
+    extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl']
   }]);
 
   const unchangedOptions = { filters: [null, { name: 'Other', extensions: ['*'] }] };
@@ -149,7 +149,7 @@ test('openPlaybackSelection owns its CUE-aware dialog without changing generic d
   assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
   assert.deepEqual(dialogOptions.filters[0], {
     name: 'Music and CUE Files',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'cue']
+    extensions: ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl', 'cue']
   });
 });
 
@@ -313,19 +313,26 @@ test('processCommandLineArgs leaves queued OS file-open events intact when there
   assert.deepEqual(harness.calls, []);
 });
 
-test('processCommandLineArgs stores existing music files in packaged mode', () => {
+test('processCommandLineArgs stores existing music, DSD and MusicXML files in packaged mode', t => {
   const dir = fs.realpathSync(createTempDir('effetune-cli'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const musicPath = path.join(dir, 'song.OPUS');
   const mp4Path = path.join(dir, 'movie.MP4');
+  const dsfPath = path.join(dir, 'song.DSF');
+  const dffPath = path.join(dir, 'other.dff');
   fs.writeFileSync(musicPath, 'audio');
   fs.writeFileSync(mp4Path, 'media');
+  fs.writeFileSync(dsfPath, 'DSD');
+  fs.writeFileSync(dffPath, 'DSD');
+  const scorePaths = ['score.musicxml', 'legacy.XML', 'compressed.mxl'].map(name => path.join(dir, name));
+  for (const scorePath of scorePaths) fs.writeFileSync(scorePath, 'score');
   const harness = createHarness({ mainWindow: null });
 
   withPatchedProperty(process, 'defaultApp', false, () => {
-    harness.module.processCommandLineArgs(['app.exe', musicPath, mp4Path, path.join(dir, 'missing.wav'), 'notes.txt']);
+    harness.module.processCommandLineArgs(['app.exe', musicPath, mp4Path, dsfPath, dffPath, ...scorePaths, path.join(dir, 'missing.wav'), 'notes.txt']);
   });
 
-  assert.deepEqual(harness.commandLineMusicFiles, [musicPath, mp4Path]);
+  assert.deepEqual(harness.commandLineMusicFiles, [musicPath, mp4Path, dsfPath, dffPath, ...scorePaths]);
 });
 
 test('processCommandLineArgs recovers from fs errors while checking preset and music files', () => {

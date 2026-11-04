@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import { openMeasurementStore } from '../measurement-store/client.js';
 import { getPipelineAnalysisRequirements } from './analysis-requirements.js';
 import { adaptPipelineAnalysisResult } from './result-adapter.js';
@@ -212,7 +213,7 @@ export class PipelineAnalyzerController {
         this.ui = options.ui || null;
         this.windowRef = options.windowRef || globalThis.window || null;
         this.consoleRef = options.consoleRef || globalThis.console;
-        this.storage = options.storage === undefined ? globalThis.localStorage : options.storage;
+        this.storage = options.storage === undefined ? getSettingsStorage(this.windowRef) : options.storage;
         this.openMeasurementStore = options.openMeasurementStore || openMeasurementStore;
         this.snapshotBuilder = options.snapshotBuilder || buildPipelineAnalyzerSnapshot;
         this.resolveRequirements = options.resolveRequirements || getPipelineAnalysisRequirements;

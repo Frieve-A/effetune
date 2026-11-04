@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const requiredFiles = [
   'EffeTune.exe', 'EffeTune.exe.sig', 'resources/app.asar',
   'resources/openhome/effetune-openhome-sidecar.exe',
+  'resources/renderer-power/effetune-renderer-power.exe',
   'resources/openhome/THIRD_PARTY_NOTICES.txt',
   'LICENSE.electron.txt', 'LICENSES.chromium.html',
 ];

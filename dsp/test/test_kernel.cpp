@@ -27,10 +27,15 @@ public:
 
   void prepare(const PrepareInfo &info) override { sample_rate_ = info.sampleRate; }
 
-  void reset() noexcept override {}
+  void reset() noexcept override {
+    offline_state_ = {};
+    blocked_attempts_ = 0u;
+  }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                const ProcessInfo &info) noexcept override {
+    ++offline_state_.commits;
+    offline_state_.frames += frame_count;
     has_transport_ = info.transport != nullptr;
     transport_ = has_transport_ ? *info.transport : HostTransport{};
     if (asset_state_ == ET_ASSET_STATE_PREPARING) {
@@ -43,7 +48,30 @@ public:
     }
   }
 
+  et_status prepareOfflineProcessing() noexcept override { return preparation_status_; }
+  void offlinePreparationStatus(et_status status) noexcept { preparation_status_ = status; }
+  et_status processOffline(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                           const ProcessInfo &info) noexcept override {
+    ++offline_state_.attempts;
+    if (blocked_attempts_ != 0u) {
+      --blocked_attempts_;
+      // Failed trials deliberately overwrite PCM, but do not commit kernel state.
+      for (auto index = 0u; index < channel_count * frame_count; ++index)
+        audio[index] = 999.0F;
+      return blocked_status_;
+    }
+    process(audio, channel_count, frame_count, info);
+    return ET_OK;
+  }
+
+  void blockOffline(std::uint32_t attempts, et_status status) noexcept {
+    blocked_attempts_ = attempts;
+    blocked_status_ = status;
+  }
+  [[nodiscard]] TestOfflineState offlineState() const noexcept { return offline_state_; }
+
   void writeTelemetry(TelemetryWriter &writer) noexcept override {
+    ++offline_state_.telemetry;
     writer.write(0x7fffu, 1u, &params_.gain, static_cast<std::uint16_t>(sizeof(params_.gain)));
   }
 
@@ -109,6 +137,10 @@ public:
   }
 
 private:
+  TestOfflineState offline_state_{};
+  std::uint32_t blocked_attempts_ = 0u;
+  et_status blocked_status_ = ET_NEED_SAMPLE;
+  et_status preparation_status_ = ET_OK;
   HostTransport transport_{};
   bool has_transport_ = false;
   std::uint8_t *asset_ = nullptr;
@@ -166,6 +198,17 @@ private:
 
 const HostTransport *testGainTransport(PluginKernel *kernel) noexcept {
   return static_cast<const TestGainKernel *>(kernel)->transport();
+}
+
+void testGainBlockOffline(PluginKernel *kernel, std::uint32_t attempts, et_status status) noexcept {
+  static_cast<TestGainKernel *>(kernel)->blockOffline(attempts, status);
+}
+
+TestOfflineState testGainOfflineState(PluginKernel *kernel) noexcept {
+  return static_cast<TestGainKernel *>(kernel)->offlineState();
+}
+void testGainOfflinePreparationStatus(PluginKernel *kernel, et_status status) noexcept {
+  static_cast<TestGainKernel *>(kernel)->offlinePreparationStatus(status);
 }
 
 } // namespace effetune::test

@@ -58,19 +58,63 @@ test('Electron network traces require explicit opt-in while failures remain visi
   }
 });
 
-test('Electron 44 preserves disabled features while enabling explicitly permitted basic Web MIDI', () => {
+test('desktop decoder fallback preserves switches and limits the MIDI workaround to Electron 44/45', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
-
-  assert.match(
-    source,
-    /process\.versions\.electron\?\.startsWith\('44\.'\)[\s\S]*getSwitchValue\('disable-features'\)[\s\S]*\.split\(','\)[\s\S]*disabledFeatures\.includes\('BlockMidiByDefault'\)[\s\S]*disabledFeatures\.push\('BlockMidiByDefault'\)[\s\S]*appendSwitch\('disable-features',\s*disabledFeatures\.join\(','\)\)/
-  );
+  const start = source.indexOf('const disabledFeatures =');
+  const end = source.indexOf("app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));", start);
+  assert.ok(start >= 0 && end > start);
+  const bootstrap = source.slice(start, source.indexOf('\n', end));
+  for (const version of ['43.9.0', '44.9.3', '45.1.0', '46.0.0']) {
+    for (const existing of ['', 'OtherFeature', 'OtherFeature, SymphoniaAudioDecoding,BlockMidiByDefault']) {
+      const switches = new Map([['disable-features', existing], ['enable-features', 'OtherEnabledFeature']]);
+      vm.runInNewContext(bootstrap, {
+        process: { versions: { electron: version } },
+        app: { commandLine: {
+          getSwitchValue: name => switches.get(name) || '',
+          appendSwitch: (name, value) => switches.set(name, value)
+        } }
+      });
+      const expected = existing.split(',').map(value => value.trim()).filter(Boolean);
+      if ((version.startsWith('44.') || version.startsWith('45.')) && !expected.includes('BlockMidiByDefault')) expected.push('BlockMidiByDefault');
+      if (!expected.includes('SymphoniaAudioDecoding')) expected.push('SymphoniaAudioDecoding');
+      assert.deepEqual(switches.get('disable-features').split(','), expected);
+      assert.equal(switches.get('enable-features'), 'OtherEnabledFeature');
+    }
+  }
   assert.ok(
     source.indexOf("getSwitchValue('disable-features')") < source.indexOf('app.whenReady()')
   );
   assert.match(source, /GRANTED_PERMISSIONS\s*=\s*\[[^\]]*'midi'[^\]]*\]/);
+  assert.doesNotMatch(source.match(/GRANTED_PERMISSIONS\s*=\s*\[[^\]]*\]/)[0], /'midiSysex'/);
   assert.match(source, /setPermissionCheckHandler\([\s\S]*GRANTED_PERMISSIONS\.includes\(permission\)/);
   assert.match(source, /setPermissionRequestHandler\([\s\S]*GRANTED_PERMISSIONS\.includes\(permission\)/);
+});
+
+test('desktop startup keeps background audio priority before readiness on every platform', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
+  const start = source.indexOf('// macOS only: tell Chromium');
+  const end = source.indexOf('function presentMainWindow', start);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(end < source.indexOf('app.whenReady()'));
+  assert.ok(end < source.indexOf('new BrowserWindow('));
+  for (const platform of ['win32', 'darwin', 'linux']) {
+    const switches = new Map();
+    let readinessObserved = false;
+    const app = {
+      commandLine: {
+        getSwitchValue: name => switches.get(name) || '',
+        appendSwitch: (name, value) => switches.set(name, value)
+      },
+      whenReady() {
+        assert.equal(switches.has('disable-renderer-backgrounding'), true, platform);
+        readinessObserved = true;
+      }
+    };
+    vm.runInNewContext(`${source.slice(start, end)}\napp.whenReady();`, {
+      app, process: { platform, versions: { electron: '45.1.0' } }
+    });
+    assert.equal(readinessObserved, true);
+  }
 });
 
 test('Electron shutdown awaits OpenHome and catalog cleanup through one idempotent promise', () => {

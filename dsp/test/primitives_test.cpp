@@ -1,4 +1,5 @@
 #include "effetune/dsp/delay_line.h"
+#include "effetune/dsp/denormal.h"
 #include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/fir.h"
 #include "effetune/dsp/math.h"
@@ -7,6 +8,7 @@
 #include "effetune/dsp/xorshift_rng.h"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -29,6 +31,41 @@ bool near(double actual, double expected, double tolerance = 1.0e-12) noexcept {
   const double difference = actual - expected;
   const double magnitude = difference < 0.0 ? -difference : difference;
   return magnitude <= tolerance;
+}
+void testSubnormalNormalization() {
+  for (const auto bits : std::array<std::uint32_t, 16>{
+           0u, 0x80000000u, 1u, 0x80000001u, 0x007fffffu, 0x807fffffu, 0x00800000u, 0x80800000u,
+           0x3f800000u, 0xbf800000u, 0x7f7fffffu, 0xff7fffffu, 0x7f800000u, 0xff800000u,
+           0x7fc00001u, 0xff800001u}) {
+    const auto value = std::bit_cast<float>(bits);
+    const auto result = std::bit_cast<std::uint32_t>(effetune::dsp::flushSubnormal(value));
+    const bool subnormal = (bits & 0x7f800000u) == 0 && (bits & 0x007fffffu) != 0;
+    PRIMITIVE_CHECK(result == (subnormal ? 0u : bits));
+  }
+  for (const auto bits : std::array<std::uint64_t, 16>{
+           0ull, 0x8000000000000000ull, 1ull, 0x8000000000000001ull, 0x000fffffffffffffull,
+           0x800fffffffffffffull, 0x0010000000000000ull, 0x8010000000000000ull,
+           0x3ff0000000000000ull, 0xbff0000000000000ull, 0x7fefffffffffffffull,
+           0xffefffffffffffffull, 0x7ff0000000000000ull, 0xfff0000000000000ull,
+           0x7ff8000000000001ull, 0xfff0000000000001ull}) {
+    const auto value = std::bit_cast<double>(bits);
+    const auto result = std::bit_cast<std::uint64_t>(effetune::dsp::flushSubnormal(value));
+    const bool subnormal =
+        (bits & 0x7ff0000000000000ull) == 0 && (bits & 0x000fffffffffffffull) != 0;
+    PRIMITIVE_CHECK(result == (subnormal ? 0ull : bits));
+  }
+  effetune::dsp::OnePole pole;
+  pole.reset(1);
+  pole.setCoefficient(.01);
+  effetune::dsp::AttackReleaseEnvelope envelope;
+  envelope.reset(1);
+  envelope.setCoefficients(1, .01);
+  for (auto frame = 0u; frame < 100000u; ++frame) {
+    static_cast<void>(pole.process(0));
+    static_cast<void>(envelope.process(0));
+  }
+  PRIMITIVE_CHECK(pole.value() == 0);
+  PRIMITIVE_CHECK(envelope.value() == 0);
 }
 
 void testDelayLine() {
@@ -259,6 +296,7 @@ void testOversampledShaper() {
 int main() {
   testDelayLine();
   testSmoothing();
+  testSubnormalNormalization();
   testRng();
   testMath();
   testDenormalNoise();

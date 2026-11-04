@@ -190,13 +190,19 @@ export const audioManagerWasmAssetMethods = {
             ? options.timeoutMs
             : DSP_BYTES_READY_TIMEOUT_MS;
         const primaryWorklet = options.primaryWorklet ?? this._getPrimaryWorkletNode();
+        const explicitTarget = options.primaryWorklet != null;
         const generation = this._audioGraphGeneration;
+        const targetIsCurrent = () => explicitTarget
+            ? this._isActiveDspWorklet(primaryWorklet) &&
+                this._wasmAssetMembershipByNode?.get(primaryWorklet)?.get(plugin?.id) === plugin
+            : primaryWorklet === this._getPrimaryWorkletNode();
         const evaluate = () => this.getEffectiveActiveWasmAssetSnapshot(
             plugin,
             slots,
             { primaryWorklet }
         );
         const initial = evaluate();
+        if (!targetIsCurrent()) return Promise.resolve(Object.freeze({ ...initial, ready: false, stale: true }));
         if (initial.ready) return Promise.resolve(initial);
 
         return new Promise(resolve => {
@@ -208,17 +214,25 @@ export const audioManagerWasmAssetMethods = {
                 ready: false,
                 stale: true
             });
+            const onParallelInvalidated = () => {
+                if (primaryWorklet !== this._getPrimaryWorkletNode()) onGraphRebuilt();
+                else check();
+            };
             const settle = result => {
                 if (settled) return;
                 settled = true;
                 if (timer !== null) clearTimeout(timer);
                 unsubscribePlugin();
                 this.removeEventListener('audioGraphRebuilt', onGraphRebuilt);
+                if (explicitTarget) {
+                    this.removeEventListener('pipelineChanged', check);
+                    this.removeEventListener('parallelInvalidated', onParallelInvalidated);
+                }
                 resolve(Object.freeze(result));
             };
             const check = () => {
                 if (generation !== this._audioGraphGeneration ||
-                    primaryWorklet !== this._getPrimaryWorkletNode()) {
+                    !targetIsCurrent()) {
                     onGraphRebuilt();
                     return;
                 }
@@ -230,11 +244,28 @@ export const audioManagerWasmAssetMethods = {
                 ? subscribe.call(plugin, check)
                 : () => {};
             this.addEventListener('audioGraphRebuilt', onGraphRebuilt);
-            timer = setTimeout(() => settle({
-                ...evaluate(),
-                ready: false,
-                timedOut: true
-            }), timeoutMs);
+            if (explicitTarget) {
+                this.addEventListener('pipelineChanged', check);
+                this.addEventListener('parallelInvalidated', onParallelInvalidated);
+            }
+            const startTimer = () => {
+                timer = setTimeout(async () => {
+                    timer = null;
+                    // A streamed source owns its bounded worker and page ACK
+                    // lifecycle. Wait for that preparation before applying the
+                    // normal short deadline to the native ACTIVE notification.
+                    const preparation = options.getPreparation?.();
+                    if (preparation) {
+                        const ready = await preparation;
+                        if (settled) return;
+                        check();
+                        if (settled) return;
+                        if (!ready) settle({ ...evaluate(), ready: false });
+                        else startTimer();
+                    } else settle({ ...evaluate(), ready: false, timedOut: true });
+                }, timeoutMs);
+            };
+            startTimer();
             check();
         });
     },
@@ -260,11 +291,12 @@ export const audioManagerWasmAssetMethods = {
             if (next.get(pluginId) !== plugin) this._pruneWasmAssetStatesForPlugin(workletNode, pluginId);
         }
         this._wasmAssetMembershipByNode.set(workletNode, next);
-        if (options.replayNew === false) return new Set();
-        return this._replayPipelineWasmAssets(workletNode, added, {
+        const expected = options.replayNew === false ? new Set() : this._replayPipelineWasmAssets(workletNode, added, {
             generation,
             trackState: options.trackState === true
         });
+        this._syncLiveMidiInputTargets?.();
+        return expected;
     },
 
     _replayPipelineWasmAssets(workletNode, pipeline, options = {}) {
@@ -321,6 +353,38 @@ export const audioManagerWasmAssetMethods = {
             });
         }
         return expected;
+    },
+
+    async _prepareWasmAssetMapsForTarget(workletNode, pipeline, { assetMaps = null,
+        generation = this._audioGraphGeneration } = {}) {
+        const topology = this._topologyRevision;
+        const token = this._dspReadyTokens?.get(workletNode);
+        const current = () => generation === this._audioGraphGeneration && topology === this._topologyRevision &&
+            token === this._dspReadyTokens?.get(workletNode) && this._isActiveDspWorklet(workletNode);
+        const prepared = new Map(), changed = new Set();
+        const { prepareSfzAssetForContext } = await import('../sfz/preparation-context.js');
+        const { getSfzMaxBytes } = await import('../sfz/limits.js');
+        const budget = getSfzMaxBytes(globalThis.window?.appConfig?.sfzMaxSizeMiB);
+        const timeline = globalThis.window?.uiManager?.audioPlayer?.contextManager?.midiTimeline ?? null;
+        for (const plugin of pipeline) {
+            if (!current()) return null;
+            const assets = assetMaps?.get(plugin) ?? plugin.getWasmAssets?.() ?? new Map();
+            if (!['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.constructor.name) || !assets.size) {
+                prepared.set(plugin, assets); continue;
+            }
+            const context = await this.getSfzPreparationContext(plugin, workletNode, timeline);
+            if (!context || !current()) return null;
+            const next = new Map();
+            for (const [slot, descriptor] of assets) {
+                const materialized = await prepareSfzAssetForContext(descriptor, context, budget,
+                    (payload, context, formatTag) => this.estimateSfzEffectPreparation(payload, context, formatTag));
+                if (!current() || this._wasmAssetMembershipByNode.get(workletNode)?.get(plugin.id) !== plugin) return null;
+                next.set(slot, materialized);
+                if (materialized !== descriptor) changed.add(plugin);
+            }
+            prepared.set(plugin, next);
+        }
+        return { assetMaps: prepared, changed };
     },
 
     _settleWasmAssetReadyRequest(workletNode, result) {

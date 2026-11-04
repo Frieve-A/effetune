@@ -150,6 +150,15 @@ export function decodeLegacyMetadataBytes(data, languageHints = null) {
   return latin1Text.trim();
 }
 
+/** Infer one encoding from a complete text stream before decoding short fragments. */
+export function detectLegacyMetadataEncoding(data, languageHints = null) {
+  const bytes = normalizeByteArray(data);
+  if (!bytes?.length) return null;
+  const decoded = decodeLegacyMetadataBytes(bytes, languageHints);
+  const encodings = [...getLegacyMetadataEncodings(getLanguageCodes(languageHints)), { label: 'windows-1252' }];
+  return encodings.find(encoding => decodeBytes(bytes, encoding.label) === decoded)?.label ?? null;
+}
+
 function mayContainLegacyMetadataMojibake(text, score) {
   if (text.includes(ISO_2022_JP_ESCAPE) || score.controls > 0 || score.replacements > 0) return true;
   if (score.windowsMarkers > 0 || score.utf8Markers > 0 || score.latinSymbols >= 2) return true;

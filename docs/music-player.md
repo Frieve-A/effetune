@@ -16,6 +16,38 @@ Open a music file in EffeTune to listen through the current effect chain. Use th
 
 For player-only use, set **Input Device:** to **None (music file player only)** in **Audio Configuration** so EffeTune does not use a live audio input.
 
+## DSD files {#dsd-files}
+
+Open `.dsf` (DSF) or `.dff` (DSDIFF) files like other music files. Both uncompressed and DST-compressed DFF are supported. EffeTune converts mono or stereo DSD64, DSD128, and DSD256 to PCM for playback through the current effects. The audio device receives PCM, not native DSD or DoP.
+
+Some DST encoding variants (segmented frames), files with more than two channels, DSD512, and 48 kHz-based DSD are not supported. If a file cannot be played, use an uncompressed DFF or a compatible PCM copy such as FLAC or WAV. DSD file playback is available in the desktop app and web/PWA player, but not the native Android app.
+
+High-rate DSD, especially at faster playback speeds, needs more processing power. If playback stutters or stops, lower the playback speed.
+
+## MIDI files
+
+MIDI and MusicXML playback and library registration are available in the desktop app and web/PWA player. They are not supported in the Android app.
+
+Open `.mid`, `.midi`, or `.kar` files with the usual music file picker or drag and drop. MIDI contains notes and timing rather than recorded sound. Add [**SoundFont Player**](plugins/others.md#soundfont-player) from **Others** to the Effect Pipeline, then select an instrument with **SoundFont Library…**. Opening a MIDI file does not add an instrument automatically. MIDI files can also be added to the Music Library.
+To show lyrics in **Lyrics** in Visualizer, use lyrics embedded in the MIDI file or place a same-name `.wrd` file beside it. On the web, select or drop both files together unless the folder is accessible through Music Library. A `.wrd` file is an accompaniment, not a separate track; if it cannot be read, MIDI playback continues.
+
+For MIDI and MusicXML cover artwork, place `cover.jpg` (preferred) or `folder.jpg` in the same folder. On the web, select or drop the image with the music file unless the folder is accessible through Music Library.
+
+If SoundFont Player is missing, or no instrument is loaded or it is still loading, the player shows guidance and continues sending MIDI in time, silently, without skipping to the next song. The song still ends normally. You can add SoundFont Player or load an instrument during playback: once ready, it responds to subsequent MIDI events, using the song's current channel sounds and controller settings. Earlier notes are not replayed, even if the song still holds them.
+
+Use the usual play, pause, seek, repeat, shuffle, speed, volume, and mute controls. Speed changes MIDI timing without changing note pitches; **Preserve Pitch** is unavailable for MIDI. With an SF2/SF3 collection, one SoundFont Player follows Bank Select and Program Change independently on all 16 channels, with channel 10 using the drum bank by default. Use **MIDI Mixer** to adjust a channel’s **Patch**, level, or other performance controls. These changes are temporary, follow subsequent MIDI messages, and reset for the next song. SFZ instruments keep their own sound mappings.
+
+To save a MIDI song as audio, select it in offline file processing with SoundFont Player and an instrument prepared. Rendering uses the whole song, the selected instrument, and following effects, with speed 1 and unity song gain, and saves WAV or FLAC using your output settings. If a maximum tail limit is reached, the app tells you; the remaining tail is cut off.
+
+Standard MIDI File formats 0 and 1 are supported. Convert format 2 or RMID to a standard format 0 or 1 `.mid` file before opening it.
+
+## MusicXML files {#musicxml-files}
+
+Open `.musicxml`, `.xml`, or compressed `.mxl` files like MIDI files. Add **SoundFont Player** and load an instrument to hear them. MusicXML playback uses the MIDI controls described above; it does not display sheet music. Music Library can also index these files.
+MusicXML lyrics can appear in Visualizer’s **Lyrics** item during playback. Select a **Part** and **Verse** there when a score has more than one, or keep **Automatic**.
+
+Notes, rests, chords, voices, ties, tempo changes, and standard repeats with alternate endings are supported. Some notation details, such as ornaments and grace notes, are not reproduced. For scores with nested repeats, measure-repeat symbols, microtonal notes, or D.C., D.S., Coda, or Fine, and for opus collections with multiple scores, export a standard MIDI file from a notation app and open that instead.
+
 ## Playback Controls
 
 - Pausing, resuming, or closing the player with **×** uses a short fade to avoid clicks.

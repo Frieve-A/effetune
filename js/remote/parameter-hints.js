@@ -7,6 +7,10 @@
 // Kept out of the plugin files so that editing a description does not change the plugin
 // source hashes the DSP parity goldens record.
 
+const SOUNDFONT_PRESET_HINT = Object.freeze({
+    control: 'number', min: -1, max: 8388607, step: 1, unit: '', scale: 'linear', integer: true
+});
+
 export const PARAMETER_HINTS = Object.freeze({
     BassManagementPlugin: Object.freeze({
         ro: { items: { control: 'select', label: 'Role', options: [{ value: 0, label: 'Full Range' }, { value: 1, label: 'Managed' }, { value: 2, label: 'LFE' }, { value: 3, label: 'Unused' }] }, description: 'One role per input channel (16 entries, Ch 1 first).' },
@@ -175,9 +179,17 @@ export const PARAMETER_HINTS = Object.freeze({
         dl: { control: 'number', label: 'Delay', min: 0, max: 20, step: 0.01, unit: 'ms', scale: 'linear' }
     }),
     SFZNotePlayerPlugin: Object.freeze({
+        sp0: { ...SOUNDFONT_PRESET_HINT, label: 'Preset', description: 'SF2 preset for detected notes: bank * 128 + program, with program numbered 0–127. Choose a bank/program present in the loaded collection; -1 selects its first playable preset. Does not affect SFZ instruments.' },
         sf: { format: 'sfz-id', label: 'SFZ', description: 'Id (24 lowercase hex characters) of an instrument in the app\'s SFZ library, or an empty string for none.' },
         mn: { control: 'number', label: 'Lowest Note', min: 21, max: 108, step: 1, unit: 'MIDI note', scale: 'linear', integer: true },
         mx: { control: 'number', label: 'Highest Note', min: 21, max: 108, step: 1, unit: 'MIDI note', scale: 'linear', integer: true, minKey: 'mn', description: 'Raised to the Lowest Note when sent below it.' }
+    }),
+    SoundFontPlayerPlugin: Object.freeze({
+        ...Object.fromEntries(Array.from({ length: 16 }, (_, channel) => [`sp${channel}`, {
+            ...SOUNDFONT_PRESET_HINT, label: `Channel ${channel + 1} Preset`,
+            description: `SF2 preset for MIDI channel ${channel + 1}: bank * 128 + program, with program numbered 0–127. Choose a bank/program present in the loaded collection; -1 means Follow MIDI (Bank Select and Program Change). Changes apply to new notes. Does not affect SFZ instruments.`
+        }])),
+        sf: { format: 'sfz-id', label: 'SFZ', description: 'Id (24 lowercase hex characters) of an instrument in the app\'s SFZ library, or an empty string for none.' }
     }),
     SectionPlugin: Object.freeze({
         cm: { format: 'text', label: 'Section Name', description: 'Free text shown as the section name.' }

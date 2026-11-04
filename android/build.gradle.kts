@@ -5,7 +5,7 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
         constraints {
             // AGP's tooling graph otherwise selects versions with published security advisories.
-            add("classpath", "com.google.guava:guava:33.7.2-jre")
+            add("classpath", "com.google.guava:guava:33.8.0-jre")
             add("classpath", "org.apache.commons:commons-lang3:3.21.0")
             add("classpath", "org.bitbucket.b_c:jose4j:0.9.7")
             add("classpath", "org.bouncycastle:bcpkix-jdk18on:1.86")

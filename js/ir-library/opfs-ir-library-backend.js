@@ -88,6 +88,39 @@ export class OpfsIrLibraryBackend {
     }
   }
 
+  async readSfzBankFile(name) {
+    requireName(name);
+    if (this.namespace !== 'sfz-library' || !/^[a-f0-9]{24}\.sfzbank$/.test(name)) throw new TypeError('Invalid SFZ bank item.');
+    try {
+      const file = await (await this.directory.getFileHandle(name)).getFile();
+      if (!Number.isSafeInteger(file.size) || file.size < 0) throw new RangeError('Invalid SFZ bank size.');
+      return file;
+    } catch (error) { if (error?.name === 'NotFoundError') return null; throw error; }
+  }
+
+  async writeSfzBankFile(name, file, { isCurrent, onProgress } = {}) {
+    requireName(name);
+    if (this.namespace !== 'sfz-library' || !/^[a-f0-9]{24}\.sfzbank$/.test(name) ||
+        !Number.isSafeInteger(file?.size) || file.size < 12 || typeof file.slice !== 'function') throw new TypeError('Invalid SFZ bank item.');
+    const handle = await this.directory.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable({ keepExistingData: false });
+    try {
+      for (let offset = 0; offset < file.size; offset += 1024 * 1024) {
+        if (isCurrent?.() === false) throw new DOMException('SFZ import was cancelled.', 'AbortError');
+        const length = Math.min(1024 * 1024, file.size - offset);
+        const bytes = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+        if (bytes.length !== length) throw new Error('The SFZ source changed during import.');
+        await writable.write(bytes);
+        onProgress?.({ completedBytes: offset + length, totalBytes: file.size });
+      }
+      if (isCurrent?.() === false) throw new DOMException('SFZ import was cancelled.', 'AbortError');
+      await writable.close();
+    } catch (error) {
+      await writable.abort?.().catch(() => {});
+      throw error;
+    }
+  }
+
   async remove(name) {
     requireName(name);
     try {

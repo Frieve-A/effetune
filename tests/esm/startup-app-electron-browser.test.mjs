@@ -11,6 +11,12 @@ import { _electron as electron } from 'playwright';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 
 test('maximized startup completes without a debugger or hidden-window paint events', { timeout: 40_000 }, async () => {
+  const documentUrl = value => {
+    const url = new URL(value);
+    url.search = '';
+    url.hash = '';
+    return url.href;
+  };
   const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'effetune-startup-native-')));
   let child;
   let exited;
@@ -52,8 +58,10 @@ test('maximized startup completes without a debugger or hidden-window paint even
         if (message.type === 'closed' && message.window.url.endsWith('effetune-splash.html')) splash = message.window;
         if (!presented || !splash) return;
         // The Linux window manager can acknowledge maximize after the native show event.
+        // Pipeline state can change the query without navigating to another document.
         const maximizedWindow = [presented, ...maximizations].find(observation =>
-          observation.windowId === presented.main.id && observation.url === presented.main.url &&
+          observation.windowId === presented.main.id &&
+          documentUrl(observation.url) === documentUrl(presented.main.url) &&
           observation.visible && observation.maximized);
         if (maximizedWindow) complete(null, { ...presented, splash, maximizedWindow });
       };
@@ -68,7 +76,7 @@ test('maximized startup completes without a debugger or hidden-window paint even
     assert.equal(state.visible, true);
     if (process.platform === 'win32') assert.equal(state.maximized, true);
     assert.equal(state.maximizedWindow.windowId, state.main.id);
-    assert.equal(state.maximizedWindow.url, state.main.url);
+    assert.equal(documentUrl(state.maximizedWindow.url), documentUrl(state.main.url));
     assert.equal(state.maximizedWindow.visible, true);
     assert.equal(state.maximizedWindow.maximized, true);
     assert.equal(state.main.loads, 1);
@@ -96,6 +104,45 @@ function silentWav() {
   pcm.writeUInt32LE(pcm.length - 44, 40);
   return pcm;
 }
+
+test('multiple-instance preference allows two real desktop apps to initialize together', { timeout: 90_000 }, async () => {
+  const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'effetune-multiple-apps-')));
+  const applications = [];
+  try {
+    await writeFile(path.join(profile, 'config.json'), JSON.stringify({
+      allowMultipleInstances: true, checkForUpdatesOnStartup: false, pipelineStartup: 'default'
+    }));
+    await writeFile(path.join(profile, 'audio-preferences.json'), JSON.stringify({
+      inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID, outputDeviceId: 'default', sampleRate: 48000, outputChannels: 2
+    }));
+    for (let index = 0; index < 2; index++) {
+      const application = await electron.launch({
+        args: [fileURLToPath(new URL('../helpers/startup-app-electron-main.cjs', import.meta.url))],
+        env: { ...process.env, EFFETUNE_STARTUP_TEST_PROFILE: profile, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
+        timeout: 30_000
+      });
+      applications.push(application);
+      await application.evaluate(async ({ BrowserWindow }) => {
+        const deadline = Date.now() + 30_000;
+        while (Date.now() < deadline) {
+          const main = BrowserWindow.getAllWindows().find(window =>
+            window.webContents.getURL().includes('/effetune.html'));
+          if (main && await main.webContents.executeJavaScript('Boolean(window.app?.initialized)')) return;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        throw new Error('The application did not initialize');
+      });
+    }
+    const pids = await Promise.all(applications.map(application => application.evaluate(() => process.pid)));
+    assert.notEqual(pids[0], pids[1]);
+    for (const application of applications) {
+      assert.equal(application.process().exitCode, null);
+    }
+  } finally {
+    for (const application of applications.reverse()) await application.close();
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
 
 for (const mode of ['first-launch', 'saved-window', 'preset-and-music', 'minimized', 'tray']) {
   test(`desktop startup loads the real app once: ${mode}`, { timeout: 60_000 }, async () => {

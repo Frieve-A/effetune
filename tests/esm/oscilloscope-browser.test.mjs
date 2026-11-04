@@ -138,7 +138,7 @@ test('Visualizer Oscilloscope reuses waveform rasters through palette, flip, and
       item.palette.mode = 'gradient';
       item.palette.stops = [{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }];
       const canvas = document.querySelector('canvas');
-      const display = createAnalyzerDisplay(item, canvas, { subscribeItem: () => () => {} });
+      const display = createAnalyzerDisplay(item, canvas, { subscribeItem: () => () => {}, getFrame: () => null });
       const sampleRate = 48000, captureSampleCount = 480000, bucketSamples = 118, endSample = 720000;
       const first = Math.floor((endSample - captureSampleCount - 4800) / bucketSamples);
       const bucketCount = Math.ceil(endSample / bucketSamples) - first;

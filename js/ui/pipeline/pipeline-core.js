@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 /**
  * PipelineCore - Core functionality for managing the audio processing pipeline
  * Handles plugin creation, deletion, reordering, and UI updates
@@ -87,7 +88,7 @@ export class PipelineCore {
 
         // --- Handle Non-Empty Pipeline --- 
         // Get the desired column count from storage or default
-        const storedColumnCount = parseInt(localStorage.getItem('pipelineColumns') || '1');
+        const storedColumnCount = parseInt(getSettingsStorage().getItem('pipelineColumns') || '1');
         const columnCount = typeof this.columnManager.getEffectiveColumnCount === 'function'
             ? this.columnManager.getEffectiveColumnCount(storedColumnCount)
             : storedColumnCount;

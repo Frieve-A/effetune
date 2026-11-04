@@ -17,11 +17,13 @@ const entry = { id, name: 'piano.sfz', selectedPath: 'piano.sfz' };
 const ok = data => ({ ok: true, data });
 
 function wav(frames = 3) {
-  const bytes = new Uint8Array(44);
+  const bytes = new Uint8Array(44 + frames * 2);
   bytes.set(encode('RIFF'), 0); bytes.set(encode('WAVEfmt '), 8); bytes.set(encode('data'), 36);
   const view = new DataView(bytes.buffer);
-  view.setUint32(16, 16, true); view.setUint16(22, 1, true); view.setUint32(24, 44100, true);
-  view.setUint16(32, 2, true); view.setUint32(40, frames * 2, true);
+  view.setUint32(4, bytes.length - 8, true); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 44100, true);
+  view.setUint32(28, 88200, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  view.setUint32(40, frames * 2, true);
   return bytes;
 }
 
@@ -52,6 +54,17 @@ function harness(definition = '<region> sample=tone.wav key=60', options = {}) {
 }
 
 const decode = () => ({ sampleRate: 44100, channels: [new Float32Array([.1, .2, .3])] });
+
+test('native script dependencies are reread and recompiled without treating them as sample audio', async () => {
+  const h = harness('<global> script=play.txt\n<region> sample=*sine');
+  h.files.set('play.txt', encode('on note\nignore_event($EVENT_ID)\nend on'));
+  const first = await h.service.prepare(id);
+  assert.ok(new Uint32Array(first.descriptor.payload, 32)[9] > 64);
+  assert.deepEqual(h.stats, []);
+  h.files.set('play.txt', encode('on note\nunknown_function()\nend on'));
+  await assert.rejects(h.service.prepare(id), { code: 'script-invalid' });
+  assert.deepEqual(h.reads.map(item => item.relativePath), ['piano.sfz', 'play.txt', 'piano.sfz', 'play.txt']);
+});
 
 test('native SFZ generators use the sample pipeline without requesting nonexistent source files', async () => {
   const h = harness('<region> sample=*sine key=60\n<region> sample=*noise key=61 ampeg_decay=163.6');
@@ -90,7 +103,7 @@ test('native sample-aware invalid regions retain usable notes with additive warn
   assert.deepEqual(first.warnings, [{ code: 'invalid-regions', count: 3 }]);
   assert.deepEqual(second.warnings, first.warnings);
   assert.deepEqual(second.descriptor.payload, first.descriptor.payload);
-  assert.equal(new Float32Array(first.descriptor.payload, 64)[4], 60);
+  assert.equal(new Float32Array(first.descriptor.payload, 80)[4], 60);
   assert.equal(h.diagnostics[0].invalidRegions.length, 1);
   assert.equal(h.diagnostics[1].invalidRegions.length, 2);
   assert.match(h.diagnostics[1].invalidRegions[0], /tone.wav:.*playback/);
@@ -137,12 +150,44 @@ test('native service consumes the production broker shape and stores reference m
   assert.match(selected.id, /^[a-f0-9]{24}$/);
   assert.equal(selected.name, 'Keys/piano.sfz');
   assert.match(selected.importedAt, /^\d{4}-\d{2}-\d{2}T/);
+  const bank = await service._readBank(selected.id, 1024 * 1024, null);
+  const reader = await bank.createSampleReader('libs/tone.wav');
+  assert.equal(reader.size, wav().length);
+  assert.equal(reader.revision, bank.metadata.get('libs/tone.wav').revision);
+  assert.equal(Object.isFrozen(reader), true);
+  assert.equal(new TextDecoder().decode(await reader.readRange(8, 8)), 'WAVEfmt ');
   assert.equal((await service.prepare(selected.id, { decode })).regionCount, 1);
   assert.deepEqual(await fs.readdir(userData), ['sfz-references.json']);
   await service.remove(selected.id);
   assert.deepEqual(await service.list(), []);
   assert.deepEqual(await fs.readdir(source), ['Keys', 'libs']);
-  assert.equal((await fs.stat(path.join(source, 'libs', 'tone.wav'))).size, 44);
+  assert.equal((await fs.stat(path.join(source, 'libs', 'tone.wav'))).size, wav().length);
+});
+
+test('native immutable sample readers enforce exact range results and propagate source changes', async () => {
+  const h = harness();
+  const revision = 'b'.repeat(64);
+  const calls = [];
+  h.bridge.readRelativeRange = async request => {
+    calls.push(request);
+    return ok({ bytes: new Uint8Array([1, 2, 3]), revision });
+  };
+  const reader = await h.service.createSampleReader(id, 'tone.wav', { size: 2 ** 33, revision });
+  assert.equal(reader.size, 2 ** 33);
+  assert.deepEqual([...await reader.readRange(2 ** 32 + 1, 3)], [1, 2, 3]);
+  assert.deepEqual(calls[0], { id, relativePath: 'tone.wav', offset: 2 ** 32 + 1, length: 3, revision });
+  for (const [offset, length] of [[-1, 1], [0, .5], [0, 1024 * 1024 + 1], [2 ** 33, 1]]) {
+    await assert.rejects(reader.readRange(offset, length), { code: 'prepare' });
+  }
+  assert.equal(calls.length, 1);
+  h.bridge.readRelativeRange = async () => ok({ bytes: new Uint8Array(2), revision });
+  await assert.rejects(reader.readRange(0, 3), { code: 'prepare' });
+  h.bridge.readRelativeRange = async () => ok({ bytes: new Uint8Array(3), revision: 'c'.repeat(64) });
+  await assert.rejects(reader.readRange(0, 3), { code: 'prepare' });
+  h.bridge.readRelativeRange = async () => ({ ok: false, code: 'source-changed' });
+  await assert.rejects(reader.readRange(0, 3), { code: 'source-changed' });
+  await assert.rejects(h.service.createSampleReader(id, '../outside.wav'), { code: 'prepare' });
+  await assert.rejects(h.service.createSampleReader(id, 'tone.wav', { size: 100 }), { code: 'prepare' });
 });
 
 test('native SFZ file selection registers only selected files and keeps their original samples on removal', async t => {
@@ -172,7 +217,7 @@ test('native SFZ file selection registers only selected files and keeps their or
   const service = new NativeSfzLibraryService(bridge);
   const [selected] = await service.selectFiles();
   assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
-  assert.deepEqual(dialogOptions.filters[0].extensions, ['sfz']);
+  assert.deepEqual(dialogOptions.filters[0].extensions, ['sf2', 'sf3', 'sfz']);
   assert.deepEqual((await service.list()).map(entry => entry.name), ['Piano.sfz']);
   assert.deepEqual(await service.readMetadata(selected.id), {
     size: Buffer.byteLength('<region> sample=tone.wav key=60') + wav().length,
@@ -219,7 +264,7 @@ test('native ARIA loading discovers companion definitions and reads legacy SFZ t
   assert.deepEqual(await fs.readdir(userData), ['sfz-references.json']);
 });
 
-test('native SFZ reads includes and adopted samples only, without copying source files', async () => {
+test('native SFZ retains every dynamic layer and reads only instrument dependencies', async () => {
   const h = harness('#include "defs.inc"');
   h.files.set('defs.inc', encode('<group> key=60 <region> sample=tone.wav hicc64=63 ' +
     '<region> sample=pedal.wav locc64=64 <region> sample=missing.wav'));
@@ -227,10 +272,10 @@ test('native SFZ reads includes and adopted samples only, without copying source
   const hints = [];
   const prepared = await h.service.prepare(id, { decode: (bytes, rate) => { hints.push(rate); return decode(bytes); } });
   assert.equal(prepared.name, 'piano.sfz');
-  assert.equal(prepared.regionCount, 1);
-  assert.deepEqual(h.reads.map(item => item.relativePath), ['piano.sfz', 'defs.inc', 'tone.wav']);
-  assert.deepEqual(h.stats, ['missing.wav', 'tone.wav']);
-  assert.deepEqual(hints, [44100]);
+  assert.equal(prepared.regionCount, 2);
+  assert.deepEqual(h.reads.map(item => item.relativePath), ['piano.sfz', 'defs.inc', 'pedal.wav', 'tone.wav']);
+  assert.deepEqual(h.stats, ['missing.wav', 'pedal.wav', 'tone.wav']);
+  assert.deepEqual(hints, [44100, 44100]);
   assert.deepEqual(h.diagnostics[0].missingSamples, ['missing.wav']);
   assert.deepEqual(prepared.warnings, [{ code: 'missing-samples', count: 1 }]);
   assert.equal(prepared.descriptor.rateDivider, 1);
@@ -277,7 +322,7 @@ test('native load preserves raw, decoded-header and packed footprint capacity ch
   raw.bridge.statRelative = async () => ok({ size: 1024 });
   await assert.rejects(raw.service.prepare(id, { decode }), error => error.code === 'too-large');
   assert.deepEqual(raw.reads.map(item => item.relativePath), ['piano.sfz']);
-  const decoded = harness(undefined, { getMaxBytes: () => 1024 });
+  const decoded = harness(undefined, { getMaxBytes: () => 3072 });
   decoded.files.set('tone.wav', wav(1000));
   await assert.rejects(decoded.service.prepare(id, { decode() { assert.fail('Header must reject before decode'); } }),
     error => error.code === 'too-large');
@@ -286,15 +331,17 @@ test('native load preserves raw, decoded-header and packed footprint capacity ch
 });
 
 test('native prepare snapshots its limit and discards a removed reference', async () => {
-  let limit = 2048;
+  // Include the prepared modulation state as well as this tiny sample.
+  const initialLimit = 1024 * 1024;
+  let limit = initialLimit;
   let snapshots = 0;
   const h = harness(undefined, { getMaxBytes: () => { snapshots++; return limit; } });
   const read = h.bridge.readRelative;
   h.bridge.readRelative = request => { limit = 1; return read(request); };
   assert.equal((await h.service.prepare(id, { decode })).regionCount, 1);
   assert.equal(snapshots, 1);
-  assert.equal(h.reads[0].maxBytes, 2048);
-  limit = 2048;
+  assert.equal(h.reads[0].maxBytes, initialLimit);
+  limit = initialLimit;
   await h.service.prepare(id, { decode: async () => { await h.service.remove(id); return decode(); } }).then(value =>
     assert.equal(value, null));
 });
@@ -314,7 +361,8 @@ test('native missing files and broker failures retain useful SFZ error categorie
 test('native source failures reach the plugin load message while registry failures stay storage errors', async () => {
   const window = {};
   class PluginBase { registerProcessor() {} }
-  vm.runInNewContext(await fs.readFile(new URL('../../plugins/others/sfz_note_player.js', import.meta.url), 'utf8'),
+  vm.runInNewContext(await fs.readFile(new URL('../../plugins/sfz-instrument.js', import.meta.url), 'utf8') + '\n' +
+    await fs.readFile(new URL('../../plugins/others/sfz_note_player.js', import.meta.url), 'utf8'),
     { window, PluginBase, console: { error() {} } });
   const plugin = new window.SFZNotePlayerPlugin();
   plugin._status = { dataset: {} };
@@ -359,7 +407,7 @@ test('default SFZ service uses the dedicated desktop bridge', async () => {
   });
 });
 
-test('over-budget native banks retain every key with one representative and continuous velocity response', async () => {
+test('over-budget native banks fail without selecting representative samples', async () => {
   const h = harness('<group> lokey=60 hikey=61 lovel=0 hivel=64 seq_length=2\n' +
     '<region> sample=soft1.wav seq_position=1 lorand=0 hirand=.5\n' +
     '<region> sample=soft2.wav seq_position=2 lorand=.5 hirand=1\n' +
@@ -371,23 +419,16 @@ test('over-budget native banks retain every key with one representative and cont
     onDiagnostic: null });
   const metadata = new Map([...h.files].map(([name, bytes]) => [name,
     { size: bytes.length, ...parseIrAudioHeader(bytes) }]));
-  const full = selectSfzRegionsForBudget(parsed.regions, metadata, 12000);
+  const full = selectSfzRegionsForBudget(parsed.regions, metadata, 16000);
   assert.equal(full.reduced, false);
   assert.equal(full.regions, parsed.regions);
-  const partial = selectSfzRegionsForBudget(parsed.regions, metadata, 2048);
-  assert.equal(partial.reduced, true);
-  assert.equal(partial.keyCount, 2);
-  assert.deepEqual(partial.regions.map(r => [r.lokey, r.hikey, r.lovel, r.hivel,
-    r.seq_length, r.seq_position, r.lorand, r.hirand]), [[60, 61, 1, 127, 1, 1, 0, 1]]);
+  const before = structuredClone(parsed.regions);
+  assert.throws(() => selectSfzRegionsForBudget(parsed.regions, metadata, 2048), error => error.code === 'too-large');
+  assert.deepEqual(parsed.regions, before);
   h.service.getMaxBytes = () => 2048;
-  const prepared = await h.service.prepare(id, { decode: () => ({ sampleRate: 44100,
-    channels: [new Float32Array(300)] }) });
-  assert.equal(prepared.regionCount, 1);
-  assert.deepEqual(h.reads.map(r => r.relativePath), ['piano.sfz', 'soft1.wav']);
-  assert.equal(h.diagnostics.at(-1).reducedBank.keys, 2);
-  assert.deepEqual(prepared.warnings, [{ code: 'reduced-bank', count: 1 }]);
-  assert.throws(() => selectSfzRegionsForBudget(parsed.regions, metadata, 100),
-    error => error.code === 'too-large');
+  await assert.rejects(h.service.prepare(id, { decode: () => assert.fail('No representative samples may be decoded') }), error => error.code === 'too-large');
+  assert.deepEqual(h.reads.map(r => r.relativePath), ['piano.sfz']);
+  assert.equal(h.diagnostics.some(detail => detail.reducedBank), false);
 });
 
 test('native loop recovery warns once per result and normal source reloads retain no warning', async () => {
@@ -399,4 +440,67 @@ test('native loop recovery warns once per result and normal source reloads retai
   assert.deepEqual(second.warnings, first.warnings);
   h.files.set('piano.sfz', encode('<region> sample=tone.wav key=60 end=1'));
   assert.equal((await h.service.prepare(id, { decode })).warnings, undefined);
+});
+
+test('native overflow uses the supplied capable streaming preparer without whole sample reads or region reduction', async () => {
+  const h = harness('<region> sample=large.wav key=60\n<region> sample=large.wav key=61', { getMaxBytes: () => 4096 });
+  h.files.set('large.wav', wav(1_000_000));
+  const descriptor = { payload: new ArrayBuffer(128), footprintBytes: 4096 };
+  let calls = 0;
+  const prepared = await h.service.prepare(id, {
+    decode: () => assert.fail('Streaming must not decode the complete source'),
+    async prepareStreamedBank(candidate) {
+      calls++;
+      assert.equal(candidate.id, id); assert.equal(candidate.parsed.regions.length, 2);
+      assert.equal(candidate.metadata.get('large.wav').frames, 1_000_000);
+      assert.equal(candidate.maxBytes, 4096); assert.equal(typeof candidate.createSampleReader, 'function');
+      return { descriptor, regionCount: 2 };
+    }
+  });
+  assert.equal(calls, 1); assert.equal(prepared.descriptor, descriptor);
+  assert.deepEqual(h.reads.map(request => request.relativePath), ['piano.sfz']);
+  const small = harness();
+  await small.service.prepare(id, { decode, prepareStreamedBank: () => assert.fail('A fitting bank retains its resident path') });
+});
+
+test('runtime preparation memory can choose the existing stream path after decoded samples fit', async () => {
+  const budget = 1024 * 1024;
+  const h = harness('<region> sample=*sine key=60', { getMaxBytes: () => budget });
+  const context = { sampleRate: 96000, processingChannels: 4, maxFrames: 128, minimumPhysicalBpm: 15 };
+  let streamed = 0;
+  const estimate = async () => budget;
+  const prepared = await h.service.prepare(id, { preparationContext: context, estimateEffectBytes: estimate,
+    prepareStreamedBank: async options => {
+      streamed++;
+      assert.equal(options.preparationContext, context);
+      assert.equal(options.estimateEffectBytes, estimate);
+      assert.equal(options.maxBytes, budget);
+      assert.equal(options.parsed.regions.length, 1);
+      return { descriptor: { footprintBytes: budget }, regionCount: 1 };
+    } });
+  assert.equal(streamed, 1);
+  assert.equal(prepared.regionCount, 1);
+});
+
+test('small native SFZ loading directives choose the capable streaming preparer before resident decoding', async () => {
+  for (const directive of ['load_mode=1', 'load_start=0 load_end=1']) {
+    const h = harness(`<region> sample=tone.wav key=60 ${directive}`, { getMaxBytes: () => 16 * 1024 * 1024 });
+    let calls = 0, decoded = 0;
+    const descriptor = { payload: new ArrayBuffer(128), footprintBytes: 128 };
+    const prepared = await h.service.prepare(id, {
+      decode() { decoded++; return decode(); },
+      async prepareStreamedBank(candidate) {
+        calls++;
+        assert.equal(candidate.parsed.regions[0].load_mode, directive.startsWith('load_mode') ? 1 : undefined);
+        assert.equal(candidate.parsed.regions[0].load_end, directive.startsWith('load_start') ? 1 : undefined);
+        assert.equal(candidate.parsed.regions[0].sample, 'tone.wav');
+        assert.equal(typeof candidate.createSampleReader, 'function');
+        return { descriptor, regionCount: 1 };
+      }
+    });
+    assert.equal(calls, 1); assert.equal(decoded, 0); assert.equal(prepared.descriptor, descriptor);
+    assert.deepEqual(h.reads.map(request => request.relativePath), ['piano.sfz']);
+    const incapable = harness(`<region> sample=tone.wav key=60 ${directive}`);
+    await assert.rejects(incapable.service.prepare(id, { decode }), { code: 'prepare' });
+  }
 });

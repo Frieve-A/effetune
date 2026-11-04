@@ -2,9 +2,11 @@ import { isPwaNetworkArtworkUrl } from '../network-music/pwa-connection.js';
 import { createLayer, drawBackplates, paletteGradient, VisualizerEffects, applyEdgeFade, effectAmount, animatedEffects } from './visualizer-effects.js';
 
 import { drawStyledText } from './visualizer-text.js';
-import { lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
+import { lyricsForItem, lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
 import { counterFrame, animateCounterFrame, drawCounter } from './visualizer-counter.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
+import { MidiMixerDisplay } from './visualizer-midi-mixer.js';
+import { MidiEventListDisplay } from './visualizer-midi-event-list.js';
 import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS, META_TEXT_TYPES, VISUAL_TYPES } from './visualizer-model.js';
 import { VisualizerHDROutput } from './visualizer-hdr.js';
 import { drawPlaybackControl, playbackControlContains } from './visualizer-playback-control.js';
@@ -27,6 +29,7 @@ export class VisualizerRenderer {
         this.layers = new Map();
         this.effects = new VisualizerEffects();
         this.images = new Map();
+        this.artworkImage = null;
         this.quality = 0;
         this.cost = 0;
         this.qualityFrames = 0;
@@ -63,6 +66,8 @@ export class VisualizerRenderer {
         for (const state of this.layers.values()) state.display?.dispose();
         this.layers.clear();
         this.effects.states.clear();
+        this.artworkImage = null;
+        this.images.clear();
         this.hdrOutput?.dispose();
     }
 
@@ -137,22 +142,29 @@ export class VisualizerRenderer {
         const modulators = sources.getModulators();
         const alive = new Set(['background']);
         const background = { id: 'background', type: 'background', rect: { x: 0, y: 0, w: 1, h: 1 }, ...layout.background };
-        const imageUrls = new Set([layout.background.image, metadata?.artwork?.[0]?.src]);
+        const artworkUrl = metadata?.artwork?.[0]?.src;
+        const nextArtwork = this.image(artworkUrl);
+        // Track changes can clear the URL and then recreate it for identical bytes.
+        // Keep decoded pixels until metadata settles and the replacement loads.
+        if (nextArtwork) this.artworkImage = nextArtwork;
+        else if (artworkUrl ? this.images.get(artworkUrl)?.complete : !metadata?.artworkPending) this.artworkImage = null;
+        const imageUrls = new Set([layout.background.image, artworkUrl]);
         for (const url of this.images.keys()) if (!imageUrls.has(url)) this.images.delete(url);
         for (const item of [background, ...layout.items]) {
             if (['playback-control', 'seek-bar'].includes(item.type) && playback.available === false && !editing) continue;
             const artwork = item.type === 'artwork' || (item.type === 'video' && !video && item.style.artworkFallback);
             const image = item.type === 'video' && video ? video
-                : this.image(item.type === 'background' ? item.image : artwork ? metadata?.artwork?.[0]?.src : null);
+                : artwork ? this.artworkImage : this.image(item.type === 'background' ? item.image : null);
             // An absent picture has no visual layer or effect history, even while editing.
             if ((item.type === 'artwork' || item.type === 'video') && !image) continue;
             // currentTime changes before a seek's pixels are decoded. Only cache
             // that timestamp once its picture is available so paused seeks repaint.
             const videoTime = video && image === video && !video.seeking ? video.currentTime : null;
-            const lyricFrame = item.type === 'lyrics' ? lyricsFrame(item, lyrics, editing) : null;
+            const itemLyrics = item.type === 'lyrics' ? lyricsForItem(item, lyrics) : null;
+            const lyricFrame = item.type === 'lyrics' ? lyricsFrame(item, itemLyrics, editing) : null;
             const counter = item.type === 'counter' ? counters?.get(item.id) : null;
             if (item.type === 'counter') this.loadCounterFont(item.style.fontFamily);
-            const lyricOpacity = lyricFrame ? lyricsOpacity(item, lyrics, editing) : 1;
+            const lyricOpacity = lyricFrame ? lyricsOpacity(item, itemLyrics, editing) : 1;
             if (lyricFrame && (!lyricOpacity || (!lyricFrame.rows.length && !lyricFrame.placeholder))) continue;
             alive.add(item.id);
             const width = Math.max(1, Math.round(stage.width * item.rect.w));
@@ -185,7 +197,9 @@ export class VisualizerRenderer {
             let changed = state.signature !== signature || state.frame !== frame || state.image !== image || state.videoTime !== videoTime ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
-                state.display ||= createAnalyzerDisplay(item, state.canvas, sources);
+                state.display ||= item.type === 'midi' ? new MidiMixerDisplay(state.canvas, sources)
+                    : item.type === 'midi-event-list' ? new MidiEventListDisplay(state.canvas, sources)
+                    : createAnalyzerDisplay(item, state.canvas, sources);
                 const rendered = state.display?.draw(item, time, width / graphScale, layout.background.themeColors, stageScale);
                 changed = state.signature !== signature || state.image !== image || rendered !== false;
                 state.signature = signature; state.frame = frame; state.image = image;

@@ -272,6 +272,7 @@ const electronTarget = {
     return { success: true, presets: [] };
   }
 };
+electronTarget.settingsStorage = null;
 const electronAPI = new Proxy(electronTarget, {
   get(target, property) {
     if (property in target) return target[property];

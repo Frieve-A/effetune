@@ -142,8 +142,8 @@ function requestXml(input, { method = 'GET', headers = {}, body = '', address } 
       });
       res.on('error', reject);
     });
-    req.on('timeout', () => req.destroy(new Error('Music device did not respond')));
-    req.on('error', reject);
+    req.on('timeout', () => req.destroy(Object.assign(new Error('Music device did not respond'), { code: 'ETIMEDOUT' })));
+    req.on('error', error => { error.networkMusicAddress = url.host; reject(error); });
     req.end(body);
   });
 }
@@ -254,6 +254,7 @@ class Discovery extends EventEmitter {
         }));
       }
     }
+    this.emit('search');
     return Promise.all(requests);
   }
   sendMulticast(message, address) {

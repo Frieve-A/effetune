@@ -7,7 +7,7 @@ export const ASPECT_FILES = Object.freeze({
 });
 
 export const NOTE_TEXT_TYPES = ['key', 'chord'];
-export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', ...NOTE_TEXT_TYPES, 'guitar', 'drums', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
+export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'midi', 'midi-event-list', ...NOTE_TEXT_TYPES, 'guitar', 'drums', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
 // Analyzer graphics (ticks, lines, labels, peak marks) are drawn in these 1280-wide units,
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
@@ -296,6 +296,7 @@ const RHYTHM_BEAT_STYLE_RULES = {
     beatUsePalette: value => value !== false,
     beatFillColor: value => color(value, '#40dfff'), // theme-allow: Editable beat fill default.
     beatStrokeColor: value => color(value, '#40dfff'), // theme-allow: Editable beat border default.
+    beatOrbitDot: value => value !== false,
     beatFitBpm: value => value !== false
 };
 export const RHYTHM_BEAT_STYLE_DEFAULTS = Object.freeze(Object.fromEntries(
@@ -398,6 +399,8 @@ export function normalizeParams(type, input) {
     if (type === 'lyrics') {
         const params = isRecord(input) ? input : {};
         return {
+            lyricsPart: typeof params.lyricsPart === 'string' ? params.lyricsPart.slice(0, 128) : '',
+            lyricsVerse: typeof params.lyricsVerse === 'string' ? params.lyricsVerse.slice(0, 128) : '',
             lyricsView: choice(params.lyricsView, ['list', 'line'], 'list'),
             lyricsNext: params.lyricsNext !== false,
             lyricsMotion: choice(params.lyricsMotion, ['step', 'smooth', 'step-horizontal', 'smooth-horizontal'], 'step'),
@@ -457,7 +460,7 @@ export function normalizeParams(type, input) {
         vo: Math.round(number(params.vo, 0, -1, 1) * 100) / 100, ...axes
     };
     if (type === 'level-meter') return {
-        dr: Math.round(number(params.dr, -96, -144, -48)),
+        dr: Math.round(number(params.dr, -48, -144, -48)),
         orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal'),
         showLevelValues: params.showLevelValues === true,
         // dB per segment; 0 draws continuous bars.
@@ -471,6 +474,7 @@ export function normalizeParams(type, input) {
     if (type === 'notes') {
         const mn = Math.round(number(params.mn, 28, 21, 108));
         return {
+            preferMidi: params.preferMidi !== false,
             pr: choice(params.pr, ['Semitone', 'High'], 'Semitone'),
             ly: choice(params.ly, ['Horizontal', 'Vertical'], 'Horizontal'),
             kb: params.kb === true,
@@ -481,7 +485,42 @@ export function normalizeParams(type, input) {
             mn, mx: Math.max(mn, Math.round(number(params.mx, 91, 21, 108))), ...axes
         };
     }
+    if (type === 'midi-event-list') return {
+        scrollMode: choice(params.scrollMode, ['row', 'smooth'], 'row'),
+        fontFamily: choice(params.fontFamily, FONT_FAMILIES.map(([family]) => family), 'monospace'),
+        fontSize: Math.round(number(params.fontSize, 14, 8, 32)),
+        rowSpacing: Math.round(number(params.rowSpacing, 1.5, 1, 3) * 100) / 100
+    };
+    if (type === 'midi') {
+        const channelStart = Math.round(number(params.channelStart, 1, 1, 16));
+        return {
+            channelStart,
+            channelEnd: Math.max(channelStart, Math.round(number(params.channelEnd, 16, 1, 16))),
+            showPatch: params.showPatch !== false,
+            showKeyboard: params.showKeyboard !== false,
+            showLevel: params.showLevel !== false,
+            showControllers: params.showControllers !== false,
+            knobValuePosition: params.showKnobValues === false ? 'none'
+                : choice(params.knobValuePosition, ['right', 'below', 'none'], 'right'),
+            knobSize: Math.round(number(params.knobSize, 100, 50, 150)),
+            knobStyle: choice(params.knobStyle, ['filled', 'outline'], 'filled'),
+            knobFillColor: color(params.knobFillColor, '#555657'), // theme-allow: Editable knob body.
+            knobOutlineColor: color(params.knobOutlineColor, '#7f8081'), // theme-allow: Editable knob border.
+            knobIndicatorColor: color(params.knobIndicatorColor, '#ffffff'), // theme-allow: Editable knob indicator.
+            flashChanges: params.flashChanges !== false,
+            flashColor: color(params.flashColor, '#40dfff'), // theme-allow: Editable MIDI change accent.
+            showState: params.showState === true,
+            showVoices: params.showVoices !== false,
+            keyboardColor: choice(params.keyboardColor, ['normal', 'channel', 'rainbow'], 'normal'),
+            keyboardActiveColor: color(params.keyboardActiveColor, '#40dfff'), // theme-allow: Editable sounding key accent.
+            levelMeter: normalizeParams('level-meter', params.levelMeter),
+            levelPalette: itemPalette('level-meter', params.levelPalette),
+            fontFamily: choice(params.fontFamily, FONT_FAMILIES.map(([family]) => family), 'sans-serif'),
+            fontSize: Math.round(number(params.fontSize, 12, 8, 24))
+        };
+    }
     if (type === 'drums') return {
+        preferMidi: params.preferMidi !== false,
         yaw: Math.round(number(params.yaw, 0, -180, 180)),
         elevation: Math.round(number(params.elevation, 25, 5, 80)),
         shellColor: color(params.shellColor, '#a33128'), // theme-allow: Editable drum material color.
@@ -493,6 +532,7 @@ export function normalizeParams(type, input) {
         const fm = Math.round(number(params.fm, 0, 0, 24));
         const tuning = Array.isArray(params.tn) && params.tn.length >= 1 && params.tn.length <= 10 ? params.tn : GUITAR_TUNINGS.standard;
         return {
+            preferMidi: params.preferMidi !== false,
             tn: tuning.map(open => Math.round(number(open, 40, 21, 108))),
             fm, fx: Math.max(fm, Math.round(number(params.fx, 12, 0, 24))),
             cp: Math.round(number(params.cp, 0, 0, 12)),
@@ -557,6 +597,7 @@ export function normalizeParams(type, input) {
     if (type === 'rhythm-analyzer') {
         const mn = Math.round(number(params.mn, 40, 40, 192));
         return {
+            preferMidi: params.preferMidi !== false,
             // Max BPM >= 1.25 x Min BPM keeps the tempo search range non-degenerate (same rule as the effect).
             mn, mx: Math.max(Math.ceil(mn * 1.25), Math.round(number(params.mx, 240, 50, 240))),
             dm: choice(params.dm, ['band', 'drums'], 'band'),
@@ -579,7 +620,8 @@ export function paletteModesForType(type) {
     if (PICTURE_TYPES.includes(type)) return [];
     if (type === 'drums') return ['solid'];
     const modes = ['solid', 'gradient'];
-    if (['spectrum', 'notes', 'guitar', 'chroma'].includes(type)) modes.push('note-colors');
+    if (['spectrum', 'notes', 'guitar', 'chroma', 'key', 'chord'].includes(type)) modes.push('note-colors');
+    if (['notes', 'guitar'].includes(type)) modes.push('channel-colors');
     if (['spectrum', 'spectrogram', 'chroma', 'level-meter', 'phase'].includes(type)) modes.push('heatmap');
     return modes;
 }
@@ -589,7 +631,7 @@ function itemPalette(type, value) {
     const palette = normalizePalette(value, octave ? 13 : 8);
     if (!PICTURE_TYPES.includes(type)) {
         palette.mode = choice(value?.mode, paletteModesForType(type), 'solid');
-        palette.color = color(value?.color, '#40dfff'); // theme-allow: Editable scene palette fallback.
+        palette.color = color(value?.color, ['midi', 'midi-event-list'].includes(type) ? '#ffffff' : '#40dfff'); // theme-allow: Editable scene palette fallback.
     }
     if (octave) palette.mapping = choice(value?.mapping, ['range', 'octave'], 'range');
     // Optional keys preserve the native coloring of layouts saved without a direction or angle.
@@ -675,10 +717,15 @@ export function validateLayout(value) {
     // Added fields may be absent and valid retired fields may be migrated in older
     // layouts. Other supplied values must still match strict normalization.
     const addedParams = {
-        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl', 'ck'],
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl', 'ck', 'preferMidi'],
+        guitar: ['preferMidi'], drums: ['preferMidi'],
+        lyrics: ['lyricsPart', 'lyricsVerse'],
+        midi: ['knobValuePosition', 'knobSize', 'knobStyle', 'knobFillColor', 'knobOutlineColor',
+            'knobIndicatorColor', 'flashChanges', 'flashColor', 'keyboardActiveColor', 'levelMeter', 'levelPalette'],
+        'midi-event-list': ['scrollMode'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
         'analog-meter': ['de', 'nr', 'os', 'dc', ...Object.keys(METER_APPEARANCE_DEFAULTS)],
-        'rhythm-analyzer': ['showBeat', 'showBpm', 'dm']
+        'rhythm-analyzer': ['showBeat', 'showBpm', 'dm', 'preferMidi']
     };
     const comparable = {
         ...value,
@@ -686,6 +733,10 @@ export function validateLayout(value) {
         items: value.items.map(item => {
             if (!isRecord(item) || !isRecord(item.params) || !Object.hasOwn(addedParams, item.type)) return item;
             const params = { ...item.params }, defaults = normalizeParams(item.type);
+            if (item.type === 'midi' && typeof params.showKnobValues === 'boolean') {
+                if (!params.showKnobValues) params.knobValuePosition = 'none';
+                delete params.showKnobValues;
+            }
             if (item.type === 'analog-meter' && typeof params.showHub === 'boolean') {
                 if (!Object.hasOwn(params, 'hubSize')) params.hubSize = params.showHub ? 3 : 0;
                 delete params.showHub;

@@ -9,6 +9,68 @@ import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.
 import { validatePowerSnapshot } from '../../js/audio/power-snapshot.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('desktop audio activity uses current worklet signal or transport while continuous mode runs', () => {
+  const node = {};
+  const reported = [];
+  let now = 1000;
+  const context = { state: 'running' };
+  const controller = Object.assign(Object.create(PowerPolicyController.prototype), {
+    windowRef: { electronAPI: { reportDesktopAudioActivity: active => reported.push(active) } },
+    settings: { mode: 'continuous' },
+    audioManager: { contextManager: { audioContext: context } },
+    _getActiveWorkletNodes: () => [node],
+    _getTokensAndGuards: () => ({ tokens: { workletGraphGeneration: 2, topologyRevision: 3 } }),
+    workletObservations: new Map(),
+    now: () => now
+  });
+  controller._reportDesktopAudioActivity({ transportDemand: false });
+  controller.workletObservations.set(node, { workletGraphGeneration: 2, topologyRevision: 3,
+    receivedAtEpochMs: now, inputActive: false, outputActive: true });
+  controller._reportDesktopAudioActivity({ transportDemand: false });
+  now = 4000;
+  controller._reportDesktopAudioActivity({ transportDemand: false });
+  controller._reportDesktopAudioActivity({ transportDemand: true });
+  context.state = 'suspended';
+  controller._reportDesktopAudioActivity({ transportDemand: true });
+  assert.deepEqual(reported, [
+    { processingActive: true, playbackActive: false },
+    { processingActive: true, playbackActive: true },
+    { processingActive: true, playbackActive: false },
+    { processingActive: true, playbackActive: true },
+    { processingActive: false, playbackActive: false }
+  ]);
+});
+
+test('fresh native SFZ demand includes actual B Note Player independently of MIDI and expires with its identity', () => {
+  const a = {}, b = {};
+  let now = 1000, active = [a, b];
+  const controller = Object.assign(Object.create(PowerPolicyController.prototype), {
+    audioManager: { workletNode: a }, now: () => now,
+    _getTokensAndGuards: () => ({ tokens: { workletGraphGeneration: 2, topologyRevision: 3 } }),
+    _getActiveWorkletNodes: () => active, workletObservations: new Map(), workletObservation: null,
+    player: { contextManager: { getMidiPresentation: () => ({ generation: 9, playing: false, preparing: false }) } }
+  });
+  const observation = { receivedAtEpochMs: now, workletGraphGeneration: 2, topologyRevision: 3,
+    sfzPending: true, midiPending: false, midiGeneration: 0 };
+  controller.workletObservations.set(b, observation);
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, false);
+  active = [a];
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, true, 'removed B evidence cannot pin processing');
+  active = [a, b];
+  now = 3001;
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, true, 'expired demand is not current native evidence');
+  now = 1000;
+  observation.topologyRevision = 2;
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, true);
+  observation.topologyRevision = 3;
+  observation.sfzPending = false;
+  observation.midiPending = true;
+  observation.midiGeneration = 8;
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, true, 'an old Player generation cannot pin processing');
+  observation.midiGeneration = 9;
+  assert.equal(controller._analyzeTemporalCapabilities([]).temporalSkipEligible, false);
+});
+
 test('zero-output proof reports four DSP outputs when Web Audio destination is stereo', () => {
   const controller = Object.assign(Object.create(PowerPolicyController.prototype), {
     audioManager: {
@@ -1013,6 +1075,32 @@ test('paused player remains a silent routed source instead of becoming no-route'
   assert.notEqual(harness.controller.getEffectiveState(), 'SUSPENDED');
   assert.equal(harness.controller.lastDecision.inputSignalForProcessing, 'silent');
   assert.notEqual(harness.controller.lastDecision.reason, 'idle-no-route');
+});
+
+test('silent MIDI with no instrument keeps ordinary transport context demand without inventing native DSP demand', async () => {
+  const player = createPausedPlayer();
+  Object.assign(player.snapshot, { playbackMode: 'midi', isPlaying: true, isPaused: false });
+  player.instance.contextManager.getPowerSourceStatus = () => ({ state: 'connected', sourcePresent: true });
+  player.instance.contextManager.getMidiPresentation = () => ({ hasMidi: true, generation: 1, playing: player.snapshot.isPlaying });
+  const harness = createHarness({ player, pipeline: [],
+    settings: { mode: 'maximum', silenceThresholdDb: -80, fullSuspendDelaySeconds: 60 } });
+  try {
+    await harness.controller.start();
+    for (const now of [15_000, 70_000]) {
+      harness.setNow(now);
+      await harness.controller.requestReconcile('silent-midi-without-instrument');
+      await harness.flush();
+      assert.equal(harness.context.state, 'running');
+      assert.equal(harness.controller.lastDecision.transportDemand, true);
+      assert.notEqual(harness.controller.getEffectiveState(), 'SUSPENDED');
+      assert.equal(harness.controller._analyzeTemporalCapabilities([]).temporalSkipEligible, true,
+        'No artificial pending MIDI timer or voice may pin DSP processing');
+    }
+    Object.assign(player.snapshot, { isPlaying: false, isStopped: true });
+    harness.setNow(71_000);
+    await harness.controller.requestReconcile('midi-ended-or-stopped');
+    assert.equal(harness.controller.lastDecision.transportDemand, false);
+  } finally { harness.controller.dispose(); }
 });
 
 test('native Electron visibility remains hidden when the DOM visibility API stays visible', async () => {

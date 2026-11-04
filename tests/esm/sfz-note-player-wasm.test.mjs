@@ -1,6 +1,7 @@
+import { createAcceptanceCostWorkerPool, materializeAcceptanceAsset } from '../helpers/sfz-native-acceptance.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
@@ -11,6 +12,19 @@ import { prepareSfzSamples } from '../../js/sfz/service.js';
 import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 import { parseTelemetryPacket } from '../../js/audio/telemetry-hub.js';
+
+const costWorkers = createAcceptanceCostWorkerPool();
+let previousWorker;
+before(() => {
+  previousWorker = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: costWorkers.Worker });
+});
+after(async () => {
+  try { await costWorkers.close(); } finally {
+    if (previousWorker) Object.defineProperty(globalThis, 'Worker', previousWorker);
+    else delete globalThis.Worker;
+  }
+});
 
 const SAMPLE_RATE = 48000;
 const BLOCK_SIZE = 128;
@@ -43,13 +57,15 @@ test('SFZ Event releases old notes when its boundary stream changes and accepts 
     { channels: [new Float32Array(4800).fill(.25)], sampleRate: SAMPLE_RATE }]]));
   for (const variant of ['baseline', 'simd']) {
     const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
-    const binding = await instantiateDspBinding(fs.readFileSync(
+    const module = await WebAssembly.compile(fs.readFileSync(
       new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+    const control = await instantiateDspBinding(module);
+    const binding = await instantiateDspBinding(module);
     binding.createEngine();
     assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
     try {
       for (const change of ['enable sharing', 'disable sharing', 'reset shared analyzer']) {
-        await t.test(`${variant}: ${change}`, () => {
+        await t.test(`${variant}: ${change}`, async () => {
           const source = binding.createInstance('NoteSpectrogramPlugin');
           const player = binding.createInstance('SFZNotePlayerPlugin');
           const analyzerPacker = DSP_PARAM_PACKERS.get('NoteSpectrogramPlugin');
@@ -61,8 +77,9 @@ test('SFZ Event releases old notes when its boundary stream changes and accepts 
             setAnalyzer(change !== 'enable sharing');
             assert.equal(binding.instanceSetParams(player,
               playerPacker.pack({ ...PARAMETERS, dt: 'Event', nh: 0 }), playerPacker.hash), 0);
-            assert.equal(binding.instanceSetAsset(player, 0, asset.payload,
-              { ...asset, frames: asset.samples, topology: 0 }), 0);
+            const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SFZNotePlayerPlugin' });
+            assert.equal(binding.instanceSetAsset(player, 0, preparedAsset.payload,
+              { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
             const { combined, offsets } = binding.getArenaViews();
             for (let step = 0; step < 100 && (binding.instanceAssetState(player, 0) & 0xff) !== 3; step++) {
               combined.fill(0);
@@ -109,20 +126,20 @@ test('SFZ Event releases old notes when its boundary stream changes and accepts 
         });
       }
     } finally {
-      binding.destroyEngine();
+      binding.destroyEngine(); control.destroyEngine();
     }
   }
 });
 
 test('SFZ parameter packing preserves note controls and supplies defaults for older presets', () => {
   const { pack } = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
-  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0, -1, 100, 0]);
+  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0, -1, 100, 0, -1]);
   assert.deepEqual(Array.from(pack(PARAMETERS).slice(14, 17)), [40, 50, 0]);
   assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(14, 17)), [96, 100, 0]);
   assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37, ss: 1 }).slice(14, 17)), [6, 37, 1]);
   assert.equal(pack({ ss: -6 })[16], -6);
   assert.equal(pack({ ss: 6 })[16], 6);
-  assert.deepEqual(Array.from(pack({ pm: 60, pv: 64 }).slice(17)), [60, 64, 0]);
+  assert.deepEqual(Array.from(pack({ pm: 60, pv: 64 }).slice(17)), [60, 64, 0, -1]);
   assert.equal(pack(PARAMETERS)[19], 0);
   assert.equal(pack({ dt: 'Event' })[19], 1);
 });
@@ -136,8 +153,10 @@ test('SFZ manual preview plays without input, holds its velocity and releases wh
   for (const variant of ['baseline', 'simd']) {
     await t.test(variant, async () => {
       const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
-      const binding = await instantiateDspBinding(fs.readFileSync(
+      const module = await WebAssembly.compile(fs.readFileSync(
         new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      const control = await instantiateDspBinding(module);
+      const binding = await instantiateDspBinding(module);
       binding.createEngine();
       assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
       try {
@@ -150,8 +169,9 @@ test('SFZ manual preview plays without input, holds its velocity and releases wh
           assert.equal(binding.instanceSetParams(id, packer.pack(params), packer.hash), 0);
         };
         update({});
-        assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
-          { ...asset, frames: asset.samples, topology: 0 }), 0);
+        const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SFZNotePlayerPlugin' });
+        assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
+          { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
         const { combined, offsets } = binding.getArenaViews();
         let time = 0;
         const process = () => {
@@ -177,7 +197,7 @@ test('SFZ manual preview plays without input, holds its velocity and releases wh
         update({ pm: -1 });
         process();
         assert.ok(process().every(value => value === 0), 'Releasing the pointer must stop playback');
-      } finally { binding.destroyEngine(); }
+      } finally { binding.destroyEngine(); control.destroyEngine(); }
     });
   }
 });
@@ -187,8 +207,10 @@ test('built-in SFZ sine cycles play the detected pitch through the WASM sample p
     readText: async () => '<region> sample=*sine key=69 amp_veltrack=0' });
   const { descriptor } = await prepareSfzSamples(parsed, () => assert.fail('No sample file is needed'),
     undefined, SFZ_DEFAULT_MAX_BYTES);
-  const binding = await instantiateDspBinding(fs.readFileSync(
+  const module = await WebAssembly.compile(fs.readFileSync(
     new URL('../../plugins/dsp/effetune-dsp.simd.wasm', import.meta.url)));
+  const control = await instantiateDspBinding(module);
+  const binding = await instantiateDspBinding(module);
   binding.createEngine();
   assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
   try {
@@ -197,8 +219,9 @@ test('built-in SFZ sine cycles play the detected pitch through the WASM sample p
     assert.equal(binding.setTelemetryRate(60), 0);
     const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
     assert.equal(binding.instanceSetParams(id, packer.pack(PARAMETERS), packer.hash), 0);
-    assert.equal(binding.instanceSetAsset(id, 0, descriptor.payload,
-      { ...descriptor, frames: descriptor.samples, topology: 0 }), 0);
+    const preparedAsset = await materializeAcceptanceAsset(control, descriptor, { playerKind: 'SFZNotePlayerPlugin' });
+    assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
+      { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
     const { combined, offsets } = binding.getArenaViews();
     for (let step = 0; step < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; step++) {
       combined.fill(0);
@@ -236,7 +259,7 @@ test('built-in SFZ sine cycles play the detected pitch through the WASM sample p
     assert.equal(latest.payload.getUint16(2, true), 32);
     assert.ok(latest.payload.getUint16(4 + 69 * 8, true) > 0);
     assert.ok(latest.payload.getFloat32(8 + 69 * 8, true) > 0);
-  } finally { binding.destroyEngine(); }
+  } finally { binding.destroyEngine(); control.destroyEngine(); }
 });
 
 test('SFZ sample shifts select neighboring keys while preserving pitch in baseline and SIMD WASM', async t => {
@@ -244,8 +267,10 @@ test('SFZ sample shifts select neighboring keys while preserving pitch in baseli
   for (const variant of ['baseline', 'simd']) {
     await t.test(variant, async () => {
       const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
-      const binding = await instantiateDspBinding(fs.readFileSync(
+      const module = await WebAssembly.compile(fs.readFileSync(
         new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      const control = await instantiateDspBinding(module);
+      const binding = await instantiateDspBinding(module);
       binding.createEngine();
       assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
       try {
@@ -262,8 +287,9 @@ test('SFZ sample shifts select neighboring keys while preserving pitch in baseli
             { channels: [sample], sampleRate: SAMPLE_RATE }]]));
           assert.equal(binding.instanceSetParams(id,
             packer.pack({ ...PARAMETERS, mn: 60, mx: 60, ss: shift, rd: 96 }), packer.hash), 0);
-          assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
-            { ...asset, frames: asset.samples, topology: 0 }), 0);
+          const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SFZNotePlayerPlugin' });
+          assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
+            { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
           const { combined, offsets } = binding.getArenaViews();
           for (let block = 0; block < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; block++) {
             combined.fill(0);
@@ -293,7 +319,7 @@ test('SFZ sample shifts select neighboring keys while preserving pitch in baseli
           assert.ok(Math.abs(amplitude - .25) < .005,
             `Sample Shift ${shift}: select MIDI ${60 + shift} and play it at C4 pitch`);
         }
-      } finally { binding.destroyEngine(); }
+      } finally { binding.destroyEngine(); control.destroyEngine(); }
     });
   }
 });
@@ -386,8 +412,10 @@ test('boundary sine notes share Note Spectrogram analysis and select the matchin
     ['baseline', 'Event'], ['simd', 'Event']]) {
     await t.test(`${variant} ${detection}`, async () => {
       const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
-      const binding = await instantiateDspBinding(fs.readFileSync(
+      const module = await WebAssembly.compile(fs.readFileSync(
         new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      const control = await instantiateDspBinding(module);
+      const binding = await instantiateDspBinding(module);
       binding.createEngine();
       assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
       try {
@@ -426,8 +454,9 @@ test('boundary sine notes share Note Spectrogram analysis and select the matchin
           const asset = packSfzAsset(parsed.regions, new Map([['tone.wav',
             { channels: [sample], sampleRate: SAMPLE_RATE }]]));
           for (const id of [linked, own]) {
-            assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
-              { ...asset, frames: asset.samples, topology: 0 }), 0);
+            const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SFZNotePlayerPlugin' });
+            assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
+              { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
           }
           const { combined, offsets } = binding.getArenaViews();
           for (const id of [linked, own]) {
@@ -487,7 +516,7 @@ test('boundary sine notes share Note Spectrogram analysis and select the matchin
           assert.ok(Math.hypot(sampleSine, sampleCosine) / measured > .1,
             `MIDI ${midi}: playback must contain the SFZ's 500 Hz sample`);
         }
-      } finally { binding.destroyEngine(); }
+      } finally { binding.destroyEngine(); control.destroyEngine(); }
     });
   }
 });
@@ -496,8 +525,10 @@ test('SFZ octave shifts suppress folded tones in baseline and SIMD WASM', async 
   for (const variant of ['baseline', 'simd']) {
     await t.test(variant, async () => {
       const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
-      const binding = await instantiateDspBinding(fs.readFileSync(
+      const module = await WebAssembly.compile(fs.readFileSync(
         new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      const control = await instantiateDspBinding(module);
+      const binding = await instantiateDspBinding(module);
       binding.createEngine();
       assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
       try {
@@ -517,8 +548,9 @@ test('SFZ octave shifts suppress folded tones in baseline and SIMD WASM', async 
           const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
           assert.equal(binding.instanceSetParams(id,
             packer.pack({ ...PARAMETERS, mn: 69, mx: 69, os: octave, rd: 96 }), packer.hash), 0);
-          assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
-            { ...asset, frames: asset.samples, topology: 0 }), 0);
+          const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SFZNotePlayerPlugin' });
+          assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
+            { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
           const { combined, offsets } = binding.getArenaViews();
           for (let block = 0; block < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; block++) {
             combined.fill(0);
@@ -559,7 +591,7 @@ test('SFZ octave shifts suppress folded tones in baseline and SIMD WASM', async 
             assert.ok(amplitude < .00025, `Octave ${octave}: suppress folded tones by at least 60 dB`);
           }
         }
-      } finally { binding.destroyEngine(); }
+      } finally { binding.destroyEngine(); control.destroyEngine(); }
     });
   }
 });

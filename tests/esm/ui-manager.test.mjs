@@ -1505,7 +1505,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file' && element.parentNode);
-      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.jpg,.png');
+      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,.mid,.midi,.kar,.musicxml,.xml,.mxl,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
       await flushMicrotasks();
@@ -1605,6 +1605,23 @@ test('web selection survives network initialization but cancels real target chan
       assert.deepEqual(loaded, playerGeneration === 0 ? [[file]] : []);
     }
   }
+});
+
+test('Android Open Music explains that DSD requires the web or desktop player', async () => {
+  const errors = [];
+  const file = { name: 'song.dsf' };
+  const manager = Object.assign(Object.create(UIManager.prototype), {
+    playbackSelectionGeneration: 0,
+    playbackSelectionResolver: async () => ({ tracks: [file] }),
+    createAudioPlayer: async () => ({ async loadFiles() {
+      throw Object.assign(new Error('Unsupported Android DSD'), {
+        code: 'DSD_NATIVE_UNSUPPORTED', localPlaybackSourceFailure: true
+      });
+    } }),
+    setError: key => errors.push(key)
+  });
+  assert.equal(await manager.openWebPlaybackSelection([file], true), false);
+  assert.deepEqual(errors, ['dsd.error.nativeUnsupported']);
 });
 
 test('opening a web music file keeps Visualizer open and still selects Player from other views', async () => {
@@ -1776,6 +1793,7 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     player.ui.container = { id: 'player-ui' };
     assert.deepEqual(visualizer.metadata(), {
       title: 'Song', album: 'Album', artist: 'Artist', artwork: [{ src: 'blob:cover' }],
+      artworkPending: false,
       'track-info': 'Title: Song\nArtist: Artist\nAlbum: Album'
     });
     player.ui.removeUI = () => {

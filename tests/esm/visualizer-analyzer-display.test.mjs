@@ -8,6 +8,7 @@ import { createBallistics, stepBallistics } from '../../js/visualizer/visualizer
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { createDefaultLayout, createItem } from '../../js/visualizer/visualizer-model.js';
 import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
+import { MidiVisualizerAdapter, midiChannelRgb } from '../../js/visualizer/visualizer-midi.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function canvas() {
@@ -81,6 +82,133 @@ function noteFrame(index = 1) {
     return { frameType: 24, formatVersion: 6, payload };
 }
 
+test('MIDI Notes use the native Note Spectrogram drawing and retain its scrolling pitch history', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('notes', 'midi-notes'), target = canvas();
+        Object.assign(item.params, { kb: true, ck: true, pr: 'High' });
+        item.palette.mode = 'note-colors';
+        const source = {};
+        let snapshot = { sourceKind: 'midi', source, position: 1, speed: 1,
+            notes: [{ pitch: 60.2, velocity: 100, start: .5 }], history: [],
+            chord: { name: 'C' } };
+        env.sources.getFrame = () => snapshot;
+        const display = createAnalyzerDisplay(item, target, env.sources), plugin = display.plugin;
+        const nativeDraw = plugin.drawGraph;
+        let draws = 0;
+        plugin.drawGraph = function (...args) { draws++; return nativeDraw.apply(this, args); };
+
+        display.draw(item, 1, 800);
+        assert.equal(draws, 1, 'MIDI takes the same graph renderer as audio');
+        assert.equal(plugin.midiPosition, 1);
+        assert.equal(plugin.writeColumn, 0);
+        assert.ok(plugin.history[(1023 * 440) + (60 - 21) * 5 + 3] > 0);
+        assert.ok(Number.isNaN(plugin.volumeLevelHistory[(1023 * 440) + (60 - 21) * 5 + 3]),
+            'MIDI velocity does not claim a measured acoustic level');
+        assert.ok(target.context.calls.some(([method, value]) => method === 'fillText' && value === 'C4'),
+            'the native keyboard octave labels remain');
+        assert.ok(!target.context.calls.some(([method, value]) => method === 'fillText' && value === 'MIDI · velocity'));
+
+        snapshot = { ...snapshot, position: 1.1, notes: [], history: [{ pitch: 60.2,
+            velocity: 100, start: .5, end: 1.05 }], chord: null };
+        display.draw(item, 1.1, 800);
+        assert.ok(plugin.history.some(level => level > 0), 'released notes remain in the scrolling history');
+        snapshot = { ...snapshot, position: .2, history: [] };
+        display.draw(item, .2, 800);
+        assert.ok(plugin.history.every(level => level === 0), 'a seek clears the previous MIDI history');
+        env.sources.getFrame = () => null;
+        env.subscribers.get(item.id)(noteFrame(1), {});
+        display.draw(item, 1, 800);
+        assert.equal(plugin.lastFrameIndex, 1, 'audio telemetry resumes on the same display');
+        assert.ok(plugin.canvasCtx && plugin.imageData,
+            'returning from MIDI keeps the native canvas attached');
+        display.dispose();
+    });
+});
+
+test('MIDI channel colors retain the strongest pitch channel across history and clear for audio', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['notes', 'guitar']) {
+            const item = createItem(type, type), target = canvas();
+            item.palette.mode = 'channel-colors'; item.palette.color = '#123456';
+            let snapshot = { sourceKind: 'midi', source: {}, position: 1, speed: 1,
+                notes: [{ pitch: 60, channel: 0, velocity: 64, start: .5 },
+                    { pitch: 60, channel: 1, velocity: 100, start: .5 },
+                    { pitch: 64, channel: 15, velocity: 100, start: .5 }], history: [], chord: null };
+            env.sources.getFrame = () => snapshot;
+            const display = createAnalyzerDisplay(item, target, env.sources), plugin = display.plugin;
+            display.draw(item, 1, 800);
+            if (type === 'notes') {
+                assert.equal(plugin.midiChannelHistory[1023 * 88 + 60 - 21], 2);
+                assert.deepEqual(plugin._noteDisplayColor(1023, 60, 1, {}), midiChannelRgb(1));
+                assert.deepEqual(plugin._noteDisplayColor(1023, 64, 1, {}), midiChannelRgb(15));
+            } else {
+                assert.equal(plugin.voices[0].channel, 1, 'overlapping pitches share their strongest MIDI channel');
+                assert.deepEqual(plugin.displayOptions.noteColor(60, 1, plugin.voices[0].channel), midiChannelRgb(1));
+            }
+            item.params.preferMidi = false; display.update(item, 1, 800);
+            assert.deepEqual(plugin.displayOptions.noteColor(60, 1, 1), [18, 52, 86]);
+            item.params.preferMidi = true; display.update(item, 1, 800);
+            snapshot = { ...snapshot, position: .1, notes: [] };
+            display.draw(item, .1, 800);
+            if (type === 'notes') assert.ok(plugin.midiChannelHistory.every(channel => channel === 0));
+            snapshot = null; display.draw(item, .2, 800);
+            assert.deepEqual(plugin.displayOptions.noteColor(60, 1), [18, 52, 86]);
+            if (type === 'notes') {
+                env.subscribers.get(item.id)(noteFrame(), {});
+                assert.deepEqual(plugin._noteDisplayColor(0, 60, 1, {}), [18, 52, 86]);
+            }
+            display.dispose();
+        }
+    });
+});
+
+test('MIDI channel ties keep note order at Float32 velocity precision', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('notes', 'ties');
+        item.palette.mode = 'channel-colors';
+        let velocities;
+        env.sources.getFrame = () => ({ sourceKind: 'midi', source, position: 1, speed: 1,
+            notes: velocities.map((velocity, channel) => ({ pitch: 60, velocity, channel, start: .5 })), history: [], chord: null });
+        const source = {}, display = createAnalyzerDisplay(item, canvas(), env.sources);
+        for (const [values, expected] of [[[64, 64], 0], [[100, 100], 0], [[110, 110], 0], [[64, 100], 1], [[110, 64], 0]]) {
+            velocities = values;
+            display.draw(item, 1, 800);
+            assert.equal(display.plugin.midiChannelHistory[1023 * 88 + 60 - 21], expected + 1, `${values}`);
+        }
+        display.dispose();
+    });
+});
+
+test('MIDI Guitar chord voicings keep pitch-class channel colors across octaves', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'chord-channel');
+        item.palette.mode = 'channel-colors'; item.params.pm = 'chord';
+        let notes = [60, 64, 67].map(pitch => ({ pitch, channel: 0, velocity: 100 }));
+        env.sources.getFrame = () => ({ sourceKind: 'midi', source, position: 1, speed: 1,
+            notes, history: [], chord: { root: 0, quality: 0, bass: 0, name: 'C' } });
+        const source = {}, display = createAnalyzerDisplay(item, canvas(), env.sources), colors = [];
+        const noteColor = display.plugin.displayOptions.noteColor;
+        display.plugin.displayOptions.noteColor = (midi, intensity, channel) => {
+            colors.push([midi, channel]); return noteColor(midi, intensity, channel);
+        };
+        display.draw(item, 1, 800);
+        assert.ok(colors.some(([midi]) => midi < 60), 'the chord solver voices notes below the MIDI input octave');
+        assert.ok(colors.every(([, channel]) => channel === 0), 'all voiced octaves inherit their source pitch-class channel');
+        colors.length = 0;
+        notes = [...notes, { pitch: 72, channel: 1, velocity: 110 }, { pitch: 84, channel: 2, velocity: 110 }];
+        display.draw(item, 1, 800);
+        assert.ok(colors.filter(([midi]) => midi % 12 === 0).every(([, channel]) => channel === 1),
+            'pitch classes select the greatest velocity and preserve order on ties');
+        assert.equal(display.plugin.midiChannels.get(60).channel, 0, 'normal note mapping still uses the exact pitch');
+        assert.equal(display.plugin.midiChannels.get(84).channel, 2);
+        display.dispose();
+    });
+});
+
 function chordKeyFrame(index, localKey = 7, overallKey = 5, confirmedProbability = 1) {
     const payload = new DataView(new ArrayBuffer(32));
     payload.setFloat32(0, 48000, true);
@@ -133,7 +261,7 @@ test('Standalone Key and Chord items share analysis and render confirmed names w
         send(frame);
         draw();
         assert.deepEqual(labels('key'), ['G major']);
-        assert.deepEqual(labels('chord'), ['B♭/D']);
+        assert.deepEqual(labels('chord'), ['A#/D']);
         assert.deepEqual(env.counts(), [0, 0], 'Text views do not construct pipeline plugins');
 
         const chord = layout.items[1];
@@ -147,9 +275,22 @@ test('Standalone Key and Chord items share analysis and render confirmed names w
         const context = renderer.layers.get('chord').canvas.context;
         assert.equal(context.font, 'italic bold 40px serif');
         assert.equal(context.textAlign, 'right');
-        assert.ok(context.calls.some(([method, value]) => method === 'strokeText' && value === 'B♭/D'));
+        assert.ok(context.calls.some(([method, value]) => method === 'strokeText' && value === 'A#/D'));
         assert.ok(context.calls.some(([method, value]) => method === 'strokeStyle' && value === '#123456'));
         assert.equal(renderer.layers.get('chord').display.spatialPalette, null, 'Text gradients keep decorations separate');
+
+        for (const item of layout.items) item.palette.mode = 'note-colors';
+        for (const localKey of [7, 19]) {
+            send(chordKeyFrame(localKey === 7 ? 21 : 22, localKey));
+            clear(); draw();
+            for (const [id, root] of [['key', 7], ['chord', 10]]) {
+                const color = `rgb(${env.window.NoteSpectrogramPlugin.noteColor(root).join(',')})`;
+                assert.ok(renderer.layers.get(id).canvas.context.calls.some(
+                    ([method, value]) => method === 'fillStyle' && value === color),
+                `${id} uses the tonic/root color, including minor keys and inverted chords`);
+            }
+        }
+        assert.ok(context.calls.some(([method, value]) => method === 'strokeStyle' && value === '#123456'));
 
         layout.items.push(createItem('notes', 'notes'));
         layout.items.at(-1).params.ck = true;
@@ -157,7 +298,7 @@ test('Standalone Key and Chord items share analysis and render confirmed names w
         assert.equal(published.length, 1, 'Notes shares matching analysis with both text items');
         layout.items.pop();
         sources.setLayout(layout);
-        const unknown = chordKeyFrame(21, 24, 255);
+        const unknown = chordKeyFrame(23, 24, 255);
         [23, 24, 25].forEach(offset => unknown.payload.setUint8(offset, 255));
         send(unknown);
         clear(); draw();
@@ -185,7 +326,7 @@ test('Key and Chord reject stale telemetry and clear when their channel or analy
             send(chordKeyFrame(20));
             assert.deepEqual(labels(), [], 'Chord telemetry needs the matching pitch generation');
             send(noteFrame(20)); send(chordKeyFrame(20));
-            const expected = type === 'key' ? ['G major'] : ['B♭/D'];
+            const expected = type === 'key' ? ['G major'] : ['A#/D'];
             assert.deepEqual(labels(), expected);
             send(chordKeyFrame(19, 24, 255));
             const wrongGeneration = chordKeyFrame(21, 24, 255);
@@ -249,7 +390,7 @@ test('Visualizer Notes receives aligned chord/key telemetry on a shared Guitar s
         display.draw(notes, 1, 800);
         const labels = target.context.calls.filter(([method]) => method === 'fillText').map(([, label]) => label);
         assert.ok(labels.includes('Key: G major'));
-        assert.ok(labels.includes('B♭/D'));
+        assert.ok(labels.includes('A#/D'));
         assert.ok(!labels.some(label => label.includes('Overall')));
         let textColor;
         const colors = new Map();
@@ -257,7 +398,7 @@ test('Visualizer Notes receives aligned chord/key telemetry on a shared Guitar s
             if (method === 'fillStyle') textColor = value;
             if (method === 'fillText') colors.set(value, textColor);
         }
-        for (const [label, root] of [['B♭/D', 10], ['Key: G major', 7]]) {
+        for (const [label, root] of [['A#/D', 10], ['Key: G major', 7]]) {
             assert.equal(colors.get(label).replaceAll(' ', ''),
                 `rgb(${env.window.NoteSpectrogramPlugin.noteColor(root).join(',')})`);
         }
@@ -325,7 +466,7 @@ test('Notes chord/key annotations preserve background outlines with full-strengt
             return colors;
         };
         display.draw(item, 1, 800);
-        for (const label of ['B♭/D', 'Key: G major']) {
+        for (const label of ['A#/D', 'Key: G major']) {
             assert.equal(overlayColors(target.context).get(label).replaceAll(' ', ''), 'rgb(0,0,255)',
                 'Categorical annotations use the full-strength intensity color');
         }
@@ -338,7 +479,7 @@ test('Notes chord/key annotations preserve background outlines with full-strengt
         const keyColor = options.chordKeyColor(7), chordColor = options.chordKeyColor(10);
         assert.deepEqual(inputs, [[55, 1], [58, 1]], 'Roots use the octave nearest the visible MIDI range center');
         assert.notDeepEqual(keyColor, chordColor);
-        for (const [label, color] of [['B♭/D', chordColor], ['Key: G major', keyColor]]) {
+        for (const [label, color] of [['A#/D', chordColor], ['Key: G major', keyColor]]) {
             assert.equal(overlayColors(target.context).get(label).replaceAll(' ', ''), `rgb(${color.join(',')})`);
         }
         item.palette.direction = 'radial';
@@ -396,7 +537,7 @@ test('Notes chord/key annotations preserve background outlines with full-strengt
         mask.calls.length = 0;
         signal.calls.length = 0;
         display.draw(item, 1, 400, { 'graph-bg-deep': '#f8f7f6' });
-        for (const label of ['B♭/D', 'Key: G major']) {
+        for (const label of ['A#/D', 'Key: G major']) {
             assert.equal(overlayColors(target.context).has(label), false, 'Spatial annotations join the signal layer');
             assert.equal(overlayColors(mask).get(label).replaceAll(' ', ''), 'rgb(255,255,255)',
                 'Glyph fills join the existing spatial mask');
@@ -718,6 +859,7 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
     const env = runtime();
     await withGlobals(env, () => {
         const item = createItem('rhythm-analyzer', 'rhythm');
+        item.style.beatOrbitDot = false;
         const target = canvas();
         const display = createAnalyzerDisplay(item, target, env.sources);
         const payload = new DataView(new ArrayBuffer(2024));
@@ -1277,10 +1419,10 @@ test('Guitar Chord draws a detected voicing and shares Note Spectrogram key spel
         };
         send(noteFrame(1)); // Only C4 is detected as a pitch; the chord has different tones and voicing.
         assert.deepEqual(labels(), []);
-        send(chordKeyFrame(16, 7, 5)); // B-flat/D, in F major.
+        send(chordKeyFrame(16, 5, 7)); // B-flat/D, in F major.
         assert.deepEqual([...new Set(labels())].sort(), ['B♭', 'D', 'F']);
         assert.strictEqual(env.window.NoteSpectrogramPlugin.noteNamesForKey(5)[10], 'B♭');
-        send(chordKeyFrame(17, 7, 6)); // F-sharp major also spells the F pitch class as E-sharp.
+        send(chordKeyFrame(17, 6, 7)); // F-sharp major also spells the F pitch class as E-sharp.
         assert.deepEqual([...new Set(labels())].sort(), ['A#', 'D', 'E#']);
         item.params.lb = 'flat';
         assert.deepEqual([...new Set(labels())].sort(), ['Bb', 'D', 'F'], 'Explicit spelling remains independent of the detected key');
@@ -1348,18 +1490,18 @@ test('Guitar rejects unrelated, invalid and out-of-order chord telemetry and res
         for (const frame of [chordKeyFrame(1, 7, 7), chordKeyFrame(17, 7, 7), wrongGeneration, malformed]) send(frame);
         env.subscribers.get(item.id)({ ...chordKeyFrame(18, 7, 7), source: {} });
         assert.strictEqual(plugin.chord, chord);
-        assert.equal(plugin.overallKey, 5);
+        assert.equal(plugin.localKey, 7);
         const restart = noteFrame(1);
         restart.payload.setUint32(24, 2, true);
         send(restart);
         assert.equal(plugin.chord, null);
-        assert.equal(plugin.overallKey, null);
+        assert.equal(plugin.localKey, null);
         send(wrongGeneration);
-        assert.equal(plugin.overallKey, 7);
+        assert.equal(plugin.localKey, 7);
         assert.equal(plugin.chord.name, chord.name, 'A new generation accepts its first confirmed chord');
         env.subscribers.get(item.id)({ ...noteFrame(1), source: {} });
         assert.equal(plugin.chord, null);
-        assert.equal(plugin.overallKey, null);
+        assert.equal(plugin.localKey, null);
         display.dispose();
     });
 });
@@ -2574,6 +2716,64 @@ test('Visualizer Rhythm keeps four lanes when shared drum telemetry includes tom
         assert.equal(display.plugin.eventSerial, 0);
         assert.equal(display.plugin.activeGeneration, generation);
         assert.equal(display.plugin.laneCount, 3);
+        display.dispose();
+    });
+});
+
+test('MIDI Rhythm renders the regular DSP panels and continues consuming detections', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const midi = { sourceKind: 'midi', source: {}, position: 4, speed: 1.5, playing: true,
+            beat: { bpm: 200, quarter: 12.25 }, beatAt: position => ({ bpm: 200, quarter: position * 200 / 60 }) };
+        env.sources.getFrame = () => midi;
+        const item = createItem('rhythm-analyzer', 'rhythm'), target = canvas();
+        item.params.dm = 'drums';
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const payload = new DataView(new ArrayBuffer(2024));
+        for (const [offset, value, kind] of [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'],
+            [12, 100, 'Uint32'], [16, 1, 'Float32'], [1496, 1, 'Uint32'], [1500, 1, 'Uint32']]) {
+            payload[`set${kind}`](offset, value, true);
+        }
+        payload.setUint32(1512, 90, true);
+        payload.setUint8(1541, 1);
+        const source = {};
+        const send = () => env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 5, payload, source }, source);
+        send();
+        display.draw(item, 1, 400);
+        assert.equal(display.plugin.midiSnapshot, midi);
+        assert.equal(display.plugin.eventSerial, 1);
+        assert.equal(display.plugin._readoutFrame.views[0].uRight, 12.25);
+        assert.ok(display.plugin._readoutFrame.lens, 'The original Beat lens is laid out');
+        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === '300.0 BPM'));
+        payload.setUint32(1512, 95, true);
+        send();
+        display.draw(item, 1, 400);
+        assert.equal(display.plugin.eventSerial, 2, 'New DSP events are retained while MIDI supplies the clock');
+        env.sources.getFrame = () => null;
+        display.draw(item, 1, 400);
+        assert.equal(display.plugin.midiSnapshot, null);
+        assert.equal(display.plugin.eventSerial, 2, 'Leaving MIDI preserves detector history');
+        display.dispose();
+    });
+});
+
+test('default MIDI Rhythm draws before the first DSP telemetry frame', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const timeline = { duration: 4, division: 480, secondsPerTick: null, events: [],
+            tempoMap: [{ tick: 0, seconds: 0, quarter: 0, microsecondsPerQuarter: 500000 }],
+            timeSignatures: [{ quarter: 0, seconds: 0, numerator: 4, denominator: 4 }] };
+        const midi = new MidiVisualizerAdapter().snapshot({ timeline, position: .25, generation: 1,
+            speed: 1, playing: true, paused: false });
+        env.sources.getFrame = () => midi;
+        const item = createItem('rhythm-analyzer', 'rhythm'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        assert.equal(display.plugin.snapshot, null);
+        assert.doesNotThrow(() => display.draw(item, 1, 400));
+        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === '120.0 BPM'));
+        const header = display.plugin._headerItems(null, { label: '', strongGrid: '' }, () => '');
+        assert.equal(header[0][1].opacity, 1);
+        assert.match(header[0][1].text, /LOCKED/);
         display.dispose();
     });
 });

@@ -6,6 +6,30 @@ import { createDefaultLayout, createItem, DEFAULT_THEME_COLORS, normalizeLayout,
 import { validateItemShape } from '../../js/user-data-backup/portable.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('named settings save the current visualizer layout without moving shared presets', async () => {
+    const values = new Map();
+    const settingsStorage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value)
+    };
+    await withGlobals({ window: { electronAPI: { settingsStorage } } }, async () => {
+        const store = new VisualizerPresetStore();
+        const presetKeys = [];
+        store.request = async (name, _mode, action) => {
+            assert.equal(name, 'presets');
+            return action({ put: (_layout, key) => presetKeys.push(key) });
+        };
+        assert.equal(await store.loadCurrent(), null);
+        const layout = createDefaultLayout();
+        layout.background.color = '#123456';
+        store.saveCurrent(layout);
+        await store.flushCurrent();
+        assert.equal((await store.loadCurrent()).background.color, '#123456');
+        await store.saveUserPreset('Shared', layout);
+        assert.deepEqual(presetKeys, ['Shared']);
+    });
+});
+
 test('current layout recovery tolerates missing fields and unsupported or damaged items without writing', async () => {
     const layout = createDefaultLayout();
     layout.aspect = '4:3';

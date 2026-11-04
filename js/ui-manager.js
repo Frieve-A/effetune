@@ -1,5 +1,8 @@
+import { getSettingsStorage } from './settings-storage.js';
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
 import { getAndroidBridge } from './android/bridge.js';
+import { getDsdPlaybackErrorKey } from './ui/audio-player/dsd-source.js';
+import { SCORE_EXTENSIONS } from './midi/score-file.js';
 import { parseCommentedJSON } from './utils/parse-commented-json.js';
 import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
 import { PluginListManager } from './ui/plugin-list-manager.js';
@@ -29,7 +32,7 @@ import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { BrowserView } from './browser/browser-view.js';
-import { attachLyricsFiles } from './ui/audio-player/lyrics-file-links.js';
+import { attachLyricsFiles, attachArtworkFiles } from './ui/audio-player/lyrics-file-links.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
 import { enableStandardSelects } from './ui/standard-select.js';
@@ -50,12 +53,14 @@ function usesIOSFilePicker(windowRef = window) {
 const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
-const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.jpg,.png';
+const WEB_MUSIC_FILE_ACCEPT = `audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,${SCORE_EXTENSIONS.map(ext => `.${ext}`).join(',')},.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png`;
 const WEB_MUSIC_PICKER_TYPES = [{
     accept: {
-        'audio/*': ['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
+        'audio/*': ['.dsf', '.dff', '.aac', '.flac', '.m4a', '.mid', '.midi', '.kar', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
         'video/*': ['.3gp', '.m4v', '.mkv', '.mov', '.mp4', '.webm'],
-        'text/plain': ['.cue', '.lrc'],
+        'application/vnd.recordare.musicxml+xml': ['.musicxml', '.xml'],
+        'application/vnd.recordare.musicxml': ['.mxl'],
+        'text/plain': ['.cue', '.lrc', '.wrd'],
         'image/jpeg': ['.jpg', '.jpeg'],
         'image/png': ['.png']
     }
@@ -154,7 +159,7 @@ function loadDoubleBlindTestClass() {
 
 function isPipelineAnalyzerStoredOpen() {
     try {
-        const value = JSON.parse(globalThis.localStorage?.getItem?.(PIPELINE_ANALYZER_STORAGE_KEY) || 'null');
+        const value = JSON.parse(getSettingsStorage()?.getItem?.(PIPELINE_ANALYZER_STORAGE_KEY) || 'null');
         return value?.open === true;
     } catch (_) {
         return false;
@@ -169,7 +174,7 @@ function fileExtension(name) {
 
 function readStoredBoolean(key) {
     try {
-        return globalThis.localStorage?.getItem?.(key) === 'true';
+        return getSettingsStorage()?.getItem?.(key) === 'true';
     } catch (_) {
         return false;
     }
@@ -177,7 +182,7 @@ function readStoredBoolean(key) {
 
 function storeBoolean(key, value) {
     try {
-        globalThis.localStorage?.setItem?.(key, value ? 'true' : 'false');
+        getSettingsStorage()?.setItem?.(key, value ? 'true' : 'false');
     } catch (_) {
         // Storage can be unavailable; the current session still keeps the state.
     }
@@ -885,7 +890,7 @@ export class UIManager {
         }
         this._pipelineStorageTimeout = setTimeout(() => {
             try {
-                localStorage.setItem('effetune_pipeline_state', encodedState);
+                getSettingsStorage().setItem('effetune_pipeline_state', encodedState);
             } catch (error) {
                 console.warn('Failed to save web pipeline state:', error);
             }
@@ -900,7 +905,7 @@ export class UIManager {
             this._pipelineStorageTimeout = null;
         }
         try {
-            localStorage.setItem('effetune_pipeline_state', this.getPipelineState());
+            getSettingsStorage().setItem('effetune_pipeline_state', this.getPipelineState());
         } catch (error) {
             console.warn('Failed to flush web pipeline state:', error);
         }
@@ -909,7 +914,7 @@ export class UIManager {
     loadPipelineStateFromLocalStorage() {
         if (window.electronIntegration?.isElectronEnvironment?.()) return null;
         try {
-            const encodedState = localStorage.getItem('effetune_pipeline_state');
+            const encodedState = getSettingsStorage().getItem('effetune_pipeline_state');
             if (!encodedState) return null;
             if (!/^[A-Za-z0-9+/=]+$/.test(encodedState)) return null;
             const decoded = decodePipelineState(encodedState);
@@ -1753,8 +1758,9 @@ export class UIManager {
         }
         const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
         const selectedFiles = Array.from(files ?? []);
-        const lrcFiles = selectedFiles.filter(file => fileExtension(file?.name) === 'lrc');
-        files = selectedFiles.filter(file => fileExtension(file?.name) !== 'lrc');
+        const artworkFiles = selectedFiles.filter(file => /^(cover|folder)\.jpg$/i.test(file?.name || ''));
+        const lyricFiles = selectedFiles.filter(file => /^(lrc|wrd)$/.test(fileExtension(file?.name)));
+        files = selectedFiles.filter(file => !/^(lrc|wrd)$/.test(fileExtension(file?.name)) && !artworkFiles.includes(file));
         if (!files.length) return false;
         this.playbackSelectionAbortController?.abort();
         const controller = new AbortController();
@@ -1787,7 +1793,8 @@ export class UIManager {
             if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
             if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
 
-            attachLyricsFiles(selection.tracks.map(track => track.file ?? track), lrcFiles);
+            attachLyricsFiles(selection.tracks.map(track => track.file ?? track), lyricFiles);
+            attachArtworkFiles(selection.tracks.map(track => track.file ?? track), artworkFiles);
 
             const player = await this.createAudioPlayer([], false);
             if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
@@ -1812,7 +1819,8 @@ export class UIManager {
                     type: String(file?.type ?? '')
                 }))
             }));
-            const errorKey = {
+            const errorKey = getDsdPlaybackErrorKey(error) || {
+                MIDI_NATIVE_UNSUPPORTED: 'midi.error.nativeUnsupported',
                 cueSelectionTooLarge: 'error.cueSelectionTooLarge',
                 cueSelectionMixed: 'error.cueSelectionMixed',
                 cueSelectionInvalid: 'error.cueSelectionInvalid',

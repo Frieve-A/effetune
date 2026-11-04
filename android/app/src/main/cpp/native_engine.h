@@ -9,6 +9,7 @@
 #include <memory>
 #include <oboe/Oboe.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace effetune::android {
@@ -155,6 +156,7 @@ private:
   std::array<TimedParameters, 64> scheduled_{};
   std::vector<std::array<std::uint32_t, 3>> contracts_;
   std::vector<int> legacyAssetInstances_;
+  std::vector<std::pair<int, std::uint32_t>> samplePlayerInstances_;
 };
 
 } // namespace effetune::android

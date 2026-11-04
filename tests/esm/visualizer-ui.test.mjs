@@ -6,7 +6,7 @@ import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
 import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
-import { createDefaultLayout, createItem, normalizeEffect, snapshotLayout, validateLayout, PLAYBACK_APPEARANCES, SEEK_APPEARANCES } from '../../js/visualizer/visualizer-model.js';
+import { createDefaultLayout, createItem, normalizeEffect, normalizeLayout, snapshotLayout, validateLayout, PLAYBACK_APPEARANCES, SEEK_APPEARANCES } from '../../js/visualizer/visualizer-model.js';
 import { UIManager } from '../../js/ui-manager.js';
 import { lyricsFrame, drawLyrics, lyricsOpacity } from '../../js/visualizer/visualizer-lyrics.js';
 import { parseLrc } from '../../js/library/metadata/lyrics.js';
@@ -681,27 +681,68 @@ test('Drums edits camera angles and material colors without axis controls', () =
     });
     const item = createItem('drums', 'kit');
     editor.parameters({}, item);
-    assert.deepEqual(fields.map(field => field.label), ['Viewing angle', 'Elevation', 'Shell color',
+    assert.deepEqual(fields.map(field => field.label), ['Prefer MIDI', 'Viewing angle', 'Elevation', 'Shell color',
         'Cymbal color', 'Hardware color', 'Drumhead color']);
-    fields[0].change(90);
-    fields[2].change('#123456');
+    fields[1].change(90);
+    fields[3].change('#123456');
     assert.equal(item.params.yaw, 90);
     assert.equal(item.params.shellColor, '#123456');
+});
+
+test('MIDI channel palette choices follow the preference and expose their single fallback color', () => {
+    const fields = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (_key, fallback) => fallback, group: () => ({}),
+        field(_parent, label, type, value, change, options) { fields.push({ label, value, change, options }); }, changed() {}
+    });
+    for (const type of ['notes', 'guitar']) {
+        const item = createItem(type, type);
+        item.palette.mode = 'channel-colors';
+        for (const preferMidi of [true, false]) {
+            fields.length = 0;
+            editor.palette({}, item.palette, type, false, preferMidi);
+            assert.equal(fields[0].options.values.some(([mode]) => mode === 'channel-colors'), preferMidi);
+            assert.equal(fields[0].value, preferMidi ? 'channel-colors' : 'solid');
+            assert.equal(fields[1].label, 'Color');
+            fields[1].change('#123456');
+            assert.equal(item.palette.color, '#123456');
+        }
+        assert.equal(normalizeLayout({ ...createDefaultLayout(), items: [item] }).items[0].palette.mode, 'channel-colors');
+    }
+});
+
+test('Notes keeps Pitch Resolution editable with MIDI selected', () => {
+    const fields = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        view: { sources: { getMidiPresentation: () => ({ hasMidi: true }) } },
+        t: (_key, fallback) => fallback,
+        field(_parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
+        changed() {}
+    });
+    const item = createItem('notes', 'notes');
+    editor.parameters({}, item);
+    const resolution = fields.find(field => field.label === 'Pitch Resolution');
+    assert.equal(resolution.options.disabled, false);
+    resolution.change('High');
+    assert.equal(item.params.pr, 'High');
+    assert.equal(normalizeLayout({ ...createDefaultLayout(), items: [item] }).items[0].params.pr, 'High');
 });
 
 test('Rhythm Analyzer edits its tempo range and span', () => {
     const fields = [], changes = [];
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        view: { sources: { getMidiPresentation: () => ({ hasMidi: true }) } },
         t: (key, fallback) => fallback,
         field(_parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
         changed: render => changes.push(render)
     });
     const item = createItem('rhythm-analyzer', 'rhythm');
     editor.parameters({}, item);
-    assert.deepEqual(fields.map(field => field.label), ['Display', 'Min BPM', 'Max BPM', 'Span (beats)',
+    assert.deepEqual(fields.map(field => field.label), ['Prefer MIDI', 'Display', 'Min BPM', 'Max BPM', 'Span (beats)',
         'Beat', 'BPM', 'Tempogram', 'Timing lanes', 'Echo rows', 'Beat lens',
         'Axes and grid', 'Axis labels and numbers']);
-    const [displayMode, minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
+    const [, displayMode, minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
+    for (const field of fields) assert.notEqual(field.options?.disabled, true, `${field.label} remains available during MIDI`);
     assert.deepEqual(displayMode.options.values, [['band', 'Frequency bands'], ['drums', 'Drums']]);
     assert.deepEqual([minimum.options.min, minimum.options.max, maximum.options.min, maximum.options.max], [40, 192, 50, 240]);
     assert.equal(maximum.options.unit, 'BPM');
@@ -770,7 +811,7 @@ test('Rhythm Analyzer circle settings edit size, border, opacity, colors and BPM
     editor.textStyle({}, item.style, item.type);
     const circle = fields.filter(field => field.parent === 'Beat circle');
     assert.deepEqual(circle.map(field => field.label), ['Circle size', 'Border width', 'Fill opacity', 'Beat hold time', 'Beat decay time', 'Border opacity',
-        'Use palette colors', 'Fill color', 'Border color', 'Fit BPM inside circle']);
+        'Use palette colors', 'Fill color', 'Border color', 'Orbit dot', 'Fit BPM inside circle']);
     assert.equal(circle[0].options.unit, '%');
     assert.deepEqual([circle[2].options.unit, circle[2].options.scale], ['%', 100]);
     assert.equal(circle[3].options.unit, 'ms');
@@ -786,9 +827,11 @@ test('Rhythm Analyzer circle settings edit size, border, opacity, colors and BPM
     circle[7].change('#123456');
     circle[8].change('#abcdef');
     circle[9].change(false);
+    circle[10].change(false);
     assert.deepEqual([item.style.beatSize, item.style.beatLineWidth, item.style.beatFillOpacity, item.style.beatStrokeOpacity,
-        item.style.beatUsePalette, item.style.beatFillColor, item.style.beatStrokeColor, item.style.beatFitBpm, item.style.beatHoldTime, item.style.beatDecayTime],
-    [60, 4, .5, .7, false, '#123456', '#abcdef', false, 50, 200]);
+        item.style.beatUsePalette, item.style.beatFillColor, item.style.beatStrokeColor, item.style.beatOrbitDot,
+        item.style.beatFitBpm, item.style.beatHoldTime, item.style.beatDecayTime],
+    [60, 4, .5, .7, false, '#123456', '#abcdef', false, false, 50, 200]);
     assert.equal(changes[6], true, 'Changing palette use refreshes the color controls');
     fields.length = 0;
     editor.textStyle({}, item.style, item.type);
@@ -1300,6 +1343,9 @@ test('Missing artwork hides its decorations and returns only after an image load
         draw(metadata, true);
         const oldHistory = renderer.effects.states.get('art');
         assert.equal(oldHistory.history.size, 1);
+        draw({ artwork: [], artworkPending: true }, true);
+        assert.equal(renderer.layers.get('art').image, first);
+        assert.equal(renderer.effects.states.get('art'), oldHistory);
         draw({ artwork: [] }, false);
         assert.equal(renderer.images.has('cover-a'), false);
         metadata.artwork[0].src = 'cover-b';
@@ -1311,7 +1357,17 @@ test('Missing artwork hides its decorations and returns only after an image load
         draw(metadata, true);
         assert.notEqual(renderer.effects.states.get('art'), oldHistory);
         metadata.artwork[0].src = 'cover-c';
+        draw(metadata, true);
+        assert.equal(renderer.layers.get('art').image, second);
+        const third = renderer.images.get('cover-c');
+        Object.assign(third, { complete: true, naturalWidth: 100, naturalHeight: 100 });
+        draw(metadata, true);
+        assert.equal(renderer.layers.get('art').image, third);
+        metadata.artwork[0].src = 'failed-cover';
+        draw(metadata, true);
+        renderer.images.get('failed-cover').complete = true;
         draw(metadata, false);
+        draw(null, false);
     });
 });
 

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parseBuffer } from 'music-metadata';
 
 import { WebMetadataParser } from '../../js/library/scan/web-metadata-parser.js';
+import { createDffFixture, createDsfFixture } from '../helpers/dsd-fixture.mjs';
 
 function decodeWindows1252(bytes) {
   return new TextDecoder('windows-1252').decode(Uint8Array.from(bytes));
@@ -20,6 +22,28 @@ function createParser({ metadata, riffInfoTags = [], languageHints = null, relat
     })
   };
 }
+
+test('Web catalog metadata reports one-bit DSD for real DSF bit orders and DFF', async () => {
+  const sampleRate = 5644800;
+  const cases = [
+    { name: 'song-lsb.dsf', mime: 'audio/x-dsf', bytes: createDsfFixture({ sampleRate, bitOrder: 'lsb' }) },
+    { name: 'song-msb.dsf', mime: 'audio/x-dsf', bytes: createDsfFixture({ sampleRate, bitOrder: 'msb' }) },
+    { name: 'song.dff', mime: 'audio/x-dff', bytes: createDffFixture({ sampleRate }) }
+  ];
+  for (const { name, mime, bytes } of cases) {
+    const parser = new WebMetadataParser({
+      filesystem: { async getFile() { return new Blob([bytes]); } },
+      parse: async (file, options) => parseBuffer(new Uint8Array(await file.arrayBuffer()), mime, options),
+      readRiffInfo: async () => [],
+      now: () => 1
+    });
+    const track = await parser.parse({ relativePath: name, skipCovers: true });
+    assert.equal(track.sampleRate, sampleRate, name);
+    assert.equal(track.bitsPerSample, 1, name);
+    assert.equal(track.bitrate, sampleRate * 2, name);
+    assert.equal(track.channels, 2, name);
+  }
+});
 
 test('Web catalog metadata parsing keeps the v2 legacy Japanese mojibake repairs', async () => {
   const { parser, relativePath } = createParser({

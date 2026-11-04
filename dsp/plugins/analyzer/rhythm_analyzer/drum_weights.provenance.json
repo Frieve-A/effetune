@@ -1,11 +1,13 @@
 {
   "artifact": "drum_weights.h",
-  "checkpoint_sha256": "a20e918e34fa70e2d2bbe02c46b7b593d7459404bafcffa7ee29720addab2989",
+  "checkpoint_sha256": "b4d35fd97dce60012df8c2ece2762f56411858a22ba69c52f469b54ff5b2740f",
   "weights": "EMA",
-  "export_sha256": "18a1d4efaaa600e3364aaef854d3fab9287d76eb92cd0953063c78a92d7e0240",
+  "ema_sha256": "34daa7660838cebd1cf5148128462f169ab0c4478c97baa463f3d3bd1acf63da",
+  "ema_hash_format": "Concatenated little-endian float32 tensors in the listed tensor order",
+  "export_sha256": "1d30dfe0d0a983bf22a2b7fa9a2b79219c4730ea4571c249dabc4d3f76bec235",
   "network_bytes": 1133338,
-  "header_sha256": "1f181785a558496d41e14937c9b48e6043e23cd2494e49a69d59a1ed9a9b8dda",
-  "model": "Causal CRNN c6-agc-a1",
+  "header_sha256": "092eb87d81c3d9690b46c22afc60789a67fdabdc685ba1b0bc0941f9cde5bb43",
+  "model": "Causal CRNN r4own-vs4",
   "parameters": 566669,
   "tensors": [
     {
@@ -309,6 +311,47 @@
       "elements": 1
     }
   ],
+  "training": {
+    "steps": 60000,
+    "seed": 20261017,
+    "initialization": "from scratch",
+    "batch": 16,
+    "frames": 640,
+    "optimizer": "AdamW",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "gradient_clip": 5,
+    "ema_decay": 0.999,
+    "learning_rate_schedule": "5% linear warmup, cosine decay to 1%",
+    "precision": "CUDA bfloat16 autocast",
+    "positive_pool_shares": {
+      "shipping": 0.45,
+      "parametric_synthesis": 0.45,
+      "owner_supplied_recordings": 0.1
+    },
+    "role_schedule": [
+      "positive",
+      "positive",
+      "positive",
+      "positive",
+      "positive",
+      "positive",
+      "paired_negative_recipe",
+      "real_negative"
+    ],
+    "varispeed": {
+      "copies": 4,
+      "semitones": [
+        -4,
+        4
+      ],
+      "probability": 0.5,
+      "domain": "audio",
+      "resampler": "soxr HQ"
+    },
+    "TRAIN-real_used": false,
+    "DEV-real_used": false
+  },
   "classes": [
     "KD",
     "SD",
@@ -324,29 +367,12 @@
     "CY": 0.9
   },
   "threshold_selection": {
-    "method": "KD and SD lowered from the best-F1 thresholds to the 0.1 logit grid point where the equal-weight mean precision and recall over IDMT-SMT-Drums, ENST-Drums and MDB-Drums balance, favoring recall; HH, TT and CY keep the class-wise best-F1 thresholds",
+    "method": "Fixed shipping thresholds retained from c6-agc-a1; no recalibration for r4own-vs4",
     "datasets": [
       "IDMT-SMT-Drums",
       "ENST-Drums",
       "MDB-Drums"
-    ],
-    "grid_step": 0.1,
-    "balanced_classes": [
-      "KD",
-      "SD"
-    ],
-    "mean_precision_recall": {
-      "KD": [
-        0.8396,
-        0.8445
-      ],
-      "SD": [
-        0.7614,
-        0.7619
-      ]
-    },
-    "equal_mean_micro_F5": 0.802547,
-    "previous_best_f1": 0.805030006474249
+    ]
   },
   "architecture": {
     "conv_channels": [
@@ -389,22 +415,22 @@
   },
   "evaluation": {
     "IDMT": {
-      "micro_F5_50ms": 0.8699758012158414,
-      "micro_F3class_50ms": 0.9219991242884844,
-      "micro_F3class_30ms": 0.9203728029023581,
-      "micro_F5_30ms": 0.8684412441716343
+      "micro_F5_50ms": 0.8843947726331973,
+      "micro_F3class_50ms": 0.9038496404182027,
+      "micro_F3class_30ms": 0.9033661690940956,
+      "micro_F5_30ms": 0.8839217077641771
     },
     "ENST": {
-      "micro_F5_50ms": 0.7455255813953489,
-      "micro_F3class_50ms": 0.8015277526667872,
-      "micro_F3class_30ms": 0.7902730066895679,
-      "micro_F5_30ms": 0.7353674418604651
+      "micro_F5_50ms": 0.7828404570129539,
+      "micro_F3class_50ms": 0.817882854857346,
+      "micro_F3class_30ms": 0.8067282908185939,
+      "micro_F5_30ms": 0.7723754090971446
     },
     "MDBDrums": {
-      "micro_F5_50ms": 0.6698825265308439,
-      "micro_F3class_50ms": 0.7599970213716584,
-      "micro_F3class_30ms": 0.7553801474421029,
-      "micro_F5_30ms": 0.6657964928210658
+      "micro_F5_50ms": 0.7328048780487805,
+      "micro_F3class_50ms": 0.7538901681669109,
+      "micro_F3class_30ms": 0.7494243248900984,
+      "micro_F5_30ms": 0.7286585365853658
     }
   },
   "generator": "tools/rhythm-analyzer/export.py --drums"

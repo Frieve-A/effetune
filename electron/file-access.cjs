@@ -41,7 +41,7 @@ function assertSender(event, mainWindow) {
   }
 }
 
-function assertPath(value, mode, settingsDirectory) {
+function assertPath(value, mode, settingsDirectory, profileDirectory = settingsDirectory) {
   if (typeof value !== 'string' || !value || value.includes('\0')) throw new Error('Select a file first.');
   const resolved = path.resolve(value);
   if (process.platform === 'win32' && resolved.replace(/^[a-z]:/i, '').includes(':')) {
@@ -58,10 +58,11 @@ function assertPath(value, mode, settingsDirectory) {
         canonical === pathKey(path.join(canonicalParent, path.basename(resolved)))) return;
   }
   if (settingsDirectory) {
-    const settings = canonicalPath(settingsDirectory);
     const name = path.basename(resolved);
+    const directory = name === 'pipeline-state.json' || name === 'player-state.json' ? profileDirectory : settingsDirectory;
+    const settings = canonicalPath(directory);
     const allowedSetting = SETTINGS_FILES.has(name) || (mode !== 'write' && name === 'pipeline-state.json');
-    if (allowedSetting && key === pathKey(path.join(path.resolve(settingsDirectory), name)) &&
+    if (allowedSetting && key === pathKey(path.join(path.resolve(directory), name)) &&
         canonical === pathKey(path.join(settings, name))) return;
   }
   throw new Error('Select this file or output folder again to allow access.');

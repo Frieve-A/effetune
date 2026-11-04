@@ -6,6 +6,14 @@ lang: en
 
 # Version History
 
+### Version 2.17.0 (Nov 7, 2026)
+- Supports DSD playback (DSF [.dsf] and DSDIFF [.dff] formats)
+- Added MIDI (.mid, .midi, .kar) and MusicXML (.musicxml, .xml, compressed .mxl) playback, with karaoke lyrics and matching .wrd lyric files
+- Added SoundFont Player with SF2/SF3/SFZ instruments, 16-channel SF2/SF3 playback and real-time MIDI input from keyboards and virtual ports
+- Expanded the Visualizer with MIDI, Event List and MIDI/MusicXML lyrics, plus a MIDI Monitor preset
+- Improved drum detection accuracy in Rhythm Analyzer
+- Various minor improvements
+
 ### Version 2.16.0 (Oct 30, 2026)
 - Added desktop music sharing, with network playback and remote effect editing in the desktop app, web app and PWA
 - Added AirPlay and UPnP AV/DLNA audio reception to the desktop app

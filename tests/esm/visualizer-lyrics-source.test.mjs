@@ -16,6 +16,7 @@ test('lyrics descriptors use current playback position after loading and saved p
     };
     const view = Object.assign(Object.create(VisualizerView.prototype), {
         hasLyrics: true,
+        sources: { getMidiPresentation: () => null },
         uiManager: { audioPlayer: player,
             audioManager: { getAudiblePlaybackPosition: (position, speed) => position - 0.2 * speed } }
     });

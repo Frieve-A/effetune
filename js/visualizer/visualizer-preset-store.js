@@ -1,9 +1,11 @@
 import { ASPECTS, ASPECT_FILES, isRecord, snapshotLayout, validateLayout } from './visualizer-model.js';
+import { getSettingsStorage } from '../settings-storage.js';
 
 const DATABASE_NAME = 'effetune-visualizer';
 const CURRENT_STORE = 'current';
 const PRESET_STORE = 'presets';
 const CURRENT_KEY = 'layout';
+const NAMED_LAYOUT_KEY = 'effetune_visualizer_layout';
 
 function validName(name) {
     return typeof name === 'string' && !!name.trim() && name.length <= 4096 &&
@@ -60,7 +62,9 @@ export class VisualizerPresetStore {
     }
 
     async loadCurrent() {
-        const layout = await this.request(CURRENT_STORE, 'readonly', store => store.get(CURRENT_KEY));
+        const namedStorage = globalThis.window?.electronAPI?.settingsStorage;
+        const layout = namedStorage ? JSON.parse(namedStorage.getItem(NAMED_LAYOUT_KEY))
+            : await this.request(CURRENT_STORE, 'readonly', store => store.get(CURRENT_KEY));
         if (layout === undefined || layout === null) return null;
         // Local state is recovered by normalizeLayout, not the strict import validator.
         // Missing new fields or one unsupported item must not discard the whole scene.
@@ -86,8 +90,13 @@ export class VisualizerPresetStore {
         if (this.pendingCurrent) {
             const layout = this.pendingCurrent;
             this.pendingCurrent = null;
-            this.currentWrite = this.currentWrite.catch(() => {}).then(() =>
-                this.request(CURRENT_STORE, 'readwrite', store => store.put(layout, CURRENT_KEY)));
+            this.currentWrite = this.currentWrite.catch(() => {}).then(() => {
+                if (globalThis.window?.electronAPI?.settingsStorage) {
+                    getSettingsStorage().setItem(NAMED_LAYOUT_KEY, JSON.stringify(layout));
+                    return;
+                }
+                return this.request(CURRENT_STORE, 'readwrite', store => store.put(layout, CURRENT_KEY));
+            });
         }
         return this.currentWrite;
     }

@@ -1,4 +1,6 @@
 import { AudioContextManager } from '../ui/audio-player/audio-context-manager.js';
+import { isDsdSource } from '../ui/audio-player/dsd-source.js';
+import { isScoreFile } from '../midi/score-file.js';
 import { AndroidDocuments } from './documents.js';
 import { ANDROID_ORIGIN } from './bridge.js';
 import { isVideoPlaybackSource } from '../ui/audio-player/playback-source-policy.js';
@@ -108,6 +110,18 @@ export class AndroidPlayerContext extends AudioContextManager {
     async resolveNativeSource(track) {
         if (this.sourceCache.has(track)) return this.sourceCache.get(track);
         const playable = await this.resolveTrackProvider(track);
+        if ([playable.name, playable.fileName, playable.sourceFileName, playable.file?.name,
+            playable.path, playable.uri, playable.url, playable.mediaSource, playable.meta?.fileName]
+            .some(value => typeof value === 'string' && isScoreFile(value))) {
+            throw Object.assign(new Error('MIDI and MusicXML playback requires the Web or desktop player'), {
+                code: 'MIDI_NATIVE_UNSUPPORTED', localPlaybackSourceFailure: true
+            });
+        }
+        if (isDsdSource(playable)) {
+            throw Object.assign(new Error('DSD playback requires the Web or desktop player'), {
+                code: 'DSD_NATIVE_UNSUPPORTED', localPlaybackSourceFailure: true
+            });
+        }
         let uri = playable.uri || playable.path || playable.url || playable.mediaSource || playable.file?.androidUri;
         if (!uri && playable.file) {
             const temporary = await this.bridge.request('documents.createTemporary', {

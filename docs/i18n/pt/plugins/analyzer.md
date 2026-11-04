@@ -203,7 +203,7 @@ Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll q
 
 ### Limitações
 
-- A detecção cobre 11 tipos de acordes e suas inversões: maior, menor, diminuto, aumentado, sétima maior, sétima menor, sétima de dominante, sétima diminuta, sétima meio-diminuta, sus2 e sus4. Os nomes de notas e acordes usam # ou ♭ conforme a tonalidade estimada a partir das observações acumuladas; até essa estimativa estar disponível, são usados sustenidos.
+- A detecção cobre 11 tipos de acordes e suas inversões: maior, menor, diminuto, aumentado, sétima maior, sétima menor, sétima de dominante, sétima diminuta, sétima meio-diminuta, sus2 e sus4. Os nomes de notas e acordes usam # ou ♭ conforme a tonalidade local atual; até essa estimativa estar disponível, são usados sustenidos.
 - A validação com interpretações reais de pop e rock é limitada; use as estimativas como auxílio durante a audição.
 
 ## Oscilloscope

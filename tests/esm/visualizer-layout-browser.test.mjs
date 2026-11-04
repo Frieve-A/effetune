@@ -10,7 +10,9 @@ const css = read('../../css/effetune-theme.css') +
     read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '')
         .replace('@import url("parameter-controls.css");', () => read('../../css/parameter-controls.css')) +
     read('../../css/effetune-mobile.css') + read('../../css/effetune-library.css');
-const viewSource = read('../../js/ui/audio-player/playback-region.js').replace(/^export /gm, '') +
+const settingsStorageSource = read('../../js/settings-storage.js').replace(/^export /gm, '');
+const viewSource = settingsStorageSource +
+    read('../../js/ui/audio-player/playback-region.js').replace(/^export /gm, '') +
     read('../../js/ui/audio-player/synchronized-video.js').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '') +
     read('../../js/visualizer/visualizer-history.js').replace(/^export /gm, '') +
     read('../../js/visualizer/visualizer-view.js')
@@ -20,7 +22,7 @@ const modelSource = read('../../js/visualizer/visualizer-model.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '') + '\nwindow.createDefaultLayout = createDefaultLayout; window.createItem = createItem; window.normalizeEffect = normalizeEffect;';
 const palettePresetsSource = read('../../js/visualizer/visualizer-palette-presets.js').replace(/^export /gm, '');
-const editorSource = read('../../js/ui/range-fill.js').replace(/^export /gm, '') +
+const editorSource = settingsStorageSource + read('../../js/ui/range-fill.js').replace(/^export /gm, '') +
     `\nfunction visualizerFieldLabel(row) { return row.querySelector('label')?.textContent.replace(/\\s*\\([^)]*\\):$|:$/g, ''); }\n` +
     read('../../js/visualizer/visualizer-editor.js')
     .replace(/^import .*;\r?\n/gm, '')
@@ -1848,7 +1850,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                     : ['spectrogram', 'level-meter'].includes(specimen.type)
                         ? ['solid', 'gradient', 'heatmap']
                         : specimen.type === 'notes'
-                            ? ['solid', 'gradient', 'note-colors'] : ['solid', 'gradient']);
+                            ? ['solid', 'gradient', 'note-colors', 'channel-colors'] : ['solid', 'gradient']);
             assert.equal(specimen.paletteSaved, true);
             if (specimen.type === 'spectrum') {
                 assert.equal(specimen.spectrumOrientationSaved, true);
@@ -1860,7 +1862,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             }
         }
         assert.equal(result.levelMeterAvailable, true);
-        assert.deepEqual(result.modeChoices, ['solid', 'gradient', 'note-colors']);
+        assert.deepEqual(result.modeChoices, ['solid', 'gradient', 'note-colors', 'channel-colors']);
         assert.deepEqual(result.solidGeometry, [26, 26, 30]);
         assert.equal(result.solidDefault && result.solidSaved && result.solidRestored &&
             result.fixedPalette && result.restoredPalette && result.chromaControls, true);

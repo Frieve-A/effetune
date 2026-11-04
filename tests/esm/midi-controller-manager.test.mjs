@@ -100,6 +100,42 @@ test('saved physical MIDI mappings request access during initialization', async 
   manager.dispose();
 });
 
+test('selected musical input shares MIDI access and preserves pressure/program messages and mappings', async () => {
+  const { manager, input, access, requests, stateRemoves } = harness([]);
+  const received = [], mapped = [];
+  manager.engine.onSourceEvent = (...args) => mapped.push(args);
+  await manager.initialize({});
+  assert.equal(requests(), 0);
+  await manager.setPerformanceInput('Input', message => received.push(message));
+  assert.equal(requests(), 1);
+  for (const data of [[0xcf, 42], [0xdf, 74], [0xaf, 60, 80], [0xbf, 7, 100]]) {
+    input.onmidimessage({ data, timeStamp: 12.5 });
+  }
+  assert.equal(received.length, 4);
+  assert.equal(received[0].sourceKey, 'Input');
+  assert.equal(received[0].port, input);
+  assert.equal(received[0].timeStamp, 12.5);
+  assert.equal(mapped.length, 1);
+  input.onmidimessage({ data: [0x90, 60, 100], timeStamp: 13, nativeConsumed: true });
+  assert.equal(received.length, 4);
+
+  const other = { id: 'other', name: 'Input', state: 'connected' };
+  access.inputs.set('other', other);
+  manager.handleStateChange();
+  other.onmidimessage({ data: [0x90, 60, 100], timeStamp: 14 });
+  assert.equal(received.length, 4);
+  input.state = 'disconnected';
+  manager.handleStateChange();
+  assert.equal(manager.findInput('Input'), null);
+  input.onmidimessage({ data: [0x90, 60, 100], timeStamp: 15 });
+  assert.equal(received.length, 4);
+  await manager.setPerformanceInput('', null);
+  assert.equal(input.onmidimessage, null);
+  assert.equal(other.onmidimessage, null);
+  assert.equal(stateRemoves(), 1);
+  manager.dispose();
+});
+
 test('native port keys retain a same-name slot when the renderer reconnects', async () => {
   const { manager, input } = harness([{ source: { kind: 'cc' } }]);
   input.name = 'Controller';
@@ -474,4 +510,19 @@ test('disposing the manager cancels a pending MIDI deadline', async () => {
   assert.notEqual(manager.midiAccessTimer, null);
   manager.dispose();
   assert.equal(manager.midiAccessTimer, null);
+});
+
+
+test('selecting musical input upgrades controller-only access to SysEx permission without requesting it for mappings alone', async () => {
+  const requested = [];
+  const h = harness([]);
+  const plain = { ...h.access, sysexEnabled: false }, musical = { ...h.access, sysexEnabled: true };
+  h.manager.navigator.requestMIDIAccess = async options => { requested.push(options); return options.sysex ? musical : plain; };
+  await h.manager.initialize({});
+  await h.manager.startLearn(() => {});
+  assert.deepEqual(requested, [{ sysex: false }]);
+  await h.manager.setPerformanceInput('Input', () => {});
+  assert.deepEqual(requested, [{ sysex: false }, { sysex: true }]);
+  assert.equal(h.manager.midiAccess, musical);
+  h.manager.dispose();
 });

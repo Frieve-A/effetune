@@ -360,7 +360,10 @@ test('Visualizer BPM fits inside the beat circle across sizes and preserves manu
                 const ctx = canvas.getContext('2d');
                 const fillText = ctx.fillText.bind(ctx), arc = ctx.arc.bind(ctx);
                 let circle, textBox, receive;
-                ctx.arc = (x, y, radius, ...rest) => { circle = { x, y, radius }; arc(x, y, radius, ...rest); };
+                ctx.arc = (x, y, radius, ...rest) => {
+                    if (x === width / 2 && y === height / 2) circle = { x, y, radius };
+                    arc(x, y, radius, ...rest);
+                };
                 ctx.fillText = (text, x, y, ...rest) => {
                     const metrics = ctx.measureText(text);
                     textBox = { x, y, left: metrics.actualBoundingBoxLeft, right: metrics.actualBoundingBoxRight,
@@ -369,7 +372,7 @@ test('Visualizer BPM fits inside the beat circle across sizes and preserves manu
                     fillText(text, x, y, ...rest);
                 };
                 const display = RhythmCircleTest.createAnalyzerDisplay(item, canvas,
-                    { subscribeItem(_id, callback) { receive = callback; return () => {}; } });
+                    { subscribeItem(_id, callback) { receive = callback; return () => {}; }, getFrame: () => null });
                 for (const gateOpen of [true, false]) {
                     receive(window.buildRhythmFrame({ frameCount: gateOpen ? 100 : 110, gateOpen }), {});
                     display.draw(item, 1, width / scale, undefined, scale);

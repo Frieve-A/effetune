@@ -1,6 +1,8 @@
-const { app, ipcMain, shell, systemPreferences, Menu, clipboard, screen } = require('electron');
+const { app, ipcMain, MessageChannelMain, shell, systemPreferences, Menu, clipboard, screen } = require('electron');
 const { openRemoteControlPanel } = require('./remote-control-host.cjs');
 const path = require('path');
+const { getSettingsPath, getLoginItemSettings } = require('./settings-profile.cjs');
+const { accessRendererSettings } = require('./renderer-settings.cjs');
 const fs = require('fs');
 const crypto = require('crypto');
 const constants = require('./constants');
@@ -12,6 +14,7 @@ const { registerIrLibraryIpc } = require('./ir-library-ipc');
 const { registerSfzLibraryIpc } = require('./sfz-library-ipc');
 const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
 const { readFileBytes } = require('./bounded-file-reader');
+const { readMidiWrdSidecar, readScoreCover } = require('./local-playback-ingress.cjs');
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 const { ArtworkWorkerPool } = require('./library-artwork-worker-pool.cjs');
 const { queueAutoRestart } = require('./relaunch');
@@ -24,6 +27,7 @@ const {
 // Import file handlers
 const fileHandlers = require('./file-handlers');
 const fileAccess = require('./file-access.cjs');
+const { registerPlaybackRangeReader } = require('./playback-range-reader.cjs');
 
 const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = fileAccess.SETTINGS_FILES;
 const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
@@ -277,6 +281,11 @@ function getSaveFileDenialReason(filePath) {
   if (!isInsideSettingsDir) return null;
 
   const targetParent = normalizePathForComparison(path.dirname(canonicalTarget));
+  const activeSettingsPath = normalizePathForComparison(getCanonicalWriteTarget(
+    getSettingsPath(fileHandlers.getUserDataPath())
+  ));
+  if (targetParent === activeSettingsPath &&
+      getSaveFileBasenameForComparison(canonicalTarget) === 'player-state.json') return null;
   if (targetParent !== settingsPath) return SETTINGS_DIR_SAVE_FILE_DENIAL;
 
   if (SETTINGS_DIR_SAVE_FILE_ALLOWLIST.has(getSaveFileBasenameForComparison(canonicalTarget))) {
@@ -626,7 +635,8 @@ function refreshMenu() {
 }
 
 // Register all IPC handlers
-function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
+function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktopPowerStatus,
+  alacPlaybackSource } = {}) {
   const fileIpc = {
     handle(channel, action) {
       ipcMain.handle(channel, (event, ...args) => {
@@ -635,17 +645,23 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       });
     }
   };
-  const assertFile = (filePath, mode = 'read') => fileAccess.assertPath(filePath, mode, fileHandlers.getUserDataPath());
+  const assertFile = (filePath, mode = 'read') => fileAccess.assertPath(
+    filePath, mode, fileHandlers.getUserDataPath(), getSettingsPath(fileHandlers.getUserDataPath())
+  );
+  registerPlaybackRangeReader({ fileIpc, assertFile });
   ipcMain.on('grant-dropped-file', (event, filePath) => {
-    event.returnValue = false;
     try {
       fileAccess.assertSender(event, constants.getMainWindow());
       fileAccess.grantRead(filePath);
       event.returnValue = true;
-    } catch (error) { console.error('Dropped file access failed:', error); }
+    } catch (error) {
+      console.error('Dropped file access failed:', error);
+      event.returnValue = false;
+    }
   });
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
-  registerSfzLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath,
+  registerSfzLibraryIpc({ ipcMain, MessageChannelMain, getMainWindow: () => constants.getMainWindow(),
+    getUserDataPath: fileHandlers.getUserDataPath,
     showOpenDialog: fileHandlers.showOpenDialog });
   registerMeasurementBackupIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
@@ -678,6 +694,30 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
     return {
       hidden: mainWin.isMinimized?.() === true || mainWin.isVisible?.() === false
     };
+  });
+
+  ipcMain.handle('get-background-processing-status', event => {
+    const mainWin = constants.getMainWindow();
+    if (!mainWin?.webContents || mainWin.isDestroyed?.() ||
+        event.sender !== mainWin.webContents || event.senderFrame !== mainWin.webContents.mainFrame) {
+      throw new Error('Only the main window can read background processing status.');
+    }
+    const backgroundThrottling = event.sender.getBackgroundThrottling?.();
+    return {
+      rendererBackgroundingDisabled: app.commandLine.hasSwitch('disable-renderer-backgrounding'),
+      backgroundThrottling: typeof backgroundThrottling === 'boolean' ? backgroundThrottling : null,
+      ...getDesktopPowerStatus?.()
+    };
+  });
+
+  ipcMain.on('desktop-audio-activity', (event, activity) => {
+    const mainWin = constants.getMainWindow();
+    if (!mainWin?.webContents || mainWin.isDestroyed?.() ||
+        event.sender !== mainWin.webContents || event.senderFrame !== mainWin.webContents.mainFrame) return;
+    onDesktopAudioActivity?.({
+      processingActive: activity?.processingActive === true,
+      playbackActive: activity?.playbackActive === true
+    });
   });
 
   // Get command line preset file
@@ -861,6 +901,10 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
+  fileIpc.handle('read-midi-wrd', async (event, filePath) => {
+    assertFile(filePath);
+    return readMidiWrdSidecar(filePath);
+  });
   fileIpc.handle('read-track-lyrics', async (event, request) => {
     if (!request || typeof request !== 'object' || Array.isArray(request)) {
       throw new TypeError('Track lyrics request is invalid');
@@ -895,7 +939,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
         title: metadata.title,
         artist: metadata.artist,
         album: metadata.album,
-        picture: artwork ? { data: artwork.bytes, format: artwork.mimeType } : null
+        picture: artwork ? { data: artwork.bytes, format: artwork.mimeType } : await readScoreCover(filePath)
       };
     } finally {
       await Promise.all([metadataPool.close(), artworkPool.close()]);
@@ -968,7 +1012,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   ipcMain.handle('save-audio-preferences', async (event, preferences, options = {}) => {
     try {
       const userDataPath = fileHandlers.getUserDataPath();
-      const prefsPath = path.join(userDataPath, 'audio-preferences.json');
+      const prefsPath = path.join(getSettingsPath(userDataPath), 'audio-preferences.json');
       let previousPreferences = {};
       if (fs.existsSync(prefsPath)) {
         try {
@@ -1000,10 +1044,18 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
           gaplessPlayback: nextPreferences.gaplessPlayback
         });
       }
+      if (options?.applyInPlace === 'midi-input') {
+        if (!persistWithoutReload) {
+          return { success: false, error: 'MIDI input must be saved without other audio preference changes' };
+        }
+        nextPreferences = mergeAudioPreferences(previousPreferences, {
+          midiInputDeviceKey: nextPreferences.midiInputDeviceKey
+        });
+      }
 
       // Ensure the directory exists
-      if (!fs.existsSync(userDataPath)) {
-        fs.mkdirSync(userDataPath, { recursive: true });
+      if (!fs.existsSync(path.dirname(prefsPath))) {
+        fs.mkdirSync(path.dirname(prefsPath), { recursive: true });
       }
       
       fs.writeFileSync(prefsPath, JSON.stringify(nextPreferences, null, 2));
@@ -1032,7 +1084,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   ipcMain.handle('load-audio-preferences', async () => {
     try {
       const userDataPath = fileHandlers.getUserDataPath();
-      const prefsPath = path.join(userDataPath, 'audio-preferences.json');
+      const prefsPath = path.join(getSettingsPath(userDataPath), 'audio-preferences.json');
       
       if (fs.existsSync(prefsPath)) {
         const content = fs.readFileSync(prefsPath, 'utf8');
@@ -1068,7 +1120,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       onConfigSaved?.(current);
       try {
         if (process.windowsStore !== true) {
-          app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
+          app.setLoginItemSettings(getLoginItemSettings(current.autoLaunch));
         }
       } catch (error) {
         console.error('Config saved, but failed to update the auto-launch setting:', error);
@@ -1151,11 +1203,23 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
 
   // Handle get path request
   ipcMain.handle('getPath', (event, name) => {
+    if (name === 'settings') return getSettingsPath(fileHandlers.getUserDataPath());
     // If userData path is requested, use our custom function to support portable mode
     if (name === 'userData') {
       return fileHandlers.getUserDataPath();
     }
     return require('electron').app.getPath(name);
+  });
+
+  // Named settings must not depend on Chromium's process-exclusive storage.
+  ipcMain.on('settings-storage', (event, request) => {
+    try {
+      fileAccess.assertSender(event, constants.getMainWindow());
+      event.returnValue = { ok: true, value: accessRendererSettings(fileHandlers.getUserDataPath(), request) };
+    } catch (error) {
+      console.error('Named settings storage diagnostic:', error);
+      event.returnValue = { ok: false };
+    }
   });
 
   // Handle join paths request

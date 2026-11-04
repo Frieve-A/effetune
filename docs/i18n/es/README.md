@@ -318,6 +318,17 @@ Antes de compartir una copia de seguridad, revisa la selección: puede contener 
 
 Abre **Configuración > Configuración...** para elegir el **Idioma**, ajustar **Vista al inicio:** (`Effect Pipeline (predeterminado)`, `Biblioteca musical` o `Visualizer`), configurar **Pipeline de efectos al inicio:** y seleccionar un **Tema** (`Graphite`, `Paper`, `Midnight`, `Ember` o `Mint`). Si **Vista al inicio:** es **Biblioteca musical**, también puedes elegir qué categoría de la biblioteca se abre primero. En la aplicación de escritorio, también puedes elegir **Browser** como vista al inicio.
 
+Para guardar ajustes separados en la aplicación de escritorio, indica un nombre de configuración al iniciar EffeTune. Por ejemplo, en Windows:
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+Cada nombre nuevo empieza con los ajustes predeterminados y, en los siguientes inicios, restaura sus propios dispositivos de audio, pipeline de efectos y ajustes de visualización e inicio. Pon entre comillas los nombres que contengan espacios, como `--settings-name="Living room"`. Omite la opción para usar tu configuración habitual. Las mediciones, los presets guardados y las bibliotecas de música, respuestas al impulso e instrumentos usan la misma ubicación de almacenamiento, independientemente del nombre de configuración. Antes de abrir los datos de medición en otra instancia de EffeTune, cierra la aplicación que los estaba utilizando.
+
+EffeTune puede ejecutarse al mismo tiempo con distintos nombres de configuración. **Inicio > Permitir varias instancias** también permite abrir varias ventanas con el mismo nombre; está desactivado de forma predeterminada. Después de cambiar esta opción, cierra todas las ventanas de EffeTune y vuelve a abrir la aplicación. Las ventanas con el mismo nombre de configuración comparten los ajustes guardados.
+
 En **Columnas de la cadena de efectos**, elige **Manual** para ajustar el número de columnas con los botones +/−, o **Automático** (predeterminado) para que las columnas y la lista de efectos quepan en el ancho de la ventana. El modo automático ajusta el número de columnas al cambiar el tamaño de la ventana.
 
 La edición de Microsoft Store recibe las actualizaciones a través de Microsoft Store. En **Configuración > Configuración...**, usa **Abrir las actualizaciones de Microsoft Store** para buscar actualizaciones y **Abrir la configuración de inicio de Windows** para elegir si EffeTune se inicia automáticamente. Esta edición guarda su configuración y las sesiones de Browser por separado de las demás ediciones de escritorio.
@@ -506,7 +517,8 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Spatial   | Spatial Mapper | Separa sonido Direct, Diffuse y Residual para un enrutamiento multicanal flexible | [Detalles](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Controla la anchura estéreo desde polaridad lateral invertida, pasando por mono, hasta estéreo ampliado | [Detalles](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Generador de tonos de prueba y ruido para comprobar altavoces/auriculares | [Detalles](plugins/others.md#oscillator) |
-| Others    | SFZ Note Player | Reproduce un instrumento SFZ importado a partir de las notas detectadas | [Detalles](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Note Player | Reproduce las notas detectadas con SoundFonts SF2/SF3 e instrumentos SFZ | [Detalles](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Player | Reproduce MIDI con SoundFonts SF2/SF3 o instrumentos SFZ, con 16 canales SF2/SF3 independientes | [Detalles](plugins/others.md#soundfont-player) |
 | Control   | Section | Agrupa efectos para poder omitir o restaurar una sección completa | [Detalles](plugins/control.md) |
 
 ## Información Técnica

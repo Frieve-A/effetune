@@ -87,6 +87,7 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/plugins/*/kernel.cpp")
 list(APPEND EFFETUNE_DSP_SOURCES ${EFFETUNE_PLUGIN_SOURCES})
+list(APPEND EFFETUNE_DSP_SOURCES plugins/others/sfz/sfz_effect_cost_bridge.cpp)
 list(
   APPEND EFFETUNE_DSP_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/gsm_full_rate_simulator/codec.cpp")
@@ -98,6 +99,7 @@ if(NOT EMSCRIPTEN)
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/rhythm_analyzer/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/note_spectrogram/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/sfz_note_player/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/soundfont_player/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/eq/tonal_balance_eq/calibrate_tables.cpp"
@@ -283,6 +285,10 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_level_meter_tests SOURCES test/level_meter_frame_test.cpp)
   et_add_dsp_test(
+    effetune_dsp_asset_preparation_context_tests
+    SOURCES test/asset_preparation_context_test.cpp
+    INCLUDE_DIRS core generated/cpp)
+  et_add_dsp_test(
     effetune_dsp_oscilloscope_tests SOURCES test/oscilloscope_frame_test.cpp)
   et_add_dsp_test(
     effetune_dsp_analog_meter_tests
@@ -335,6 +341,91 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_sfz_note_player_tests
     SOURCES plugins/others/sfz_note_player/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_soundfont_player_tests
+    SOURCES plugins/others/soundfont_player/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sf2_profile_tests
+    SOURCES plugins/others/sfz/sf2_profile_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_modulation_tests
+    SOURCES plugins/others/sfz/sfz_modulation_test.cpp
+    INCLUDE_DIRS generated/cpp)
+  et_add_dsp_test(
+    effetune_dsp_midi_transport_tests
+    SOURCES plugins/others/sfz/midi_transport_map_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_sample_resampling_tests
+    SOURCES plugins/others/sfz/sample_resampling_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_filter_tests
+    SOURCES plugins/others/sfz/filters_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_pitch_tests
+    SOURCES plugins/others/sfz/sfz_pitch_test.cpp
+    INCLUDE_DIRS generated/cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_oscillator_tests
+    SOURCES plugins/others/sfz/sfz_oscillator_test.cpp
+    INCLUDE_DIRS generated/cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_cycle_reader_tests
+    SOURCES plugins/others/sfz/sfz_cycle_reader_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_keyswitch_tests
+    SOURCES plugins/others/soundfont_player/keyswitch_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_playback_tests
+    SOURCES plugins/others/sfz/sfz_playback_test.cpp
+    INCLUDE_DIRS core generated/cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_amplifier_tests
+    SOURCES plugins/others/sfz/sfz_amplifier_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_conditions_tests
+    SOURCES plugins/others/sfz/sfz_conditions_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_sfz_preparation_tests
+    SOURCES plugins/others/sfz/modulation_bank_test.cpp
+    INCLUDE_DIRS core generated/cpp)
+  et_add_dsp_test(
+    effetune_dsp_sf2_effects_tests
+    SOURCES plugins/others/sfz/sf2_effects_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_effects_tests
+    SOURCES plugins/others/sfz/sfz_effects_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_processing_cost_tests
+    SOURCES plugins/others/sfz/sfz_processing_cost_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_forecast_admission_tests
+    SOURCES plugins/others/sfz/forecast_admission_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_main_integration_tests
+    SOURCES plugins/others/sfz/sfz_main_integration_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_sfz_effect_bank_tests
+    SOURCES plugins/others/sfz/sfz_effect_bank_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

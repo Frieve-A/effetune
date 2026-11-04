@@ -332,6 +332,49 @@ test('loading a Blob awaits native import and retains its sidecar while reusing 
     });
 });
 
+test('Android native playback rejects DSD before handing a source to the platform decoder', async () => {
+    await withGlobals({ window: {} }, async () => {
+        const { context, requests } = playerFixture();
+        for (const track of [
+            { name: 'song.dsf', uri: 'content://music/song.dsf' },
+            { name: 'other.DFF', uri: 'content://music/other.DFF' },
+            { name: 'Album title', uri: 'https://example.test/music/song.dsf?token=abc' },
+            { name: 'Album title', url: 'https://example.test/music/song.DFF?token=abc' }
+        ]) {
+            await assert.rejects(context.resolveNativeSource(track),
+                error => error?.code === 'DSD_NATIVE_UNSUPPORTED' && error.localPlaybackSourceFailure === true);
+        }
+        assert.deepEqual(requests, []);
+        context.disconnect();
+    });
+});
+
+test('Android native playback rejects scores before platform delivery and reports the supported players', async () => {
+    const errors = [];
+    await withGlobals({ window: { uiManager: { setError: (...args) => errors.push(args) } } }, async () => {
+        const { context, requests } = playerFixture();
+        for (const extension of ['mid', 'MIDI', 'kar', 'musicxml', 'xml', 'mxl']) {
+            for (const track of [
+                { name: `song.${extension}`, uri: 'content://music/123' },
+                { name: 'Album title', uri: `https://example.test/song.${extension}?token=abc` },
+                { name: 'Album title', url: `https://example.test/song.${extension}` },
+                { file: { name: `song.${extension}` } }
+            ]) {
+                await assert.rejects(context.resolveNativeSource(track), error => {
+                    assert.equal(error.code, 'MIDI_NATIVE_UNSUPPORTED');
+                    assert.equal(error.localPlaybackSourceFailure, true);
+                    context.reportPlaybackSourceFailure(error);
+                    return true;
+                });
+            }
+        }
+        assert.deepEqual(requests, []);
+        assert.equal(errors.length, 24);
+        assert.ok(errors.every(args => args[0] === 'midi.error.nativeUnsupported' && args[1] === true));
+        context.disconnect();
+    });
+});
+
 test('native insertion resolves a lazy sequence in bounded pages at the requested ordinals', async () => {
     await withGlobals({ window: {} }, async () => {
         const { context, requests } = playerFixture();
@@ -510,4 +553,29 @@ test('Android remote renderer lifecycle preserves publication payloads and relea
     ]);
     assert.equal(requests[2].payload, state);
     assert.equal(requests[3].payload, response);
+});
+
+
+test('Android instrument transfers preserve configured native memory budgets and execution channels', async () => {
+    await withGlobals({ window: { appConfig: { sfzMaxSizeMiB: 64 } } }, async () => {
+        class SFZNotePlayerPlugin extends VolumePlugin {}
+        class SoundFontPlayerPlugin extends VolumePlugin {}
+        const requests = [];
+        const assets = new AndroidAssets({ async request(command, payload) {
+            requests.push({ command, payload });
+        } });
+        const plugins = [new SFZNotePlayerPlugin(), new SoundFontPlayerPlugin(), new VolumePlugin()];
+        plugins.forEach((plugin, index) => {
+            plugin.id = index + 1;
+            plugin.assets.set(0, { payload: new ArrayBuffer(4), footprintBytes: 4, processingChannels: 1 });
+        });
+        plugins[0].channel = 'L';
+        plugins[1].channel = 'A';
+        await assets.transfer(plugins);
+        const begin = requests.filter(item => item.command === 'pipeline.asset.begin').map(item => item.payload);
+        assert.deepEqual(begin.map(item => [item.footprintBytes, item.processingChannels]),
+            [[64 * 1024 * 1024, 1], [64 * 1024 * 1024, 2], [4, 1]]);
+        assert.equal(plugins[1].assets.get(0).footprintBytes, 4, 'Native admission must not mutate the renderer descriptor');
+        assert.ok(plugins.every(plugin => plugin.assetStates.length === 1));
+    });
 });

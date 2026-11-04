@@ -1976,3 +1976,23 @@ function completeWebMetadata(claim, title) {
     updateLastKnownGood: true, updateDerivedData: true
   });
 }
+
+
+test('Web score artwork claims accept only the supported sibling JPEG files', async t => {
+  await openWebTestCatalog(t, 'effetune-web-score-cover-');
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [createWebTestTrack('score', 'Album/song.kar', {
+    fileIdentity: 'score-file', size: 20, mtimeMs: 1 })] });
+  dispatchWebSqliteCommand('beginArtworkUtilitySession', { utilitySessionId: 'score-cover-test' });
+  const source = dispatchWebSqliteCommand('getArtworkSource', { trackUid: 'score' });
+  const claimSource = { ...source };
+  delete claimSource.trackSourceKind;
+  delete claimSource.cueRelativePath;
+  for (const [name, allowed] of [['Album/cover.jpg', true], ['Album/FOLDER.JPG', true],
+    ['Other/cover.jpg', false], ['Album/front.jpg', false], ['Album/cover.png', false]]) {
+    const result = dispatchWebSqliteCommand('claimArtworkSource', { claim: { ...claimSource,
+      sourceKind: 'external-file', canonicalSourceIdentity: name,
+      externalArtworkStat: { fileIdentity: name, size: 2, mtimeMs: 3 } } });
+    assert.equal(Boolean(result.claim), allowed, name);
+  }
+});

@@ -16,6 +16,7 @@ const { AvTransportPlayers } = require('./network-music-av-player.cjs');
 const { SubsonicSource } = require('./subsonic-source.cjs');
 
 const MAX_QUEUE = 4096;
+const RETRYABLE_CONNECTION_ERRORS = new Set(['ETIMEDOUT', 'ECONNREFUSED']);
 const METHODS = Object.freeze({ GetState: 'getState', Discover: 'discover', Browse: 'browse', GetPlayerState: 'getPlayerState', PlayerCommand: 'playerCommand', ResolveTrack: 'resolveTrack', SetSharing: 'setSharing', Configure: 'configure', PlaySelection: 'playSelection', PlayFiles: 'playFiles' });
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const number = (input, max = 0xffffffff) => { const value = Number(input); if (!Number.isSafeInteger(value) || value < 0 || value > max) throw fail('invalidRequest', 'Choose a valid playback value.'); return value; };
@@ -60,7 +61,8 @@ class NetworkMusicHost extends EventEmitter {
       fileAccess.assertPath(source.path, 'read');
       return source;
     }, onDiagnostic });
-    discovery.on('diagnostic', onDiagnostic);
+    discovery.on('diagnostic', error => onDiagnostic(error, { operation: 'discovery' }));
+    discovery.on('search', () => { void this.probeLibraries(); });
     discovery.on('change', () => { for (const id of this.avPlayers.owners.keys()) if (!this.discovery.devices.get(id)?.available) this.avPlayers.owners.delete(id); this.emitState(); void this.probeLibraries(); });
   }
   async start() {
@@ -134,25 +136,29 @@ class NetworkMusicHost extends EventEmitter {
   }
   async probeLibraries() {
     for (const device of this.discovery.devices.values()) {
-      if (!device.available || device.libraryProbed || this.probing.has(device.id) || !service(device, 'ContentDirectory')) continue;
+      if (!device.available || device.libraryProbed || device.libraryProbeRetryAt > Date.now() || this.probing.has(device.id) || !service(device, 'ContentDirectory')) continue;
       this.probing.add(device.id);
+      let retry = false;
       try {
         const endpoint = service(device, 'ContentDirectory');
         const results = await Promise.allSettled([
           this.invoke(endpoint, 'GetSearchCapabilities'), this.invoke(endpoint, 'GetSortCapabilities'),
           this.invoke(endpoint, 'Browse', { ObjectID: '0', BrowseFlag: 'BrowseDirectChildren', Filter: '*', StartingIndex: 0, RequestedCount: 100, SortCriteria: '' })
         ]);
-        for (const result of results) if (result.status === 'rejected') this.onDiagnostic(result.reason);
-        device.searchCaps = results[0].status === 'fulfilled' ? (results[0].value.SearchCaps || '').split(',').map(item => item.trim()).filter(Boolean) : [];
-        device.sortCaps = results[1].status === 'fulfilled' ? (results[1].value.SortCaps || '').split(',').map(item => item.trim()).filter(Boolean) : [];
+        retry = results.some(result => result.status === 'rejected' && RETRYABLE_CONNECTION_ERRORS.has(result.reason.code));
+        for (const result of results) if (result.status === 'rejected') this.onDiagnostic(result.reason, { operation: 'probeLibraries', deviceName: device.name, deviceAddress: endpoint.control });
+        device.searchCaps = results[0].status === 'fulfilled' ? (results[0].value.SearchCaps || '').split(',').map(item => item.trim()).filter(Boolean) : device.searchCaps || [];
+        device.sortCaps = results[1].status === 'fulfilled' ? (results[1].value.SortCaps || '').split(',').map(item => item.trim()).filter(Boolean) : device.sortCaps || [];
         device.searchSupported = device.searchCaps.includes('*') || ['dc:title', 'upnp:artist', 'upnp:album', 'upnp:genre'].some(property => device.searchCaps.includes(property));
-        const roots = results[2].status === 'fulfilled' ? parseDidl(results[2].value.Result) : [];
-        device.browseViews = VIEWS.every(view => roots.filter(item => item.isContainer && item.viewId === view.id).length === 1)
-          ? VIEWS.map(view => ({ id: view.id, objectId: roots.find(item => item.viewId === view.id).id })) : [];
-        device.catalogSearch = device.browseViews.length === VIEWS.length && device.browseViews.every(view => roots.find(item => item.id === view.objectId).catalogSearch);
-        device.searchSupported ||= device.catalogSearch;
+        if (results[2].status === 'fulfilled') {
+          const roots = parseDidl(results[2].value.Result);
+          device.browseViews = VIEWS.every(view => roots.filter(item => item.isContainer && item.viewId === view.id).length === 1)
+            ? VIEWS.map(view => ({ id: view.id, objectId: roots.find(item => item.viewId === view.id).id })) : [];
+          device.catalogSearch = device.browseViews.length === VIEWS.length && device.browseViews.every(view => roots.find(item => item.id === view.objectId).catalogSearch);
+        }
+        device.searchSupported ||= device.catalogSearch === true;
       } catch (error) { this.onDiagnostic(error); }
-      finally { device.libraryProbed = true; this.probing.delete(device.id); }
+      finally { device.libraryProbed = !retry; device.libraryProbeRetryAt = retry ? Date.now() + 30000 : 0; this.probing.delete(device.id); }
       this.emitState();
     }
   }
@@ -674,6 +680,17 @@ function registerNetworkMusicIpc({ ipcMain, host, getMainWindow }) {
   return () => { for (const channel of registrations) ipcMain.removeHandler(channel); host.removeListener('state', listener); };
 }
 function publicMessage(error) {
+  if (error.code === 'ETIMEDOUT') return 'The music device did not respond. Check that it is on and connected to the same network, then try again.';
   return ['invalidRequest', 'unavailable', 'unsupported', 'trackUnavailable', 'unsupportedFormat', 'queueTooLarge', 'queueChanged', 'invalidSelection', 'queueFull', 'invalidSharing', 'sharingRequired', 'folderNotShared', 'cueUnsupported', 'selectionChanged', 'fileAccessRequired', 'catalogUnavailable'].includes(error.code) ? error.message : 'The music device could not complete the request. Check its connection and try again.';
 }
-module.exports = { NetworkMusicHost, registerNetworkMusicIpc, supportsProtocol, routeAddress, MAX_QUEUE };
+function logNetworkMusicDiagnostic(error, context) {
+  if (['probeLibraries', 'discovery'].includes(context?.operation) && RETRYABLE_CONNECTION_ERRORS.has(error.code)) {
+    console.warn('Network music discovery: connection unavailable', {
+      address: context.deviceAddress || error.networkMusicAddress, reason: error.code,
+      ...(context.deviceName ? { device: context.deviceName } : {}), ...(error.upnpAction ? { action: error.upnpAction } : {})
+    });
+    return;
+  }
+  console.error('Network music diagnostic:', error);
+}
+module.exports = { NetworkMusicHost, registerNetworkMusicIpc, supportsProtocol, routeAddress, MAX_QUEUE, logNetworkMusicDiagnostic };

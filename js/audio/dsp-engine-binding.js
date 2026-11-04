@@ -1,3 +1,7 @@
+const MIDI_EVENT_BYTES = 24;
+const SFZ_STREAM_REQUEST_CAPACITY = 4096;
+const SFZ_STREAM_REQUEST_BYTES = 24;
+const SFZ_STREAM_PCM_BYTES = 4096 * 2 * 4;
 const REQUIRED_FUNCTION_EXPORTS = [
     'malloc',
     'free',
@@ -22,6 +26,8 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_set_tap',
     'et_instance_set_analysis_source',
     'et_instance_set_seed',
+    'et_instance_set_midi_channel_mix',
+    'et_instance_stream_readiness',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
     'et_instance_asset_begin',
@@ -166,6 +172,15 @@ export function createDspImports({
 
     return {
         wasi_snapshot_preview1: {
+            clock_time_get(clockId, _precision, resultPtr) {
+                // NKSP profiling uses system_clock; musical clocks remain render-frame based.
+                if (clockId !== 0) return 28;
+                const memory = getMemory();
+                if (!memory?.buffer || !Number.isInteger(resultPtr) || resultPtr < 0 ||
+                    resultPtr > memory.buffer.byteLength - 8) return 21;
+                new DataView(memory.buffer).setBigUint64(resultPtr, BigInt(Date.now()) * 1000000n, true);
+                return WASI_ERRNO_SUCCESS;
+            },
             proc_exit(code) {
                 throw new DspBindingError(`WASM requested proc_exit(${code})`);
             },
@@ -209,10 +224,50 @@ export class DspEngineBinding {
         this._telemetryStagingPtr = 0;
         this._telemetryDroppedPtr = 0;
         this._telemetryCapacity = 0;
+        this._midiEventsPtr = 0;
+        this._midiTransportPtr = 0;
+        this._midiTransportPoints = null;
+        this._midiTransportInstances = new Set();
+        this._sfzStreamPtr = 0;
 
         this._validateExports();
         this.memory = this.exports.memory;
         this._refreshViews(true);
+    }
+
+    estimateSfzEffectPreparation(control, context, formatTag = 1, payloadBytes = control.byteLength) {
+        if (this.engine || this.prepared) throw new DspBindingError('SFZ cost queries require a separate CONTROL binding');
+        const estimate = this.exports.et_sample_player_preparation_bytes;
+        if (typeof estimate !== 'function') throw new DspBindingError('The current DSP module cannot size instrument effects');
+        const playerKind = context.playerKind === undefined ? 0 : context.playerKind;
+        if (playerKind !== 0 && playerKind !== 1) throw new DspBindingError('Invalid instrument player kind');
+        const bytes = toUint8View(control, 'Sample player preparation metadata');
+        if (!bytes.byteLength || bytes.byteLength > 0xfffffff0 || !Number.isInteger(payloadBytes) ||
+            payloadBytes < bytes.byteLength || payloadBytes > 0xffffffff) throw new DspBindingError('Invalid sample player preparation metadata');
+        const wasPreparing = this._preparing;
+        this._preparing = true;
+        let pointer = 0;
+        try {
+            const resultOffset = Math.ceil(bytes.byteLength / 8) * 8;
+            pointer = this.exports.malloc(resultOffset + 8) >>> 0;
+            this._refreshViews();
+            if (!pointer) throw new DspBindingError('Unable to allocate SFZ cost-query storage');
+            this._assertRange(pointer, resultOffset + 8, 'Sample player preparation metadata');
+            new Uint8Array(this.memory.buffer, pointer, bytes.byteLength).set(bytes);
+            const resultPointer = pointer + resultOffset;
+            const status = estimate(pointer, bytes.byteLength, payloadBytes, formatTag,
+                context.sampleRate, context.processingChannels, context.maxFrames, context.minimumPhysicalBpm, resultPointer, playerKind);
+            this._refreshViews();
+            if (status !== 0) throw new DspBindingError('Instrument processing preparation geometry is invalid');
+            const result = new DataView(this.memory.buffer, resultPointer, 8);
+            const additionalBytes = result.getUint32(0, true) + result.getUint32(4, true) * 0x100000000;
+            if (!Number.isSafeInteger(additionalBytes)) throw new DspBindingError('Instrument preparation memory exceeds the supported range');
+            return additionalBytes;
+        } finally {
+            if (pointer) this.exports.free(pointer);
+            this._refreshViews();
+            this._preparing = wasPreparing;
+        }
     }
 
     _validateExports() {
@@ -440,6 +495,14 @@ export class DspEngineBinding {
 
     destroyEngine() {
         if (!this.engine) return;
+        if (this._midiTransportPtr) this.exports.free(this._midiTransportPtr);
+        this._midiTransportPtr = 0;
+        this._midiTransportPoints = null;
+        this._midiTransportInstances.clear();
+        if (this._midiEventsPtr) this.exports.free(this._midiEventsPtr);
+        this._midiEventsPtr = 0;
+        if (this._sfzStreamPtr) this.exports.free(this._sfzStreamPtr);
+        this._sfzStreamPtr = 0;
         const engine = this.engine;
         this.engine = 0;
         this.prepared = false;
@@ -470,6 +533,12 @@ export class DspEngineBinding {
             );
             this._refreshViews();
             if (status === ET_OK) {
+                if (this.exports.et_instance_set_midi_events && !this._midiEventsPtr) {
+                    this._midiEventsPtr = this.exports.malloc(4096 * MIDI_EVENT_BYTES) >>> 0;
+                    this._refreshViews();
+                    if (!this._midiEventsPtr) throw new DspBindingError('MIDI event storage could not be prepared');
+                    this._assertRange(this._midiEventsPtr, 4096 * MIDI_EVENT_BYTES, 'MIDI event storage');
+                }
                 this.prepared = true;
                 this._maxChannels = maxChannels;
                 this._maxFrames = maxFrames;
@@ -508,6 +577,18 @@ export class DspEngineBinding {
         let instanceId = 0;
         try {
             instanceId = this.exports.et_instance_create(this.engine, namePtr) >>> 0;
+            if (instanceId && typeName === 'SoundFontPlayerPlugin') {
+                this._midiTransportInstances.add(instanceId);
+                if (this._midiTransportPoints && this.exports.et_instance_set_midi_transport_map) {
+                    const result = this.exports.et_instance_set_midi_transport_map(this.engine, instanceId,
+                        this._midiTransportPtr, this._midiTransportPoints.length);
+                    if (result !== ET_OK) {
+                        this._midiTransportInstances.delete(instanceId);
+                        this.exports.et_instance_destroy(this.engine, instanceId);
+                        instanceId = 0;
+                    }
+                }
+            }
         } finally {
             // Kernel prepare may grow memory at this control-rate lifecycle boundary.
             this._refreshViews();
@@ -519,6 +600,7 @@ export class DspEngineBinding {
 
     destroyInstance(instanceId) {
         if (!this.engine || !instanceId) return;
+        this._midiTransportInstances.delete(instanceId);
         this.exports.et_instance_destroy(this.engine, instanceId);
     }
 
@@ -555,6 +637,287 @@ export class DspEngineBinding {
             seedLow >>> 0,
             seedHigh >>> 0
         );
+    }
+
+    instanceSetMidiEvents(instanceId, events, generation, flags = 0, count = events.length) {
+        if (!this.engine || !this.prepared || !this._midiEventsPtr ||
+            !this.exports.et_instance_set_midi_events) return ET_ERR_STATE;
+        const ptr = this._writeMidiEvents(events, count);
+        return this.exports.et_instance_set_midi_events(this.engine, instanceId, ptr, count,
+            generation >>> 0, flags >>> 0);
+    }
+
+    _writeMidiEvents(events, count, capacity = 4096, maxOffsetFrames = this._maxFrames) {
+        if (!Number.isInteger(count) || count < 0 || count > events.length || count > capacity) throw new DspBindingError('MIDI event block exceeds its prepared capacity');
+        this._refreshViews();
+        const ptr = this._midiEventsPtr;
+        for (let index = 0; index < count; index++) {
+            const event = events[index];
+            const offset = event.offsetFrames ?? 0;
+            const renderFrame = event.renderFrame ?? 0;
+            const reattackMarker = event.status === 0 && (event.flags === 4 || event.flags === 16 || event.flags === 32 || event.flags === 128) &&
+                event.data1 === 0 && (event.data2 ?? 0) === 0 && (event.noteId ?? 0) === 0;
+            const systemReset = event.status === 0 && event.flags === 8192 && [1, 2, 3].includes(event.noteId) &&
+                event.data1 === 0 && (event.data2 ?? 0) === 0 && renderFrame === 0;
+            const drumMode = event.status === 0 && event.flags === 16384 && event.data1 >= 0 && event.data1 < 16 &&
+                event.data2 >= 0 && event.data2 <= 3 && (event.noteId ?? 0) === 0 && renderFrame === 0;
+            if (!Number.isInteger(offset) || offset < 0 || offset >= maxOffsetFrames ||
+                !Number.isSafeInteger(renderFrame) || renderFrame < 0 ||
+                (!reattackMarker && !systemReset && !drumMode && (!Number.isInteger(event.status) || event.status < 0x80 || event.status > 0xef)) ||
+                !Number.isInteger(event.data1) || event.data1 < 0 || event.data1 > 127 ||
+                !Number.isInteger(event.data2 ?? 0) || (event.data2 ?? 0) < 0 || (event.data2 ?? 0) > 127) {
+                throw new DspBindingError('MIDI event is outside the prepared event contract');
+            }
+            const address = ptr + index * MIDI_EVENT_BYTES;
+            this.dataView.setUint32(address, offset, true);
+            this.dataView.setUint32(address + 4,
+                event.status | event.data1 << 8 | (event.data2 ?? 0) << 16, true);
+            this.dataView.setUint32(address + 8, event.noteId >>> 0, true);
+            this.dataView.setUint32(address + 12, event.flags >>> 0, true);
+            this.dataView.setUint32(address + 16, renderFrame >>> 0, true);
+            this.dataView.setUint32(address + 20, Math.floor(renderFrame / 0x100000000), true);
+        }
+        return ptr;
+    }
+
+    // Control-only: retain one upload for future instances and let each native
+    // instrument own its immutable copy. Render calls update only the mapping.
+    prepareMidiTransport(points = []) {
+        if (!this.engine || !this.exports.et_instance_set_midi_transport_map) return;
+        if (this._midiTransportPoints === points) return;
+        if (points.length > 250002) throw new DspBindingError('MIDI musical map exceeds its prepared capacity');
+        const preparing = this._preparing;
+        this._preparing = true;
+        let ptr = 0;
+        try {
+            if (points.length) {
+                ptr = this.exports.malloc(points.length * 40) >>> 0;
+                this._refreshViews();
+                if (!ptr) throw new DspBindingError('MIDI musical map storage could not be prepared');
+                this._assertRange(ptr, points.length * 40, 'MIDI musical map');
+                for (let index = 0; index < points.length; index++) {
+                    const point = points[index], address = ptr + index * 40;
+                    this.dataView.setFloat64(address, point.seconds, true);
+                    this.dataView.setFloat64(address + 8, point.ppq, true);
+                    this.dataView.setFloat64(address + 16, point.barStartPpq, true);
+                    this.dataView.setFloat64(address + 24, point.bpm, true);
+                    this.dataView.setUint32(address + 32, point.numerator, true);
+                    this.dataView.setUint32(address + 36, point.denominator, true);
+                }
+            }
+            for (const id of this._midiTransportInstances) {
+                if (this.exports.et_instance_set_midi_transport_map(this.engine, id, ptr, points.length) !== ET_OK) {
+                    throw new DspBindingError('MIDI musical map could not be installed');
+                }
+            }
+            if (this._midiTransportPtr) this.exports.free(this._midiTransportPtr);
+            this._midiTransportPtr = ptr;
+            this._midiTransportPoints = points;
+            ptr = 0;
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    instanceSetMidiTransport(instanceId, frame, seconds, speed, duration, flags = 0) {
+        if (!this.engine || !this.exports.et_instance_set_midi_transport) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(frame) || frame < 0 || !Number.isFinite(seconds) || seconds < 0 ||
+            !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(duration) || duration < 0 ||
+            !Number.isInteger(flags) || flags < 0 || flags > 7) {
+            throw new DspBindingError('Invalid MIDI musical transport mapping');
+        }
+        return this.exports.et_instance_set_midi_transport(this.engine, instanceId, frame >>> 0,
+            Math.floor(frame / 0x100000000), seconds, speed, duration, flags);
+    }
+
+    instanceSetMidiClock(instanceId, frame, generation, flags = 0) {
+        if (!this.engine || !this.exports.et_instance_set_midi_clock) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(frame) || frame < 0) throw new DspBindingError('Invalid MIDI render clock');
+        return this.exports.et_instance_set_midi_clock(this.engine, instanceId, frame >>> 0,
+            Math.floor(frame / 0x100000000), generation >>> 0, flags >>> 0);
+    }
+
+    hasSfzSampleStreaming() {
+        return typeof this.exports.et_sfz_stream_capability === 'function' &&
+            this.exports.et_sfz_stream_capability() === 1 &&
+            ['et_instance_stream_configure', 'et_instance_stream_take_requests', 'et_instance_stream_publish', 'et_instance_stream_prefetch']
+                .every(name => typeof this.exports[name] === 'function');
+    }
+
+    configureSfzSampleStream(instanceId, generation) {
+        if (!this.engine || !this.prepared || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(generation) || generation < 1) throw new DspBindingError('Invalid sample cache generation');
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            const bytes = SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES + 4 + SFZ_STREAM_PCM_BYTES;
+            if (!this._sfzStreamPtr) this._sfzStreamPtr = this.exports.malloc(bytes) >>> 0;
+            this._refreshViews();
+            if (!this._sfzStreamPtr) throw new DspBindingError('Sample stream storage could not be prepared');
+            this._assertRange(this._sfzStreamPtr, bytes, 'Sample stream storage');
+            return this.exports.et_instance_stream_configure(this.engine, instanceId,
+                generation >>> 0, Math.floor(generation / 0x100000000));
+        } finally { this._refreshViews(); this._preparing = preparing; }
+    }
+
+    // Control operations between render calls. The native cache and staging
+    // buffers are allocated by configure, never by a sample request or publish.
+    prefetchSfzSampleStream(instanceId, events, generation, windowFrames, flags = 0, count = events.length) {
+        if (!this.engine || !this.prepared || !this._midiEventsPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isInteger(generation) || generation < 0 || generation > 0xffffffff ||
+            !Number.isInteger(windowFrames) || windowFrames < 1 || windowFrames > this._sampleRate * 2 ||
+            ![0, 1, 2, 4, 5, 6, 13].includes(flags) || (flags === 2 || flags === 6) && count !== 0) throw new DspBindingError('Invalid sample prefetch window');
+        const ptr = this._writeMidiEvents(events, count, 256, windowFrames);
+        return this.exports.et_instance_stream_prefetch(this.engine, instanceId, ptr, count, generation, windowFrames, flags);
+    }
+
+    // CONTROL-only snapshot. Reuse the configured request scratch between
+    // operations; no audio-block allocation or cache traversal is introduced.
+    instanceStreamReadiness(instanceId) {
+        if (!this.engine || !this._sfzStreamPtr) return null;
+        const status = this.exports.et_instance_stream_readiness(this.engine, instanceId, this._sfzStreamPtr);
+        this._refreshViews();
+        if (status !== ET_OK) throw new DspBindingError('Sample readiness could not be observed');
+        const pointer = this._sfzStreamPtr;
+        const value = { generation: this.dataView.getUint32(pointer, true),
+            scope: this.dataView.getUint32(pointer + 4, true),
+            admittedFrames: this.dataView.getUint32(pointer + 8, true),
+            readyAheadFrames: this.dataView.getUint32(pointer + 12, true),
+            plannedPages: this.dataView.getUint32(pointer + 16, true),
+            pendingPages: this.dataView.getUint32(pointer + 20, true) };
+        if (value.scope > 3 || value.readyAheadFrames > value.admittedFrames || value.pendingPages > value.plannedPages)
+            throw new DspBindingError('Invalid sample readiness snapshot');
+        return value;
+    }
+
+    takeSfzSampleRequests(instanceId) {
+        if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) throw new DspBindingError('Sample streaming is unavailable');
+        this._refreshViews();
+        const countPtr = this._sfzStreamPtr + SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES;
+        this.dataView.setUint32(countPtr, 0, true);
+        const status = this.exports.et_instance_stream_take_requests(this.engine, instanceId,
+            this._sfzStreamPtr, SFZ_STREAM_REQUEST_CAPACITY, countPtr);
+        if (status !== ET_OK) throw new DspBindingError(`Sample requests failed: ${status}`);
+        const count = this.dataView.getUint32(countPtr, true);
+        if (count > SFZ_STREAM_REQUEST_CAPACITY) throw new DspBindingError('Invalid sample request count');
+        const requests = [];
+        for (let index = 0; index < count; index++) {
+            const ptr = this._sfzStreamPtr + index * SFZ_STREAM_REQUEST_BYTES;
+            const generation = this.dataView.getUint32(ptr, true) + this.dataView.getUint32(ptr + 4, true) * 0x100000000;
+            const pageIndex = this.dataView.getUint32(ptr + 8, true) + this.dataView.getUint32(ptr + 12, true) * 0x100000000;
+            if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isSafeInteger(pageIndex) || this.dataView.getUint32(ptr + 20, true)) {
+                throw new DspBindingError('Invalid sample request');
+            }
+            requests.push({ generation, pageIndex, sample: this.dataView.getUint32(ptr + 16, true) });
+        }
+        return requests;
+    }
+
+    publishSfzSamplePage(instanceId, { generation, sample, pageIndex, pcm, frames, channels, resident = false }) {
+        if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 10000 ||
+            !Number.isSafeInteger(pageIndex) || pageIndex < 0 || !Number.isInteger(frames) || frames < 1 || frames > 4096 ||
+            (channels !== 1 && channels !== 2) || !(pcm instanceof Float32Array) || pcm.length !== frames * channels) {
+            throw new DspBindingError('Invalid sample page');
+        }
+        this._refreshViews();
+        const ptr = this._sfzStreamPtr + SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES + 4;
+        this.u8.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), ptr);
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_instance_stream_publish(this.engine, instanceId, generation >>> 0,
+                Math.floor(generation / 0x100000000), sample, pageIndex >>> 0, Math.floor(pageIndex / 0x100000000),
+                ptr, frames, channels, resident ? 1 : 0);
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    instanceMidiState(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_state) return 0;
+        return this.exports.et_instance_midi_state(this.engine, instanceId) >>> 0;
+    }
+
+    instanceMidiClock(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_clock_low ||
+            !this.exports.et_instance_midi_clock_high || !this.exports.et_instance_midi_generation) {
+            throw new DspBindingError('MIDI checkpoint clock is unavailable');
+        }
+        const low = this.exports.et_instance_midi_clock_low(this.engine, instanceId) >>> 0;
+        const high = this.exports.et_instance_midi_clock_high(this.engine, instanceId) >>> 0;
+        const frame = high * 0x100000000 + low;
+        if (!Number.isSafeInteger(frame)) throw new DspBindingError('MIDI checkpoint clock is invalid');
+        return { frame, generation: this.exports.et_instance_midi_generation(this.engine, instanceId) >>> 0 };
+    }
+
+    _withMidiCheckpointBuffer(size, action) {
+        if (!Number.isInteger(size) || size < 1 || size > 32 * 1024 * 1024) {
+            throw new DspBindingError('MIDI checkpoint size is invalid');
+        }
+        const preparing = this._preparing;
+        let ptr = 0;
+        this._preparing = true;
+        try {
+            ptr = this.exports.malloc(size) >>> 0;
+            this._refreshViews();
+            if (!ptr) throw new DspBindingError('MIDI checkpoint storage is unavailable');
+            this._assertRange(ptr, size, 'MIDI checkpoint storage');
+            this._preparing = preparing;
+            const result = action(ptr);
+            this._refreshViews();
+            return result;
+        } finally {
+            this._preparing = preparing;
+            if (ptr) this.exports.free(ptr);
+        }
+    }
+
+    instanceWriteMidiCheckpoint(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_checkpoint_size ||
+            !this.exports.et_instance_write_midi_checkpoint) throw new DspBindingError('MIDI checkpoint capture is unavailable');
+        const size = this.exports.et_instance_midi_checkpoint_size(this.engine, instanceId) >>> 0;
+        return this._withMidiCheckpointBuffer(size, ptr => {
+            if (this.exports.et_instance_write_midi_checkpoint(this.engine, instanceId, ptr, size) !== 0) {
+                throw new DspBindingError('MIDI checkpoint capture failed');
+            }
+            return new Uint8Array(this.memory.buffer, ptr, size).slice();
+        });
+    }
+
+    instanceReadMidiCheckpoint(instanceId, checkpoint) {
+        if (!this.engine || !this.exports.et_instance_read_midi_checkpoint) {
+            throw new DspBindingError('MIDI checkpoint restore is unavailable');
+        }
+        const bytes = toUint8View(checkpoint, 'MIDI checkpoint');
+        return this._withMidiCheckpointBuffer(bytes.byteLength, ptr => {
+            new Uint8Array(this.memory.buffer, ptr, bytes.byteLength).set(bytes);
+            return this.exports.et_instance_read_midi_checkpoint(this.engine, instanceId, ptr, bytes.byteLength);
+        });
+    }
+
+    instanceSetMidiChannelMix(instanceId, channel, action) {
+        if (!this.engine || !this.exports.et_instance_set_midi_channel_mix) return ET_ERR_STATE;
+        if (!Number.isInteger(channel) || channel < 0 || channel > 15 ||
+            !Number.isInteger(action) || action < 0 || action > 3)
+            throw new DspBindingError('Invalid MIDI channel mix');
+        return this.exports.et_instance_set_midi_channel_mix(this.engine, instanceId, channel, action);
+    }
+
+    instanceSetMidiMetering(instanceId, enabled) {
+        if (!this.engine || typeof this.exports.et_instance_set_midi_metering !== 'function') return ET_ERR_STATE;
+        if (!Number.isInteger(instanceId) || instanceId < 1 || typeof enabled !== 'boolean')
+            throw new DspBindingError('Invalid MIDI metering request');
+        return this.exports.et_instance_set_midi_metering(this.engine, instanceId, enabled ? 1 : 0);
+    }
+
+    instanceSetMidiGain(instanceId, gain) {
+        if (!this.engine || !this.exports.et_instance_set_midi_gain) return ET_ERR_STATE;
+        if (!Number.isFinite(gain) || gain < 0 || gain > 1) throw new DspBindingError('Invalid MIDI song gain');
+        return this.exports.et_instance_set_midi_gain(this.engine, instanceId, gain);
     }
 
     instanceSetParams(instanceId, packed, paramsHash, offsetFrames = 0) {
@@ -627,12 +990,16 @@ export class DspEngineBinding {
         inputCount = 0,
         processingChannels = 1,
         byteSize,
-        footprintBytes = byteSize
+        footprintBytes = byteSize,
+        preparationContext = null
     }) {
         if (!this.engine || !this.prepared) return 0;
         this._preparing = true;
         try {
-            const ptr = this.exports.et_instance_asset_begin(
+            const begin = preparationContext ? this.exports.et_instance_asset_begin_ptr
+                : this.exports.et_instance_asset_begin;
+            if (typeof begin !== 'function') throw new DspBindingError('The current DSP module cannot prepare this instrument context');
+            const args = [
                 this.engine,
                 instanceId,
                 slot >>> 0,
@@ -646,7 +1013,9 @@ export class DspEngineBinding {
                 processingChannels >>> 0,
                 footprintBytes >>> 0,
                 byteSize >>> 0
-            ) >>> 0;
+            ];
+            if (preparationContext) args.push(preparationContext.minimumPhysicalBpm);
+            const ptr = begin(...args) >>> 0;
             this._refreshViews();
             if (ptr) this._assertRange(ptr, byteSize, 'Asset staging buffer');
             return ptr;
@@ -657,13 +1026,17 @@ export class DspEngineBinding {
 
     instanceAssetCommit(instanceId, slot, byteSize, formatTag) {
         if (!this.engine || !this.prepared) return ET_ERR_STATE;
-        return this.exports.et_instance_asset_commit(
-            this.engine,
-            instanceId,
-            slot >>> 0,
-            byteSize >>> 0,
-            formatTag >>> 0
-        );
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            // CONTROL staging prepares the flat SFZ program/VM before render-time exchange.
+            return this.exports.et_instance_asset_commit(
+                this.engine, instanceId, slot >>> 0, byteSize >>> 0, formatTag >>> 0
+            );
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
     }
 
     instanceAssetAbort(instanceId, slot) {
@@ -954,7 +1327,40 @@ export class DspEngineBinding {
         );
     }
 
-    graphConfigure(descriptor) {
+    hasOfflineGraph() {
+        return this.graphSupported && ['et_graph_configure_offline', 'et_graph_prepare_offline',
+            'et_graph_process_offline'].every(name => typeof this.exports[name] === 'function');
+    }
+
+    graphPrepareOffline() {
+        if (!this.engine || !this.prepared || !this.hasOfflineGraph()) return null;
+        this._preparing = true;
+        try {
+            const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+            const status = this.exports.et_graph_prepare_offline(this.engine, ptr, ptr + 4);
+            this._refreshViews();
+            if (status !== 0) throw new DspBindingError(`Offline graph preparation failed: ${status}`);
+            const words = new Uint32Array(this._memoryBuffer, ptr, 2);
+            return { low: words[0], high: words[1] };
+        } finally {
+            this._preparing = false;
+            this.getArenaViews();
+        }
+    }
+
+    graphProcessOffline(channelCount, frameCount, timeSeconds, generation) {
+        if (!this.engine || !this.hasOfflineGraph() || !generation) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_graph_process_offline(this.engine, channelCount >>> 0,
+            frameCount >>> 0, timeSeconds, generation.low >>> 0, generation.high >>> 0);
+    }
+
+    graphConfigureOffline(descriptor) {
+        if (!this.hasOfflineGraph()) return ET_ERR_STATE;
+        return this.graphConfigure(descriptor, true);
+    }
+
+    graphConfigure(descriptor, offline = false) {
         if (!this.engine || !this.prepared || !this.graphSupported) return ET_ERR_STATE;
         const bytes = toUint8View(descriptor, 'Graph descriptor');
         if (bytes.byteLength === 0) return ET_ERR_STATE;
@@ -966,7 +1372,8 @@ export class DspEngineBinding {
             if (!ptr) return ET_ERR_STATE;
             this._assertRange(ptr, bytes.byteLength, 'Graph descriptor');
             this.u8.set(bytes, ptr);
-            return this.exports.et_graph_configure(this.engine, ptr, bytes.byteLength);
+            const configure = offline ? this.exports.et_graph_configure_offline : this.exports.et_graph_configure;
+            return configure(this.engine, ptr, bytes.byteLength);
         } finally {
             if (ptr) this.exports.free(ptr);
             this._refreshViews();

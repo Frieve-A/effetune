@@ -40,6 +40,8 @@ export class GuitarFretboardDisplay {
     initializeDisplayState() {
         // Latest detected sounds, and the tracked sounds that are drawn: { pitch, target, confidence, level, volume, size }.
         this.peaks = [];
+        this.midiChannels = null;
+        this.midiPitchClassChannels = null;
         this.voices = [];
         // Recent frames' detections, the revision's added sounds, and the pitches it ruled out.
         this.recent = [];
@@ -70,7 +72,7 @@ export class GuitarFretboardDisplay {
 
     clearChordKey() {
         this.chord = null;
-        this.overallKey = null;
+        this.localKey = null;
         this.lastChordKeyFrameIndex = null;
         this.chordArrived = false;
         this.chordTime = -Infinity;
@@ -79,13 +81,16 @@ export class GuitarFretboardDisplay {
     }
 
     handleTelemetry(frame) {
+        this.midiSnapshot = null;
+        this.midiChannels = null;
+        this.midiPitchClassChannels = null;
         const Note = window.NoteSpectrogramPlugin;
         if (frame?.frameType === 32) {
             const snapshot = Note?.prototype.parseChordKeyTelemetryFrame(frame);
             if (!snapshot || snapshot.generation !== this.activeGeneration || frame.source !== this.telemetrySource ||
                 (this.lastChordKeyFrameIndex !== null && !isNewer(snapshot.frameIndex, this.lastChordKeyFrameIndex))) return;
             this.chord = snapshot.confirmed.name ? snapshot.confirmed : null;
-            this.overallKey = snapshot.overallKey;
+            this.localKey = snapshot.localKey;
             this.lastChordKeyFrameIndex = snapshot.frameIndex;
             this.chordArrived = true;
             return;
@@ -160,6 +165,12 @@ export class GuitarFretboardDisplay {
     // Each detected sound continues the nearest tracked sound, so a vibrato across a
     // semitone moves one mark. Marks rise at once and fall linearly over the fall time.
     stepLevels(nowMs) {
+        if (this.midiSnapshot) {
+            this.voices = this.midiSnapshot.notes.map(note => ({ pitch: note.pitch, target: note.pitch,
+                channel: this.midiChannels.get(Math.round(note.pitch))?.channel,
+                confidence: 1, level: 1, volume: note.velocity, size: note.velocity / 127 }));
+            return;
+        }
         const dt = this.drawTime === null || nowMs < this.drawTime ? 0 : (nowMs - this.drawTime) / 1000;
         this.drawTime = nowMs;
         const loudness = volume => window.NoteSpectrogramPlugin.normalizedLevel(volume, this.levelReference);
@@ -206,6 +217,21 @@ export class GuitarFretboardDisplay {
             voice.size += (loudness(voice.volume) - voice.size) * glide;
             return voice.level > 0;
         });
+    }
+
+    handleMidiSnapshot(snapshot) {
+        this.midiSnapshot = snapshot;
+        this.midiChannels = new Map();
+        this.midiPitchClassChannels = new Map();
+        for (const note of snapshot.notes) {
+            const midi = Math.round(note.pitch), previous = this.midiChannels.get(midi);
+            if (!previous || note.velocity > previous.velocity) this.midiChannels.set(midi, note);
+            const key = pitchClass(midi), previousClass = this.midiPitchClassChannels.get(key);
+            if (!previousClass || note.velocity > previousClass.velocity) this.midiPitchClassChannels.set(key, note);
+        }
+        this.clearChordKey();
+        this.chord = snapshot.chord;
+        this.chordArrived = true;
     }
 
     // One playable position per note: distinct strings, a small fretted span, and
@@ -436,7 +462,7 @@ export class GuitarFretboardDisplay {
         }
         const notes = [...sounding.keys()].sort((a, b) => a - b);
         const root = params.ro >= 0 ? params.ro : chordMode ? liveChord?.root ?? -1 : notes.length ? pitchClass(notes[0]) : -1;
-        const names = lb === 'detected' ? window.NoteSpectrogramPlugin.noteNamesForKey(this.overallKey)
+        const names = lb === 'detected' ? window.NoteSpectrogramPlugin.noteNamesForKey(this.localKey)
             : lb === 'flat' ? FLAT_NAMES : SHARP_NAMES;
         const scaleSteps = params.ro >= 0 && params.sk !== 'none' ? GUITAR_SCALES[params.sk] : null;
         if (scaleSteps) {
@@ -482,10 +508,10 @@ export class GuitarFretboardDisplay {
         if (chordMode && liveChord) {
             for (const { midi, string, fret } of this.solveChordShape(low, fx)) {
                 marks.push({ midi, u: noteU(fret), v: stringV(string), radius: radiusAt(fret),
-                    alpha: 1, color: options.noteColor(midi, 1) });
+                    alpha: 1, color: options.noteColor(midi, 1, this.midiPitchClassChannels?.get(pitchClass(midi))?.channel) });
             }
         }
-        for (const { pitch, level, size } of chordMode ? [] : this.voices) {
+        for (const { pitch, level, size, channel } of chordMode ? [] : this.voices) {
             const midi = Math.round(pitch);
             const placed = this.shape.get(midi);
             tn.forEach((open, string) => {
@@ -498,7 +524,7 @@ export class GuitarFretboardDisplay {
                 // Size by Volume keeps a third of the dot so the quietest detected note stays visible.
                 marks.push({ midi, u: noteU(fretless ? stop : fret), v: stringV(string),
                     radius: radiusAt(fret) * (params.vs ? 1 / 3 + 2 / 3 * size : 1),
-                    alpha: inShape ? level : level * 0.3, color: options.noteColor(fretless ? pitch : midi, level) });
+                    alpha: inShape ? level : level * 0.3, color: options.noteColor(fretless ? pitch : midi, level, channel) });
             });
         }
         if (!marks.length) return;

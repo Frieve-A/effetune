@@ -1,4 +1,4 @@
-"""Export the frozen drum EMA and synthetic parity fixture; --thresholds overrides CAL3 logits."""
+"""Export the frozen r4own-vs4 EMA and synthetic parity fixture."""
 import argparse
 import hashlib
 import json
@@ -11,7 +11,9 @@ from scipy.fft import rfft
 from export import cpp_array, format_header, write_text
 
 CLASSES = ("KD", "SD", "HH", "TT", "CY")
-CHECKPOINT_SHA256 = "a20e918e34fa70e2d2bbe02c46b7b593d7459404bafcffa7ee29720addab2989"
+CHECKPOINT_SHA256 = "b4d35fd97dce60012df8c2ece2762f56411858a22ba69c52f469b54ff5b2740f"
+EMA_SHA256 = "34daa7660838cebd1cf5148128462f169ab0c4478c97baa463f3d3bd1acf63da"
+FROZEN_THRESHOLDS = dict(zip(CLASSES, (0.0, -0.3, 0.6, 2.1, 0.9)))
 AGC_REFERENCE = 7764.884088152459
 AGC_SMOOTH = 1 / 300
 
@@ -101,7 +103,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
-    parser.add_argument("--thresholds", type=Path, help="JSON with thresholds (five-class logits) and selection (method string); defaults to CAL3 fit")
+    parser.add_argument("--thresholds", type=Path, help="JSON with the frozen five-class logits and selection (method string)")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--clang-format", type=Path)
     args = parser.parse_args(argv)
@@ -110,8 +112,14 @@ def main(argv=None):
     if digest != CHECKPOINT_SHA256 or summary["checkpoint_sha256"] != digest or summary["weights"] != "EMA":
         raise ValueError("Checkpoint and EMA evaluation must match the frozen shipping model.")
     state = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    if (state["name"] != "r4own-vs4" or state["arm"] != "c6"
+            or state["step"] != 60000 or state["total"] != 60000 or state["init"] is not None):
+        raise ValueError("Expected the frozen r4own-vs4 C0 model trained from scratch for 60000 steps.")
     model = reference_model().eval()
     model.load_state_dict(state["ema"], strict=True)
+    ema_blob = b"".join(tensor.numpy().astype("<f4").tobytes() for tensor in state["ema"].values())
+    if hashlib.sha256(ema_blob).hexdigest() != EMA_SHA256:
+        raise ValueError("EMA tensors differ from the frozen shipping model.")
     arrays = []
     tensors = []
     offset = 0
@@ -131,7 +139,9 @@ def main(argv=None):
     assert len(codes) == 566669
     blob = codes.astype("<u2").tobytes()
     threshold_values = summary["calibration"]["thresholds"]
-    threshold_selection = {"method": "CAL3 fit on the synthetic calibration set"}
+    threshold_selection = {
+        "method": "Fixed shipping thresholds retained from c6-agc-a1; no recalibration for r4own-vs4",
+        "datasets": ["IDMT-SMT-Drums", "ENST-Drums", "MDB-Drums"]}
     if args.thresholds:
         threshold_config = json.loads(args.thresholds.read_text(encoding="utf-8"))
         if (not isinstance(threshold_config, dict)
@@ -144,6 +154,8 @@ def main(argv=None):
             or any(not isinstance(value, (int, float)) or isinstance(value, bool)
                    or not np.isfinite(value) for value in threshold_values.values())):
         raise ValueError("Thresholds must contain exactly five finite numbers: KD, SD, HH, TT, CY.")
+    if threshold_values != FROZEN_THRESHOLDS:
+        raise ValueError("r4own-vs4 requires the unchanged shipping thresholds.")
     thresholds = [threshold_values[name] for name in CLASSES]
     args.out.mkdir(parents=True, exist_ok=True)
     namespace = "effetune::plugins::analyzer::drum"
@@ -204,9 +216,23 @@ def main(argv=None):
                                "instance_scheduling_seconds": "floor(input_rate * (instance_salt % 32) / 4000) / input_rate; pending inference is drained immediately at EOF"}}
     write_text(fixture / "drum-reference.json", json.dumps(fixture_meta, indent=2) + "\n")
     provenance = {"artifact": "drum_weights.h", "checkpoint_sha256": digest, "weights": "EMA",
+                  "ema_sha256": EMA_SHA256,
+                  "ema_hash_format": "Concatenated little-endian float32 tensors in the listed tensor order",
                   "export_sha256": hashlib.sha256(blob).hexdigest(), "network_bytes": len(blob),
                   "header_sha256": hashlib.sha256(header.encode()).hexdigest(),
-                  "model": "Causal CRNN c6-agc-a1", "parameters": len(codes), "tensors": tensors,
+                  "model": "Causal CRNN r4own-vs4", "parameters": len(codes), "tensors": tensors,
+                  "training": {"steps": 60000, "seed": 20261017, "initialization": "from scratch",
+                               "batch": 16, "frames": 640, "optimizer": "AdamW",
+                               "learning_rate": 0.001, "weight_decay": 0.0001,
+                               "gradient_clip": 5, "ema_decay": 0.999,
+                               "learning_rate_schedule": "5% linear warmup, cosine decay to 1%",
+                               "precision": "CUDA bfloat16 autocast",
+                               "positive_pool_shares": {"shipping": 0.45, "parametric_synthesis": 0.45,
+                                                        "owner_supplied_recordings": 0.10},
+                               "role_schedule": ["positive"] * 6 + ["paired_negative_recipe", "real_negative"],
+                               "varispeed": {"copies": 4, "semitones": [-4, 4], "probability": 0.5,
+                                             "domain": "audio", "resampler": "soxr HQ"},
+                               "TRAIN-real_used": False, "DEV-real_used": False},
                   "classes": CLASSES, "thresholds": dict(zip(CLASSES, thresholds)),
                   "threshold_selection": threshold_selection,
                   "architecture": {"conv_channels": [1, 16, 32, 48], "frequency_pool": [4, 4, 2],

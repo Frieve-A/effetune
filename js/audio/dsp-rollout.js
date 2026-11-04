@@ -82,6 +82,7 @@ export const SHIPPED_ENABLED_TYPES = Object.freeze([
     'WowFlutterPlugin',
     'OscillatorPlugin',
     'SFZNotePlayerPlugin',
+    'SoundFontPlayerPlugin',
     'AdaptivePredictionEffectPlugin',
     'HornResonatorPlugin',
     'HornResonatorPlusPlugin',

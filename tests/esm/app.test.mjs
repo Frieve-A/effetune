@@ -275,6 +275,26 @@ function createPlugin(name) {
   };
 }
 
+test('Android startup keeps Controller Mapping and ignores the saved performance MIDI input', async () => {
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.location.origin = 'https://appassets.androidplatform.net';
+    window.effetuneAndroid = { postMessage() {} };
+    window.audioPreferences = { midiInputDeviceKey: 'Saved keyboard' };
+    const app = new mod.App(createDependencies(calls));
+    app.startupConfig = { midiController: { mappings: [{}] } };
+    let controllerStarts = 0;
+    app.ensureMidiControllerManager = async () => { controllerStarts++; };
+    await app.applyMidiInputPreference('Saved keyboard');
+    assert.equal(controllerStarts, 0);
+    assert.equal(app.midiLiveInputPromise, undefined);
+    app.applyMidiInputPreference = () => assert.fail('Android must not restore performance input');
+    app.runDeferredStartupTasks();
+    await flushMicrotasks();
+    assert.equal(controllerStarts, 1);
+    assert.equal(window.audioPreferences.midiInputDeviceKey, 'Saved keyboard');
+  });
+});
+
 function createDependencies(calls, options = {}) {
   const plugins = new Map();
   const pluginManager = {
@@ -858,7 +878,7 @@ test('onboarding saved-state detection ignores Electron restore flags and report
     window.__FORCE_SKIP_PIPELINE_STATE_LOAD = true;
     window.pipelineStateLoaded = false;
     window.electronAPI.getPath = async name => {
-      assert.equal(name, 'userData');
+      assert.equal(name, 'settings');
       return 'app-data';
     };
     window.electronAPI.joinPaths = async (...parts) => parts.join('/');

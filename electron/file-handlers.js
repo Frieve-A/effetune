@@ -4,18 +4,19 @@ const path = require('path');
 const constants = require('./constants');
 const fileUtils = require('./file-utils');
 const fileAccess = require('./file-access.cjs');
+const { getSettingsPath, parseSettingsArguments } = require('./settings-profile.cjs');
 const {
   LocalPlaybackIngress,
   admitLocalPlaybackPaths: admitLocalPlaybackPathsImpl
 } = require('./local-playback-ingress.cjs');
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp'];
-const PLAYBACK_AUDIO_FILTER_NAME = 'Audio and Video Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4, M4V, MOV, MKV, 3GP)';
+const PLAYBACK_AUDIO_EXTENSIONS = ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
+const PLAYBACK_AUDIO_FILTER_NAME = 'Music and Video Files';
 const PLAYBACK_SELECTION_FILTER_NAME = 'Music and CUE Files';
 const PLAYBACK_SELECTION_EXTENSIONS = [...PLAYBACK_AUDIO_EXTENSIONS, 'cue'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
-const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
-const OFFLINE_AUDIO_FILTER_NAME = 'Audio Files for Processing (MP3, WAV, OGG, FLAC, M4A, AAC)';
+const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
+const OFFLINE_AUDIO_FILTER_NAME = 'Music Files for Processing';
 let localPlaybackIngress = new LocalPlaybackIngress();
 
 function isSupportedPlaybackAudioPath(filePath) {
@@ -165,7 +166,7 @@ function fileExists(filePath) {
 // Handle save pipeline state to file request
 async function savePipelineStateToFile(pipelineState, options) {
   // Get app path
-  const appPath = getUserDataPath();
+  const appPath = getSettingsPath(getUserDataPath());
   
   // Use fileUtils to save the pipeline state
   return options === undefined
@@ -175,6 +176,7 @@ async function savePipelineStateToFile(pipelineState, options) {
 
 // Process command line arguments to find preset files and music files
 function processCommandLineArgs(argv) {
+  argv = parseSettingsArguments(argv).args;
   // Get the arguments (excluding the app path and the script path)
   // In packaged apps, the first argument is the app path
   // In development, the first two arguments are electron and the script path

@@ -340,7 +340,7 @@ export function getReachableEnabledPlugins(plugins) {
     return enabled;
 }
 
-export function analyzeTemporalCapabilities(plugins) {
+export function analyzeTemporalCapabilities(plugins, { mustProcess = false } = {}) {
     const enabled = getReachableEnabledPlugins(plugins);
     const capabilities = enabled.map((plugin, index) => {
         const capability = getTemporalCapability(plugin);
@@ -351,7 +351,7 @@ export function analyzeTemporalCapabilities(plugins) {
             descriptor: normalizeTemporalPreparationDescriptor(capability, sourceDescriptor)
         };
     });
-    if (capabilities.some(item => item.capability === 'must-process')) {
+    if (mustProcess || capabilities.some(item => item.capability === 'must-process')) {
         return {
             capabilities,
             temporalSkipEligible: false,

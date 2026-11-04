@@ -86,6 +86,20 @@ async function setup(t, options = {}) {
   return { root, converter, source };
 }
 
+async function liveDirectoryEntries(directory) {
+  const entries = await fs.readdir(directory);
+  const liveEntries = await Promise.all(entries.map(async entry => {
+    try {
+      await fs.stat(path.join(directory, entry));
+      return entry;
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }));
+  return liveEntries.filter(entry => entry !== null);
+}
+
 test('probe identifies ALAC config depths and ignores AAC and media payloads', async () => {
   for (const depth of [16, 24, 20, 32]) {
     assert.deepEqual(await probeBuffer(mp4(depth)), { bitDepth: depth });
@@ -194,7 +208,7 @@ test('cache keeps four outputs, refreshes LRU on hits and invalidates changed so
   const fifth = await converter.prepare(await source('4.m4a'));
   await assert.rejects(fs.stat(results[1].path), { code: 'ENOENT' });
   await fs.stat(results[0].path);
-  assert.equal((await fs.readdir(path.dirname(fifth.path))).length, 4);
+  assert.equal((await liveDirectoryEntries(path.dirname(fifth.path))).length, 4);
   await fs.appendFile(inputs[0], box('free', Buffer.alloc(8)));
   const changed = await converter.prepare(inputs[0]);
   assert.notEqual(changed.path, results[0].path);
@@ -210,7 +224,7 @@ test('concurrent conversions evict without deleting the same output twice', asyn
   const inputs = await Promise.all(Array.from({ length: 8 }, (_, index) => source(`${index}.m4a`)));
   const results = await Promise.all(inputs.map(input => converter.prepare(input)));
   assert.ok(results.every(result => result.success));
-  assert.equal((await fs.readdir(path.dirname(results[0].path))).length, 4);
+  assert.equal((await liveDirectoryEntries(path.dirname(results[0].path))).length, 4);
 });
 
 test('ALAC outside macOS returns the platform code while AAC passes through', async t => {

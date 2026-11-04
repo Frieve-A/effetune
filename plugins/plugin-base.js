@@ -450,8 +450,8 @@ class PluginBase {
         return this._wasmAssetOperationRevisions.get(slot) ?? null;
     }
 
-    getWasmAssetRevisionDescriptor(slot, operationRevision) {
-        const descriptor = this._getWasmAssetRevisionDescriptor(slot, operationRevision);
+    getWasmAssetRevisionDescriptor(slot, operationRevision, replayEpoch, workletNode) {
+        const descriptor = this._getWasmAssetRevisionDescriptor(slot, operationRevision, replayEpoch, workletNode);
         if (!descriptor?.payload) return null;
         return {
             ...descriptor,
@@ -487,14 +487,21 @@ class PluginBase {
         }
     }
 
-    _getWasmAssetRevisionDescriptor(slot, operationRevision) {
+    _getWasmAssetRevisionDescriptor(slot, operationRevision, replayEpoch, workletNode) {
         if (!Number.isSafeInteger(operationRevision) || operationRevision <= 0) return null;
+        if (replayEpoch !== undefined && workletNode) {
+            const delivery = this._wasmAssetDeliveries.get(workletNode)?.get(slot);
+            for (const candidate of [delivery?.inflight, delivery?.queued, delivery?.deferredReplay]) {
+                if (candidate?.operationRevision === operationRevision &&
+                    (candidate.replayEpoch ?? null) === (replayEpoch ?? null)) return candidate.descriptor;
+            }
+        }
+        const acknowledged = this._wasmAssetAcknowledgedDescriptors.get(slot);
+        if (acknowledged?.operationRevision === operationRevision) return acknowledged;
         const resident = this._wasmAssetResidentDescriptors.get(slot);
         if (resident && resident.descriptor?.operationRevision === operationRevision) {
             return resident.descriptor;
         }
-        const acknowledged = this._wasmAssetAcknowledgedDescriptors.get(slot);
-        if (acknowledged?.operationRevision === operationRevision) return acknowledged;
         return this._wasmAssetRevisionDescriptors.get(slot)?.get(operationRevision) || null;
     }
 
@@ -682,7 +689,7 @@ class PluginBase {
         return true;
     }
 
-    setWasmAsset(slot, descriptor) {
+    _normalizeWasmAssetDescriptor(slot, descriptor) {
         if (!Number.isInteger(slot) || slot < 0 || !(descriptor?.payload instanceof ArrayBuffer)) {
             throw new TypeError('A WASM asset requires a non-negative slot and an ArrayBuffer payload');
         }
@@ -700,12 +707,29 @@ class PluginBase {
             ...(descriptor.externalAssetParameters && {
                 externalAssetParameters: { ...descriptor.externalAssetParameters }
             }),
+            // Runtime-only factories survive asset/replay snapshots. Functions
+            // are omitted by JSON and are never included in worklet messages.
+            ...(typeof descriptor.sampleProviderFactory === 'function' && {
+                sampleProviderFactory: descriptor.sampleProviderFactory
+            }),
+            ...(typeof descriptor.materializeForContext === 'function' && {
+                materializeForContext: descriptor.materializeForContext
+            }),
+            ...(descriptor.preparationContext && { preparationContext: descriptor.preparationContext }),
+            ...(Number.isSafeInteger(descriptor.effectPreparationBytes) && {
+                effectPreparationBytes: descriptor.effectPreparationBytes
+            }),
             payload: descriptor.payload.slice(0)
         };
         if (!Number.isSafeInteger(normalized.footprintBytes) ||
             normalized.footprintBytes < descriptor.payload.byteLength) {
             throw new TypeError('A WASM asset footprint must cover the payload with a safe integer byte count');
         }
+        return normalized;
+    }
+
+    setWasmAsset(slot, descriptor) {
+        const normalized = this._normalizeWasmAssetDescriptor(slot, descriptor);
         this._wasmAssetLastRejections.delete(slot);
         this._pinPotentialWasmAssetResident(slot, this._wasmAssets.get(slot));
         this._wasmAssetLogicalReplayEpochs.delete(slot);
@@ -724,6 +748,35 @@ class PluginBase {
         }
         this._refreshWasmAssetRevisionDescriptors(slot);
         return normalized.operationRevision;
+    }
+
+    reprepareWasmAssetContext(slot, descriptor, workletNode, { operationRevision, isCurrent, replacePending = false } = {}) {
+        const previous = this._wasmAssets.get(slot);
+        if (!workletNode?.port || !previous || previous.operationRevision !== operationRevision ||
+            isCurrent?.() === false) return false;
+        const normalized = this._normalizeWasmAssetDescriptor(slot, descriptor);
+        normalized.operationRevision = operationRevision;
+        if (replacePending) {
+            // Abort the captured preparation before a new transport map can reach it.
+            // Its acknowledgement releases the existing delivery queue for the replacement.
+            this._startWasmAssetDelivery(workletNode, slot, { type: 'clear', operationRevision,
+                replayEpoch: this._nextWasmAssetReplayEpoch(workletNode), trackState: false });
+        }
+        const replayEpoch = this._nextWasmAssetReplayEpoch(workletNode);
+        const logical = workletNode === this._messageHandlerWorkletNode || workletNode === window.workletNode;
+        this._pinPotentialWasmAssetResident(slot, previous);
+        this._wasmAssets.set(slot, normalized);
+        this._rememberWasmAssetRevisionDescriptor(slot, normalized);
+        if (logical) {
+            this._wasmAssetLogicalReplayEpochs.set(slot, replayEpoch);
+            this._wasmAssetStates.set(slot, 1);
+            this._wasmAssetStateRevisions.set(slot, operationRevision);
+            this.onWasmAssetState(slot, 1, operationRevision);
+        }
+        this._queueWasmAssetDelivery(workletNode, slot, { type: 'set', operationRevision, replayEpoch,
+            descriptor: normalized, trackState: logical });
+        this._notifyWasmAssetSnapshotChange();
+        return replayEpoch;
     }
 
     _postWasmAsset(workletNode, slot, descriptor, replayEpoch = null) {
@@ -748,6 +801,7 @@ class PluginBase {
             inputCount: descriptor.inputCount,
             processingChannels: descriptor.processingChannels,
             footprintBytes: descriptor.footprintBytes,
+            ...(descriptor.preparationContext && { preparationContext: descriptor.preparationContext }),
             operationRevision: descriptor.operationRevision,
             ...(replayEpoch !== null && { replayEpoch }),
             payload
@@ -775,6 +829,7 @@ class PluginBase {
                     candidateRevision: descriptor.operationRevision
                 });
                 this._rememberWasmAssetRevisionDescriptor(slot, descriptor);
+                if (this._isCurrentWasmAssetOperation(slot, descriptor.operationRevision)) this._wasmAssets.set(slot, descriptor);
                 this._wasmAssetStates.set(slot, 1);
                 this._wasmAssetStateRevisions.set(slot, descriptor.operationRevision);
                 this.onWasmAssetState(slot, 1, descriptor.operationRevision);
@@ -1056,7 +1111,9 @@ class PluginBase {
                 type: 'updatePlugin',
                 plugin: this.getWorkletPluginData(parameters)
             };
-            if (typeof window.audioManager?.commitPowerTopologyMutation === 'function') {
+            if (window.audioManager?.rebindSfzProcessingContext?.(this) === true) {
+                // The existing DSP rebind publishes changed geometry after checkpoint capture.
+            } else if (typeof window.audioManager?.commitPowerTopologyMutation === 'function') {
                 window.audioManager.commitPowerTopologyMutation(message, {
                     reason: 'plugin-parameter-update'
                 });

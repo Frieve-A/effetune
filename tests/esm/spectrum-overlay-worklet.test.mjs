@@ -68,6 +68,7 @@ function createBinding() {
     memory: { buffer: arena.buffer },
     createEngine() { calls.push('createEngine'); return 1; },
     prepare() { calls.push('prepare'); return 0; },
+    prepareMidiTransport() {},
     getCapabilities() {
       return {
         abiVersion: 1,

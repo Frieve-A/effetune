@@ -26,6 +26,11 @@ struct ConvolverConfig {
   std::array<ConvolutionPath, kMaximumPaths> paths{};
 };
 
+struct ConvolverStorage {
+  std::size_t persistentBytes = 0;
+  std::size_t preparationBytes = 0;
+};
+
 enum class ConvolverPreparationState { empty, reserved, preparing, warming, active, error };
 
 #if defined(ET_ENABLE_TEST_KERNEL)
@@ -60,6 +65,14 @@ public:
   PartitionedConvolver &operator=(const PartitionedConvolver &) = delete;
 
   bool reserve(const ConvolverConfig &config) noexcept;
+  // CONTROL only. Admits reported storage and preparation scratch before each
+  // allocation; failure never activates a partially prepared convolution.
+  bool reserve(const ConvolverConfig &config, std::size_t maximumBytes) noexcept;
+  [[nodiscard]] static std::size_t minimumMemoryBytes() noexcept;
+  // CONTROL only. Uses the allocator's geometry, without audio/schedule storage.
+  // PFFFT setup probes are bounded by the largest partition transform.
+  [[nodiscard]] static bool storageRequirements(const ConvolverConfig &config,
+                                                ConvolverStorage &storage) noexcept;
   bool updatePathsWithoutAllocation(const ConvolutionPath *paths, std::uint32_t pathCount) noexcept;
   bool commit(const float *channelMajorIr, std::uint32_t channels, std::uint32_t frames) noexcept;
   ConvolverPreparationState prepareSlice(std::uint32_t partitionBudget = 1u) noexcept;

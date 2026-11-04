@@ -671,9 +671,52 @@ void testMemoryAccountingScalesWithIrCapacity() {
   CONVOLVER_CHECK(large.memoryBytes() + 2u * 20000u * sizeof(float) < 32u * 1024u * 1024u);
 }
 
+void testBudgetedControlPreparation() {
+  PartitionedConvolver bounded;
+  const auto before = effetune::allocation_guard::violationCount();
+  {
+    effetune::allocation_guard::Scope guard;
+    CONVOLVER_CHECK(!bounded.reserve(makeConfig(70000u), 0));
+  }
+  CONVOLVER_CHECK(effetune::allocation_guard::violationCount() == before);
+  CONVOLVER_CHECK(bounded.state() == ConvolverPreparationState::empty);
+  auto config = makeConfig(1000u);
+  config.latencySamples = 0;
+  CONVOLVER_CHECK(bounded.reserve(config, 4u * 1024u * 1024u));
+  const auto bytes = bounded.memoryBytes();
+  CONVOLVER_CHECK(bytes < 4u * 1024u * 1024u);
+  PartitionedConvolver rejected;
+  CONVOLVER_CHECK(!rejected.reserve(config, bytes - 1));
+  CONVOLVER_CHECK(rejected.state() != ConvolverPreparationState::active);
+  CONVOLVER_CHECK(bounded.reserve(config, bytes));
+  auto invalid = config;
+  invalid.inputs = UINT32_MAX;
+  CONVOLVER_CHECK(!rejected.reserve(invalid, 1024 * 1024));
+}
+
+void testControlStorageGeometry() {
+  for (const auto frames : {128u, 1000u, 8193u, 70000u, 140000u}) {
+    for (const auto latency : {0u, 128u}) {
+      auto config = makeConfig(frames);
+      config.latencySamples = latency;
+      effetune::dsp::ConvolverStorage storage;
+      CONVOLVER_CHECK(PartitionedConvolver::storageRequirements(config, storage));
+      CONVOLVER_CHECK(storage.preparationBytes >= storage.persistentBytes);
+      PartitionedConvolver actual;
+      CONVOLVER_CHECK(actual.reserve(config, storage.preparationBytes));
+      CONVOLVER_CHECK(actual.memoryBytes() == storage.persistentBytes);
+      PartitionedConvolver insufficient;
+      CONVOLVER_CHECK(!insufficient.reserve(config, storage.preparationBytes - 1));
+      CONVOLVER_CHECK(insufficient.state() == ConvolverPreparationState::empty);
+    }
+  }
+}
+
 } // namespace
 
 int main() {
+  testControlStorageGeometry();
+  testBudgetedControlPreparation();
   testScheduleRephasingDistributesTwoInstanceCallbackWork();
   testIncrementalPreparationAndAllocationGuard();
   testLargeTrueStereoPreparationDeadline();

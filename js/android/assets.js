@@ -1,4 +1,6 @@
 import { bytesToBase64 } from './bridge.js';
+import { getPluginExecutionChannelMode } from '../audio/plugin-execution-capabilities.js';
+import { getSfzMaxBytes } from '../sfz/limits.js';
 
 export class AndroidAssets {
     constructor(bridge) {
@@ -89,6 +91,14 @@ export class AndroidAssets {
                 const { payload, ...metadata } = asset;
                 const bytes = new Uint8Array(payload);
                 try {
+                    if (['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(plugin.constructor.name)) {
+                        // Android's native pipeline has two output channels. Native CONTROL
+                        // computes the exact target-allocator footprint within this budget.
+                        const mode = getPluginExecutionChannelMode(plugin.channel, 2);
+                        if (!mode) throw new Error('Invalid Android instrument channel selection');
+                        metadata.processingChannels = mode === 'single' || mode === 'mono' ? 1 : 2;
+                        metadata.footprintBytes = getSfzMaxBytes(globalThis.window?.appConfig?.sfzMaxSizeMiB);
+                    }
                     await request('pipeline.asset.begin', {
                         ...metadata, pluginId: plugin.id, slot, byteLength: bytes.byteLength
                     });

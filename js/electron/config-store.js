@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import { normalizeThemeId, THEME_MIRROR_KEY } from '../theme-registry.mjs';
 import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings.js';
 import {
@@ -12,7 +13,7 @@ const fallbackElectronConfigState = {
 };
 
 function writeThemeMirror(theme) {
-  try { window.localStorage.setItem(THEME_MIRROR_KEY, normalizeThemeId(theme)); } catch { /* Storage is optional. */ }
+  try { getSettingsStorage().setItem(THEME_MIRROR_KEY, normalizeThemeId(theme)); } catch { /* Storage is optional. */ }
 }
 
 function cloneElectronConfig(config) {

@@ -131,5 +131,6 @@ spatial/phase_select_eq: Phase Select EQ | Spatial | PhaseSelectEqPlugin | css
 spatial/spatial_mapper: Spatial Mapper | Spatial | SpatialMapperPlugin | css
 spatial/stereo_blend: Stereo Blend | Spatial | StereoBlendPlugin
 others/oscillator: Oscillator | Others | OscillatorPlugin
-others/sfz_note_player: SFZ Note Player | Others | SFZNotePlayerPlugin | css
+others/sfz_note_player: SoundFont Note Player | Others | SFZNotePlayerPlugin | css
+others/soundfont_player: SoundFont Player | Others | SoundFontPlayerPlugin | css
 control/section: Section | Control | SectionPlugin

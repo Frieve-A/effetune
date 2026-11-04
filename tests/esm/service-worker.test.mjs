@@ -147,6 +147,9 @@ function createPrecacheFixture(t) {
     'manifest.json',
     'LICENSE',
     'js/vendor/sqlite/LICENSE.md',
+    'js/audio/dsd/dsd-kernels.c',
+    'js/audio/dsd/dst-decoder.c',
+    'scripts/build-dsd-wasm.mjs',
     'sw.js'
   ]) {
     writeFixtureFile(root, relativePath);

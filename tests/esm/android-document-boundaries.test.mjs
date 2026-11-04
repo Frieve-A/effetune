@@ -150,6 +150,44 @@ test('SAF library sidecar reads enforce size limits before fetching content', as
     });
 });
 
+test('Android native library omits DSD files from its playable catalog', async () => {
+    await withDocuments(({ command }) => {
+        if (command === 'documents.list') return {
+            entries: [
+                { name: 'song.dsf', isDirectory: false },
+                { name: 'other.DFF', isDirectory: false },
+                { name: 'normal.flac', isDirectory: false }
+            ],
+            nextOffset: null
+        };
+        assert.fail(command);
+    }, async () => {
+        const filesystem = new AndroidLibraryFilesystem({ rootHandle: { androidUri: 'content://root' } });
+        const entries = [];
+        for await (const entry of filesystem.enumerateDirectory()) entries.push(entry.relativePath);
+        assert.deepEqual(entries, ['normal.flac']);
+    });
+});
+
+test('Android library omits scores even with a saved MIDI preference while video discovery remains available', async () => {
+    const scores = ['song.mid', 'song.MIDI', 'song.kar', 'score.musicxml', 'score.xml', 'score.mxl'];
+    await withDocuments(({ command }) => {
+        assert.equal(command, 'documents.list');
+        return { entries: ['normal.flac', 'clip.mp4', ...scores].map(name => ({ name, isDirectory: false })), nextOffset: null };
+    }, async () => {
+        for (const includeMidi of [false, true]) {
+            for (const includeVideo of [false, true]) {
+                const filesystem = new AndroidLibraryFilesystem({
+                    rootHandle: { androidUri: 'content://root' }, includeMidi, includeVideo
+                });
+                const entries = [];
+                for await (const entry of filesystem.enumerateDirectory()) entries.push(entry.relativePath);
+                assert.deepEqual(entries, ['normal.flac', ...(includeVideo ? ['clip.mp4'] : [])]);
+            }
+        }
+    });
+});
+
 test('Android downloads retain revoked Blob data and distinguish cancel from export failure', async () => {
     const requests = [], notices = [];
     let click, mode = 'share', complete;

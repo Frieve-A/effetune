@@ -144,7 +144,7 @@
   },
   "performanceBudgetMs": 2500,
   "referenceEngine": "native-bass-management-independent-v1",
-  "referenceHash": "8a63a2a943d03b63686865770c9b8e9af6c2ded587dbfff543ee64d7b3093d00",
+  "referenceHash": "7c123978e7793cb1a62d3aa6241b93c252ab1035a7e23b018472bfb2b25aeab4",
   "outputFloats": 24576,
   "byteLength": 98304,
   "binary": "case-003.f32"

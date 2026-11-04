@@ -14,6 +14,7 @@ const {
   nativeTheme,
   net,
   powerMonitor,
+  powerSaveBlocker,
   shell,
   utilityProcess
 } = require('electron');
@@ -30,6 +31,13 @@ if (process.windowsStore === true) {
 }
 
 // Import modules
+const settingsProfile = require('./settings-profile.cjs');
+try {
+  settingsProfile.configureSettingsProfile(process.argv);
+} catch (error) {
+  dialog.showErrorBox('EffeTune', error.message);
+  app.exit(1);
+}
 const constants = require('./constants');
 const configModule = require('./config');
 const windowState = require('./window-state');
@@ -43,6 +51,8 @@ const { queueAutoRestart } = require('./relaunch');
 const { initializeGpuAcceleration } = require('./gpu-acceleration.cjs');
 const { createLibraryDialogTranslator } = require('./library-dialog-localization.cjs');
 const { armQuitDeadline, QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS } = require('./quit-deadline.cjs');
+const { createMacPlaybackPower } = require('./mac-playback-power.cjs');
+const { createWindowsRendererPower } = require('./windows-renderer-power.cjs');
 const { createInstanceRegistry } = require('./instance-registry.cjs');
 const { createAppUpdater } = require('./app-updater.cjs');
 const { AlacPlaybackSource } = require('./alac-playback-source.cjs');
@@ -58,7 +68,7 @@ const { createAirPlayReceiverHost } = require('./airplay-receiver.cjs');
 const { registerAirPlayIpc } = require('./airplay-ipc.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
-const { NetworkMusicHost, registerNetworkMusicIpc } = require('./network-music-host.cjs');
+const { NetworkMusicHost, registerNetworkMusicIpc, logNetworkMusicDiagnostic } = require('./network-music-host.cjs');
 const { registerIntegratedRemoteClientIpc } = require('./remote-client-window.cjs');
 const releaseVersionModulePromise = import(pathToFileURL(
   path.join(__dirname, '../js/release-version.mjs')
@@ -69,7 +79,7 @@ const packageJson = require('../package.json');
 const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp'];
+const PLAYBACK_AUDIO_EXTENSIONS = ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 
 function isSupportedPlaybackAudioPath(filePath) {
@@ -90,6 +100,24 @@ let isAppQuitting = false;
 let appServicesShutdownReady = false;
 let instanceRegistry = null;
 let quitProtectionArmed = false;
+const macPlaybackPower = process.platform === 'darwin'
+  ? createMacPlaybackPower({ powerSaveBlocker, getConfig: () => constants.getAppConfig() })
+  : null;
+const windowsRendererPower = process.platform === 'win32'
+  ? createWindowsRendererPower({
+    helperPath: app.isPackaged
+      ? path.join(process.resourcesPath, 'renderer-power/effetune-renderer-power.exe')
+      : path.join(__dirname, '../out/native/renderer-power/win32-x64/effetune-renderer-power.exe'),
+    getConfig: () => constants.getAppConfig(),
+    getRendererWebContents: () => constants.getMainWindow()?.webContents,
+    onDiagnostic: (message, detail) => console.error(message, detail)
+  })
+  : null;
+
+function stopDesktopAudioPower() {
+  macPlaybackPower?.stop();
+  void windowsRendererPower?.stop();
+}
 // A predecessor that is still shutting down gets the quit deadline plus a
 // small margin before this process opens its own storage.
 const PREDECESSOR_WAIT_MS = (QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS + 5) * 1000;
@@ -446,22 +474,30 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
-// Chromium 152 requires a child-process capability in addition to the Web MIDI
-// permission granted below, but Electron 44 does not propagate its basic MIDI
-// grant to that capability. Without this compatibility switch, even non-SysEx
-// requestMIDIAccess() calls always fail with NotAllowedError. EffeTune blocks
-// renderer navigation and requests only non-SysEx MIDI, so this restores the
-// trusted-renderer access intended by the explicit session permission below.
-if (process.versions.electron?.startsWith('44.')) {
-  const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
-    .split(',')
-    .map(feature => feature.trim())
-    .filter(Boolean);
+const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
+  .split(',')
+  .map(feature => feature.trim())
+  .filter(Boolean);
+
+// Temporary Electron 44/45 compatibility workaround: BlockMidiByDefault requests
+// SysEx permission even for requestMIDIAccess({ sysex: false }). Keep ordinary
+// controller access working without requesting SysEx. Musical input explicitly
+// requests SysEx, which the permission handlers allow only for the app frame.
+// Remove when ordinary MIDI works without this switch on the shipped Electron.
+if (process.versions.electron?.startsWith('44.') || process.versions.electron?.startsWith('45.')) {
   if (!disabledFeatures.includes('BlockMidiByDefault')) {
     disabledFeatures.push('BlockMidiByDefault');
-    app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
   }
 }
+
+// Temporary workaround for crbug.com/572363272 (EffeTune #72): Symphonia
+// truncates 33-bit side channels in some 32-bit stereo FLAC files, producing
+// loud noise. Use Chromium's FFmpeg decoder until the shipped Electron runtime
+// includes the upstream fix and passes the FLAC regression without this switch.
+if (!disabledFeatures.includes('SymphoniaAudioDecoding')) {
+  disabledFeatures.push('SymphoniaAudioDecoding');
+}
+app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 
 // Preserve HDR video values in the Visualizer's float16 Canvas intermediates.
 // The renderer enables this only for HDR output and falls back to SDR when unavailable.
@@ -478,6 +514,9 @@ if (!enabledBlinkFeatures.includes('CanvasGlobalHDRHeadroom')) {
 // Chromium transient user activation. Allow the desktop audio player to honor
 // those explicit remote playback commands.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+// Keep background audio processing at the renderer's foreground priority.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 function presentMainWindow(mainWindow) {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
@@ -518,6 +557,7 @@ function createWindow() {
       nodeIntegration: false, // Security: Keep Node.js integration disabled
       contextIsolation: true, // Security: Enable context isolation
       preload: path.join(__dirname, 'preload.js'), // Use a preload script for safe IPC
+      additionalArguments: [`--effetune-settings-name=${encodeURIComponent(settingsProfile.getSettingsName())}`],
       // Note: The following settings are for development only and should be removed for production
       webSecurity: true,
       allowRunningInsecureContent: false,
@@ -552,12 +592,18 @@ function createWindow() {
   // Without both handlers, Chromium falls back to its default content-settings
   // which deny media on file:// pages before the request handler is even called.
   const GRANTED_PERMISSIONS = ['media', 'microphone', 'midi'];
-  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+  const midiAppUrl = pathToFileURL(path.join(__dirname, '..', 'effetune.html')).href;
+  const isMidiAppFrame = (webContents, details) => webContents === mainWindow.webContents &&
+    details?.isMainFrame === true && details.requestingUrl?.split(/[?#]/)[0] === midiAppUrl &&
+    webContents.getURL().split(/[?#]/)[0] === midiAppUrl;
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, _origin, details) => {
+    if (permission === 'midiSysex') return isMidiAppFrame(webContents, details);
     if (permission === 'display-capture') return webContents === mainWindow.webContents;
     if (GRANTED_PERMISSIONS.includes(permission)) return true;
     return false;
   });
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === 'midiSysex') { callback(isMidiAppFrame(webContents, details)); return; }
     callback(GRANTED_PERMISSIONS.includes(permission) ||
       (permission === 'display-capture' && webContents === mainWindow.webContents));
   });
@@ -583,6 +629,7 @@ function createWindow() {
   // pings. Disarm here; each loaded page must explicitly arm its own heartbeat.
   mainWindow.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
+      stopDesktopAudioPower();
       ipcHandlers.restoreNormalWindowShape?.();
       disarmRendererWatchdog(`navigation:${url}`);
       void openHomeControlHost?.setRendererUnavailable();
@@ -591,6 +638,7 @@ function createWindow() {
     }
   });
   mainWindow.webContents.on('render-process-gone', () => {
+    stopDesktopAudioPower();
     void openHomeControlHost?.setRendererUnavailable();
     void airPlayReceiverHost?.setRendererUnavailable();
     remoteControlHost?.setRendererUnavailable();
@@ -823,6 +871,7 @@ function createWindow() {
   });
   
   mainWindow.on('closed', () => {
+    stopDesktopAudioPower();
     closeSplashScreen();
     pendingMainWindowShow = false;
     void openHomeControlHost?.setRendererUnavailable();
@@ -1275,6 +1324,7 @@ async function initializeApp() {
   themeRegistry = await import(pathToFileURL(path.join(__dirname, '../js/theme-registry.mjs')).href);
   const cfgDefaults = {
     autoLaunch: false,
+    allowMultipleInstances: false,
     startMinimized: false,
     minimizeToTray: false,
     language: 'auto',
@@ -1295,7 +1345,7 @@ async function initializeApp() {
   constants.setAppConfig(cfg);
   applyNativeTheme(cfg);
   if (process.windowsStore !== true) {
-    app.setLoginItemSettings({ openAtLogin: !!cfg.autoLaunch });
+    app.setLoginItemSettings(settingsProfile.getLoginItemSettings(cfg.autoLaunch));
   }
   if (cfg.pipelineStartup === 'default') {
     constants.setShouldLoadPipelineState(false);
@@ -1394,7 +1444,7 @@ async function initializeApp() {
     },
     loadConfig: () => configModule.loadConfig(),
     saveConfig: next => { configModule.saveConfig(next); constants.setAppConfig(next); },
-    onDiagnostic: error => console.error('Network music diagnostic:', error)
+    onDiagnostic: logNetworkMusicDiagnostic
   });
   disposeNetworkMusicIpc = registerNetworkMusicIpc({ ipcMain, host: networkMusicHost, getMainWindow: () => constants.getMainWindow() });
   disposeIntegratedRemoteClientIpc = registerIntegratedRemoteClientIpc({ ipcMain, app, getMainWindow: () => constants.getMainWindow(), getPairingEndpoint: playerId => networkMusicHost?.discovery.remoteControlEndpoint(playerId) });
@@ -1433,7 +1483,25 @@ async function initializeApp() {
 
   // Register IPC before the application can request its startup preferences/files.
   alacPlaybackSource = new AlacPlaybackSource();
-  ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme, alacPlaybackSource });
+  ipcHandlers.registerIpcHandlers({
+    onConfigSaved: config => {
+      applyNativeTheme(config);
+      macPlaybackPower?.refreshConfig();
+      void windowsRendererPower?.refreshConfig();
+    },
+    onDesktopAudioActivity: activity => {
+      if (isAppQuitting) return;
+      macPlaybackPower?.update(activity.playbackActive);
+      void windowsRendererPower?.update(activity.processingActive);
+    },
+    getDesktopPowerStatus: () => ({
+      powerSavingOff: constants.getAppConfig()?.powerSaving?.mode === 'continuous',
+      rendererPid: constants.getMainWindow()?.webContents?.getOSProcessId?.() || null,
+      ...(macPlaybackPower?.status() || {}),
+      ...(windowsRendererPower ? { rendererPowerThrottling: windowsRendererPower.status() } : {})
+    }),
+    alacPlaybackSource
+  });
   createWindow();
   if (!process.argv.includes(constants.AUTO_RESTART_FLAG) && !constants.getAppConfig().startMinimized) {
     createSplashScreen();
@@ -1455,15 +1523,18 @@ const graphicsStartup = initializeGpuAcceleration({
 });
 
 // Handle second instance (when user tries to open another instance of the app)
-const gotTheLock = app.requestSingleInstanceLock();
+const allowMultipleInstances = configModule.loadConfig().allowMultipleInstances === true;
+if (settingsProfile.getSettingsName()) {
+  fs.mkdirSync(settingsProfile.getSettingsPath(fileHandlers.getUserDataPath()), { recursive: true });
+}
+const shouldStart = allowMultipleInstances || settingsProfile.requestSingleInstanceLock(app, fileHandlers.getUserDataPath());
 
-if (!gotTheLock) {
+if (!shouldStart) {
   // If we couldn't get the lock, it means another instance is already running
   // so we quit this one
   app.quit();
 } else {
-  // This is the first instance
-  // Listen for second-instance event (when user opens a file with the app)
+  // Handle file launches redirected to this process in single-instance mode.
   app.on('second-instance', async (event, commandLine, workingDirectory) => {
     // Process the command line arguments from the second instance
     // This will set shouldLoadPipelineState to false if a preset file is specified
@@ -1606,6 +1677,8 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', (event) => {
   isAppQuitting = true;
+  macPlaybackPower?.stop();
+  void windowsRendererPower?.dispose();
   stopWatchdog();
   armQuitProtection();
   if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || airPlayReceiverHost || alacPlaybackSource)) {

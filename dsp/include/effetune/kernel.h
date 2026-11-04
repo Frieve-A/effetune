@@ -17,10 +17,12 @@ struct PrepareInfo {
   float sampleRate;
   std::uint32_t maxChannels;
   std::uint32_t maxFrames;
+  // Optional CONTROL preparation envelope, already in physical beats/minute.
+  double minimumPhysicalBpm = 0.0;
 };
 
 // Musical transport reported by the application embedding the engine, such as a
-// plug-in host. EffeTune itself never supplies one. A field is meaningful only
+// plug-in host or the MIDI player. A field is meaningful only
 // when its flag is set.
 struct HostTransport {
   enum : std::uint32_t {
@@ -29,6 +31,7 @@ struct HostTransport {
     kPositionValid = 1u << 2u,
     kBarStartValid = 1u << 3u,
     kTimeSignatureValid = 1u << 4u,
+    kLooping = 1u << 5u,
   };
   std::uint32_t flags = 0u;
   double tempoBpm = 0.0;    // Quarter notes per minute.
@@ -95,11 +98,17 @@ struct AssetBeginInfo {
 class PreparedAsset {
 public:
   virtual ~PreparedAsset() = default;
+  [[nodiscard]] virtual bool sampleStreamReady() const noexcept { return true; }
+  virtual et_status configureSampleStream(std::uint64_t) noexcept { return ET_ERR_UNSUPPORTED; }
+  virtual et_status publishSamplePage(std::uint64_t, std::uint32_t, std::uint64_t, const float *,
+                                      std::uint32_t, std::uint32_t, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
 };
 
 // Copies and fully prepares the payload without accessing a live kernel.
-using AssetPreparer = et_status (*)(const AssetBeginInfo &info, const std::uint8_t *payload,
-                                    std::uint32_t format_tag,
+using AssetPreparer = et_status (*)(const PrepareInfo &prepare, const AssetBeginInfo &info,
+                                    const std::uint8_t *payload, std::uint32_t format_tag,
                                     std::unique_ptr<PreparedAsset> &asset) noexcept;
 
 struct LatencyRange {
@@ -114,11 +123,65 @@ public:
   [[nodiscard]] virtual bool preparedSuccessfully() const noexcept { return true; }
   virtual void reset() noexcept = 0;
   virtual void streamBoundary() noexcept {}
+  virtual et_status configureSampleStream(std::uint64_t) noexcept { return ET_ERR_UNSUPPORTED; }
+  virtual et_status takeSampleRequests(et_sfz_sample_request *, std::uint32_t,
+                                       std::uint32_t &) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status publishSamplePage(std::uint64_t, std::uint32_t, std::uint64_t, const float *,
+                                      std::uint32_t, std::uint32_t, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status setMidiEvents(const et_midi_event *, std::uint32_t, std::uint32_t,
+                                  std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status setMidiGain(float) noexcept { return ET_ERR_UNSUPPORTED; }
+  virtual et_status setMidiMetering(bool) noexcept { return ET_ERR_UNSUPPORTED; }
+  virtual et_status setMidiChannelMix(std::uint32_t, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status setMidiTransportMap(const et_midi_transport_point *, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  [[nodiscard]] virtual double minimumMidiPreparationBpm() const noexcept { return 0.0; }
+  virtual et_status setMidiTransport(std::uint64_t, double, double, double,
+                                     std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status setMidiClock(std::uint64_t, std::uint32_t, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  [[nodiscard]] virtual std::uint32_t midiState() const noexcept { return 0u; }
+  [[nodiscard]] virtual std::uint64_t midiClock() const noexcept { return 0u; }
+  [[nodiscard]] virtual std::uint32_t midiGeneration() const noexcept { return 0u; }
+  [[nodiscard]] virtual std::uint32_t midiCheckpointSize() const noexcept { return 0u; }
+  virtual et_status writeMidiCheckpoint(std::uint8_t *, std::uint32_t) const noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status readMidiCheckpoint(const std::uint8_t *, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
   [[nodiscard]] virtual bool streamBoundaryPending() const noexcept { return false; }
+  virtual et_status prefetchSampleEvents(const et_midi_event *, std::uint32_t, std::uint32_t,
+                                         std::uint32_t, std::uint32_t) noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
+  virtual et_status sampleStreamReadiness(et_stream_readiness &) const noexcept {
+    return ET_ERR_UNSUPPORTED;
+  }
   virtual void setInstanceSalt(std::uint32_t) noexcept {}
   virtual void setRandomSeed(std::uint32_t, std::uint32_t) noexcept {}
   virtual void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                        const ProcessInfo &info) noexcept = 0;
+  // Offline graph retries preserve the node input. A kernel returning NEED_SAMPLE
+  // must retain or restore its state so the same quantum can be attempted again.
+  virtual et_status prepareOfflineProcessing() noexcept { return ET_OK; }
+  virtual et_status processOffline(float *audio, std::uint32_t channel_count,
+                                   std::uint32_t frame_count, const ProcessInfo &info) noexcept {
+    process(audio, channel_count, frame_count, info);
+    return ET_OK;
+  }
   [[nodiscard]] virtual std::uint32_t latencySamples() const noexcept { return 0; }
   // Bounds for parameter-only changes after preparation; topology/assets stay fixed.
   [[nodiscard]] virtual LatencyRange latencyRange() const noexcept {
@@ -151,6 +214,10 @@ public:
   [[nodiscard]] virtual std::uint32_t assetCapacity(std::uint32_t) const noexcept { return 0u; }
   virtual std::uint8_t *beginAsset(std::uint32_t, const AssetBeginInfo &) noexcept {
     return nullptr;
+  }
+  virtual std::uint8_t *beginAssetWithContext(std::uint32_t slot, const AssetBeginInfo &info,
+                                              const PrepareInfo &) noexcept {
+    return beginAsset(slot, info);
   }
   virtual et_status commitAsset(std::uint32_t, std::uint32_t, std::uint32_t) noexcept {
     return ET_ERR_UNSUPPORTED;

@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <utility>
 
@@ -27,6 +28,13 @@ constexpr int kScheduledTransformWorkBudget = 256;
 constexpr int kScheduledMacWorkBudget = 256;
 constexpr std::size_t kPffftFactorCount = 25u;
 using Path = ConvolutionPath;
+
+bool chargeStorage(std::size_t &remaining, std::uint64_t count, std::uint64_t width = 1) noexcept {
+  if (width && count > remaining / width)
+    return false;
+  remaining -= static_cast<std::size_t>(count * width);
+  return true;
+}
 
 std::uint32_t integerLog2(std::uint32_t value) noexcept {
   std::uint32_t result = 0u;
@@ -146,14 +154,16 @@ public:
   PartitionStage &operator=(const PartitionStage &) = delete;
 
   bool reserve(std::uint32_t blockSize, std::uint32_t offset, std::uint32_t segmentFrames,
-               std::uint32_t irChannels, const InternalConfig &config) noexcept {
+               std::uint32_t irChannels, const InternalConfig &config, std::size_t &remainingBytes,
+               bool sizing = false) noexcept {
     release();
     transform_step_count_ = 1u;
     mac_step_count_ = 1u;
     block_size_ = blockSize;
     fft_size_ = 2u * blockSize;
     offset_ = offset;
-    partitions_ = (segmentFrames + blockSize - 1u) / blockSize;
+    partitions_ = static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(segmentFrames) + blockSize - 1u) / blockSize);
     inputs_ = config.inputs;
     outputs_ = config.outputs;
     path_count_ = config.pathCount;
@@ -162,29 +172,45 @@ public:
     updatePathTopology(config.paths.data());
     amortized_ =
         blockSize >= 2u * kSliceSamples && offset + config.latencySamples >= 2u * blockSize;
+    // Use the same prepared dimensions as the allocations below. Division-based
+    // admission avoids overflowing a product for an invalid oversized topology.
+    if (!chargeStorage(remainingBytes, block_size_,
+                       static_cast<std::uint64_t>(inputs_) * 3 * sizeof(float)) ||
+        !chargeStorage(remainingBytes, fft_size_,
+                       (2 + 2 * static_cast<std::uint64_t>(outputs_)) * sizeof(float)) ||
+        !chargeStorage(remainingBytes, static_cast<std::uint64_t>(partitions_) * fft_size_,
+                       (static_cast<std::uint64_t>(inputs_) + ir_channels_) * sizeof(float)) ||
+        !chargeStorage(remainingBytes, pffftSetupBytes(fft_size_)))
+      return false;
     setup_ = pffft_new_setup(static_cast<int>(fft_size_), PFFFT_REAL);
-    if (setup_ == nullptr ||
-        !input_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
-        !job_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
-        !previous_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
-        !fft_input_.resize(fft_size_) || !fft_work_.resize(fft_size_) ||
-        !input_fdl_.resize(static_cast<std::size_t>(inputs_) * partitions_ * fft_size_) ||
-        !ir_spectra_.resize(static_cast<std::size_t>(ir_channels_) * partitions_ * fft_size_) ||
-        !accumulators_.resize(static_cast<std::size_t>(outputs_) * fft_size_) ||
-        !inverse_.resize(static_cast<std::size_t>(outputs_) * fft_size_)) {
+    if (setup_ == nullptr)
+      return false;
+    if (!sizing &&
+        (!input_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
+         !job_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
+         !previous_blocks_.resize(static_cast<std::size_t>(inputs_) * block_size_) ||
+         !fft_input_.resize(fft_size_) || !fft_work_.resize(fft_size_) ||
+         !input_fdl_.resize(static_cast<std::size_t>(inputs_) * partitions_ * fft_size_) ||
+         !ir_spectra_.resize(static_cast<std::size_t>(ir_channels_) * partitions_ * fft_size_) ||
+         !accumulators_.resize(static_cast<std::size_t>(outputs_) * fft_size_) ||
+         !inverse_.resize(static_cast<std::size_t>(outputs_) * fft_size_))) {
       release();
       return false;
     }
     if (amortized_ && block_size_ >= kIncrementalMinimumBlock) {
+      alignas(64) float probe[3][16]{};
+      auto *input = sizing ? probe[0] : input_fdl_.data();
+      auto *impulse = sizing ? probe[0] : ir_spectra_.data();
+      auto *output = sizing ? probe[0] : accumulators_.data();
       transform_state_ = pffft_new_ordered_real_forward(setup_);
       mac_state_ = pffft_new_zconvolve_accumulate(setup_);
       if (transform_state_ == nullptr || mac_state_ == nullptr ||
           pffft_ordered_real_forward_set_work_budget(transform_state_,
                                                      kScheduledTransformWorkBudget) == 0 ||
-          pffft_unordered_real_backward_begin(transform_state_, accumulators_.data(),
-                                              inverse_.data(), fft_work_.data()) == 0 ||
-          pffft_zconvolve_accumulate_begin(mac_state_, input_fdl_.data(), ir_spectra_.data(),
-                                           accumulators_.data(), 1.0F) == 0) {
+          pffft_unordered_real_backward_begin(transform_state_, output,
+                                              sizing ? probe[1] : inverse_.data(),
+                                              sizing ? probe[2] : fft_work_.data()) == 0 ||
+          pffft_zconvolve_accumulate_begin(mac_state_, input, impulse, output, 1.0F) == 0) {
         release();
         return false;
       }
@@ -199,7 +225,8 @@ public:
         return false;
       }
     }
-    reset();
+    if (!sizing)
+      reset();
     return true;
   }
 
@@ -328,9 +355,9 @@ public:
     return total;
   }
 
-  [[nodiscard]] std::uint32_t jobStepCount() const noexcept {
-    return (inputs_ + outputs_) * transform_step_count_ +
-           path_count_ * partitions_ * mac_step_count_;
+  [[nodiscard]] std::uint64_t jobStepCount() const noexcept {
+    return (static_cast<std::uint64_t>(inputs_) + outputs_) * transform_step_count_ +
+           static_cast<std::uint64_t>(path_count_) * partitions_ * mac_step_count_;
   }
 
   [[nodiscard]] std::uint32_t jobExclusiveStepCount() const noexcept {
@@ -730,7 +757,8 @@ class PartitionedConvolver::Impl {
 public:
   ~Impl() { releaseStorage(); }
 
-  bool reserve(const ConvolverConfig &config) noexcept {
+  bool reserve(const ConvolverConfig &config, std::size_t maximumBytes,
+               PartitionStage *sizingStages = nullptr) noexcept {
     if (config.inputs == 0u || config.outputs == 0u || config.pathCount == 0u ||
         config.pathCount > ConvolverConfig::kMaximumPaths || config.irChannels == 0u ||
         config.irFrames == 0u)
@@ -746,7 +774,14 @@ public:
     if (headBlock < 128u || headBlock > 1024u || (headBlock & (headBlock - 1u)) != 0u)
       return false;
 
+    if (maximumBytes < sizeof(*this))
+      return false;
+
     releaseStorage();
+    sizing_stages_ = sizingStages;
+    maximum_bytes_ = maximumBytes;
+    preparation_bytes_ = 0;
+    remaining_bytes_ = maximumBytes - sizeof(*this);
     state_ = ConvolverPreparationState::error;
     config_.latencySamples = config.latencySamples;
     config_.sliceOffset = config.sliceOffset;
@@ -760,8 +795,12 @@ public:
     latency_ = config.latencySamples;
 
     if (latency_ == 0u &&
-        (!direct_taps_.resize(static_cast<std::size_t>(ir_channels_) * kDirectHead) ||
-         !direct_history_.resize(static_cast<std::size_t>(config_.inputs) * kDirectHead))) {
+        (!chargeStorage(remaining_bytes_, kDirectHead,
+                        (static_cast<std::uint64_t>(ir_channels_) + config_.inputs) *
+                            sizeof(float)) ||
+         (!sizing_stages_ &&
+          (!direct_taps_.resize(static_cast<std::size_t>(ir_channels_) * kDirectHead) ||
+           !direct_history_.resize(static_cast<std::size_t>(config_.inputs) * kDirectHead))))) {
       releaseStorage();
       return false;
     }
@@ -781,21 +820,43 @@ public:
       return false;
     }
 
-    std::uint32_t requiredRing = latency_ + 4096u;
+    std::uint64_t requiredRing = static_cast<std::uint64_t>(latency_) + 4096u;
     for (std::uint32_t index = 0u; index < stage_count_; ++index) {
-      const std::uint32_t required =
-          latency_ + stages_[index]->offset() + stages_[index]->blockSize() + 4096u;
+      const std::uint64_t required = static_cast<std::uint64_t>(latency_) +
+                                     stages_[index]->offset() + stages_[index]->blockSize() + 4096u;
       if (required > requiredRing)
         requiredRing = required;
     }
-    ring_size_ = nextPowerOfTwo(requiredRing);
-    if (!output_ring_.resize(static_cast<std::size_t>(config_.outputs) * ring_size_) ||
-        !input_frame_.resize(config_.inputs)) {
+    if (requiredRing > 0x80000000ULL) {
       releaseStorage();
       return false;
     }
-    reset();
+    ring_size_ = nextPowerOfTwo(static_cast<std::uint32_t>(requiredRing));
+    if (!chargeStorage(remaining_bytes_, ring_size_,
+                       static_cast<std::uint64_t>(config_.outputs) * sizeof(float)) ||
+        !chargeStorage(remaining_bytes_, config_.inputs, sizeof(float)) ||
+        (!sizing_stages_ &&
+         (!output_ring_.resize(static_cast<std::size_t>(config_.outputs) * ring_size_) ||
+          !input_frame_.resize(config_.inputs)))) {
+      releaseStorage();
+      return false;
+    }
+    if (!sizing_stages_)
+      reset();
     state_ = ConvolverPreparationState::reserved;
+    return true;
+  }
+
+  static bool storageRequirements(const ConvolverConfig &config,
+                                  ConvolverStorage &storage) noexcept {
+    storage = {};
+    std::array<PartitionStage, kMaximumStages> stages;
+    Impl probe;
+    const auto maximum = std::numeric_limits<std::size_t>::max();
+    if (!probe.reserve(config, maximum, stages.data()))
+      return false;
+    storage.persistentBytes = maximum - probe.remaining_bytes_;
+    storage.preparationBytes = std::max(storage.persistentBytes, probe.preparation_bytes_);
     return true;
   }
 
@@ -1394,11 +1455,24 @@ private:
       if (!stage.amortized())
         continue;
       const std::uint32_t occurrences = scheduler_cycle_slots_ / stage.periodSlots();
-      totalWeight += stage.jobWorkWeight() * occurrences;
-      totalActions += stage.jobStepCount() * occurrences;
-      const std::uint64_t stageMaximum = stage.maximumStepWeight();
-      maximumStepWeight = stageMaximum > maximumStepWeight ? stageMaximum : maximumStepWeight;
+      const std::uint64_t actions = static_cast<std::uint64_t>(stage.jobStepCount()) * occurrences;
+      if (actions > UINT32_MAX - totalActions)
+        return false;
+      totalActions += static_cast<std::uint32_t>(actions);
+      if (!sizing_stages_) {
+        totalWeight += stage.jobWorkWeight() * occurrences;
+        const std::uint64_t stageMaximum = stage.maximumStepWeight();
+        maximumStepWeight = stageMaximum > maximumStepWeight ? stageMaximum : maximumStepWeight;
+      }
     }
+    if (!chargeStorage(remaining_bytes_, totalActions))
+      return false;
+    auto preparationRemaining = remaining_bytes_;
+    if (!chargeStorage(preparationRemaining, totalActions, sizeof(ScheduledAction)))
+      return false;
+    preparation_bytes_ = maximum_bytes_ - preparationRemaining;
+    if (sizing_stages_)
+      return true;
     schedule_actions_ = new (std::nothrow) std::uint8_t[totalActions];
     if (schedule_actions_ == nullptr)
       return false;
@@ -1468,10 +1542,14 @@ private:
     if (stage_count_ >= kMaximumStages)
       return false;
     const std::uint32_t clippedEnd = end < irFrames ? end : irFrames;
-    PartitionStage *stage = new (std::nothrow) PartitionStage();
-    if (stage == nullptr ||
-        !stage->reserve(block, offset, clippedEnd - offset, ir_channels_, config_)) {
-      delete stage;
+    if (!chargeStorage(remaining_bytes_, sizeof(PartitionStage)))
+      return false;
+    PartitionStage *stage =
+        sizing_stages_ ? sizing_stages_ + stage_count_ : new (std::nothrow) PartitionStage();
+    if (stage == nullptr || !stage->reserve(block, offset, clippedEnd - offset, ir_channels_,
+                                            config_, remaining_bytes_, sizing_stages_ != nullptr)) {
+      if (!sizing_stages_)
+        delete stage;
       return false;
     }
     stages_[stage_count_] = stage;
@@ -1495,7 +1573,8 @@ private:
 
   void releaseStorage() noexcept {
     for (std::uint32_t index = 0u; index < stage_count_; ++index) {
-      delete stages_[index];
+      if (!sizing_stages_)
+        delete stages_[index];
       stages_[index] = nullptr;
     }
     stage_count_ = 0u;
@@ -1536,6 +1615,8 @@ private:
   AlignedFloats output_ring_;
   AlignedFloats input_frame_;
   std::uint8_t *schedule_actions_ = nullptr;
+  PartitionStage *sizing_stages_ = nullptr;
+  std::size_t maximum_bytes_ = 0, preparation_bytes_ = 0;
   std::uint32_t schedule_action_count_ = 0u;
   std::array<std::uint32_t, kMaximumSchedulerSlots + 1u> schedule_offsets_{};
   std::uint32_t scheduler_cycle_slots_ = 1u;
@@ -1557,10 +1638,16 @@ private:
   std::uint32_t prepared_stages_ = 0u;
   std::uint32_t preparation_samples_ = 0u;
   std::uint64_t stream_history_samples_ = 0u;
+  std::size_t remaining_bytes_ = 0u;
   ConvolverPreparationState state_ = ConvolverPreparationState::empty;
 };
 
 PartitionedConvolver::PartitionedConvolver() noexcept : impl_(new(std::nothrow) Impl()) {}
+std::size_t PartitionedConvolver::minimumMemoryBytes() noexcept { return sizeof(Impl); }
+bool PartitionedConvolver::storageRequirements(const ConvolverConfig &config,
+                                               ConvolverStorage &storage) noexcept {
+  return Impl::storageRequirements(config, storage);
+}
 PartitionedConvolver::~PartitionedConvolver() { delete impl_; }
 PartitionedConvolver::PartitionedConvolver(PartitionedConvolver &&other) noexcept
     : impl_(std::exchange(other.impl_, nullptr)) {}
@@ -1573,7 +1660,16 @@ PartitionedConvolver &PartitionedConvolver::operator=(PartitionedConvolver &&oth
 }
 
 bool PartitionedConvolver::reserve(const ConvolverConfig &config) noexcept {
-  return impl_ != nullptr && impl_->reserve(config);
+  return reserve(config, std::numeric_limits<std::size_t>::max());
+}
+bool PartitionedConvolver::reserve(const ConvolverConfig &config,
+                                   std::size_t maximumBytes) noexcept {
+  if (maximumBytes < sizeof(Impl))
+    return false;
+  ConvolverStorage storage;
+  if (!storageRequirements(config, storage) || storage.preparationBytes > maximumBytes)
+    return false;
+  return impl_ != nullptr && impl_->reserve(config, maximumBytes);
 }
 bool PartitionedConvolver::updatePathsWithoutAllocation(const ConvolutionPath *paths,
                                                         std::uint32_t pathCount) noexcept {

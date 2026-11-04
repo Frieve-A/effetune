@@ -1,6 +1,8 @@
 import { TelemetryFrameType } from '../audio/telemetry-hub.js';
 import { getDspRolloutConfig } from '../audio/dsp-rollout.js';
 import { guitarAnalysis, NOTE_TEXT_TYPES } from './visualizer-model.js';
+import { MIDI_VISUALIZER_TYPES, MidiVisualizerAdapter } from './visualizer-midi.js';
+import { getMidiEventList } from '../midi/event-list.js';
 
 const SOURCE_TYPES = Object.freeze({
     spectrum: { type: 'SpectrumAnalyzerPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM,
@@ -98,8 +100,14 @@ const sourceKey = (type, channel, params, gainDb) =>
     JSON.stringify([SOURCE_TYPES[type].type, channel, params, gainDb]);
 
 export class VisualizerSources {
-    constructor(audioManager) {
+    constructor(audioManager, getMidiPresentation = () => null) {
         this.audioManager = audioManager;
+        this.getMidiPresentation = getMidiPresentation;
+        this.midiAdapter = new MidiVisualizerAdapter();
+        this.midiMode = false;
+        this.midiItems = new Map();
+        this.midiMixerTarget = null;
+        this.releaseMidiMixerMetering = null;
         this.layout = null;
         this.visible = false;
         this.active = false;
@@ -130,11 +138,22 @@ export class VisualizerSources {
 
     setLayout(layout) {
         this.layout = layout;
+        this.midiMode = this.getMidiPresentation()?.hasMidi === true;
+        this.midiItems.clear();
         const wanted = new Map();
         const itemKeys = new Map();
         for (const item of layout?.items || []) {
+            if (item?.type === 'midi') {
+                if (this.midiMode) this.midiItems.set(item.id, item);
+                continue;
+            }
             const definition = SOURCE_TYPES[item?.type];
             if (!definition) continue;
+            if (this.midiMode && MIDI_VISUALIZER_TYPES.includes(item.type) && item.params?.preferMidi !== false) {
+                this.midiItems.set(item.id, item);
+                // Rhythm keeps its audio analysis; MIDI supplies only its displayed clock.
+                if (item.type !== 'rhythm-analyzer') continue;
+            }
             const channel = item.channel ?? null;
             const { params, gainDb } = analysisSettings(item.type, item.params);
             const key = sourceKey(item.type, channel, params, gainDb);
@@ -231,6 +250,7 @@ export class VisualizerSources {
             }
         }
         this.active = active;
+        this._syncMidiMixerMetering();
         this.audioManager.setVisualizerSources(this.active ? [...this.sources.values()].map(source => ({
             tapId: source.tapId, type: source.definition.type,
             params: source.params, channel: source.channel, gainDb: source.gainDb
@@ -285,7 +305,45 @@ export class VisualizerSources {
     }
 
     getFrame(itemId) {
+        const presentation = this.getMidiPresentation();
+        if ((presentation?.hasMidi === true) !== this.midiMode) this.setLayout(this.layout);
+        if (this.midiItems.has(itemId) && (presentation?.timeline || presentation?.live)) return this.midiAdapter.snapshot(presentation);
         return this.sources.get(this.itemKeys.get(itemId))?.frame ?? null;
+    }
+
+    getSoundFontMixer() {
+        this._syncMidiMixerMetering();
+        return this.midiMixerTarget?.getVisualizerMidiMixerSnapshot?.() ?? null;
+    }
+
+    getMidiEventList() {
+        const presentation = this.getMidiPresentation();
+        return presentation?.timeline ? {
+            rows: getMidiEventList(presentation.timeline),
+            position: presentation.position
+        } : null;
+    }
+
+    _syncMidiMixerMetering() {
+        const wanted = this.active && this.midiMode && [...this.midiItems.values()].some(item => item.type === 'midi');
+        const pipeline = this.audioManager.getCurrentPipeline?.() ?? [];
+        let sectionEnabled = true;
+        let target = null;
+        for (const plugin of pipeline) {
+            if (plugin.constructor?.name === 'SectionPlugin') {
+                sectionEnabled = plugin.enabled !== false;
+                continue;
+            }
+            if (wanted && sectionEnabled && plugin.enabled !== false &&
+                plugin.constructor?.name === 'SoundFontPlayerPlugin') {
+                if (plugin.sf && plugin.acquireVisualizerMidiMetering) target = plugin;
+                break;
+            }
+        }
+        if (target === this.midiMixerTarget) return;
+        this.releaseMidiMixerMetering?.();
+        this.midiMixerTarget = target;
+        this.releaseMidiMixerMetering = target?.acquireVisualizerMidiMetering() ?? null;
     }
 
     getModulators() {
@@ -305,6 +363,9 @@ export class VisualizerSources {
 
     dispose() {
         this.setVisible(false);
+        this.releaseMidiMixerMetering?.();
+        this.midiMixerTarget = null;
+        this.releaseMidiMixerMetering = null;
         document.removeEventListener('visibilitychange', this._onVisibilityChange);
         this.audioManager.removeEventListener?.('dspReady', this._onDspReady);
         this._stopHostVisibility?.();

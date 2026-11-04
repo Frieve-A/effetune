@@ -420,6 +420,7 @@ test('drop area creation and file inputs handle web, Electron, invalid, single, 
   await withFileProcessorGlobals({}, async ({ calls }) => {
     const { processor, pipelineElement } = createProcessorHarness();
     const fileInput = document.body.querySelector('input');
+    for (const extension of ['musicxml', 'xml', 'mxl']) assert.ok(fileInput.accept.includes(`.${extension}`));
     const selectFiles = processor.dropArea.querySelector('.select-files');
     await selectFiles.dispatch('click');
     assert.equal(fileInput.clicked, true);
@@ -437,6 +438,10 @@ test('drop area creation and file inputs handle web, Electron, invalid, single, 
     fileInput.files = [createFile('one.wav'), createFile('two.flac')];
     await fileInput.dispatch('change', { target: fileInput });
     assert.equal(FakeJSZip.lastFiles.length, 2);
+
+    fileInput.files = ['score.musicxml', 'legacy.XML', 'packed.mxl'].map(name => createFile(name));
+    await fileInput.dispatch('change', { target: fileInput });
+    assert.equal(FakeJSZip.lastFiles.length, 3);
   });
 
   await withFileProcessorGlobals({
@@ -510,6 +515,14 @@ test('drag and drop handlers distinguish audio, preset, unsupported, and Electro
     assert.equal(insertionIndicator.style.display, 'none');
 
     await processor.dropArea.dispatch('drop', { dataTransfer: createDataTransfer([text]) });
+    for (const extension of ['musicxml', 'XML', 'mxl']) {
+      const file = createFile(`score.${extension}`);
+      const drag = createEvent(processor.dropArea, { dataTransfer: createDataTransfer([file]) });
+      await processor.dropArea.dispatch('dragover', drag);
+      assert.equal(drag.prevented, true);
+      await processor.dropArea.dispatch('drop', { dataTransfer: createDataTransfer([file]) });
+      assert.equal(processor.downloadContainer.style.display, 'block');
+    }
   });
 
   await withFileProcessorGlobals({

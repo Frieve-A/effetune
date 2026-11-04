@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 // Classic-script fixtures must register the adapter's display classes before it initializes.
 export const analyzerDisplayDependencies = [
+  ['visualizer-midi', 'midiChannelRgb'],
   ['visualizer-drums', 'DrumsDisplay'],
   ['visualizer-note-text', 'NoteTextDisplay']
 ].map(([file, name]) => {

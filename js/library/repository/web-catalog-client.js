@@ -183,7 +183,8 @@ export class WebCatalogRepositoryClient {
         scan: options.scan !== false,
         scanReason: options.scanReason ?? 'automatic',
         languageHints: options.languageHints ?? null,
-        includeVideo: options.includeVideo === true
+        includeVideo: options.includeVideo === true,
+        includeMidi: options.includeMidi === true
       });
     } catch (error) {
       await this.request('abortSessionFolder', { token: begun.token }).catch(() => {});

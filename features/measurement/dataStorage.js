@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../js/settings-storage.js';
 /**
  * Data storage utility for measurement data
  * Manages saving/loading from IndexedDB and file export/import
@@ -815,6 +816,9 @@ export class DataStorage {
      * Get the "do not warn on delete" setting
      */
     async getDoNotWarnSetting() {
+        if (globalThis.window?.electronAPI?.settingsStorage) {
+            return getSettingsStorage().getItem(this.DO_NOT_WARN_KEY) === 'true';
+        }
         try {
             const db = await this.openDatabase();
             
@@ -858,6 +862,10 @@ export class DataStorage {
      * @param {boolean} value - Whether to skip delete warnings
      */
     async setDoNotWarnSetting(value) {
+        if (globalThis.window?.electronAPI?.settingsStorage) {
+            getSettingsStorage().setItem(this.DO_NOT_WARN_KEY, String(value));
+            return true;
+        }
         try {
             const db = await this.openDatabase();
             
@@ -1494,7 +1502,7 @@ export class DataStorage {
      */
     saveUserSettings(settings) {
         try {
-            localStorage.setItem(this.USER_SETTINGS_KEY, JSON.stringify(settings));
+            getSettingsStorage().setItem(this.USER_SETTINGS_KEY, JSON.stringify(settings));
             console.log('User settings saved');
             return true;
         } catch (error) {
@@ -1509,7 +1517,7 @@ export class DataStorage {
      */
     loadUserSettings() {
         try {
-            const settings = localStorage.getItem(this.USER_SETTINGS_KEY);
+            const settings = getSettingsStorage().getItem(this.USER_SETTINGS_KEY);
             return settings ? JSON.parse(settings) : {};
         } catch (error) {
             console.error('Error loading user settings:', error);
@@ -1523,7 +1531,7 @@ export class DataStorage {
      */
     savePEQSettings(settings) {
         try {
-            localStorage.setItem(this.PEQ_SETTINGS_KEY, JSON.stringify(settings));
+            getSettingsStorage().setItem(this.PEQ_SETTINGS_KEY, JSON.stringify(settings));
             console.log('PEQ settings saved');
             return true;
         } catch (error) {
@@ -1538,7 +1546,7 @@ export class DataStorage {
      */
     loadPEQSettings() {
         try {
-            const settings = localStorage.getItem(this.PEQ_SETTINGS_KEY);
+            const settings = getSettingsStorage().getItem(this.PEQ_SETTINGS_KEY);
             return settings ? JSON.parse(settings) : {};
         } catch (error) {
             console.error('Error loading PEQ settings:', error);

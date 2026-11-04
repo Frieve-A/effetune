@@ -5,6 +5,24 @@ import { decodeSfzBank } from '../../js/sfz/bank.js';
 
 const encode = text => new TextEncoder().encode(text);
 
+test('Web script sources are stored as dependencies and compiled again on cold preparation', async () => {
+  const stored = new Map();
+  const backend = { async read(name) { return stored.get(name) || null; },
+    async writeAtomic(name, bytes) { stored.set(name, bytes.slice()); } };
+  const file = (name, text) => ({ name, size: encode(text).length, arrayBuffer: async () => encode(text).buffer });
+  const source = 'on note\n ignore_event($EVENT_ID)\n play_note($EVENT_NOTE+12, $EVENT_VELOCITY)\nend on';
+  const service = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  const entry = await service.importFolderFiles([file('test.sfz', '<global> script=play.txt\n<region> sample=*sine'),
+    file('play.txt', source)], 'test.sfz');
+  const files = decodeSfzBank(stored.get(`${entry.id}.sfzbank`)).files;
+  assert.equal(new TextDecoder().decode(files.get('play.txt')), source);
+  const cold = await (await new SfzLibraryService(backend, { onDiagnostic: null }).open()).prepare(entry.id);
+  assert.deepEqual(cold.descriptor.unsupportedOpcodes, []);
+  assert.equal(cold.descriptor.tailSeconds, null);
+  const header = new Uint32Array(cold.descriptor.payload, 32);
+  assert.ok(header[9] > 64);
+});
+
 test('sample-aware invalid regions retain usable Web regions with additive warnings after cold loading', async () => {
   const stored = new Map();
   const backend = { async read(name) { return stored.get(name) || null; },
@@ -26,7 +44,7 @@ test('sample-aware invalid regions retain usable Web regions with additive warni
   assert.deepEqual(cached.warnings, [{ code: 'invalid-regions', count: 3 }]);
   assert.deepEqual(cold.warnings, cached.warnings);
   assert.deepEqual(cold.descriptor.payload, cached.descriptor.payload);
-  assert.equal(new Float32Array(cached.descriptor.payload, 64)[4], 60);
+  assert.equal(new Float32Array(cached.descriptor.payload, 80)[4], 60);
   assert.equal(diagnostics.length, 2);
   assert.equal(diagnostics[0].invalidRegions.length, 1);
   assert.equal(diagnostics[1].invalidRegions.length, 2);
@@ -53,7 +71,7 @@ test('Web include expansion respects the selected load budget before reading sam
   assert.ok(reads.length <= 17);
 });
 
-test('partial CC import reads and stores only the selected layer and prepares it identically after reopening', async () => {
+test('dynamic CC and release layers retain their original samples after storage and reopening', async () => {
   const stored = new Map();
   const backend = {
     async read(name) { return stored.get(name) || null; },
@@ -72,21 +90,21 @@ test('partial CC import reads and stores only the selected layer and prepares it
     file('piano.sfz', encode(text)), file('off.wav', new Uint8Array([1])),
     file('on.wav', new Uint8Array([2])), file('release.wav', new Uint8Array([3]))
   ], 'piano.sfz', { decode });
-  assert.equal(entry.regionCount, 1);
-  assert.deepEqual(reads, ['piano.sfz', 'on.wav']);
+  assert.equal(entry.regionCount, 3);
+  assert.deepEqual(reads, ['piano.sfz', 'off.wav', 'on.wav', 'release.wav']);
   const bank = decodeSfzBank(stored.get(`${entry.id}.sfzbank`));
-  assert.deepEqual([...bank.files.keys()], ['on.wav', 'piano.sfz']);
+  assert.deepEqual([...bank.files.keys()], ['off.wav', 'on.wav', 'piano.sfz', 'release.wav']);
   assert.equal(new TextDecoder().decode(bank.files.get('piano.sfz')), text);
   const first = await service.prepare(entry.id, { decode });
   const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
   const second = await reopened.prepare(entry.id, { decode });
-  assert.equal(second.regionCount, 1);
+  assert.equal(second.regionCount, 3);
   assert.deepEqual(second.descriptor.payload, first.descriptor.payload);
-  assert.equal(first.warnings, undefined, 'Valid unsupported playback conditions are omitted without an error notice');
+  assert.equal(first.warnings, undefined, 'Valid dynamic playback conditions are preserved without warnings');
   assert.deepEqual(second.warnings, first.warnings);
 });
 
-test('over-budget Web imports persist representative velocity and sequence mapping after reopening', async () => {
+test('over-budget Web imports fail without saving a reduced instrument', async () => {
   const stored = new Map();
   const backend = { async read(name) { return stored.get(name) || null; },
     async writeAtomic(name, bytes) { stored.set(name, bytes.slice()); }, async remove(name) { stored.delete(name); } };
@@ -107,22 +125,14 @@ test('over-budget Web imports persist representative velocity and sequence mappi
     '<region> sample=../samples/soft1.wav pan=101\n<region> sample=../samples/missing.wav\n' +
     '<region> sample=../samples/soft1.wav trigger=release';
   const service = await new SfzLibraryService(backend, { getMaxBytes: () => 2048, onDiagnostic: null }).open();
-  const decode = () => ({ sampleRate: 44100, channels: [new Float32Array(300)] });
-  const entry = await service.importFolderFiles([file('parts/piano.sfz', encode(definition)),
+  await assert.rejects(service.importFolderFiles([file('parts/piano.sfz', encode(definition)),
     file('samples/soft1.wav', wav(300)), file('samples/soft2.wav', wav(300)),
-    file('samples/loud.wav', wav(2000))], 'parts/piano.sfz', { decode });
-  assert.deepEqual(reads, ['parts/piano.sfz', 'samples/soft1.wav']);
-  const bank = decodeSfzBank(stored.get(`${entry.id}.sfzbank`));
-  assert.deepEqual([...bank.files.keys()], ['parts/piano.sfz', 'samples/soft1.wav']);
-  const reloaded = await new SfzLibraryService(backend, { getMaxBytes: () => 2048, onDiagnostic: null }).open();
-  const first = await service.prepare(entry.id, { decode });
-  const second = await reloaded.prepare(entry.id, { decode });
-  assert.deepEqual(new Uint8Array(second.descriptor.payload), new Uint8Array(first.descriptor.payload));
-  assert.deepEqual(first.warnings, [{ code: 'invalid-regions', count: 1 },
-    { code: 'missing-samples', count: 1 }, { code: 'reduced-bank', count: 1 }]);
-  assert.deepEqual(second.warnings, first.warnings);
-  const table = new Float32Array(second.descriptor.payload, 64);
-  assert.deepEqual([...table.slice(4, 12)], [60, 61, 1, 127, 0, 1, 1, 1]);
+    file('samples/loud.wav', wav(2000))], 'parts/piano.sfz', {
+      decode: () => assert.fail('No representative samples may be decoded')
+    }), error => error.code === 'too-large');
+  assert.deepEqual(reads, ['parts/piano.sfz']);
+  assert.equal(stored.size, 0);
+  assert.deepEqual(await service.list(), []);
 });
 
 test('load warnings aggregate genuine omissions and keep normal static projections silent', async () => {

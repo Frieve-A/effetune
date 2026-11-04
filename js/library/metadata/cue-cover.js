@@ -7,6 +7,7 @@ export function cueCoverCandidateFileNames(audioRelativePath) {
   const audioFileName = baseName(audioRelativePath);
   const extensionIndex = audioFileName.lastIndexOf('.');
   const stem = extensionIndex > 0 ? audioFileName.slice(0, extensionIndex) : audioFileName;
+  if (/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(audioFileName)) return ['cover.jpg', 'folder.jpg'];
   const candidates = [
     'cover.jpg', 'cover.png', 'front.jpg', 'front.png',
     `${stem}.jpg`, `${stem}.png`,
@@ -35,6 +36,12 @@ export function selectCueCoverFileName(fileNames, audioRelativePath) {
 export function cueCoverMimeType(fileName) {
   const extension = String(fileName ?? '').split('.').at(-1)?.toLowerCase() ?? '';
   return CUE_COVER_MIME_TYPES[extension] ?? null;
+}
+
+export function isTrackCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath) {
+  if (cueRelativePath) return isCueCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath);
+  if (!/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(String(audioRelativePath ?? ''))) return false;
+  return isCueCoverRelativePath(audioRelativePath, audioRelativePath, coverRelativePath);
 }
 
 export function isCueCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath) {

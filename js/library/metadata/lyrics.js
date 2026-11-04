@@ -149,14 +149,14 @@ export function lyricsCandidateNames({ fileName, cue = null }) {
   return names;
 }
 
-export function findLyricsFileName(fileNames, names) {
+export function findLyricsFileName(fileNames, names, extension = 'lrc') {
   const key = name => name.normalize('NFC').toLowerCase();
   const listed = new Map();
   for (const fileName of fileNames) {
     if (typeof fileName === 'string' && !listed.has(key(fileName))) listed.set(key(fileName), fileName);
   }
   for (let index = 0; index < names.length; index++) {
-    const candidate = `${names[index]}.lrc`.replace(/[\\/:*?"<>|\p{Cc}]/gu, '_');
+    const candidate = `${names[index]}.${extension}`.replace(/[\\/:*?"<>|\p{Cc}]/gu, '_');
     const fileName = listed.get(key(candidate));
     if (fileName !== undefined) return { fileName, index };
   }

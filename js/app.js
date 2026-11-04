@@ -1,3 +1,4 @@
+import { getSettingsStorage } from './settings-storage.js';
 import { LIBRARY_STYLESHEET } from './utils/app-stylesheets.js';
 import { PluginManager } from './plugin-manager.js';
 import { AudioManager } from './audio-manager.js';
@@ -116,7 +117,7 @@ async function loadPipelineState(forceLoad = false) {
     
     try {
         // Get app path from Electron - this should respect portable mode settings
-        const appPath = await window.electronAPI.getPath('userData');
+        const appPath = await window.electronAPI.getPath('settings');
         
         // Use path.join for cross-platform compatibility
         const filePath = await window.electronAPI.joinPaths(appPath, 'pipeline-state.json');
@@ -611,11 +612,11 @@ class App {
     async hasSavedPipelineState() {
         try {
             if (window.electronIntegration?.isElectronEnvironment?.() || window.electronIntegration?.isElectron) {
-                const appPath = await window.electronAPI.getPath('userData');
+                const appPath = await window.electronAPI.getPath('settings');
                 const filePath = await window.electronAPI.joinPaths(appPath, 'pipeline-state.json');
                 return await window.electronAPI.fileExists(filePath);
             }
-            return window.localStorage.getItem('effetune_pipeline_state') !== null;
+            return getSettingsStorage().getItem('effetune_pipeline_state') !== null;
         } catch (error) {
             console.warn('Could not check saved pipeline state for the onboarding tour:', error);
             return true;
@@ -651,6 +652,13 @@ class App {
         if (Array.isArray(midiMappings) && midiMappings.length > 0) {
             this.ensureMidiControllerManager().catch(error => {
                 console.warn('MIDI controller startup failed:', error);
+            });
+        }
+        const midiInputKey = window.audioPreferences?.midiInputDeviceKey ||
+            window.electronIntegration?.audioPreferences?.midiInputDeviceKey || '';
+        if (midiInputKey && !isAndroidHost()) {
+            this.applyMidiInputPreference(midiInputKey).catch(error => {
+                console.warn('MIDI input startup failed:', error);
             });
         }
 
@@ -692,6 +700,24 @@ class App {
             this.midiControllerManagerPromise = retryable;
         }
         return this.midiControllerManagerPromise;
+    }
+
+    async applyMidiInputPreference(key) {
+        if (isAndroidHost()) return;
+        if (!key && !this.midiLiveInputPromise) return;
+        if (!this.midiLiveInputPromise) {
+            this.midiLiveInputPromise = Promise.all([
+                this.ensureMidiControllerManager(), import('./midi/live-input.js')
+            ]).then(([manager, { MidiLiveInput }]) => {
+                this.midiLiveInput = new MidiLiveInput({ manager, audioManager: this.audioManager });
+                return this.midiLiveInput;
+            }).catch(error => {
+                this.midiLiveInputPromise = null;
+                throw error;
+            });
+        }
+        const input = await this.midiLiveInputPromise;
+        await input.select(key);
     }
 
     /**

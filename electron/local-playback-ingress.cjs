@@ -11,6 +11,8 @@ const CUE_COVER_MAX_BYTES = 20 * 1024 * 1024;
 const CUE_EXTENSION = '.cue';
 const CUE_AUDIO_EXTENSIONS = new Set(['.flac', '.wav']);
 const PLAYBACK_AUDIO_EXTENSIONS = new Set([
+  '.dsf', '.dff',
+  '.mid', '.midi', '.kar', '.musicxml', '.xml', '.mxl',
   '.3gp', '.aac', '.flac', '.m4a', '.m4v', '.mkv', '.mov', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
 
@@ -44,7 +46,7 @@ class LocalPlaybackIngress {
   }
 
   async resolveSelection(filePaths, request = this.beginRequest()) {
-    const paths = requirePathArray(filePaths).filter(filePath => path.extname(filePath).toLowerCase() !== '.lrc');
+    const paths = requirePathArray(filePaths).filter(filePath => !/\.(lrc|wrd)$/i.test(filePath));
     const cuePaths = paths.filter(filePath => path.extname(filePath).toLowerCase() === CUE_EXTENSION);
     if (cuePaths.length === 0) {
       const descriptors = await admitLocalPlaybackPaths(paths, {
@@ -91,7 +93,7 @@ class LocalPlaybackIngress {
 }
 
 async function admitLocalPlaybackPaths(filePaths, { filesystem = fs, signal } = {}) {
-  const paths = requirePathArray(filePaths);
+  const paths = requirePathArray(filePaths).filter(filePath => !/\.(lrc|wrd)$/i.test(filePath));
   const descriptors = [];
   for (const filePath of paths) {
     throwIfAborted(signal);
@@ -109,6 +111,55 @@ async function admitLocalPlaybackPaths(filePaths, { filesystem = fs, signal } = 
     }));
   }
   return Object.freeze(descriptors);
+}
+
+async function readScoreCover(filePath, { filesystem = fs, signal } = {}) {
+  if (typeof filePath !== 'string' || !/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(filePath)) return null;
+  try {
+    const canonicalSource = path.resolve(await filesystem.realpath(filePath));
+    const parent = path.dirname(canonicalSource);
+    const entries = await filesystem.readdir(parent, { withFileTypes: true });
+    const fileName = selectCueCoverFileName(entries, canonicalSource);
+    return fileName ? await tryReadCueCover(parent, fileName, { filesystem, signal }) : null;
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.code === 'selection-stale') throw error;
+    return null;
+  }
+}
+
+async function readMidiWrdSidecar(filePath, { filesystem = fs, signal } = {}) {
+  if (typeof filePath !== 'string' || !/\.(mid|midi|kar)$/i.test(filePath)) return null;
+  try {
+    throwIfAborted(signal);
+    const canonicalSource = path.resolve(await filesystem.realpath(filePath));
+    if (!/\.(mid|midi|kar)$/i.test(canonicalSource)) return null;
+    const parent = path.dirname(canonicalSource);
+    const name = path.basename(canonicalSource).replace(/\.(mid|midi|kar)$/i, '.wrd');
+    const entries = await filesystem.readdir(parent);
+    const matches = entries.filter(entry => entry.normalize('NFC').toLowerCase() === name.normalize('NFC').toLowerCase());
+    if (matches.length !== 1) return null;
+    const lexicalPath = path.join(parent, matches[0]);
+    const canonicalPath = path.resolve(await filesystem.realpath(lexicalPath));
+    if (!sameFilesystemPath(path.dirname(canonicalPath), parent)) return null;
+    const handle = await filesystem.open(canonicalPath, 'r');
+    try {
+      const before = await handle.stat();
+      if (!before.isFile()) return null;
+      const identity = captureFileIdentity(before);
+      if (identity.size > CUE_MAX_BYTES) return null;
+      const bytes = await readExactFileBytes(handle, identity.size, signal);
+      const after = await handle.stat();
+      if (bytes.byteLength !== identity.size || !sameFileIdentity(identity, captureFileIdentity(after))) return null;
+      await assertCuePathIdentityCurrent({ lexicalPath, canonicalParent: parent, canonicalPath, identity }, { filesystem, signal });
+      return bytes;
+    } finally {
+      await handle.close().catch(() => {});
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.code === 'selection-stale') throw error;
+    console.debug('MIDI lyrics sidecar could not be read:', error);
+    return null;
+  }
 }
 
 async function resolveElectronCueSelection(cuePath, {
@@ -436,6 +487,8 @@ module.exports = {
   LocalPlaybackIngress,
   admitLocalPlaybackPaths,
   captureFileIdentity,
+  readMidiWrdSidecar,
+  readScoreCover,
   resolveElectronCueSelection,
   sameFileIdentity
 };

@@ -468,7 +468,8 @@ test('client binds non-FSA session files before adding or reconnecting a folder'
     displayName: 'Imported Music',
     scan: true,
     scanReason: 'manual',
-    languageHints: { language: 'ja' }
+    languageHints: { language: 'ja' },
+    includeMidi: true
   });
   await client.requestFolderAccess({
     folderId: 'folder-session',
@@ -486,11 +487,13 @@ test('client binds non-FSA session files before adding or reconnecting a folder'
   });
   assert.deepEqual(worker.messages[1].args[0].entries, sessionFiles);
   assert.equal(worker.messages[2].args[0].scan, true);
+  assert.equal(worker.messages[2].args[0].includeMidi, true);
   assert.deepEqual(worker.messages[3].args[0], {
     folderId: 'folder-session',
     displayName: 'Imported Music'
   });
   assert.equal(worker.messages[5].args[0].scan, false);
+  assert.equal(worker.messages[5].args[0].includeMidi, false);
   await client.close();
   assert.equal(worker.terminated, true);
 });

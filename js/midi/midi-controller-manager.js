@@ -119,6 +119,8 @@ export class MidiControllerManager {
     this.dialogOpen = false;
     this.learnActive = false;
     this.learnCallback = null;
+    this.performanceInputKey = '';
+    this.performanceInputCallback = null;
     this.disposed = false;
     this.changeListeners = new Set();
     if (isAndroidHost(this.window)) this.unsubscribeNativeActions = subscribeAndroidMidiActions(this.window);
@@ -200,10 +202,11 @@ export class MidiControllerManager {
     this.localInputs.syncSubscriptions(this.store.mappings, {
       dialogOpen: this.dialogOpen || this.learnActive
     });
-    const needsMidi = this.hasMidiMappings() || this.learnActive;
+    const needsMidi = this.hasMidiMappings() || this.learnActive || Boolean(this.performanceInputKey);
     if (needsMidi) await this.ensureMidiAccess();
     if (this.disposed) return;
-    this.setMidiRuntimeActive(this.hasMidiMappings() || this.learnActive);
+    this.setMidiRuntimeActive(this.hasMidiMappings() || this.learnActive || Boolean(this.performanceInputKey) ||
+      (this.dialogOpen && Boolean(this.midiAccess)));
     this.mcu.startFeedbackPoller();
     this.emitChange();
   }
@@ -218,8 +221,12 @@ export class MidiControllerManager {
 
   async ensureMidiAccess() {
     if (this.disposed) return null;
-    if (!this.isSupported() || this.midiAccess) return this.midiAccess;
-    if (this.midiRequest) return this.midiRequest;
+    const sysex = Boolean(this.performanceInputKey);
+    if (!this.isSupported() || this.midiAccess && (!sysex || this.midiAccess.sysexEnabled !== false)) return this.midiAccess;
+    if (this.midiRequest) {
+      await this.midiRequest;
+      return sysex && this.midiAccess?.sysexEnabled === false ? this.ensureMidiAccess() : this.midiAccess;
+    }
     // A MIDI request that never settles means the browser's MIDI service is
     // stuck inside a driver. Asking again would only queue behind it, so MIDI
     // stays off for the rest of the session; other input kinds keep working.
@@ -227,7 +234,7 @@ export class MidiControllerManager {
     let request;
     try {
       request = isAndroidHost(this.window) ? requestAndroidMidiAccess()
-        : Promise.resolve(this.navigator.requestMIDIAccess({ sysex: false }));
+        : Promise.resolve(this.navigator.requestMIDIAccess({ sysex }));
     } catch (error) {
       request = Promise.reject(error);
     }
@@ -253,6 +260,7 @@ export class MidiControllerManager {
           console.warn('MIDI access is unavailable. Controller mappings remain saved.');
           return null;
         }
+        if (this.midiAccess !== result.access) this.setMidiRuntimeActive(false);
         this.midiAccess = result.access;
         this.midiAccessError = null;
         return result.access;
@@ -330,6 +338,14 @@ export class MidiControllerManager {
     if (this.disposed) return;
     const deviceKey = portEntries(this.midiAccess?.inputs, this.inputPortSlots)
       .find(entry => entry.port === input)?.key ?? (input.name || '');
+    // Musical input includes program change and pressure, which controller
+    // mapping does not decode. Deliver it independently before that filter.
+    if (!event.nativeConsumed && deviceKey === this.performanceInputKey &&
+        input === this.findInput(this.performanceInputKey)) {
+      this.performanceInputCallback?.({
+        data: event.data, timeStamp: event.timeStamp, sourceKey: deviceKey, port: input
+      });
+    }
     const protocol = this.store.getDeviceProtocol(deviceKey);
     const decoded = protocol === 'mcu'
       ? this.mcu.decode(event.data)
@@ -432,6 +448,20 @@ export class MidiControllerManager {
     )?.port || null;
   }
 
+  findInput(key) {
+    if (!this.midiAccess) return null;
+    return portEntries(this.midiAccess.inputs, this.inputPortSlots).find(entry =>
+      entry.key === key && entry.connected
+    )?.port || null;
+  }
+
+  async setPerformanceInput(key, callback) {
+    if (this.disposed) return;
+    this.performanceInputKey = typeof key === 'string' ? key : '';
+    this.performanceInputCallback = typeof callback === 'function' ? callback : null;
+    await this.syncRuntime();
+  }
+
   async openDialog() {
     const { MidiMappingDialog } = await import('./midi-mapping-dialog.js');
     if (!this.dialog) this.dialog = new MidiMappingDialog({ manager: this, windowRef: this.window });
@@ -441,6 +471,8 @@ export class MidiControllerManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.performanceInputKey = '';
+    this.performanceInputCallback = null;
     if (this.midiAccessTimer) {
       clearTimeout(this.midiAccessTimer);
       this.midiAccessTimer = null;

@@ -125,36 +125,6 @@ body.layout-mobile .subtitle-container {
     margin-top: 4px;
 }
 
-/* Keep messages at the top, separate from queue progress above the player.
-   Status/copy/paste messages are shown as a toast overlay so the header
-   height never changes and the layout below does not shift. Messages are
-   cleared by the existing clearError() timers, which dismisses the toast. */
-body.layout-mobile .message-display {
-    display: none;
-}
-
-body.layout-mobile .message-display:not(:empty) {
-    display: block;
-    position: fixed;
-    left: 50%;
-    top: calc(env(safe-area-inset-top) + 12px);
-    transform: translateX(-50%);
-    max-width: calc(100vw - 32px);
-    width: max-content;
-    box-sizing: border-box;
-    margin-left: 0;
-    padding: 10px 16px;
-    background-color: color-mix(in srgb, var(--et-base) 95%, transparent);
-    border: 1px solid var(--et-surface-28);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    line-height: 18px;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    z-index: 1400;
-    pointer-events: none;
-}
-
 body.layout-mobile .mobile-menu-button {
     position: absolute;
     right: 0;

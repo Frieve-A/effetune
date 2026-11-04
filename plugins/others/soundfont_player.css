@@ -1,0 +1,36 @@
+@import "sfz_note_player.css";
+@import "../eq/room_eq.css";
+@import "../basics/matrix.css";
+
+.soundfont-player-plugin-ui { width: 100%; min-width: 0; box-sizing: border-box; }
+.soundfont-player-plugin-ui .soundfont-bank-row { gap: 8px; margin-bottom: 10px; }
+.soundfont-bank-name { flex: 1; min-width: 80px; overflow-wrap: anywhere; color: var(--et-text-secondary); }
+.soundfont-player-plugin-ui .room-eq-status { white-space: normal; overflow-wrap: anywhere; }
+.soundfont-preparation-progress { align-self: center; width: 120px; height: 5px; accent-color: var(--et-accent); }
+.soundfont-bank-summary { margin-bottom: 10px; color: var(--et-text-secondary); font-size: 0.85em; overflow-wrap: anywhere; }
+.soundfont-voice-meter { display: grid; gap: 4px; width: 140px; padding: 6px 8px; margin-bottom: 8px; border: 1px solid var(--et-border-solid); border-radius: 3px; background: var(--et-base); }
+.soundfont-voice-meter > span { color: var(--et-text-secondary); font: 11px Arial, sans-serif; }
+.soundfont-voice-meter > strong { color: var(--et-text-primary); font: 14px Arial, sans-serif; font-variant-numeric: tabular-nums; }
+.soundfont-voice-bar { height: 4px; background: linear-gradient(var(--et-accent), var(--et-accent)) left / 0% 100% no-repeat var(--et-graph-tone-13); }
+.soundfont-mixer-scroll { --matrix-cell-padding: 4px; --matrix-visible-rows: 16; }
+.soundfont-mixer { min-width: 900px; }
+.soundfont-mixer-header { font-size: 11px; }
+.soundfont-channel-number { font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; color: var(--et-text-secondary); }
+.soundfont-mixer-row[data-filtered="true"] { opacity: 0.45; }
+.soundfont-mixer-row select { box-sizing: border-box; width: 100%; min-width: 0; height: 25px; font-size: 11px; }
+.soundfont-mixer-row canvas { display: block; width: 100%; height: 24px; }
+.soundfont-channel-level { position: relative; box-sizing: border-box; width: 100%; height: 10px; margin: auto; overflow: hidden; background: var(--et-graph-bg-deep); }
+.soundfont-channel-level-fill { position: absolute; inset: 0; clip-path: inset(0 100% 0 0); background: linear-gradient(to right, #008000 0% 75%, #808000 75% 87.5%, #800000 87.5% 100%); } /* theme-allow: Meter colors distinguish signal level bands. */
+.soundfont-channel-level::after { position: absolute; inset: 0; content: ""; pointer-events: none; background: repeating-linear-gradient(to right, transparent 0 calc(12.5% - 1px), var(--et-graph-grid-soft) calc(12.5% - 1px) 12.5%); clip-path: inset(0 1px 0 0); }
+.soundfont-channel-level-peak { position: absolute; z-index: 1; left: 0; top: 0; bottom: 0; width: 2px; transform: translateX(-100%); opacity: 0; background: var(--et-text-primary); }
+.soundfont-bank-row button { box-sizing: border-box; min-height: 26px; padding: 4px 10px; border: 1px solid var(--et-surface-34); border-radius: 4px; background: var(--et-control-gradient); color: var(--et-text-primary); font: inherit; cursor: pointer; }
+.soundfont-bank-row button:hover:not(:disabled) { background: var(--et-control-hover-gradient); }
+.soundfont-player-plugin-ui button:disabled, .soundfont-mixer-knob[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.soundfont-mixer-row .matrix-button { min-width: 0; width: 100%; padding: 0; }
+.soundfont-mixer-knob { position: relative; box-sizing: border-box; margin: auto; width: 24px; height: 24px; border: 1px solid var(--et-surface-43); border-radius: 50%; background: var(--et-control-gradient); touch-action: none; cursor: ns-resize; }
+.soundfont-mixer-knob > span { position: absolute; inset: 3px; border-radius: 50%; pointer-events: none; }
+.soundfont-mixer-knob > span::before { position: absolute; content: ""; top: -3px; left: calc(50% - 1.5px); height: 6px; width: 3px; border-radius: 1.5px; background: var(--et-accent); }
+.soundfont-bank-row button:focus-visible, .soundfont-mixer-row :is(button, select, input, .soundfont-mixer-knob):focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
+body.layout-mobile .soundfont-player-plugin-ui .soundfont-bank-row { flex-wrap: wrap; }
+body.layout-mobile .soundfont-bank-name { flex-basis: 100%; order: 1; }
+body.layout-mobile .soundfont-mixer { width: 900px; table-layout: fixed; }

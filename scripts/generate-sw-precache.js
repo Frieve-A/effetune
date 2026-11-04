@@ -24,6 +24,9 @@ const explicit = [
   'manifest.json',
   'LICENSE',
   'js/vendor/sqlite/LICENSE.md',
+  'js/audio/dsd/dsd-kernels.c',
+  'js/audio/dsd/dst-decoder.c',
+  'scripts/build-dsd-wasm.mjs',
   'package.json',
   'sw.js',
   'plugins/plugins.txt'

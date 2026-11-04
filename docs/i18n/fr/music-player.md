@@ -16,6 +16,38 @@ Ouvrez un fichier musical dans EffeTune pour l’écouter à travers la chaîne 
 
 Pour utiliser uniquement le lecteur, réglez **Périphérique d'entrée :** sur **Aucun (lecteur de fichiers musicaux uniquement)** dans **Configuration audio** : EffeTune n’utilise alors aucune entrée audio en direct.
 
+## Fichiers DSD {#dsd-files}
+
+Ouvrez les fichiers `.dsf` (DSF) ou `.dff` (DSDIFF) comme les autres fichiers musicaux. Les fichiers DFF non compressés et compressés en DST sont pris en charge. EffeTune convertit en PCM les fichiers DSD64, DSD128 et DSD256 mono ou stéréo pour les lire avec les effets actuels. L’appareil audio reçoit du PCM, et non du DSD natif ou du DoP.
+
+Certaines variantes d’encodage DST (trames segmentées), les fichiers de plus de deux canaux, le DSD512 et le DSD basé sur 48 kHz ne sont pas pris en charge. Si un fichier ne peut pas être lu, utilisez un DFF non compressé ou une copie PCM compatible, par exemple en FLAC ou WAV. La lecture des fichiers DSD est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android native.
+
+Les fichiers DSD à fréquence élevée demandent davantage de puissance de traitement, surtout à vitesse de lecture accélérée. Si le son s’interrompt ou si la lecture s’arrête, réduisez la vitesse.
+
+## Fichiers MIDI
+
+La lecture MIDI et MusicXML et l’ajout de ces fichiers à la bibliothèque sont disponibles dans l’application de bureau et le lecteur web/PWA. Ces fonctions ne sont pas prises en charge dans l’application Android.
+
+Ouvrez les fichiers `.mid`, `.midi` ou `.kar` avec le sélecteur musical habituel ou par glisser-déposer. MIDI contient des notes et leur chronologie, pas du son enregistré. Ajoutez [**SoundFont Player**](plugins/others.md#soundfont-player) depuis **Others** dans Effect Pipeline, puis choisissez un instrument avec **SoundFont Library…**. L’ouverture du fichier n’ajoute pas d’instrument automatiquement. Vous pouvez aussi l’ajouter à Music Library.
+Pour afficher les paroles dans **Lyrics** de Visualizer, utilisez les paroles intégrées au MIDI ou placez un fichier `.wrd` de même nom à côté. Sur le Web, sélectionnez ou déposez les deux fichiers ensemble, sauf si le dossier est accessible via Music Library. Le `.wrd` accompagne le morceau sans créer de piste ; si sa lecture échoue, le MIDI continue.
+
+Pour afficher une pochette avec un fichier MIDI ou MusicXML, placez `cover.jpg` (prioritaire) ou `folder.jpg` dans le même dossier. Sur le Web, sélectionnez ou déposez l’image avec le fichier musical, sauf si le dossier est accessible depuis Music Library.
+
+Si SoundFont Player est absent, si aucun instrument n’est chargé ou si son chargement est en cours, le lecteur affiche des indications et continue d’envoyer le MIDI au rythme du morceau, en silence, sans passer au suivant. Le morceau se termine normalement. Vous pouvez ajouter SoundFont Player ou charger un instrument pendant la lecture : une fois prêt, il réagit aux événements MIDI qui suivent, avec les sons et réglages de contrôle actuels de chaque canal. Les notes précédentes ne sont pas rejouées, même si elles sont encore tenues dans le morceau.
+
+Les commandes habituelles de lecture, pause, déplacement, répétition, lecture aléatoire, vitesse, volume et coupure du son restent disponibles. La vitesse modifie le rythme du MIDI sans changer la hauteur des notes. **Conserver la hauteur** n’est pas disponible pendant la lecture MIDI. Avec une collection SF2/SF3, un seul SoundFont Player suit Bank Select et Program Change indépendamment sur les 16 canaux, avec la banque de percussions sur le canal 10 par défaut. Utilisez **MIDI Mixer** pour régler le **Patch**, le niveau et les autres commandes de jeu de chaque canal. Ces modifications sont temporaires, suivent les messages MIDI ultérieurs et sont réinitialisées au morceau suivant. Les instruments SFZ gardent leurs propres correspondances.
+
+Pour enregistrer de l’audio, préparez l’instrument dans SoundFont Player et sélectionnez le MIDI dans le traitement de fichiers hors ligne. Le morceau entier est traité avec cet instrument et les effets suivants, à vitesse 1 et gain de morceau unitaire, puis enregistré en WAV ou FLAC selon vos réglages. Si la durée maximale de résonance est atteinte, l’application vous avertit et coupe le son restant.
+
+Les Standard MIDI File de formats 0 et 1 sont acceptés. Convertissez les fichiers de format 2 ou RMID en `.mid` standard de format 0 ou 1 avant de les ouvrir.
+
+## Fichiers MusicXML {#musicxml-files}
+
+Ouvrez les fichiers `.musicxml`, `.xml` ou `.mxl` compressés comme des fichiers MIDI. Pour les écouter, ajoutez **SoundFont Player** et chargez un instrument. Ils utilisent les commandes MIDI décrites ci-dessus, mais la partition ne s’affiche pas. Vous pouvez aussi les ajouter à Music Library.
+Les paroles MusicXML peuvent s’afficher dans **Lyrics** de Visualizer pendant la lecture. Choisissez une **Partie** et un **Couplet** si la partition en contient plusieurs, ou gardez **Automatique**.
+
+Les notes, silences, accords, voix, liaisons de tenue, changements de tempo et reprises habituelles avec fins alternatives sont pris en charge. Certains détails de notation, tels que les ornements et les appoggiatures, ne sont pas reproduits. Si la partition contient des reprises imbriquées, des signes de répétition de mesure ou des notes microtonales, ou dépend de D.C., D.S., Coda ou Fine, ou si le fichier est un recueil opus de plusieurs partitions, exportez-la en fichier MIDI standard depuis un logiciel de notation, puis ouvrez ce fichier.
+
 ## Commandes de lecture
 
 - La mise en pause, la reprise et la fermeture du lecteur avec **×** s’accompagnent d’un court fondu pour éviter les clics.

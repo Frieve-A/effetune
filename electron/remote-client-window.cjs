@@ -122,7 +122,8 @@ function registerIntegratedRemoteClientIpc({ ipcMain, getMainWindow, app, getPai
   const fs = require('node:fs');
   const path = require('node:path');
   const crypto = require('node:crypto');
-  const file = path.join(app.getPath('userData'), 'remote-connections.json');
+  const { getSettingsPath } = require('./settings-profile.cjs');
+  const file = path.join(getSettingsPath(app.getPath('userData')), 'remote-connections.json');
   let connections = {};
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));

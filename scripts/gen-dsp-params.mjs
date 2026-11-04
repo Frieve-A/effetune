@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { generateSfzSchema } from './gen-sfz-schema.mjs';
+import { generateSfzEffectsSchema } from './gen-sfz-effects-schema.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginsRoot = path.join(repoRoot, 'dsp', 'plugins');
@@ -1013,6 +1015,8 @@ export function generateOutputs(specs) {
     outputs.set(path.join(cppOutputRoot, `${spec.type}Params.h`), cppForSpec(spec));
   }
   outputs.set(path.join(cppOutputRoot, 'AutomationCatalog.h'), cppAutomationCatalog(specs));
+  outputs.set(path.join(cppOutputRoot, 'SFZModulationSchema.h'), generateSfzSchema());
+  outputs.set(path.join(cppOutputRoot, 'SFZEffectsSchema.h'), generateSfzEffectsSchema());
   outputs.set(runtimeJsOutput, jsForSpecs(specs.filter(spec => !spec.phase0)));
   return outputs;
 }

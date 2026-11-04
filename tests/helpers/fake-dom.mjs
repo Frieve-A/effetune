@@ -113,6 +113,10 @@ export class FakeElement {
     return Promise.all(results);
   }
 
+  removeEventListener(type, listener) {
+    this.eventListeners.set(type, (this.eventListeners.get(type) || []).filter(candidate => candidate !== listener));
+  }
+
   querySelectorAll(selector) {
     return this.ownerDocument.querySelectorAll(selector);
   }

@@ -4231,6 +4231,414 @@
       }
     ]
   },
+  "MIDI Monitor": {
+    "aspect": "21:9",
+    "graphScale": 1,
+    "background": {
+      "color": "#0b1118",
+      "image": null,
+      "effects": [],
+      "themeColors": {
+        "graph-bg-deep": "#111b25",
+        "graph-base-soft": "#1b2935",
+        "graph-grid-subtle": "#1e2d39",
+        "graph-grid-soft": "#2b3d4b",
+        "graph-grid-strong": "#4b6272",
+        "graph-label": "#ffffff",
+        "text-primary": "#ffffff",
+        "graph-trace-tertiary": "#61798a"
+      }
+    },
+    "items": [
+      {
+        "id": "midi-title",
+        "type": "title",
+        "rect": {
+          "x": 0.018,
+          "y": 0.025,
+          "w": 0.71,
+          "h": 0.045
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 23,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "midi-artist",
+        "type": "artist",
+        "rect": {
+          "x": 0.018,
+          "y": 0.077,
+          "w": 0.71,
+          "h": 0.029
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 12,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "midi-play",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.771,
+          "y": 0.035,
+          "w": 0.042,
+          "h": 0.067
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "action": "play-pause",
+          "display": "icon",
+          "label": "",
+          "shape": "rectangle",
+          "fill": "#1b2935",
+          "fillOpacity": 0.92,
+          "border": "#4b6272",
+          "borderWidth": 1,
+          "radius": 8,
+          "iconSize": 45,
+          "depth": 0,
+          "activeColor": "#54d4bf"
+        },
+        "style": {
+          "fontSize": 14,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "midi-time",
+        "type": "counter",
+        "rect": {
+          "x": 0.834,
+          "y": 0.036,
+          "w": 0.148,
+          "h": 0.063
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "counterIndex": false,
+          "counterHours": false,
+          "counterMinutes": true,
+          "counterSeconds": true,
+          "counterFraction": true,
+          "counterSubsecond": "milliseconds",
+          "counterFps": 30,
+          "counterDigits": 1,
+          "counterTimeSeparator": ":",
+          "counterFractionSeparator": ".",
+          "counterIndexSeparator": " ",
+          "counterMotion": "static",
+          "counterDuration": 150,
+          "counterWholeDigits": 2,
+          "counterZeroPad": true,
+          "counterBackgroundGlyphs": "none",
+          "counterBackgroundOpacity": 0.05,
+          "counterBackgroundColor": "#808080",
+          "counterBoxes": false,
+          "counterBoxColor": "#808080",
+          "counterBoxWidth": 1,
+          "counterBoxFill": "#000000",
+          "counterBoxOpacity": 0,
+          "counterBoxRadius": 0,
+          "counterWindowShading": false
+        },
+        "style": {
+          "fontSize": 24,
+          "fontFamily": "monospace",
+          "bold": false,
+          "italic": false,
+          "align": "right"
+        },
+        "effects": []
+      },
+      {
+        "id": "midi-channels",
+        "type": "midi",
+        "rect": {
+          "x": 0.018,
+          "y": 0.134,
+          "w": 0.635,
+          "h": 0.736
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "channelStart": 1,
+          "channelEnd": 16,
+          "showPatch": true,
+          "showKeyboard": true,
+          "showLevel": true,
+          "showControllers": true,
+          "knobValuePosition": "right",
+          "knobSize": 100,
+          "knobStyle": "filled",
+          "knobFillColor": "#27343c",
+          "knobOutlineColor": "#71838f",
+          "knobIndicatorColor": "#ffffff",
+          "flashChanges": true,
+          "flashColor": "#54d4bf",
+          "showState": false,
+          "showVoices": false,
+          "keyboardColor": "normal",
+          "keyboardActiveColor": "#54d4bf",
+          "levelMeter": {
+            "dr": -48,
+            "orientation": "horizontal",
+            "showLevelValues": false,
+            "ds": 0,
+            "cf": 1,
+            "pk": true,
+            "ph": 1,
+            "pf": 1,
+            "showAxes": false,
+            "showAxisNumbers": false
+          },
+          "levelPalette": {
+            "stops": [
+              {
+                "pos": 0,
+                "color": "#54d4bf"
+              }
+            ],
+            "motion": {
+              "mode": "none",
+              "speed": 0.25
+            },
+            "mode": "solid",
+            "color": "#54d4bf"
+          },
+          "fontFamily": "sans-serif",
+          "fontSize": 12
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "midi-events",
+        "type": "midi-event-list",
+        "rect": {
+          "x": 0.671,
+          "y": 0.134,
+          "w": 0.311,
+          "h": 0.736
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "scrollMode": "row",
+          "fontFamily": "monospace",
+          "fontSize": 12,
+          "rowSpacing": 1.65
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "midi-lyrics",
+        "type": "lyrics",
+        "rect": {
+          "x": 0.018,
+          "y": 0.895,
+          "w": 0.964,
+          "h": 0.044
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "lyricsPart": "",
+          "lyricsVerse": "",
+          "lyricsView": "line",
+          "lyricsNext": false,
+          "lyricsMotion": "step",
+          "lyricsStepDuration": 0.18,
+          "lyricsPosition": 50,
+          "lyricsLineSpacing": 1,
+          "lyricsWordFill": false,
+          "lyricsOffset": 0,
+          "lyricsFadeIn": 0,
+          "lyricsFadeOut": 0
+        },
+        "style": {
+          "fontSize": 18,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "midi-seek",
+        "type": "seek-bar",
+        "rect": {
+          "x": 0.018,
+          "y": 0.958,
+          "w": 0.964,
+          "h": 0.022
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "thickness": 3,
+          "rounding": true,
+          "trackColor": "#4b6272",
+          "trackOpacity": 0.7,
+          "showThumb": false,
+          "thumbSize": 16,
+          "thumbColor": "#ffffff",
+          "thumbShape": "circle",
+          "thumbBorderWidth": 0,
+          "thumbBorderColor": "#182331"
+        },
+        "style": {},
+        "effects": []
+      }
+    ]
+  },
   "Power Amp": {
     "aspect": "21:9",
     "graphScale": 1.25,

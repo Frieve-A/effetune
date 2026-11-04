@@ -1,0 +1,51 @@
+{
+  "type": "SoundFontPlayerPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": {
+    "abs": 1e-06,
+    "policy": "per-sample"
+  },
+  "assets": [
+    {
+      "slot": 0,
+      "format": "ET_ASSET_F32_MULTICH",
+      "capacity": "1 GiB bank and index cap"
+    }
+  ],
+  "fields": [
+    {
+      "name": "midiChannel",
+      "key": "mc",
+      "kind": "int",
+      "min": 0,
+      "max": 16,
+      "default": 0
+    },
+    {
+      "name": "maxVoices",
+      "key": "pl",
+      "kind": "int",
+      "min": 1,
+      "max": 1024,
+      "default": 64
+    },
+    {
+      "name": "outputGain",
+      "key": "og",
+      "kind": "float",
+      "min": -60,
+      "max": 12,
+      "default": 0,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "sampleQuality",
+      "key": "sq",
+      "kind": "int",
+      "min": 0,
+      "max": 2,
+      "default": 0
+    }
+  ]
+}

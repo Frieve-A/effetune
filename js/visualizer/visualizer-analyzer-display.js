@@ -5,6 +5,7 @@ import { drawStyledText } from './visualizer-text.js';
 import { GuitarFretboardDisplay } from './visualizer-guitar.js';
 import { DrumsDisplay } from './visualizer-drums.js';
 import { NoteTextDisplay } from './visualizer-note-text.js';
+import { midiChannelRgb } from './visualizer-midi.js';
 
 const ANALYZERS = {
     spectrum: ['SpectrumAnalyzerPlugin', 'handleDspSpectrumTelemetry', 'drawGraph'],
@@ -44,6 +45,7 @@ const DEFAULT_THEME_PALETTE = Object.fromEntries(Object.entries({ ...DEFAULT_THE
 const HIDDEN_STEREO_PEAKS = new Float32Array(360).fill(NaN);
 const DB_POWER = Math.LN10 / 10;
 const SPECTRUM_FLOOR_POWER = 10 ** -14.5;
+const MIDI_CHANNEL_COLORS = Array.from({ length: 16 }, (_, channel) => midiChannelRgb(channel));
 
 // Native traces can use a CanvasGradient directly. Pixel histories and individually
 // colored markers need their signal opacity masked with a spatial palette instead.
@@ -137,6 +139,7 @@ export function createAnalyzerDisplay(item, canvas, sources) {
 
 class AnalyzerDisplay {
     constructor(Plugin, definition, item, canvas, sources) {
+        this.sources = sources;
         this.type = item.type;
         this.drawMethod = definition[2];
         // Share the plugin's display initialization without constructing a pipeline
@@ -191,6 +194,11 @@ class AnalyzerDisplay {
         this.colors = [];
         this.update(item, 0, canvas.width);
         this.unsubscribe = sources.subscribeItem(item.id, (frame, producer) => {
+            if (this.sourceKind === 'midi') {
+                if (this.type === 'notes') this.plugin.clearHistory();
+                else this.plugin.initializeDisplayState();
+                this.sourceKind = 'audio';
+            }
             this.plugin._dspTelemetryHub = { port: producer };
             const handler = this.type === 'notes' && frame.frameType === 32
                 ? 'handleChordKeyTelemetry' : definition[1];
@@ -271,9 +279,10 @@ class AnalyzerDisplay {
         }
         if (NOTE_TEXT_TYPES.includes(this.type)) {
             options.textType = item.type;
-            options.drawText = (context, value) => this.drawSignal(context, target =>
+            options.drawText = (context, value, root) => this.drawSignal(context, target =>
                 drawStyledText(target, value, item.style, plugin.canvas.width, plugin.canvas.height, this.textScale,
-                    item.palette.mode === 'solid' ? item.palette.color : paletteGradient(target, item.palette,
+                    item.palette.mode === 'note-colors' ? colorCss(window.NoteSpectrogramPlugin.noteColor(root))
+                        : item.palette.mode === 'solid' ? item.palette.color : paletteGradient(target, item.palette,
                         plugin.canvas.width, time, false, plugin.canvas.height)), { palette: false });
         }
         // The effect's on-screen visibility gate does not apply to this host.
@@ -295,7 +304,7 @@ class AnalyzerDisplay {
         const intensityGradient = mode === 'gradient' && item.palette.direction === 'intensity';
         const fixedNotes = mode === 'note-colors' && Boolean(notePlugin?.noteColor);
         const phase = mode !== 'gradient' || item.palette.motion.mode === 'none' || !item.palette.motion.speed ? 0 : time;
-        if (this.paletteKey === paletteKey && this.phase === phase &&
+        if (this.paletteKey === paletteKey && this.phase === phase && changed.preferMidi === undefined &&
             ['mn', 'mx', 'lo', 'hi', 'sc', 'mf', 'orientation'].every(key => changed[key] === undefined)) return;
         this.paletteKey = paletteKey;
         this.phase = phase;
@@ -370,7 +379,12 @@ class AnalyzerDisplay {
         } else options.traceStyle = (context, width, height) => paletteGradient(context, tracePalette, width, time, false, height ?? plugin.canvas.height);
         const pitchRotation = mode === 'gradient' && this.type === 'chroma' ? (item.palette.angle || 0) / 30 : 0;
         // Fretless Guitar marks blend neighboring note colors, as Note Spectrogram does at fine pitch.
-        options.noteColor = mode === 'solid' || mode === 'heatmap' ? () => hexRgb(item.palette.color) : fixedNotes
+        options.midiChannelColor = mode === 'channel-colors' && params.preferMidi !== false
+            ? channel => MIDI_CHANNEL_COLORS[channel] : null;
+        options.noteColor = mode === 'channel-colors'
+            ? (_midi, _intensity, channel) => options.midiChannelColor && Number.isInteger(channel)
+                ? options.midiChannelColor(channel) : hexRgb(item.palette.color)
+            : mode === 'solid' || mode === 'heatmap' ? () => hexRgb(item.palette.color) : fixedNotes
             ? this.type === 'guitar' ? midi => notePlugin.noteColor(midi) : midi => notePlugin.noteColors[((Math.round(midi) % 12) + 12) % 12]
             : intensityGradient ? (_midi, intensity) => paletteRgb(intensity)
             : midi => paletteRgb(item.palette.mapping === 'octave'
@@ -494,6 +508,28 @@ class AnalyzerDisplay {
             this.plugin.volumeHistoryDirty = true;
         }
         const options = this.plugin.displayOptions;
+        const midi = this.sources.getFrame(item.id);
+        if (this.type === 'rhythm-analyzer') {
+            this.plugin.handleMidiSnapshot(midi?.sourceKind === 'midi' && midi.beat ? midi : null);
+        } else if (midi?.sourceKind === 'midi') {
+            if (this.sourceKind !== 'midi' || this.midiIdentity !== midi.source) {
+                this.plugin.clearDetections?.();
+                this.plugin.clearHistory?.();
+                this.plugin.voices = [];
+                this.plugin.peaks = [];
+            }
+            this.sourceKind = 'midi';
+            this.midiIdentity = midi.source;
+            this.update(item, time, cssWidth);
+            this.plugin.handleMidiSnapshot?.(midi);
+        } else if (this.sourceKind === 'midi') {
+            this.sourceKind = 'audio';
+            this.plugin.midiSnapshot = null;
+            this.plugin.clearDetections?.();
+            this.plugin.clearHistory?.();
+            this.plugin.voices = [];
+            this.plugin.peaks = [];
+        }
         this.spatialPalette = usesSpatialGradient(item) ? item.palette : null;
         this.paletteTime = time;
         this.palettePending = false;

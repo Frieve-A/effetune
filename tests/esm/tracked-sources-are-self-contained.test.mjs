@@ -30,6 +30,12 @@ const nativePackageBuildContracts = [
       'tools/verify-airplay-package.mjs',
       'electron/airplay-discovery-installer.nsi'
     ]
+  },
+  {
+    name: 'Renderer power', script: 'build:renderer-power',
+    output: path.posix.join('out/native/renderer-power/win32-x64', 'effetune-renderer-power.exe'),
+    producer: 'scripts/build-renderer-power.mjs',
+    inputs: ['native/renderer-power/renderer-power.cpp']
   }
 ];
 

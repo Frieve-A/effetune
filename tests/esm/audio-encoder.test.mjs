@@ -190,3 +190,45 @@ test('AudioEncoder resamples once after channel validation', async () => {
   );
   assert.equal(calls.length, 1);
 });
+
+function createTrimEncoder() {
+  return new AudioEncoder({ createOfflineContext() {
+    return { createBuffer(channels, length, sampleRate) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { length, sampleRate, numberOfChannels: channels, getChannelData: channel => data[channel] };
+    } };
+  } });
+}
+
+test('MIDI tail trimming removes only exact encoded zeros across all channels and retains delayed samples', async () => {
+  const encoder = createTrimEncoder();
+  const input = createAudioBuffer([[.1, 0, 0, 0, 1e-19, -1e-19, 0, 0],
+    [0, 0, 0, 0, 0, -.001, 1e-19, -1e-19]]);
+  for (const wavSampleFormat of ['pcm16', 'pcm24', 'float32']) {
+    const settings = { format: 'wav', sampleRate: 48000, wavSampleFormat };
+    const normal = await encoder.encode(input, settings);
+    const midi = await encoder.encode(input, settings, { trimTrailingZerosAfterSeconds: 2 / 48000 });
+    const bytesPerFrame = (wavSampleFormat === 'pcm16' ? 2 : wavSampleFormat === 'pcm24' ? 3 : 4) * 2;
+    const normalBytes = new Uint8Array(await normal.blob.arrayBuffer());
+    const midiBytes = new Uint8Array(await midi.blob.arrayBuffer());
+    const expectedFrames = wavSampleFormat === 'float32' ? 8 : 6;
+    assert.equal(midiBytes.length, 44 + expectedFrames * bytesPerFrame);
+    assert.equal(normalBytes.length, 44 + 8 * bytesPerFrame, 'ordinary audio retains its complete duration');
+    assert.deepEqual(midiBytes.subarray(44), normalBytes.subarray(44, midiBytes.length));
+    const silent = await encoder.encode(createAudioBuffer([[0, 0, 0, 0, 0, 0, 0, 0]]), settings,
+      { trimTrailingZerosAfterSeconds: 4 / 48000 });
+    assert.equal((await silent.blob.arrayBuffer()).byteLength, 44 + 4 * bytesPerFrame / 2,
+      'the complete MIDI duration survives even when the song is silent');
+  }
+});
+
+test('MIDI encoded-zero trimming runs after final-rate conversion', async () => {
+  const encoder = createTrimEncoder();
+  const source = createAudioBuffer([[.1, 0, 0, 0]], 48000);
+  encoder.resampleAudioBuffer = async () => createAudioBuffer([[.1, 0, 0, 0, 0, 0, .001, 1e-19]], 96000);
+  const result = await encoder.encode(source, { format: 'wav', sampleRate: 96000, wavSampleFormat: 'pcm24' },
+    { trimTrailingZerosAfterSeconds: 2 / 48000 });
+  const view = new DataView(await result.blob.arrayBuffer());
+  assert.equal(view.getUint32(40, true), 7 * 3, 'resampler output after the original endpoint must remain');
+  assert.notEqual(readInt24(view, 44 + 6 * 3), 0);
+});

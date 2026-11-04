@@ -1,5 +1,5 @@
 import { requestAndroidDocument, AndroidDocumentFile } from './library-io.js';
-import { isSupportedLibraryPath, isSupportedCuePath, isSupportedPlaylistPath } from '../library/constants.js';
+import { getFileExtension, isSupportedLibraryPath, isSupportedCuePath, isSupportedPlaylistPath } from '../library/constants.js';
 
 export class AndroidLibraryFilesystem {
     constructor({ rootHandle, includeVideo = false, onPlaylistFile = () => {} }) {
@@ -39,7 +39,8 @@ export class AndroidLibraryFilesystem {
             const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
             const record = { name: entry.name, relativePath, path: relativePath };
             if (entry.isDirectory) yield { ...record, kind: 'directory' };
-            else if (isSupportedLibraryPath(relativePath, this.includeVideo)) yield { ...record, kind: 'file' };
+            else if (!['dsf', 'dff'].includes(getFileExtension(relativePath)) &&
+                isSupportedLibraryPath(relativePath, this.includeVideo)) yield { ...record, kind: 'file' };
             else if (isSupportedCuePath(relativePath)) yield { ...record, kind: 'cue' };
             else if (isSupportedPlaylistPath(relativePath)) this.onPlaylistFile(record);
         }

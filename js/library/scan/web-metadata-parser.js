@@ -3,6 +3,7 @@ import { getFileExtension } from '../constants.js';
 import { createTrackFromMetadata, shouldRetryDuration } from '../metadata/metadata-mapper.js';
 import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
+import { createScoreTrackMetadata, isScoreFile, SCORE_MAX_BYTES } from '../metadata/midi-metadata.js';
 
 export const WEB_METADATA_PARSER_VERSION = 'web-metadata-3';
 export const WEB_METADATA_RESULT_MAX_BYTES = 16 * 1024 * 1024;
@@ -37,6 +38,12 @@ export class WebMetadataParser {
       mtimeMs: file.lastModified
     };
     try {
+      if (isScoreFile(candidate.fileName)) {
+        assertRepositoryContract(file.size <= SCORE_MAX_BYTES, 'metadata-too-large', 'Score file exceeds the byte limit');
+        const bytes = await file.arrayBuffer();
+        if (signal?.aborted) throw signal.reason || new DOMException('Canceled', 'AbortError');
+        return projectMetadata(await createScoreTrackMetadata(candidate, bytes, this.now(), this.languageHints, signal));
+      }
       const riffInfoPromise = this.readRiffInfo(file).catch(() => []);
       let metadata = await this.parseBlob(file, parserOptions(false));
       if (shouldRetryDuration(candidate, metadata)) {

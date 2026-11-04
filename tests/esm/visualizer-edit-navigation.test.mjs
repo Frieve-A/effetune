@@ -161,6 +161,38 @@ test('Zoom remains anchored to the cursor through body zoom and Fit recenters wi
     });
 });
 
+test('Viewport navigation keeps the artboard visible at every pan boundary and after zoom or resize', async () => {
+    await withGlobals({ document: { body: body(1) } }, () => {
+        const { editor, view } = setupViewport();
+        const assertVisible = () => {
+            const { left, top, width, height } = view.stage.style;
+            for (const [start, size, viewport] of [
+                [parseFloat(left), parseFloat(width), editor.viewport.width],
+                [parseFloat(top), parseFloat(height), editor.viewport.height]
+            ]) {
+                const overlap = Math.min(start + size, viewport) - Math.max(start, 0);
+                assert.ok(overlap >= Math.min(64, size, viewport) - 1e-9);
+            }
+        };
+        for (const zoom of [0.1, 1, 4]) {
+            editor.zoomAt(zoom);
+            for (const dx of [-100000, 100000]) for (const dy of [-100000, 100000]) {
+                editor.panBy(dx, dy);
+                assertVisible();
+                const position = [editor.panX, editor.panY];
+                editor.panBy(dx, dy);
+                assert.deepEqual([editor.panX, editor.panY], position);
+            }
+        }
+        editor.zoomAt(0.1, -10000, -10000);
+        assertVisible();
+        editor.updateViewport(40, 30);
+        assertVisible();
+        editor.fitViewport();
+        assert.deepEqual([editor.panX, editor.panY], [0, 0]);
+    });
+});
+
 test('Wheel navigation supports two-axis scrolling, Shift, zoom, and leaves playback wheel handling alone', async () => {
     await withGlobals({ document: { body: body(1.5) } }, () => {
         const { editor, saved } = setupViewport(1.5);

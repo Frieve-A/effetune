@@ -9,12 +9,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const ECS_VERSION = '44.9.3';
+export const ECS_VERSION = '44.10.1';
 const archiveHashes = Object.freeze({
-  'win32-x64': '1ab1e5aa4566f218873d272af1a57c6162ad83911a69bbd4b0e341c37c6c40fc',
-  'linux-x64': '80cb5218ab814597282ebe41d16fb5a98abb0c75370e9195914e40e097359fad',
-  'darwin-x64': '99ca1b2c3bb295d7927ef8d17137952385844d67f63dbe827a7214aecca181fe',
-  'darwin-arm64': '3f49f11710e87974b6b7c7acb2c172c1f37c804f319f7c887e0a791bbda8dc6b',
+  'win32-x64': 'f118d8b611998270acfdc85872d12203035078f07252a761822e9324223302e6',
+  'linux-x64': 'ee726ff1e8db21a1975b827063cb9d1f6fd024122d6ae07da4661451a00daa93',
+  'darwin-x64': '33260e6456488853d81bcf0dba5d52faed5418f2a89eea6906a08f4cc90200ef',
+  'darwin-arm64': '4eeca8c117a778b4bfaa2ab90c82b62d119b23bff172da382e14aa289c5ddf33',
 });
 
 export function getEcsRuntime(platform = process.platform, architecture = process.arch) {

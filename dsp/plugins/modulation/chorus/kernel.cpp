@@ -1,5 +1,6 @@
 #include "effetune/kernel.h"
 #include "ChorusPluginParams.h"
+#include "effetune/dsp/effect_storage_geometry.h"
 
 #include <array>
 #include <cmath>
@@ -46,7 +47,7 @@ public:
                 max_channels_ <= kMaximumChannels && max_frames_ > 0u;
     if (!prepared_)
       return;
-    buffer_size_ = static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.052)) + 4u;
+    buffer_size_ = dsp::chorusDelayFrames(sample_rate_);
     delay_buffers_.resize(static_cast<std::size_t>(max_channels_) * buffer_size_);
     feedback_state_.resize(max_channels_);
     reset();

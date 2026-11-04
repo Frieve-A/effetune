@@ -1,4 +1,12 @@
 const AUDIO_MIME_TYPES = Object.freeze({
+  dsf: 'audio/x-dsf',
+  dff: 'audio/x-dff',
+  mid: 'audio/midi',
+  midi: 'audio/midi',
+  kar: 'audio/midi',
+  musicxml: 'application/vnd.recordare.musicxml+xml',
+  xml: 'application/vnd.recordare.musicxml+xml',
+  mxl: 'application/vnd.recordare.musicxml',
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
   ogg: 'audio/ogg',

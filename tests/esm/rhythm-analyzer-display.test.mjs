@@ -4,12 +4,211 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { midiBeatAt } from '../../js/midi/smf-timeline.js';
+import { MidiVisualizerAdapter } from '../../js/visualizer/visualizer-midi.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginPath = path.join(repoRoot, 'plugins', 'analyzer', 'rhythm_analyzer.js');
 const PERIOD = 0.5;
 // Every panel shown, for the layout tests that need them all.
 const ALL_PANELS = { vt: true, vm: true, ve: true, vl: true };
+
+const score = { division: 480, secondsPerTick: null,
+    tempoMap: [{ seconds: 0, tick: 0, quarter: 0, microsecondsPerQuarter: 500000 },
+        { seconds: 1, tick: 960, quarter: 2, microsecondsPerQuarter: 1000000 }],
+    timeSignatures: [{ seconds: 0, quarter: 0, numerator: 4, denominator: 4 }] };
+const midiSnapshot = (source, position, speed = 1, playing = true) => ({
+    source, position, speed, playing, paused: !playing,
+    beat: midiBeatAt(score, position), beatAt: seconds => midiBeatAt(score, seconds)
+});
+
+test('MIDI lane projection follows score tempo, speed, pause and seek without changing detector history', async () => {
+    const { plugin } = await loadPlugin();
+    let time = 0;
+    plugin.audioNow = () => time;
+    const source = {};
+    plugin.handleMidiSnapshot(midiSnapshot(source, 0));
+    const add = (identity, eventTime) => {
+        plugin.storeEvent({ identity, time: eventTime, band: 0, strength: .7, epoch: 0 });
+        return (plugin.eventSerial - 1) % plugin.eventU.length;
+    };
+    const first = add('first', .5);
+    time = 1;
+    plugin.handleMidiSnapshot(midiSnapshot(source, 1));
+    assert.equal(plugin.midiEventPosition(first), 1);
+    plugin.handleMidiSnapshot(midiSnapshot(source, 1, 2));
+    time = 2;
+    plugin.handleMidiSnapshot(midiSnapshot(source, 3, 2));
+    const delayed = add('delayed', .75), fast = add('fast', 1.5);
+    assert.equal(plugin.midiEventPosition(delayed), 1.5, 'Late detector delivery uses the earlier playback speed');
+    assert.equal(plugin.midiEventPosition(fast), 3, 'Tempo changes use the MIDI map');
+    assert.equal(plugin.midiEventPosition(first), 1, 'Already drawn events stay at their score position');
+    assert.equal(plugin.displayedTempo(0, .5), 120);
+    assert.equal(plugin.displayedTempo(0, 1.5), 120, '60 BPM score at double speed');
+    plugin.handleMidiSnapshot(midiSnapshot(source, 3, 2, false));
+    time = 3;
+    plugin.handleMidiSnapshot(midiSnapshot(source, 3, 2, false));
+    assert.equal(plugin.midiClockAt(2.5).position, 3, 'Pause does not advance score time');
+    plugin.handleMidiSnapshot(midiSnapshot(source, 3));
+    time = 4;
+    plugin.handleMidiSnapshot(midiSnapshot(source, 4));
+    assert.equal(plugin.midiClockAt(3.5).position, 3.5, 'Resume advances from the paused score position');
+    plugin.handleMidiSnapshot(midiSnapshot({}, .25));
+    const visible = [];
+    plugin.forEachEvent(-Infinity, Infinity, index => visible.push(index), plugin.eventSerial, true);
+    assert.equal(visible.length, 0, 'A seek drops old score projections');
+    const afterSeek = add('after-seek', 4.25);
+    assert.equal(plugin.midiEventPosition(afterSeek), 1);
+    plugin.handleMidiSnapshot(null);
+    assert.equal(plugin.midiSnapshot, null);
+});
+
+test('MIDI beat, BPM and lane grid use score timing while the Beat lens keeps its audio analysis', async () => {
+    const { plugin } = await loadPlugin();
+    feed(plugin, pattern(10, BACKBEAT));
+    const snapshot = plugin.snapshot;
+    const lens = JSON.stringify(plugin.lensSummary());
+    const positions = [...plugin.eventU], deviations = [...plugin.eventDeviation];
+    plugin.handleMidiSnapshot(midiSnapshot({}, 1.25, 1.5));
+    plugin.canvas = { width: 800, height: 400 };
+    plugin.ctx = fakeContext();
+    const labels = [], pulses = [];
+    plugin._drawBeatLed = (_context, part) => pulses.push(part.level);
+    plugin.displayOptions = { beatStyle: { beatHoldTime: 0, beatDecayTime: 100 },
+        drawBpm: (_context, label) => labels.push(label) };
+    plugin.drawVisualizerRhythm();
+    assert.deepEqual(labels, ['90.0 BPM']);
+    assert.ok(Math.abs(pulses[0] - Math.exp(-.25 * 60000 / 90 / 100)) < 1e-12);
+    assert.equal(plugin._readoutFrame.views[0].uRight, 2.25);
+    assert.equal(plugin.snapshot, snapshot);
+    assert.equal(JSON.stringify(plugin.lensSummary()), lens);
+    assert.deepEqual([...plugin.eventU], positions);
+    assert.deepEqual([...plugin.eventDeviation], deviations);
+});
+
+test('MIDI projection epochs preserve checkpoint pause/resume and exclude audio from before MIDI entry', async () => {
+    const { plugin } = await loadPlugin();
+    const adapter = new MidiVisualizerAdapter();
+    const timeline = { ...score, duration: 20, events: [] };
+    let time = 0;
+    plugin.audioNow = () => time;
+    const add = identity => plugin.storeEvent({ identity, time, band: 0, strength: .7, epoch: 0 });
+    const visible = () => {
+        const result = [];
+        plugin.forEachEvent(-Infinity, Infinity, index => result.push(plugin.eventKeys[index]), plugin.eventSerial, true);
+        return result;
+    };
+    let presentation = { timeline, position: 0, speed: 1, playing: true, paused: false,
+        generation: 1, presentationEpoch: 0, sourceGeneration: 1 };
+    const send = patch => {
+        presentation = { ...presentation, ...patch };
+        const snapshot = adapter.snapshot(presentation);
+        plugin.handleMidiSnapshot(snapshot);
+        return snapshot;
+    };
+    add('before-entry');
+    const first = send({});
+    assert.equal(visible().length, 0);
+    time = .5; add('midi-hit'); send({ position: .5 });
+    same(visible(), ['midi-hit']);
+    const position = plugin.midiEventPosition(1);
+    const checkpoint = send({ generation: 2, preparing: true });
+    assert.notEqual(checkpoint.source, first.source, 'The real adapter restarts its note identity');
+    assert.equal(checkpoint.clockSource, first.clockSource);
+    send({ playing: false, paused: true, preparing: false });
+    time = 1.5;
+    send({ generation: 3, preparing: true });
+    send({ playing: true, paused: false, preparing: false });
+    same(visible(), ['midi-hit']);
+    assert.equal(plugin.midiEventPosition(1), position);
+    send({ presentationEpoch: 1, position: 10, generation: 4 });
+    assert.equal(visible().length, 0, 'Forward seek starts a fresh MIDI projection');
+    add('after-seek');
+    send({ position: 0, presentationEpoch: 2, generation: 5 });
+    assert.equal(visible().length, 0, 'Stop/backward seek starts a fresh MIDI projection');
+    add('before-new-track');
+    send({ sourceGeneration: 2, generation: 6 });
+    assert.equal(visible().length, 0, 'Repeating the same timeline starts a new track epoch');
+    plugin.handleMidiSnapshot(null);
+    add('non-midi-hit');
+    send({});
+    assert.equal(visible().length, 0, 'Re-entering MIDI never projects intervening audio history');
+});
+
+test('MIDI projection keeps speed history and its entry cutoff across a rebased DSP generation', async () => {
+    const { plugin, clock } = await loadPlugin();
+    const adapter = new MidiVisualizerAdapter();
+    const timeline = { ...score, duration: 20, events: [], tempoMap: [score.tempoMap[0]] };
+    let presentation = { timeline, position: 0, speed: 2, playing: true, paused: false,
+        generation: 1, presentationEpoch: 0, sourceGeneration: 1 };
+    const send = patch => {
+        presentation = { ...presentation, ...patch };
+        plugin.handleMidiSnapshot(adapter.snapshot(presentation));
+    };
+    plugin.handleTelemetry(buildFrame({ frameCount: 0 }));
+    plugin.storeEvent({ identity: 'before-midi', time: 0, band: 0, strength: .7, epoch: 0 });
+    send({});
+    plugin.handleTelemetry(buildFrame({ frameCount: 100, events: [{ band: 0, frame: 100, x: 2 }] }));
+    send({ position: 2 });
+    assert.equal(plugin.midiEventPosition(1), 4);
+    plugin.handleTelemetry(buildFrame({ frameCount: 200 }));
+    send({ position: 4, speed: 1 });
+    clock.now += 10000;
+    send({ playing: false, paused: true, generation: 2 });
+    plugin.handleTelemetry(buildFrame({ generation: 2, frameCount: 100,
+        events: [{ band: 0, frame: 50, x: 1 }] }));
+    send({ position: 5, playing: true, paused: false, generation: 3 });
+    assert.equal(plugin.frameBase, 200, 'The real telemetry path splices the restarted detector clock');
+    assert.equal(plugin.midiEventPosition(1), 4, 'Already projected hits keep the original double-speed position');
+    assert.equal(plugin.midiClockAt(1.5).position, 3, 'The old speed segment remains authoritative');
+    assert.equal(plugin.midiEventPosition(2), 9, 'New detector frames use the resumed score mapping');
+    const visible = [];
+    plugin.forEachEvent(-Infinity, Infinity, index => visible.push(plugin.eventKeys[index]), plugin.eventSerial, true);
+    assert.equal(visible.length, 2);
+    assert.equal(visible.includes('before-midi'), false, 'Detector reset never admits excluded pre-MIDI audio');
+});
+
+test('Visualizer Beat keeps the audio circle and flash envelope in MIDI mode and toggles the orbit dot in both modes', async () => {
+    const { plugin, clock } = await loadPlugin();
+    const arcs = [];
+    plugin.canvas = { width: 800, height: 400 };
+    plugin.ctx = fakeContext();
+    plugin.ctx.arc = (...args) => arcs.push(args);
+    plugin.drawGroove = () => {};
+    plugin.displayU = .25;
+    plugin.snapshot = { tickGateOpen: true, periodSeconds: .5, frameCount: 100, hopSeconds: .01, confidence: 1 };
+    plugin.columnFrameTime = clock.now;
+    plugin.ledBeat = .875;
+    plugin.ledStrength = 1;
+    const circles = [];
+    plugin._drawBeatLed = (_context, part, left, centerY, size, lineWidth) =>
+        circles.push({ level: part.level, left, centerY, size, lineWidth });
+    const style = { beatSize: 90, beatLineWidth: 2, beatHoldTime: 0, beatDecayTime: 100,
+        beatOrbitDot: true, beatUsePalette: true };
+    plugin.displayOptions = { beatStyle: style, textScale: 1, showBpm: false };
+    plugin.drawVisualizerRhythm();
+    const audioCircle = circles.pop(), audioDot = arcs.pop();
+    assert.equal(audioDot[0], 400 + Math.cos(0) * 179);
+    assert.equal(audioDot[1], 200 + Math.sin(0) * 179);
+    plugin.midiSnapshot = { source: {}, position: .125, playing: true, paused: false, speed: 1,
+        beat: { quarter: .25, bpm: 120 } };
+    plugin.drawVisualizerRhythm();
+    const midiCircle = circles.pop(), midiDot = arcs.pop();
+    assert.deepEqual(midiCircle, audioCircle);
+    assert.deepEqual(midiDot, audioDot);
+    plugin.midiSnapshot.playing = false;
+    plugin.midiSnapshot.paused = true;
+    clock.now += 100;
+    plugin.drawVisualizerRhythm();
+    assert.ok(circles.pop().level < midiCircle.level, 'Paused MIDI flash fades like a held audio beat');
+    arcs.pop();
+    style.beatOrbitDot = false;
+    plugin.drawVisualizerRhythm();
+    assert.equal(arcs.length, 0);
+    plugin.midiSnapshot = null;
+    plugin.drawVisualizerRhythm();
+    assert.equal(arcs.length, 0);
+});
 // 48 kHz with a 480-sample hop: 10 ms per analysis frame, 50 frames per beat at 120 BPM.
 const FRAMES_PER_BEAT = 50;
 

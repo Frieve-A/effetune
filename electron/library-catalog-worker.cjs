@@ -166,7 +166,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 const { parentPort, threadId, workerData: initialWorkerData } = require('node:worker_threads');
 const { DatabaseSync } = require('node:sqlite');
-const { isCueCoverRelativePath } = require('./cue-cover.cjs');
+const { isTrackCoverRelativePath } = require('./cue-cover.cjs');
 const { querySharedLibrary } = require('./library-shared-query.cjs');
 
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -690,7 +690,7 @@ async function initialize() {
     executePlaylistContextPage,
     fs,
     getContext,
-    isCueCoverRelativePath,
+    isTrackCoverRelativePath,
     measureBytes,
     normalizePlaylistImportOrigin,
     path,
@@ -2145,8 +2145,7 @@ function artworkClaimMatchesCurrentTrack(claim) {
         claim.embeddedLength > claim.size || claim.externalArtworkStat !== null) return false;
   } else {
     if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null ||
-        track.sourceKind !== 'cue-track' ||
-        !isCueCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity)) {
+        !isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity)) {
       return false;
     }
   }

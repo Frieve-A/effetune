@@ -741,6 +741,41 @@ export async function runWasmCase({
       if (!instanceReset || !instanceAssetBegin || !instanceAssetCommit || !instanceAssetState) {
         throw new Error('WASM DSP artifact is missing asset staging exports');
       }
+      if (type === 'SoundFontPlayerPlugin' || type === 'SFZNotePlayerPlugin') {
+        const estimate = getExport(exports, 'et_sample_player_preparation_bytes');
+        if (!malloc || !free) throw new Error('WASM DSP artifact needs malloc/free for sample player sizing');
+        const payloadBytes = asset.bytes.byteLength;
+        if (payloadBytes < 56 || payloadBytes > 0xffffffff || payloadBytes % 4) {
+          throw new Error('Sample player parity asset has invalid preparation metadata');
+        }
+        const header = new DataView(asset.bytes.buffer, asset.bytes.byteOffset, payloadBytes);
+        const controlBytes = 32 + header.getUint32(48, true) * 4;
+        if (controlBytes < 56 || controlBytes > payloadBytes) {
+          throw new Error('Sample player parity asset has invalid control extent');
+        }
+        const resultOffset = Math.ceil(controlBytes / 8) * 8;
+        const queryPtr = malloc(resultOffset + 8) >>> 0;
+        if (!queryPtr) throw new Error('WASM DSP malloc failed for sample player sizing');
+        try {
+          // Only control metadata crosses into WASM for this CONTROL query.
+          // Recreate views after each call which can grow the module memory.
+          new Uint8Array(memory.buffer, queryPtr, controlBytes).set(asset.bytes.subarray(0, controlBytes));
+          const resultPtr = queryPtr + resultOffset;
+          checkStatus('et_sample_player_preparation_bytes', estimate(
+            queryPtr, controlBytes, payloadBytes, asset.format, testCase.sampleRate,
+            asset.processingChannels, preparedFrames, 0, resultPtr,
+            type === 'SoundFontPlayerPlugin' ? 1 : 0
+          ));
+          const result = new DataView(memory.buffer, resultPtr, 8);
+          const additional = result.getUint32(0, true) + result.getUint32(4, true) * 0x100000000;
+          if (!Number.isSafeInteger(additional) || additional > 0xffffffff - payloadBytes) {
+            throw new Error('Sample player preparation exceeds the supported extent');
+          }
+          asset.footprintBytes = payloadBytes + additional;
+        } finally {
+          free(queryPtr);
+        }
+      }
       const assetPtr = instanceAssetBegin(
         engine,
         dspInstance,

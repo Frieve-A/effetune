@@ -141,6 +141,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'WowFlutterPlugin',
     'OscillatorPlugin',
     'SFZNotePlayerPlugin',
+    'SoundFontPlayerPlugin',
     'AdaptivePredictionEffectPlugin',
     'HornResonatorPlugin',
     'HornResonatorPlusPlugin',
@@ -198,4 +199,12 @@ test('every shipped rollout entry exists in the committed artifact with a matchi
     paramPackers: DSP_PARAM_PACKERS,
     location: ''
   }), SHIPPED_ENABLED_TYPES);
+});
+
+
+test('SFZ Player is eligible under the default production rollout with shipped metadata and generated parameters', () => {
+  const meta = JSON.parse(fs.readFileSync(new URL('../../plugins/dsp/effetune-dsp.meta.json', import.meta.url), 'utf8'));
+  const config = getDspRolloutConfig({ meta, paramPackers: DSP_PARAM_PACKERS, preference: { useWasmDsp: true }, location: '' });
+  assert.equal(config.forceOff, false);
+  assert.ok(config.enabledTypes.includes('SoundFontPlayerPlugin'));
 });

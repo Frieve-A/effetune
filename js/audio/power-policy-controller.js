@@ -1,8 +1,10 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import {
     AudioPowerState,
     AutomaticMonitoringArmState,
     InputRouteIntent,
     InputResourceState,
+    PowerPolicy,
     ProcessingDirective,
     ResourceHealth,
     ResumeKind,
@@ -35,6 +37,8 @@ import { PowerSessionJournal } from './power-session-journal.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
 
 const POWER_COMMAND_TIMEOUT_MS = 1500;
+// The worklet publishes at least one heartbeat per running audio second.
+const SFZ_OBSERVATION_MAX_AGE_MS = 2000;
 
 function defaultNow() {
     return Date.now();
@@ -53,7 +57,7 @@ function queryPowerPolicyOverride(windowRef) {
 
 function readMasterKillSwitch(windowRef) {
     try {
-        return windowRef?.localStorage?.getItem('effetune_power_policy_kill_switch') === '1';
+        return getSettingsStorage(windowRef)?.getItem('effetune_power_policy_kill_switch') === '1';
     } catch {
         return false;
     }
@@ -360,6 +364,10 @@ export class PowerPolicyController {
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
+        this.windowRef?.electronAPI?.reportDesktopAudioActivity?.({
+            processingActive: false, playbackActive: false
+        });
+        this.workletSfzRuntimeRevisions?.clear();
         this._clearDeadlineTimer();
         this.detachPlayer(this.player);
         this.leases.clear();
@@ -532,6 +540,7 @@ export class PowerPolicyController {
         this.workletAck = null;
         this.statePreparation = createUnknownStatePreparation();
         this.workletObservations.clear();
+        this.workletSfzRuntimeRevisions?.clear();
         this.workletAcks.clear();
         this.workletArms.clear();
         this.workletPreparations.clear();
@@ -842,11 +851,29 @@ export class PowerPolicyController {
         }
     }
 
+    _analyzeTemporalCapabilities(pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || []) {
+        const midi = this.player?.contextManager?.getMidiPresentation?.();
+        const tokens = this._getTokensAndGuards().tokens;
+        const nodes = this._getActiveWorkletNodes();
+        const observations = nodes.length ? nodes.map(node => this.workletObservations.get(node) ||
+            (node === this.audioManager.workletNode ? this.workletObservation : null)) : [this.workletObservation];
+        const now = this.now();
+        const pendingMidi = observations.some(observation =>
+            Number.isFinite(observation?.receivedAtEpochMs) && now >= observation.receivedAtEpochMs &&
+            now - observation.receivedAtEpochMs <= SFZ_OBSERVATION_MAX_AGE_MS &&
+            observation.workletGraphGeneration === tokens.workletGraphGeneration &&
+            observation.topologyRevision === tokens.topologyRevision &&
+            ((observation.midiPending === true && observation.midiGeneration === midi?.generation) ||
+                observation.sfzPending === true));
+        return analyzeTemporalCapabilities(pipeline, {
+            mustProcess: midi?.preparing === true || pendingMidi
+        });
+    }
+
     _collectFacts(now) {
         const coordinator = this._getTokensAndGuards();
         const route = this._deriveRouteAndPlayerFacts();
-        const temporal = analyzeTemporalCapabilities(this.audioManager.getCurrentPipeline?.() ||
-            this.audioManager.pipeline || []);
+        const temporal = this._analyzeTemporalCapabilities();
         const temporalSkipEligible = temporal.temporalSkipEligible;
         const currentPipeline = this.audioManager.getCurrentPipeline?.() ||
             this.audioManager.pipeline || [];
@@ -1064,7 +1091,7 @@ export class PowerPolicyController {
         this.automaticMonitoringArm = emptyAutomaticArm();
         const coordinator = this._getTokensAndGuards();
         const pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || [];
-        const temporal = analyzeTemporalCapabilities(pipeline);
+        const temporal = this._analyzeTemporalCapabilities(pipeline);
         const bound = this.audioManager.getPowerGraphAmplitudeBound?.(pipeline) ||
             computeLinearPipelineWakeBound(
                 pipeline,
@@ -1474,9 +1501,7 @@ export class PowerPolicyController {
         if (this.lastSkipCommandId === null || nodes.length !== 1) {
             return 'temporal-resume-failed';
         }
-        const temporal = analyzeTemporalCapabilities(
-            this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || []
-        );
+        const temporal = this._analyzeTemporalCapabilities();
         if (!temporal.temporalSkipEligible) return 'temporal-resume-failed';
         const enabledPluginCount = temporal.capabilities.length;
         const observedSkippedFrameCount = this.workletObservation?.skippedFrameCount;
@@ -1639,6 +1664,8 @@ export class PowerPolicyController {
     }
 
     async _applyWorkletState(targetState, directive, commandOptions = {}) {
+        if (isDspSkippingDirective(directive) && this.audioManager.captureSfzRuntimeCheckpoints &&
+            !await this.audioManager.captureSfzRuntimeCheckpoints({ reason: 'power' })) return false;
         const coordinator = this._getTokensAndGuards();
         const priorWorkletState = commandOptions.restoreOnFailure === true
             ? this._captureWorkletCommandState()
@@ -1789,6 +1816,8 @@ export class PowerPolicyController {
     }
 
     async _enterSuspended(decision) {
+        if (this.audioManager.captureSfzRuntimeCheckpoints &&
+            !await this.audioManager.captureSfzRuntimeCheckpoints({ reason: 'power' })) return false;
         const coordinator = this._getTokensAndGuards();
         const operationId = `power-${++this.operationSequence}`;
         const commandId = ++this.commandSequence;
@@ -2023,6 +2052,11 @@ export class PowerPolicyController {
         if (data.workletGraphGeneration !== tokens.workletGraphGeneration ||
             data.topologyRevision !== tokens.topologyRevision) return false;
         const nodeKey = workletNode || this.audioManager.workletNode || null;
+        if (nodeKey && Number.isSafeInteger(data.sfzRuntimeRevision)) {
+            this.workletSfzRuntimeRevisions ??= new Map();
+            if (data.sfzRuntimeRevision < (this.workletSfzRuntimeRevisions.get(nodeKey) ?? 0)) return false;
+            this.workletSfzRuntimeRevisions.set(nodeKey, data.sfzRuntimeRevision);
+        }
         this._recordMonitoringFastWakeRuntimeFailure(data, tokens);
         if (data.type === 'powerStateAck') {
             this.workletAck = data;
@@ -3254,6 +3288,7 @@ export class PowerPolicyController {
         const previousSnapshot = this._lastSnapshot;
         const snapshot = this.getSnapshot();
         this._lastSnapshot = snapshot;
+        this._reportDesktopAudioActivity(snapshot);
         for (const listener of this.listeners) {
             try { listener(snapshot); } catch { /* listener isolation */ }
         }
@@ -3276,6 +3311,28 @@ export class PowerPolicyController {
                 }
             });
         }
+    }
+
+    _reportDesktopAudioActivity(snapshot) {
+        const report = this.windowRef?.electronAPI?.reportDesktopAudioActivity;
+        if (typeof report !== 'function') return;
+        const contextRunning = this.audioManager.contextManager?.audioContext?.state === 'running';
+        const nodes = this._getActiveWorkletNodes();
+        const tokens = this._getTokensAndGuards().tokens;
+        const now = this.now();
+        const signalActive = nodes.some(node => {
+            const observation = this.workletObservations.get(node);
+            return observation?.workletGraphGeneration === tokens.workletGraphGeneration &&
+                observation.topologyRevision === tokens.topologyRevision &&
+                Number.isFinite(observation.receivedAtEpochMs) &&
+                now >= observation.receivedAtEpochMs &&
+                now - observation.receivedAtEpochMs <= SFZ_OBSERVATION_MAX_AGE_MS &&
+                (observation.inputActive === true || observation.outputActive === true);
+        });
+        const processingActive = this.settings.mode === PowerPolicy.CONTINUOUS &&
+            contextRunning && nodes.length > 0;
+        report({ processingActive,
+            playbackActive: processingActive && (snapshot.transportDemand || signalActive) });
     }
 
     _getSnapshotWorkletNodes(coordinator) {
@@ -3448,6 +3505,8 @@ function aggregateFirstRenderObservations(observations) {
         ...latest,
         inputActive: valid.some(observation => observation.inputActive === true),
         outputActive: valid.some(observation => observation.outputActive === true),
+        midiPending: valid.some(observation => observation.midiPending === true),
+        sfzPending: valid.some(observation => observation.sfzPending === true),
         renderSequence: Math.max(...valid.map(observation =>
             Number.isSafeInteger(observation.renderSequence) ? observation.renderSequence : 0
         )),

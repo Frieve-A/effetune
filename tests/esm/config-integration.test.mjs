@@ -32,6 +32,52 @@ async function withMutedConsole(method, callback) {
   }
 }
 
+test('desktop multiple-instance preference defaults off, saves, and restores', async () => {
+  for (const enabled of [undefined, true]) {
+    const harness = createConfigHarness({ config: { allowMultipleInstances: enabled } });
+    await withGlobals({ window: harness.window, document: harness.document }, async () => {
+      await showConfigDialog(true, {});
+      const control = harness.document.getElementById('allow-multiple-instances');
+      assert.equal(control.checked, enabled === true);
+      assert.equal(harness.document.getElementById('config-allow-multiple-instances-label').textContent,
+        'label:dialog.config.allowMultipleInstances');
+      control.checked = enabled !== true;
+      await control.dispatchEvent('change');
+      assert.equal(harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].allowMultipleInstances,
+        enabled !== true);
+    });
+  }
+});
+
+test('failed multiple-instance preference save restores the checkbox', async () => {
+  const harness = createConfigHarness({
+    config: { allowMultipleInstances: false },
+    saveConfigResult: { success: false, error: 'disk full' }
+  });
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const control = harness.document.getElementById('allow-multiple-instances');
+    control.checked = true;
+    await withMutedConsole('error', () => control.dispatchEvent('change'));
+    assert.equal(control.checked, false);
+  });
+});
+
+test('Android config omits musical MIDI registration and retains Controller Mapping', async () => {
+  const harness = createConfigHarness({ config: { libraryIncludeMidi: true }, window: {
+    location: { origin: 'https://appassets.androidplatform.net' },
+    effetuneAndroid: { postMessage() {} }
+  } });
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    assert.equal(harness.document.getElementById('library-include-midi'), null);
+    assert.ok(harness.document.getElementById('library-include-video'));
+    assert.ok(harness.document.getElementById('controller-mapping-btn'));
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+  });
+});
+
 function createConfigHarness(options = {}) {
   const calls = [];
   const openHomeCalls = [];
@@ -1000,6 +1046,7 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
   }, async () => {
     await showConfigDialog(false, { autoLaunch: true });
     assert.equal(harness.document.body.children.length, 1);
+    assert.equal(harness.document.getElementById('allow-multiple-instances'), null);
     assert.equal(harness.document.getElementById('auto-launch'), null);
     assert.equal(harness.document.getElementById('start-min'), null);
     assert.equal(harness.document.getElementById('tray'), null);
@@ -1015,6 +1062,11 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     libraryIncludeVideo.checked = true;
     await libraryIncludeVideo.dispatchEvent('change');
     assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeVideo, true);
+    const libraryIncludeMidi = harness.document.getElementById('library-include-midi');
+    assert.equal(libraryIncludeMidi.checked, false);
+    libraryIncludeMidi.checked = true;
+    await libraryIncludeMidi.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeMidi, true);
     const visualSync = harness.document.getElementById('visual-sync');
     assert.equal(visualSync.checked, true);
     visualSync.checked = false;
@@ -1384,6 +1436,7 @@ test('MSIX Config opens Store and startup settings without changing legacy prefe
     await showConfigDialog(true, {});
     assert.equal(harness.document.getElementById('auto-launch'), null);
     assert.equal(harness.document.getElementById('check-updates'), null);
+    assert.equal(harness.document.getElementById('allow-multiple-instances').checked, false);
     assert.equal(harness.document.getElementById('start-min').checked, true);
     assert.equal(harness.document.getElementById('store-updates-help').textContent, 'label:dialog.store.updatesHelp');
     await harness.document.getElementById('store-startup').dispatchEvent('click');
@@ -1500,6 +1553,11 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     libraryIncludeVideo.checked = true;
     await libraryIncludeVideo.dispatchEvent('change');
     assert.equal(harness.window.appConfig.libraryIncludeVideo, true);
+    const libraryIncludeMidi = harness.document.getElementById('library-include-midi');
+    assert.equal(libraryIncludeMidi.checked, false);
+    libraryIncludeMidi.checked = true;
+    await libraryIncludeMidi.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.libraryIncludeMidi, true);
 
     const pipelineDefault = harness.document.getElementById('pl-default');
     await pipelineDefault.dispatchEvent('change');

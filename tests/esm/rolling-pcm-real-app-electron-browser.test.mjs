@@ -446,8 +446,14 @@ async function runRealAppScenario(options) {
         await waitFor(() => player.stateManager.getStateSnapshot()?.playbackMode === 'rollingPcm' &&
           player.contextManager.rollingTransport?.playing === true);
         const firstTransport = player.contextManager.rollingTransport;
-        capture.port.postMessage({ type: 'start' });
         await player.contextManager.seek(1.5);
+        // This capture checks the natural next-track handoff, after the
+        // deliberately silent seek envelope has completed. Seek clicks have
+        // their own opposite-level waveform capture in the Worker flow suite.
+        const seekGate = player.contextManager.privatePipelineSourceGates.get(firstTransport.sourceNode);
+        await waitFor(() => context.currentTime >= firstTransport.anchorContextTime &&
+          (!seekGate || seekGate.gain.value === 1));
+        capture.port.postMessage({ type: 'start' });
         await waitFor(() => player.contextManager.rollingTransport === firstTransport &&
           player.contextManager.rollingTransport?.currentTime >= 1.49);
         await waitFor(() => player.contextManager.nextRollingTransport?.rollingTransport?.prepared === true);

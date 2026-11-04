@@ -8,8 +8,9 @@ import {
 import { loadClassicScript } from '../../utils/classic-script-loader.js';
 import { isAndroidHost } from '../../android/bridge.js';
 import { AndroidDocuments } from '../../android/documents.js';
+import { SCORE_EXTENSIONS } from '../../midi/score-file.js';
 
-const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
+const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', ...SCORE_EXTENSIONS];
 const OFFLINE_AUDIO_ACCEPT = OFFLINE_AUDIO_EXTENSIONS.map(ext => `.${ext}`).join(',');
 const OFFLINE_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${OFFLINE_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 
@@ -396,6 +397,8 @@ export class FileProcessor {
      * Show progress UI
      */
     showProgress() {
+        this.offlineTailLimitReached = false;
+        this.offlineTailLimitSeconds = null;
         // Reset cancellation flag
         this.isCancelled = false;
 
@@ -494,6 +497,10 @@ export class FileProcessor {
     }
 
     _validateEncodedOutput(output, outputSettings) {
+        if (output?.tailLimitReached) {
+            this.offlineTailLimitReached = true;
+            this.offlineTailLimitSeconds = output.tailLimitSeconds;
+        }
         const definition = getOfflineOutputFormat(outputSettings.format);
         if (!output || !(output.blob instanceof Blob) || output.blob.size === 0 ||
             output.format !== definition.id || output.extension !== definition.extension ||
@@ -580,6 +587,7 @@ export class FileProcessor {
         if (dropMessage) dropMessage.style.display = 'none';
 
         this.downloadContainer.appendChild(msg);
+        this.showTailLimitNotice();
         this.downloadContainer.style.display = 'block';
         this.dropArea.classList.add('file-processing-active');
     }
@@ -859,6 +867,21 @@ export class FileProcessor {
      * @param {string} originalName - The original file name
      * @param {boolean} isZip - Whether the blob is a zip file
      */
+    showTailLimitNotice() {
+        if (!this.offlineTailLimitReached) return;
+        const notice = document.createElement('div');
+        notice.className = 'processing-warning';
+        notice.setAttribute('role', 'status');
+        const key = 'sfzPlayer.offlineTailLimit';
+        const translated = window.uiManager?.t?.(key);
+        notice.textContent = translated && translated !== key ? translated :
+            'The maximum ending length was reached. Sound continuing beyond that limit was omitted.';
+        if (Number.isFinite(this.offlineTailLimitSeconds)) notice.textContent += ` (${new Intl.NumberFormat(
+            window.uiManager?.userLanguage, { style: 'unit', unit: 'second', unitDisplay: 'long' }
+        ).format(this.offlineTailLimitSeconds)})`;
+        this.downloadContainer.appendChild(notice);
+    }
+
     showDownloadLink(output, originalName, isZip = false) {
         if (output instanceof Blob) {
             output = {
@@ -994,6 +1017,7 @@ export class FileProcessor {
 
         // Add to container
         this.downloadContainer.appendChild(downloadLink);
+        this.showTailLimitNotice();
         this.downloadContainer.style.display = 'block';
         this.dropArea.classList.add('file-processing-active');
     }

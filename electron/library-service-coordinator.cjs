@@ -4,6 +4,7 @@ const { createHash, randomUUID, webcrypto } = require('node:crypto');
 const { EventEmitter } = require('node:events');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const fileAccess = require('./file-access.cjs');
 
 const LIBRARY_SERVICE_API_VERSION = 1;
 const LIBRARY_SERVICE_EVENT_CHANNEL = 'library-service-v1:event';
@@ -1327,7 +1328,9 @@ function registerLibraryServiceIpc({
     resolveSequenceEntrySource: async (_event, request) => {
       try {
         const source = await coordinator.resolveSequenceEntrySource(request);
-        return publicPlaybackSource(source);
+        const publicSource = publicPlaybackSource(source);
+        if (publicSource?.kind === 'electron-file') fileAccess.grantRead(publicSource.path);
+        return publicSource;
       } catch (error) {
         if (error?.code === 'folderPermissionRequired') return publicFolderPermissionError(error);
         throw error;

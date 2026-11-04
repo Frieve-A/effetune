@@ -248,6 +248,7 @@ test('all desktop packages include native runtimes and their tracked notices', (
       'openhome/THIRD_PARTY_NOTICES.txt',
       `openhome/effetune-openhome-sidecar${platform === 'win' ? '.exe' : ''}`,
     ];
+    if (platform === 'win') expectedDestinations.push('renderer-power/effetune-renderer-power.exe');
     if (platform === 'linux') {
       expectedDestinations.push(
         'openhome',

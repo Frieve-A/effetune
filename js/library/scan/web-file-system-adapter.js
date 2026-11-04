@@ -10,12 +10,13 @@ import { isAndroidDirectory, requestAndroidDocument } from '../../android/librar
 import { AndroidLibraryFilesystem } from '../../android/library-filesystem.js';
 
 export class WebFileSystemScanAdapter {
-  constructor({ rootHandle, onPlaylistFile = () => {}, includeVideo = false }) {
-    if (isAndroidDirectory(rootHandle)) return new AndroidLibraryFilesystem({ rootHandle, onPlaylistFile, includeVideo });
+  constructor({ rootHandle, onPlaylistFile = () => {}, includeVideo = false, includeMidi = false }) {
+    if (isAndroidDirectory(rootHandle)) return new AndroidLibraryFilesystem({ rootHandle, onPlaylistFile, includeVideo, includeMidi });
     this.rootHandle = assertDirectoryHandle(rootHandle);
     if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
     this.onPlaylistFile = onPlaylistFile;
     this.includeVideo = includeVideo === true;
+    this.includeMidi = includeMidi === true;
   }
 
   async *enumerateDirectory({ relativeDirectory = '', signal } = {}) {
@@ -40,7 +41,7 @@ export class WebFileSystemScanAdapter {
       const relativePath = joinRelative(relativeDirectory, handle?.name);
       if (handle?.kind === 'directory') {
         yield { kind: 'directory', name: handle.name, relativePath, path: relativePath };
-      } else if (handle?.kind === 'file' && isSupportedLibraryPath(relativePath, this.includeVideo)) {
+      } else if (handle?.kind === 'file' && isSupportedLibraryPath(relativePath, this.includeVideo, this.includeMidi)) {
         yield { kind: 'file', name: handle.name, relativePath, path: relativePath };
       } else if (handle?.kind === 'file' && isSupportedCuePath(relativePath)) {
         yield { kind: 'cue', name: handle.name, relativePath, path: relativePath };

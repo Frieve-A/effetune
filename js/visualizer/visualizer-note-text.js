@@ -37,10 +37,11 @@ export class NoteTextDisplay {
         this.ctx.clearRect(0, 0, width, height);
         if (!this.snapshot) return;
         const Note = window.NoteSpectrogramPlugin;
-        const { localKey, overallKey, confirmed } = this.snapshot;
+        const { localKey, confirmed } = this.snapshot;
         const text = this.displayOptions.textType === 'key'
             ? Number.isInteger(localKey) && localKey >= 0 && localKey < 24 ? Note.keyName(localKey) : ''
-            : Note.chordName(confirmed.name, overallKey);
-        if (text) this.displayOptions.drawText(this.ctx, text);
+            : Note.chordName(confirmed.name, localKey);
+        if (text) this.displayOptions.drawText(this.ctx, text,
+            this.displayOptions.textType === 'key' ? localKey % 12 : confirmed.root);
     }
 }

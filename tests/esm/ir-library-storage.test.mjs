@@ -1318,6 +1318,47 @@ test('persistent PCM cache restores accounting, persists recency, replaces, evic
   assert.equal(new TextDecoder().decode(backend.files.get('aaaaaaaaaaaaaaaaaaaaaaaa.wav')), 'original stays');
 });
 
+test('sample-page cache checkpoints reduce index writes while default IR persistence stays immediate', async () => {
+  const results = [];
+  for (const indexWriteInterval of [1, 128]) {
+    const backend = new MemoryBackend(), write = backend.writeCacheAtomic.bind(backend);
+    let indexWrites = 0, indexBytes = 0;
+    backend.writeCacheAtomic = async (name, bytes) => {
+      if (name === 'index.json') { indexWrites++; indexBytes += bytes.byteLength; }
+      return write(name, bytes);
+    };
+    const cache = await new PersistentIrPcmCache(backend, indexWriteInterval === 1 ? {} : { indexWriteInterval }).open();
+    const id = 'a'.repeat(24), pcm = { sampleRate: 44100, channelData: [new Float32Array([0.25])] };
+    for (let page = 0; page < 512; page++) assert.equal(await cache.set(id, 44100, { page }, pcm), true);
+    assert.equal(indexWrites, 512 / indexWriteInterval);
+    results.push(indexBytes);
+    await cache.set(id, 44100, { page: 512 }, pcm);
+    await cache.flush();
+    const reopened = await new PersistentIrPcmCache(backend).open();
+    assert.equal(reopened.getStats().entryCount, 513);
+    assert.equal((await reopened.get(id, 44100, { page: 512 })).channelData[0][0], 0.25);
+  }
+  assert.ok(results[1] < results[0] / 50);
+});
+
+test('sample-page checkpoint recovery drops only unindexed pages and reports a failed final flush', async () => {
+  const backend = new MemoryBackend({ original: encode('source stays') });
+  const id = 'b'.repeat(24), pcm = { sampleRate: 44100, channelData: [new Float32Array([0.5])] };
+  const cache = await new PersistentIrPcmCache(backend, { indexWriteInterval: 4 }).open();
+  for (let page = 0; page < 5; page++) await cache.set(id, 44100, { page }, pcm);
+  const diagnostics = [];
+  const reopened = await new PersistentIrPcmCache(backend, { indexWriteInterval: 4,
+    onDiagnostic: error => diagnostics.push(error) }).open();
+  assert.equal(reopened.getStats().entryCount, 4);
+  assert.equal(await reopened.get(id, 44100, { page: 4 }), null);
+  await reopened.set(id, 44100, { page: 5 }, pcm);
+  backend.failCacheName = 'index.json';
+  assert.equal(await reopened.flush(), false);
+  assert.equal(reopened.getStats().entryCount, 0);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(new TextDecoder().decode(backend.files.get('original')), 'source stays');
+});
+
 test('removing an IR invalidates every persistent PCM rate without rolling back original deletion on cache failure', async () => {
   const backend = new MemoryBackend();
   const diagnostics = [];

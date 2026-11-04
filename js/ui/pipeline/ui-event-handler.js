@@ -4,10 +4,11 @@
 import { PipelineCore } from './pipeline-core.js';
 import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
 import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
-import { attachLyricsFiles } from '../audio-player/lyrics-file-links.js';
+import { attachLyricsFiles, attachArtworkFiles } from '../audio-player/lyrics-file-links.js';
 import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyboard-shortcut-handler.js';
+import { SUPPORTED_AUDIO_EXTENSIONS } from '../../library/constants.js';
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp'];
+const PLAYBACK_AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS;
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 const PLAYLIST_EXTENSION_PATTERN = /\.(m3u8?|pls|xspf)$/i;
 
@@ -535,7 +536,8 @@ export class UIEventHandler {
                     // Process music files (if any and no preset files)
                     else if (musicFiles.length > 0) {
                         if (window.uiManager) {
-                            attachLyricsFiles(musicFiles, files.filter(file => /\.lrc$/i.test(file.name || '')));
+                            attachLyricsFiles(musicFiles, files.filter(file => /\.(lrc|wrd)$/i.test(file.name || '')));
+                            attachArtworkFiles(musicFiles, files.filter(file => /^(cover|folder)\.jpg$/i.test(file.name || '')));
                             // Pass the File objects directly to preserve original file names
                             void Promise.resolve(window.uiManager.createAudioPlayer(musicFiles, false))
                                 .catch(error => {

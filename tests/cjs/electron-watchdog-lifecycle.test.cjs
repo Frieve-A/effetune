@@ -36,6 +36,8 @@ function createMainHarness() {
   const context = vm.createContext({
     app,
     process: { platform: 'win32', exit: () => lifecycle.push('process.exit') },
+    macPlaybackPower: null,
+    windowsRendererPower: { dispose() {} },
     queueAutoRestart: () => lifecycle.push('relaunch'),
     armQuitProtection: () => lifecycle.push('quit-deadline'),
     isAppQuitting: false,

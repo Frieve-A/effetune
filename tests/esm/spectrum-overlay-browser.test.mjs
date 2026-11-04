@@ -618,7 +618,9 @@ test('Frequency Preview preserves visible graphs through the real canvas CSS cas
             }, name);
             const graph = page.locator(name === 'BandPassFilterPlugin'
               ? '.band-pass-filter-graph' : '.five-band-peq-graph');
-            const baseline = await graph.screenshot();
+            // Capture the graph after the card's hover transition finishes at its rounded corners.
+            const captureGraph = () => graph.screenshot({ animations: 'disabled' });
+            const baseline = await captureGraph();
             const geometry = await page.evaluate(async () => {
               const fixture = window.previewFixture;
               const instance = fixture.instance = window.FrequencyPreview.attach(fixture.plugin, fixture.root);
@@ -635,7 +637,7 @@ test('Frequency Preview preserves visible graphs through the real canvas CSS cas
             assert.equal(geometry.border, '0px', `${name} ${width}px preview border`);
             assert.deepEqual(rectangleMismatches(geometry.rect, geometry.expected), [],
               `${name} ${width}px zoom ${zoom} preview box`);
-            assert.ok(baseline.equals(await graph.screenshot()), `${name} ${width}px original graph stays visible after attach`);
+            assert.ok(baseline.equals(await captureGraph()), `${name} ${width}px original graph stays visible after attach`);
             const { left, top, right, bottom } = geometry.rect;
             await page.mouse.move(left + (right - left) * 0.3, top + (bottom - top) * 0.25);
             await page.mouse.down();
@@ -651,7 +653,7 @@ test('Frequency Preview preserves visible graphs through the real canvas CSS cas
                 .some((value, index) => index % 4 === 3 && value > 0);
             }), false, `${name} ${width}px zoom ${zoom} preview clears`);
             if (zoom === 1) {
-              assert.ok(baseline.equals(await graph.screenshot()),
+              assert.ok(baseline.equals(await captureGraph()),
                 `${name} ${width}px original graph stays visible after stop`);
             }
             if (name === 'FiveBandPEQPlugin') {
@@ -703,7 +705,7 @@ test('note range readouts match numeric field widths and stay at the right edge'
     try {
       const scripts = await Promise.all([
         'plugins/plugin-base.js', 'plugins/analyzer/note_spectrogram.js',
-        'plugins/analyzer/pitch_meter.js', 'plugins/others/sfz_note_player.js'
+        'plugins/analyzer/pitch_meter.js', 'plugins/sfz-instrument.js', 'plugins/others/sfz_note_player.js'
       ].map(path => fs.readFile(path, 'utf8')));
 
       for (const width of [320, 390, 768, 1280]) {

@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import {
   mergePowerSavingSettings,
   normalizePowerSettings
@@ -13,6 +14,7 @@ export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
 export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
 export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   inputDeviceId: 'default',
+  midiInputDeviceKey: '',
   outputDeviceId: 'default',
   inputDeviceLabel: '',
   outputDeviceLabel: '',
@@ -69,7 +71,7 @@ function changedTopLevelKeys(previousConfig, nextConfig) {
 
 function getLocalStorage(windowRef = typeof window !== 'undefined' ? window : null) {
   try {
-    return windowRef?.localStorage || globalThis.localStorage || null;
+    return getSettingsStorage(windowRef) || null;
   } catch (error) {
     console.warn('Failed to access localStorage:', error);
     return null;

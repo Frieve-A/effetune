@@ -28,7 +28,10 @@ export const TelemetryFrameType = Object.freeze({
     TAP_ANALOG_METER: 27,
     TAP_RHYTHM_ANALYZER: 28,
     TAP_TONAL_BALANCE_EQ: 29,
-    TAP_SFZ_VOICES: 30
+    TAP_SFZ_VOICES: 30,
+    TAP_SFZ_SCRIPT_MESSAGE: 33,
+    TAP_SFZ_KEYSWITCHES: 34,
+    TAP_SOUNDFONT_MIXER: 35
 });
 
 function defaultWarning(message) {
@@ -263,7 +266,22 @@ export class TelemetryHub {
     }
 
     _dispatch(frame, sourcePort) {
+        if ((frame.frameType === TelemetryFrameType.TAP_SFZ_KEYSWITCHES ||
+            frame.frameType === TelemetryFrameType.TAP_SOUNDFONT_MIXER) &&
+            (sourcePort !== this.port || frame.subscription !== this.subscribers.get(this._key(frame.tapId, frame.frameType)))) return;
         if (frame.source && frame.source !== this.sources.get(frame.tapId)) return;
+        if (frame.frameType === TelemetryFrameType.TAP_SFZ_SCRIPT_MESSAGE) {
+            const payload = frame.payload;
+            if (frame.formatVersion !== 1 || payload.byteLength < 8) return;
+            const length = payload.getUint16(4, true);
+            if (length > 127 || payload.getUint16(6, true) !== 0 || payload.byteLength !== 8 + length) return;
+            const text = new TextDecoder().decode(new Uint8Array(payload.buffer,
+                payload.byteOffset + 8, length));
+            const suppressed = payload.getUint32(0, true);
+            globalThis.console?.debug?.('[SFZ instrument]', text,
+                ...(suppressed ? [`(${suppressed} additional messages omitted)`] : []));
+            return;
+        }
         const highQuality = frame.formatVersion === 2 &&
             (frame.frameType === TelemetryFrameType.TAP_SPECTRUM ||
                 frame.frameType === TelemetryFrameType.TAP_SPECTROGRAM_COL);
@@ -305,7 +323,10 @@ export class TelemetryHub {
         try {
             const result = parseTelemetryPacket(packet, message.bytes, parsedFrame => {
                 const source = this.sources.get(parsedFrame.tapId);
-                const frame = source ? Object.freeze({ ...parsedFrame, source }) : parsedFrame;
+                const frame = Object.freeze({ ...parsedFrame, ...(source ? { source } : {}),
+                    ...((parsedFrame.frameType === TelemetryFrameType.TAP_SFZ_KEYSWITCHES ||
+                        parsedFrame.frameType === TelemetryFrameType.TAP_SOUNDFONT_MIXER)
+                        ? { subscription: this.subscribers.get(this._key(parsedFrame.tapId, parsedFrame.frameType)) } : {}) });
                 if (this.visualSyncResolver) this._receive(frame, sourcePort, message.endFrame, message.contextFrameOffset);
                 else this._dispatch(frame, sourcePort);
             });

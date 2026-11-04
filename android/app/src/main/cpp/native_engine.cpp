@@ -270,9 +270,17 @@ std::vector<int> NativeEngine::configure(
     contracts_.push_back({static_cast<std::uint32_t>(instances[i]), hashes[i],
                           static_cast<std::uint32_t>(parameters[i].size())});
   legacyAssetInstances_.clear();
-  for (std::size_t i = 0; i < types.size(); ++i)
+  samplePlayerInstances_.clear();
+  for (std::size_t i = 0; i < types.size(); ++i) {
     if (types[i] == "IRReverbPlugin")
       legacyAssetInstances_.push_back(instances[i]);
+    if (types[i] == "SFZNotePlayerPlugin" ||
+        types[i] == "SoundFontPlayerPlugin")
+      samplePlayerInstances_.emplace_back(instances[i],
+                                          types[i] == "SFZNotePlayerPlugin"
+                                              ? ET_SAMPLE_PLAYER_NOTE
+                                              : ET_SAMPLE_PLAYER_MAIN);
+  }
   return instances;
 }
 
@@ -365,12 +373,35 @@ int NativeEngine::prepareAsset(int instance, int slot,
   }
   if (status != ET_OK)
     return status;
+  auto preparedInfo = info;
+  if (byteSize != 0 && slot == 0) {
+    const auto player = std::find_if(
+        samplePlayerInstances_.begin(), samplePlayerInstances_.end(),
+        [instance](const auto &entry) { return entry.first == instance; });
+    if (player != samplePlayerInstances_.end()) {
+      if (!data || byteSize != info.byteSize)
+        return ET_ERR_ARGS;
+      std::uint64_t additional = 0;
+      // Android has no musical MIDI transport map; its native preparation
+      // uses the standalone tempo policy and this engine's actual geometry.
+      status = et_sample_player_preparation_bytes(
+          data, byteSize, byteSize, format, static_cast<float>(sampleRate_),
+          info.processingChannels, maxFrames_, 0, &additional, player->second);
+      if (status != ET_OK)
+        return status;
+      const auto required = static_cast<std::uint64_t>(byteSize) + additional;
+      if (required > info.footprintBytes || required > UINT32_MAX)
+        return ET_ERR_OOM;
+      preparedInfo.footprintBytes = static_cast<std::uint32_t>(required);
+    }
+  }
   Command update(Command::Kind::ApplyAsset);
   status =
       byteSize == 0
           ? Engine::prepareInstanceAssetClear(capture.snapshot, update.asset)
-          : Engine::prepareInstanceAssetUpdate(capture.snapshot, info, data,
-                                               byteSize, format, update.asset);
+          : Engine::prepareInstanceAssetUpdate(capture.snapshot, preparedInfo,
+                                               data, byteSize, format,
+                                               update.asset);
   if (status != ET_OK)
     return status;
   status = submit(update);

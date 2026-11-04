@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 import { PluginManager } from '../../js/plugin-manager.js';
 import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
@@ -59,6 +60,17 @@ function createPlugin(service = {}, document, windowOptions = {}) {
       row.control = { label, options, value, setter };
       return row;
     }
+    createSelectControl(label, options, value, setter) {
+      const row = document.createElement('div'), select = document.createElement('select');
+      for (const choice of options) {
+        const option = document.createElement('option'); option.value = choice.value; option.textContent = choice.label;
+        select.appendChild(option);
+      }
+      select.value = String(value);
+      select.addEventListener('change', event => setter(event.target.value));
+      row.appendChild(select); row.querySelector = () => select;
+      return row;
+    }
     clearWasmAsset(slot) { this.assets.delete(slot); }
     setWasmAsset(slot, descriptor) { this.assets.set(slot, descriptor); }
     getWasmAssets() { return this.assets; }
@@ -71,6 +83,7 @@ function createPlugin(service = {}, document, windowOptions = {}) {
     IntersectionObserver: windowOptions.IntersectionObserver });
   vm.runInContext(axisSource, sandbox);
   vm.runInContext(noteSource, sandbox);
+  vm.runInContext(fs.readFileSync(new URL('../../plugins/sfz-instrument.js', import.meta.url), 'utf8'), sandbox);
   vm.runInContext(source, sandbox, {
     filename: fileURLToPath(new URL('../../plugins/others/sfz_note_player.js', import.meta.url)),
     importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER
@@ -92,7 +105,7 @@ const folderFiles = [{ name: 'Piano.sfz' }];
 test('SFZ registration requests its stylesheet through the production plugin loader contract', () => {
   const registrations = fs.readFileSync(new URL('../../plugins/plugins.txt', import.meta.url), 'utf8');
   const { pluginDefinitions } = new PluginManager().parsePluginsDefinition(registrations);
-  const definition = pluginDefinitions.get('SFZ Note Player');
+  const definition = pluginDefinitions.get('SoundFont Note Player');
   assert.equal(definition.className, 'SFZNotePlayerPlugin');
   assert.equal(definition.hasCSS, true);
   assert.equal(definition.path, 'plugins/others/sfz_note_player');
@@ -263,11 +276,12 @@ test('SFZ exposes retrigger drop and note hold sliders with their units', async 
 });
 
 test('SFZ assets carry the bank signature and pending loads remain required offline', async () => {
-  let finish;
-  const plugin = createPlugin({ prepare: () => new Promise(resolve => { finish = resolve; }) });
+  let finish, started;
+  const preparing = new Promise(resolve => { started = resolve; });
+  const plugin = createPlugin({ prepare: () => new Promise(resolve => { finish = resolve; started(); }) });
   const id = 'a'.repeat(24);
   plugin.setParameters({ sf: id });
-  await Promise.resolve();
+  await preparing;
   assert.equal(plugin.externalAssetInfo.kind, 'SFZ');
   assert.equal(plugin.externalAssetInfo.pending, true);
   assert.equal(plugin.offlineDspAssetRequired, true);
@@ -284,17 +298,22 @@ test('SFZ assets carry the bank signature and pending loads remain required offl
 });
 
 test('native SFZ hydration keeps playback resident and lazily resolves samples for offline use', async () => {
-  const id = 'a'.repeat(24); let calls = 0, committed = false;
+  const id = 'a'.repeat(24); let calls = 0, committed = false, hydrating = false;
+  const parameterUpdates = [];
   const plugin = createPlugin({ prepare: async () => {
     calls++; return { name: 'Native bank', descriptor: { payload: new ArrayBuffer(32), footprintBytes: 32 } };
   } }, undefined, { audioManager: { withMutationOptions(options, commit) {
-    assert.equal(options.nativeHydration, true); committed = true; return commit();
+    assert.equal(options.nativeHydration, true); committed = true;
+    hydrating = true;
+    try { return commit(); } finally { hydrating = false; }
   } } });
   plugin.hasLocalAudio = false; plugin.setParameters({ sf: id }); delete plugin.hasLocalAudio;
+  plugin.updateParameters = () => parameterUpdates.push(hydrating);
   plugin.hydrateExternalAsset({}, { nativeHydration: true, isCurrent: () => true });
   assert.equal(calls, 0); assert.equal(plugin.getWasmAssets().size, 0);
   const requirement = await plugin.resolveOfflineDspAssetRequirement();
   assert.equal(requirement.required, true); assert.equal(calls, 1); assert.equal(committed, true);
+  assert.deepEqual(parameterUpdates, [true], 'Preset validation must preserve native hydration ownership');
   assert.equal(plugin.getWasmAssets().get(0).externalAssetParameters.sf, id);
   await plugin.resolveOfflineDspAssetRequirement(); assert.equal(calls, 1);
   plugin.cleanup();
@@ -306,7 +325,7 @@ test('SFZ missing and capacity failures use plain SFZ messages', async () => {
   await missing._selectBank(async () => ({ id: 'a'.repeat(24) }));
   await missing.resolveOfflineDspAssetRequirement();
   assert.equal(missing.externalAssetInfo.missing, true);
-  assert.match(missing._status.textContent, /selected SFZ could not be found/);
+  assert.match(missing._status.textContent, /selected SoundFont could not be found/);
   assert.equal(missing._status.hidden, false);
   assert.equal(missing._status.dataset.state, 'error');
   const large = createPlugin({ list: async () => [], prepare: async () => { throw { code: 'too-large' }; } });
@@ -383,14 +402,15 @@ test('SFZ controls open the library and clear the selection without deleting an 
   const plugin = createPlugin({ list: async () => entries, prepare: async () => prepared,
     remove() { assert.fail('Clearing the selection must retain the instrument'); }
   }, createDocument(), { uiManager: { t: key => `翻訳:${key}` } });
-  const ui = plugin.createUI();
+  plugin.createUI();
   let opened = false;
   plugin._openLibraryBrowser = () => { opened = true; };
   await plugin._libraryButton.dispatchEvent('click');
   assert.equal(opened, true);
-  assert.equal(plugin._libraryButton.textContent, 'SFZ Library…');
+  assert.equal(plugin._libraryButton.textContent, 'SoundFont Library…');
   assert.equal(plugin._selectedBankName.textContent, 'None');
-  assert.equal(ui.querySelectorAll('select').length, 0);
+  assert.ok(plugin._presetSelect);
+  assert.equal(plugin._presetRow.style.display, 'none');
   await plugin._selectBank(async () => entries[0]);
   assert.equal(plugin._selectedBankName.textContent, 'Piano.sfz');
   await plugin._clearButton.dispatchEvent('click');
@@ -401,6 +421,28 @@ test('SFZ controls open the library and clear the selection without deleting an 
   plugin._libraryBrowser = { dispose() { disposed = true; } };
   plugin.cleanup();
   assert.equal(disposed, true);
+});
+
+test('Note Player selects one stable SF2 preset and retains the SFZ controls when no collection is loaded', () => {
+  const plugin = createPlugin({ list: async () => [] });
+  plugin.hasLocalAudio = false;
+  plugin.createUI();
+  plugin.setParameters({ sf: 'a'.repeat(24), sp0: 3 * 128 + 4 });
+  plugin.validatePreparedSfzBank({ format: 'sf2', presets: [
+    { bank: 3, program: 4, name: 'Strings' }, { bank: 0, program: 0, name: 'Piano' }
+  ] });
+  assert.equal(plugin.getParameters().sp0, 388);
+  assert.equal(plugin._presetSelect.value, '388');
+  assert.equal(plugin._presetSelect.children[0].textContent, 'Default');
+  assert.equal(plugin._presetRow.style.display, '');
+  plugin.validatePreparedSfzBank({ format: 'sf2', presets: [{ bank: 3, program: 4, name: 'Renamed strings' }] });
+  assert.equal(plugin.sp0, 388);
+  plugin.setParameters({ sf: 'b'.repeat(24) });
+  assert.equal(plugin.sp0, -1);
+  plugin.validatePreparedSfzBank({ format: 'sfz' });
+  assert.equal(plugin._presetRow.style.display, 'none');
+  assert.equal(plugin._presetSelect.disabled, true);
+  plugin.cleanup();
 });
 
 function createDocument(canvasContext = null) {
@@ -658,7 +700,7 @@ test('SFZ keyboard highlights sounding keys and its velocity bars decay independ
     performance: { now: () => now }, ThemePalette: { get: key => colors[key] }
   });
   plugin.createUI();
-  assert.match(plugin.canvas.getAttribute('aria-label'), /Sounding SFZ notes/);
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Sounding notes/);
   const edge = () => plugin.canvas.height - Math.min(12 * plugin.canvas.width / (plugin.mx - plugin.mn + 1) * (150 / (7 * 23.5) / 2), plugin.canvas.height / 2);
   const draw = () => {
     fills.length = 0;
@@ -777,6 +819,22 @@ test('SFZ keyboard highlights sounding keys and its velocity bars decay independ
   plugin.cleanup();
 });
 
+test('a current streamed sample failure remains visible after loading without exposing diagnostics', () => {
+  const plugin = createPlugin();
+  plugin._isCurrentWasmAssetOperation = (_slot, revision) => revision === 3;
+  plugin.createUI();
+  plugin.onWasmAssetRejected(0, 'sample-read', 2);
+  assert.equal(plugin._status.hidden, true);
+  plugin.onWasmAssetRejected(0, 'sample-read', 3);
+  assert.equal(plugin._error, 'sampleRead');
+  assert.equal(plugin._status.hidden, false);
+  assert.match(plugin._status.textContent, /playback stopped.*source files.*faster local drive.*fewer simultaneous notes/);
+  assert.doesNotMatch(plugin._status.textContent, /sample-read|unsupported|corrupt/);
+  plugin.onWasmAssetState(0, 4, 3);
+  assert.equal(plugin._error, 'sampleRead');
+  assert.equal(plugin._status.hidden, false);
+});
+
 test('SFZ voice display rejects malformed snapshots and clears when the instrument or effect is disabled', () => {
   const plugin = createPlugin({ list: async () => [] });
   plugin.createUI();
@@ -866,7 +924,7 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
   assert.equal(plugin._status.getAttribute('role'), 'status');
   const controls = ui.children.find(child => child.className === 'sfz-controls analyzer-parameters');
   assert.equal(controls.className, 'sfz-controls analyzer-parameters');
-  assert.equal(controls.children.length, 21);
+  assert.equal(controls.children.length, 22);
   assert.equal(controls.children[0].className, 'parameter-row sfz-bank-row local-audio-only');
   assert.deepEqual(controls.children.filter(row => row.controlKey).map(row => row.controlKey),
     ['dt', 'cl', 'hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
@@ -894,8 +952,8 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
   assert.ok(retriggerInputs.every(input => input.disabled === false));
   assert.ok(thresholdInputs.every(input => input.disabled === false));
   assert.equal(plugin.getParameters().rd, 42);
-  for (const [index, key, label] of [[0, 'hi', 'Highest'], [1, 'md', 'Middle'], [2, 'lo', 'Lowest']]) {
-    const control = controls.children[index + 4].control;
+  for (const [key, label] of [['hi', 'Highest'], ['md', 'Middle'], ['lo', 'Lowest']]) {
+    const control = controls.children.find(row => row.controlKey === key).control;
     assert.equal(control.label, label);
     assert.equal(control.checked, true);
     control.setter(false);
@@ -1036,7 +1094,7 @@ test('SFZ load dialogs exclude normal, cancelled and stale loads but explain the
   plugin.cleanup();
 });
 
-test('only explicit SFZ loading owns a notice, not preset restoration or later DSP failures', async () => {
+test('only explicit SFZ loading owns a notice while runtime failures remain visible in status', async () => {
   const document = createDocument();
   let result = prepared;
   let error = null;
@@ -1059,7 +1117,9 @@ test('only explicit SFZ loading owns a notice, not preset restoration or later D
   await plugin._pending;
   plugin.onWasmAssetState(0, 3, 1);
   plugin.onWasmAssetState(0, 4, 1);
-  quiet();
+  assert.equal(notices().length, 0);
+  assert.equal(plugin._status.hidden, false);
+  assert.equal(plugin._error, 'playback');
 
   result = prepared;
   await plugin._selectBank(async () => ({ id: 'c'.repeat(24) }));
@@ -1068,8 +1128,9 @@ test('only explicit SFZ loading owns a notice, not preset restoration or later D
   plugin.setParameters({ th: .7 });
   plugin.onWasmAssetRejected(0, 'module-budget', 2);
   plugin.onWasmAssetState(0, 4, 2);
-  quiet();
-  assert.equal(plugin._error, 'prepare');
+  assert.equal(notices().length, 0);
+  assert.equal(plugin._status.hidden, false);
+  assert.equal(plugin._error, 'playback');
 
   await plugin._selectBank(async () => ({ id: 'd'.repeat(24) }));
   plugin.onWasmAssetState(0, 4, 3);
@@ -1132,4 +1193,20 @@ test('post-selection list failures respect the current unconsumed manual attempt
     assert.equal(plugin._error, state === 'stale' ? '' : 'storage');
     plugin.cleanup();
   }
+});
+
+
+test('shared SFZ base resolves the production library module without a preinstalled service', async () => {
+    const window = { electronAPI: { sfzLibraryV1: { apiVersion: 1,
+        list: async () => ({ ok: true, data: [] }) } } };
+    const context = vm.createContext({ PluginBase: class {}, window, console });
+    vm.runInContext(fs.readFileSync(new URL('../../plugins/sfz-instrument.js', import.meta.url), 'utf8'), context, {
+        filename: fileURLToPath(new URL('../../plugins/sfz-instrument.js', import.meta.url)),
+        importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER
+    });
+    await withGlobals({ window }, async () => {
+        const service = await new window.SFZInstrumentPlugin()._getLibraryService();
+        assert.deepEqual(await service.list(), []);
+        assert.equal(window.sfzLibraryService, undefined);
+    });
 });

@@ -3,6 +3,7 @@
 
 #include "effetune/abi.h"
 #include "effetune/dsp/delay_line.h"
+#include "effetune/kernel.h"
 #include "graph-v1-capacity.h"
 
 #include <array>
@@ -33,9 +34,14 @@ public:
   GraphPlan &operator=(const GraphPlan &) = delete;
 
   et_status configure(Engine &engine, const std::uint8_t *descriptor,
-                      std::uint32_t descriptor_bytes);
+                      std::uint32_t descriptor_bytes, bool offline_pipeline = false);
   et_status process(Engine &engine, std::uint32_t channel_count, std::uint32_t frame_count,
                     double time_seconds) noexcept;
+  // Reserve retry storage on the control thread after configuration.
+  et_status prepareOffline();
+  et_status processOffline(Engine &engine, std::uint32_t channel_count, std::uint32_t frame_count,
+                           double time_seconds) noexcept;
+  [[nodiscard]] bool offlinePending() const noexcept { return offline_pending_; }
   void reset() noexcept;
 
   [[nodiscard]] bool configured() const noexcept { return configured_; }
@@ -79,6 +85,7 @@ private:
     std::uint32_t originalIndex = 0u;
     std::uint32_t source = kEndpoint;
     std::uint32_t destination = kEndpoint;
+    std::uint32_t channelMask = 0xffffu;
     float gain = 1.0F;
     float pan = 0.0F;
     std::uint32_t flags = 0u;
@@ -99,8 +106,9 @@ private:
   void mixEdge(Edge &edge, const float *source, float *destination,
                std::uint32_t frame_count) noexcept;
   [[nodiscard]] float *buffer(std::uint32_t slot) noexcept;
-  [[nodiscard]] const float *sourceBuffer(const Engine &engine,
-                                          std::uint32_t source) const noexcept;
+  [[nodiscard]] const float *sourceBuffer(const float *input, std::uint32_t source) const noexcept;
+  et_status processBlock(Engine &engine, std::uint32_t channel_count, std::uint32_t frame_count,
+                         double time_seconds, bool offline) noexcept;
 
   std::vector<Node> nodes_;
   std::vector<Edge> edges_;
@@ -108,6 +116,12 @@ private:
   std::vector<std::uint32_t> schedule_;
   std::vector<std::uint32_t> output_edges_;
   std::vector<float> buffers_;
+  std::vector<float> offline_input_;
+  HostTransport offline_transport_{};
+  double offline_time_ = 0.0;
+  std::uint32_t offline_frames_ = 0u, offline_node_ = 0u;
+  bool offline_prepared_ = false, offline_pending_ = false, offline_node_prepared_ = false,
+       offline_retry_ = false, offline_failed_ = false, offline_has_transport_ = false;
   std::vector<std::uint8_t> snapshot_;
   dsp::DelayLine output_delay_line_;
   std::array<std::uint32_t, 16> output_latency_{};
@@ -118,6 +132,7 @@ private:
   std::uint32_t buffer_slot_count_ = 0u;
   std::uint32_t latency_samples_ = 0u;
   std::uint32_t workspace_bytes_ = 0u;
+  bool offline_pipeline_ = false;
   bool identity_ = false;
   bool silence_ = false;
   bool configured_ = false;

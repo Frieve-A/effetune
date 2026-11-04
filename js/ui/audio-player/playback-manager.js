@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 /**
  * PlaybackManager - Handles playlist management and playback control
  * Includes functionality for playback modes, state management, and keyboard shortcuts
@@ -914,7 +915,8 @@ export class PlaybackManager {
           restorePlannedShuffle(sequence, transportRollback);
           return result;
         }
-        await this.audioPlayer.contextManager?.stop?.({ preserveVideoTail: true });
+        await this.audioPlayer.contextManager?.stop?.({ preserveVideoTail: true,
+        ...(state?.playbackMode === 'midi' ? { preserveMidiTail: true } : {}) });
         return { ...result, stoppedAtEnd: true };
       } catch (error) {
         restorePlannedShuffle(sequence, transportRollback);
@@ -1619,6 +1621,7 @@ export class PlaybackManager {
       if (entry && !samePlaybackEntry(entry, currentTrack)) return false;
     }
 
+    if (state.playbackMode === 'midi') return !!contextManager.getMidiPresentation?.().hasMidi;
     if (state.playbackMode === 'bufferSource') {
       return contextManager.hasCurrentBuffer?.() === true;
     }
@@ -1766,11 +1769,11 @@ export class PlaybackManager {
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     const shuffleMode = state?.shuffleMode || false;
     const repeatMode = state?.repeatMode || 'OFF';
-    const isRollingPcmPlayback = state?.playbackMode === 'rollingPcm';
+    const isTimelinePlayback = ['rollingPcm', 'midi'].includes(state?.playbackMode);
     
     if (!options.forceQueueMove && this.audioPlayer.contextManager &&
-        (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
-      const currentTime = isRollingPcmPlayback
+        (this.audioPlayer.contextManager.isUsingBufferPlayback() || isTimelinePlayback)) {
+      const currentTime = isTimelinePlayback
         ? (this.audioPlayer.contextManager.getCurrentPlaybackTime?.() ?? 0)
         : this.audioPlayer.contextManager.getCurrentBufferTime();
       if (currentTime > 3) {
@@ -1803,7 +1806,7 @@ export class PlaybackManager {
         } else {
           if (options.forceQueueMove) return false;
           if (this.audioPlayer.contextManager &&
-              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
+              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isTimelinePlayback)) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
               await this.audioPlayer.contextManager.seamlessTransition(
@@ -1827,7 +1830,7 @@ export class PlaybackManager {
         } else {
           if (options.forceQueueMove) return false;
           if (this.audioPlayer.contextManager &&
-              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isRollingPcmPlayback)) {
+              (this.audioPlayer.contextManager.isUsingBufferPlayback() || isTimelinePlayback)) {
             const currentTrack = this.getTrack(currentIndex);
             if (currentTrack) {
               await this.audioPlayer.contextManager.seamlessTransition(
@@ -1916,7 +1919,7 @@ export class PlaybackManager {
     if (repeatMode === 'ONE' && !userInitiated && !ignoreRepeatOne) {
       if (this.audioPlayer.contextManager &&
           (this.audioPlayer.contextManager.isUsingBufferPlayback() ||
-            state?.playbackMode === 'rollingPcm')) {
+            ['rollingPcm', 'midi'].includes(state?.playbackMode))) {
         const currentIndex = this.audioPlayer.stateManager.getCurrentTrackIndex();
         const currentTrack = this.getTrack(currentIndex);
         if (currentTrack) {
@@ -2184,7 +2187,9 @@ export class PlaybackManager {
       if (track) {
         const loadOperation = autoPlay
           ? this.audioPlayer.contextManager.seamlessTransition(track, finalIndex, userInitiated)
-          : this.audioPlayer.contextManager.loadTrack(track, finalIndex, null, { preserveVideoTail: !userInitiated });
+          : this.audioPlayer.contextManager.loadTrack(track, finalIndex, null, { preserveVideoTail: !userInitiated,
+              ...(this.audioPlayer.stateManager?.getStateSnapshot()?.playbackMode === 'midi'
+                ? { preserveMidiTail: !userInitiated } : {}) });
         loadOperation.catch(error => {
           console.error('[PlaybackManager] Failed to load first track:', error);
         });
@@ -2667,7 +2672,7 @@ export class PlaybackManager {
     }
     
     try {
-      const userDataPath = await windowRef.electronAPI.getPath('userData');
+      const userDataPath = await windowRef.electronAPI.getPath('settings');
       const stateFilePath = await windowRef.electronAPI.joinPaths(userDataPath, 'player-state.json');
       const fileExists = await windowRef.electronAPI.fileExists(stateFilePath);
       
@@ -2688,7 +2693,7 @@ export class PlaybackManager {
 
   loadPlayerStateFromLocalStorage(windowRef = typeof window !== 'undefined' ? window : {}) {
     try {
-      const rawState = windowRef.localStorage?.getItem('effetune_player_state');
+      const rawState = getSettingsStorage(windowRef)?.getItem('effetune_player_state');
       if (!rawState) return;
       this.applyPlayerState(JSON.parse(rawState), 'PlaybackManager loadPlayerState localStorage');
     } catch (error) {
@@ -2730,7 +2735,7 @@ export class PlaybackManager {
     const playerState = this.getPersistentPlayerState();
     if (!windowRef.electronAPI || !windowRef.electronIntegration) {
       try {
-        windowRef.localStorage?.setItem('effetune_player_state', JSON.stringify(playerState));
+        getSettingsStorage(windowRef)?.setItem('effetune_player_state', JSON.stringify(playerState));
       } catch (error) {
         console.warn('Failed to save web player state:', error);
       }
@@ -2738,7 +2743,7 @@ export class PlaybackManager {
     }
     
     try {
-      const userDataPath = await windowRef.electronAPI.getPath('userData');
+      const userDataPath = await windowRef.electronAPI.getPath('settings');
       const stateFilePath = await windowRef.electronAPI.joinPaths(userDataPath, 'player-state.json');
       
       await windowRef.electronAPI.saveFile(stateFilePath, JSON.stringify(playerState, null, 2));

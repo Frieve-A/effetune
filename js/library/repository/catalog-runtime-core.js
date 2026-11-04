@@ -161,7 +161,7 @@ let Buffer,
   executePlaylistContextPage,
   fs,
   getContext,
-  isCueCoverRelativePath,
+  isTrackCoverRelativePath,
   measureBytes,
   normalizePlaylistImportOrigin,
   path,
@@ -191,7 +191,7 @@ export function bindCatalogPlatform(platform) {
     executePlaylistContextPage,
     fs,
     getContext,
-    isCueCoverRelativePath,
+    isTrackCoverRelativePath,
     measureBytes,
     normalizePlaylistImportOrigin,
     path,
@@ -4351,8 +4351,7 @@ function artworkPreclaimMatchesCurrentTrack(claim) {
     return claim.externalArtworkStat === null && claim.canonicalSourceIdentity === track.relativePath;
   }
   return claim.sourceKind === 'external-file' && claim.externalArtworkStat !== null &&
-    track.sourceKind === 'cue-track' &&
-    isCueCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity);
+    isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity);
 }
 
 function normalizeArtworkFileStat(value) {

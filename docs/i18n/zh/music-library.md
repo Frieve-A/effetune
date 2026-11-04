@@ -18,7 +18,13 @@ lang: zh
 
 音乐库会为 MP3、WAV、OGG、FLAC、Opus、M4A 和 AAC 等常见音频文件扩展名建立索引，还可以使用外部 CUE 索引文件将同一文件夹中的整轨 WAV 或 FLAC 专辑文件拆分为独立曲目。
 
+音乐库也会为 `.dsf` 和 `.dff` 文件建立索引。要查找已添加文件夹中的这些文件，请重新扫描；可播放的格式见 [DSD 文件](music-player.md#dsd-files)。
+
 若要纳入 MP4、WebM、M4V、MOV、MKV 和 3GP 文件，请在 **设置 > 配置... > 常规** 中启用 **在音乐库中包含视频文件格式**，然后添加或重新扫描文件夹。此选项默认关闭，更改设置不会立即改变现有目录。实际能否播放（包括视频文件中的音频编码）取决于浏览器或操作系统的解码器。视频的显示方式请参阅[音乐播放器指南](music-player.md#video)。
+
+若要纳入 MIDI/KAR（`.mid`、`.midi`、`.kar`）和 MusicXML（`.musicxml`、`.xml`、`.mxl`）文件，请在同一设置页面中启用 **在音乐库中包含 MIDI 文件**，然后添加或重新扫描文件夹。此选项默认关闭，更改设置不会立即改变现有目录。要听到声音，请添加 SoundFont Player 并加载音源；参阅 [MIDI 文件](music-player.md#midi-文件)和 [MusicXML 文件](music-player.md#musicxml-files)。 MIDI 和 MusicXML 的播放及音乐库收录功能可在桌面应用和 Web/PWA 播放器中使用，Android 应用暂不支持。
+
+这些设置仅适用于音乐库，仍可直接在音乐播放器中打开支持的文件。
 
 ## 打开音乐库
 

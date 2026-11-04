@@ -1,4 +1,6 @@
 import { lyricsLineAt } from '../library/metadata/lyrics.js';
+import { getMidiLyricsData } from '../midi/lyrics-timeline.js';
+import { wrdCharacterWidth } from '../midi/wrd-parser.js';
 import { drawStyledText, measureStyledText, TEXT_LINE_HEIGHT } from './visualizer-text.js';
 
 const identities = new WeakMap();
@@ -10,6 +12,12 @@ const stepProgress = (time, start, gap, duration) => {
     const u = clamp((time - start) / Math.min(duration, gap || duration));
     return u * u * (3 - 2 * u);
 };
+
+export function lyricsForItem(item, lyrics) {
+    if (!lyrics?.midiTimeline) return lyrics;
+    return { ...lyrics, data: getMidiLyricsData(lyrics.midiTimeline,
+        { part: item.params.lyricsPart || '', verse: item.params.lyricsVerse || '' }) };
+}
 
 // Whole-item opacity follows audible playback position, independently of row timing.
 export function lyricsOpacity(item, lyrics, editing) {
@@ -28,6 +36,8 @@ export function lyricsFrame(item, lyrics, editing) {
     const { lines, synced } = data, params = item.params;
     const t = lyrics.time - params.lyricsOffset;
     const current = synced ? lyricsLineAt(lines, t) : -1;
+    if (data.screen) return { rows: lines, screen: true, current,
+        key: JSON.stringify([identities.get(data), params, current]) };
     const list = !synced || params.lyricsView === 'list';
     const horizontal = list && params.lyricsMotion.endsWith('-horizontal');
     const stepDuration = list && ['step', 'step-horizontal'].includes(params.lyricsMotion)
@@ -69,25 +79,38 @@ export function lyricsFrame(item, lyrics, editing) {
     const progress = !ticker ? 0 : !synced ? clamp(t / lyrics.duration)
         : current === lines.length - 1 && lyrics.duration > lines.at(-1).time
             ? clamp((t - lines.at(-1).time) / (lyrics.duration - lines.at(-1).time)) : 0;
-    return { rows: lines, p, current, fill, list, synced, next: params.lyricsNext, horizontal, ticker, progress,
+    const paragraph = data.paragraphs?.[lines[Math.max(0, current)]?.paragraph];
+    return { rows: lines, p, current, fill, list, synced, next: params.lyricsNext, horizontal, ticker, progress, paragraph,
         key: JSON.stringify([identities.get(data), params, current, Math.round(p * 1000), fill === null ? null : Math.round(fill * 100), Math.round(progress * 1000)]) };
 }
 
 export function drawLyrics(ctx, item, frame, w, h, scale, fill, glyphMask, measurements = {}) {
     // Native fillText(maxWidth) compresses gradients along with the glyphs.
     // Paint the glyph mask in item coordinates, then color only its alpha.
-    const paintFill = glyphMask ? (text, x, y, maxWidth) => {
-        const mask = glyphMask.getContext('2d');
-        mask.clearRect(0, 0, w, h);
-        for (const key of ['font', 'letterSpacing', 'textAlign', 'textBaseline', 'direction', 'fontKerning',
-            'fontStretch', 'fontVariantCaps', 'textRendering']) mask[key] = ctx[key];
-        mask.fillStyle = '#ffffff'; // theme-allow: Alpha mask; source-in replaces its RGB with the text fill.
-        mask.fillText(text, x, y, maxWidth);
+    const mask = glyphMask?.getContext('2d');
+    let batchFill = false;
+    let batchShadow;
+    const finishFill = () => {
         mask.globalCompositeOperation = 'source-in';
         mask.fillStyle = fill;
         mask.fillRect(0, 0, w, h);
         mask.globalCompositeOperation = 'source-over';
+        ctx.save();
+        if (batchShadow) Object.assign(ctx, batchShadow);
         ctx.drawImage(glyphMask, 0, 0);
+        ctx.restore();
+    };
+    const paintFill = mask ? (text, x, y, maxWidth) => {
+        if (!batchFill) mask.clearRect(0, 0, w, h);
+        // A batched screen composites after drawStyledText restores its state.
+        // Retain its fill shadow, which is already disabled for outlined text.
+        if (batchFill && !batchShadow) batchShadow = { shadowColor: ctx.shadowColor, shadowBlur: ctx.shadowBlur,
+            shadowOffsetX: ctx.shadowOffsetX, shadowOffsetY: ctx.shadowOffsetY };
+        for (const key of ['font', 'letterSpacing', 'textAlign', 'textBaseline', 'direction', 'fontKerning',
+            'fontStretch', 'fontVariantCaps', 'textRendering']) mask[key] = ctx[key];
+        mask.fillStyle = '#ffffff'; // theme-allow: Alpha mask; source-in replaces its RGB with the text fill.
+        mask.fillText(text, x, y, maxWidth);
+        if (!batchFill) finishFill();
     } : undefined;
     // Rows drawn with a cue time, in item pixels, for click-to-seek hit testing.
     const hits = measurements.hits = [];
@@ -96,6 +119,38 @@ export function drawLyrics(ctx, item, frame, w, h, scale, fill, glyphMask, measu
         return;
     }
     if (!frame.rows.length) return;
+    if (frame.screen) {
+        const row = frame.rows[frame.current];
+        if (row?.text) {
+            // WRD positions address an 80 x 25 console, not independent lyric
+            // lines. Keep its cells fixed as text is revealed or overwritten.
+            const outline = item.style.outlineWidth ?? 0;
+            const screenScale = Math.min(scale, w / (40 * item.style.fontSize + 2 * outline),
+                h / (25 * item.style.fontSize + 2 * outline));
+            const cellWidth = item.style.fontSize * screenScale / 2;
+            const rowHeight = item.style.fontSize * screenScale;
+            const screenWidth = cellWidth * 80, screenHeight = rowHeight * 25;
+            const left = item.style.align === 'left' ? outline * screenScale
+                : item.style.align === 'right' ? w - screenWidth - outline * screenScale : (w - screenWidth) / 2;
+            const top = item.style.verticalAlign === 'top' ? outline * screenScale
+                : item.style.verticalAlign === 'bottom' ? h - screenHeight - outline * screenScale : (h - screenHeight) / 2;
+            const style = { ...item.style, align: 'center', verticalAlign: 'middle' };
+            batchFill = true;
+            mask?.clearRect(0, 0, w, h);
+            row.text.split(/\r\n|\r|\n/).forEach((line, index) => {
+                let column = 0;
+                for (const character of line) {
+                    const width = wrdCharacterWidth(character);
+                    drawStyledText(ctx, character, style, width * cellWidth, rowHeight,
+                        screenScale, fill, undefined, undefined, top + index * rowHeight, paintFill, left + column * cellWidth);
+                    column += width;
+                }
+            });
+            if (mask) finishFill();
+            hits.push({ left: 0, top: 0, right: w, bottom: h, time: row.time + item.params.lyricsOffset });
+        }
+        return;
+    }
     const rowHeight = item.style.fontSize * scale * TEXT_LINE_HEIGHT;
     const lineAdvance = rowHeight * (item.params.lyricsLineSpacing ?? 1);
     const blockHeight = rowHeight + (!frame.list && frame.next ? lineAdvance : 0);
@@ -141,9 +196,9 @@ export function drawLyrics(ctx, item, frame, w, h, scale, fill, glyphMask, measu
     }
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
-    const first = frame.horizontal ? 0 : frame.list ? Math.max(0, Math.ceil(frame.p - (anchor + rowHeight) / lineAdvance)) : Math.max(0, frame.current - 1);
-    const last = frame.horizontal ? frame.rows.length - 1 : frame.list ? Math.min(frame.rows.length - 1, Math.floor(frame.p + (h - anchor + rowHeight) / lineAdvance))
-        : Math.min(frame.rows.length - 1, frame.current + (frame.next ? 1 : 0));
+    const first = Math.max(frame.paragraph?.start ?? 0, frame.horizontal ? 0 : frame.list ? Math.max(0, Math.ceil(frame.p - (anchor + rowHeight) / lineAdvance)) : Math.max(0, frame.current - 1));
+    const last = Math.min(frame.paragraph?.end ?? frame.rows.length - 1, frame.horizontal ? frame.rows.length - 1 : frame.list ? Math.min(frame.rows.length - 1, Math.floor(frame.p + (h - anchor + rowHeight) / lineAdvance))
+        : Math.min(frame.rows.length - 1, frame.current + (frame.next ? 1 : 0)));
     for (let index = first; index <= last; index++) {
         if (!frame.list && index < frame.current && frame.p >= frame.current) continue;
         const x = frame.horizontal ? positions[index] - scroll : 0;

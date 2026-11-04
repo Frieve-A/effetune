@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 import {
   MUSIC_LIBRARY_UI_STORAGE_KEY,
   UNKNOWN_ALBUM,
@@ -576,7 +577,7 @@ export class LibraryView {
   loadUIState() {
     try {
       this.entitySorts ??= createDefaultEntitySorts();
-      const state = JSON.parse(globalThis.localStorage?.getItem(MUSIC_LIBRARY_UI_STORAGE_KEY) || '{}');
+      const state = JSON.parse(getSettingsStorage()?.getItem(MUSIC_LIBRARY_UI_STORAGE_KEY) || '{}');
       if (state.sort) this.sort = state.sort;
       if (state.sortDirection === 'asc' || state.sortDirection === 'desc') {
         this.sortDirection = state.sortDirection;
@@ -608,7 +609,7 @@ export class LibraryView {
 
   saveUIState() {
     try {
-      globalThis.localStorage?.setItem(MUSIC_LIBRARY_UI_STORAGE_KEY, JSON.stringify({
+      getSettingsStorage()?.setItem(MUSIC_LIBRARY_UI_STORAGE_KEY, JSON.stringify({
         sort: this.sort,
         sortDirection: this.sortDirection,
         fileSort: this.fileSort,

@@ -277,16 +277,21 @@ public final class AndroidHostTest {
             }); } finally { context.unbindService(connection); }
         }
     }
-    @Test public void nativePackingMatchesEveryGeneratedBrowserFixture() throws Exception {
-        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        NativeParameterPacker packer = new NativeParameterPacker(context);
+    private static String assetText(Context context, String name) throws Exception {
         java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-        try (java.io.InputStream input = context.getAssets().open("web/android-packing-fixtures.json")) {
+        try (java.io.InputStream input = context.getAssets().open("web/" + name)) {
             byte[] buffer = new byte[8192]; int read;
             while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
         }
-        JSONArray fixtures = new JSONArray(output.toString("UTF-8"));
-        assertEquals(224, fixtures.length());
+        return output.toString("UTF-8");
+    }
+
+    @Test public void nativePackingMatchesEveryGeneratedBrowserFixture() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        NativeParameterPacker packer = new NativeParameterPacker(context);
+        JSONArray fixtures = new JSONArray(assetText(context, "android-packing-fixtures.json"));
+        int effectCount = new JSONObject(assetText(context, "android-dsp-contract.json")).getJSONArray("specs").length();
+        assertEquals(effectCount * 2, fixtures.length());
         for (int index = 0; index < fixtures.length(); index++) {
             JSONObject fixture = fixtures.getJSONObject(index);
             String label = fixture.getString("type") + ":" + fixture.getString("name");
@@ -302,11 +307,9 @@ public final class AndroidHostTest {
     @Test public void temporalConditionsMatchCanonicalPluginMethods() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         NativeParameterPacker packer = new NativeParameterPacker(context);
-        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-        try (java.io.InputStream input = context.getAssets().open("web/android-temporal-fixtures.json")) {
-            byte[] buffer = new byte[8192]; int read; while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
-        }
-        JSONArray fixtures = new JSONArray(output.toString("UTF-8")); assertTrue(fixtures.length() >= 224);
+        JSONArray fixtures = new JSONArray(assetText(context, "android-temporal-fixtures.json"));
+        int effectCount = new JSONObject(assetText(context, "android-dsp-contract.json")).getJSONArray("specs").length();
+        assertTrue(fixtures.length() >= effectCount * 2);
         for (int i = 0; i < fixtures.length(); i++) {
             JSONObject fixture = fixtures.getJSONObject(i), params = fixture.getJSONObject("parameters");
             JSONObject record = new JSONObject().put("type", fixture.getString("type")).put("parameters", params).put("enabled", params.optBoolean("enabled", true));

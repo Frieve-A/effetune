@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 /**
  * AudioPlayerUI - Handles player UI creation and management
  * Manages user input and display updates
@@ -58,7 +59,7 @@ const PLAYER_QUEUE_EXPANDED_STORAGE_KEY = 'playerQueueExpanded';
 
 function readStoredQueueExpanded() {
   try {
-    return globalThis.localStorage?.getItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY) === 'true';
+    return getSettingsStorage()?.getItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY) === 'true';
   } catch (_) {
     return false;
   }
@@ -66,7 +67,7 @@ function readStoredQueueExpanded() {
 
 function storeQueueExpanded(expanded) {
   try {
-    globalThis.localStorage?.setItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY, expanded ? 'true' : 'false');
+    getSettingsStorage()?.setItem?.(PLAYER_QUEUE_EXPANDED_STORAGE_KEY, expanded ? 'true' : 'false');
   } catch (_) {
     // Storage may be unavailable (private mode); the toggle still works for the session.
   }
@@ -1606,7 +1607,9 @@ export class AudioPlayerUI {
       preset.setAttribute('aria-pressed', Number(preset.dataset.speed) === speed ? 'true' : 'false');
     }
     const preservePitch = this.audioPlayer.stateManager?.getStateSnapshot?.()?.preservePitch ?? true;
-    this.playerPopup.querySelector('.player-speed-pitch').setAttribute('aria-pressed', preservePitch ? 'true' : 'false');
+    const pitchControl = this.playerPopup.querySelector('.player-speed-pitch');
+    pitchControl.setAttribute('aria-pressed', preservePitch ? 'true' : 'false');
+    pitchControl.disabled = this.audioPlayer.stateManager?.getStateSnapshot?.()?.playbackMode === 'midi';
   }
 
   async openLibraryTrackMenu(event, track) {

@@ -172,7 +172,7 @@ import * as cursorCodec from './cursor-codec.js';
 import * as queryContract from './query-contract.js';
 import * as transportShuffle from './transport-shuffle.js';
 import * as searchNormalizer from '../search-normalizer.js';
-import { isCueCoverRelativePath } from '../metadata/cue-cover.js';
+import { isTrackCoverRelativePath } from '../metadata/cue-cover.js';
 import { sha256Hex } from './sha256.js';
 
 const textEncoder = new TextEncoder();
@@ -2238,8 +2238,7 @@ function artworkClaimMatchesCurrentTrack(claim) {
     if ((!isPreclaim && !isBoundClaim) || claim.externalArtworkStat !== null) return false;
   } else {
     if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null ||
-        track.sourceKind !== 'cue-track' ||
-        !isCueCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity)) {
+        !isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity)) {
       return false;
     }
   }
@@ -2597,7 +2596,7 @@ bindCatalogPlatform({
   executePlaylistContextPage,
   fs,
   getContext,
-  isCueCoverRelativePath,
+  isTrackCoverRelativePath,
   measureBytes,
   normalizePlaylistImportOrigin,
   path,

@@ -1,6 +1,6 @@
 {
   "name": "effetune",
-  "version": "2.16.0",
+  "version": "2.17.0",
   "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
@@ -12,8 +12,10 @@
     "build:vendor": "node scripts/verify-sqlite-wasm-vendor.mjs && node scripts/build-music-metadata-vendor.mjs && node scripts/build-offline-audio-encoders-vendor.mjs && node scripts/build-playback-decoder-vendor.mjs",
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
+    "build:dsd": "node scripts/build-dsd-wasm.mjs",
     "build:openhome-sidecar": "node scripts/build-openhome-sidecar.mjs",
     "build:airplay-receiver": "node scripts/build-airplay-receiver.mjs",
+    "build:renderer-power": "node scripts/build-renderer-power.mjs",
     "collect:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs",
     "verify:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs --verify",
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
@@ -51,29 +53,29 @@
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
     "clean": "rimraf dist node_modules/.cache",
-    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win --publish never",
-    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win portable --publish never",
-    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win nsis --publish never",
+    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win --publish never",
+    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win portable --publish never",
+    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win nsis --publish never",
     "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && npm run build:airplay-receiver -- --arch arm64 && electron-builder --mac --arm64 --publish never",
     "build:mac:x64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && npm run build:airplay-receiver -- --arch x64 && electron-builder --mac --x64 --publish never",
     "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --linux --publish never",
-    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --dir",
-    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --dir --win --publish never && npm run smoke:openhome-package && npm run smoke:airplay-package",
-    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && node scripts/pack-ecs.mjs",
+    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir",
+    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir --win --publish never && npm run smoke:openhome-package && npm run smoke:airplay-package",
+    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && node scripts/pack-ecs.mjs",
     "pack:msix:win": "node scripts/pack-msix-win.mjs",
     "test:msix:installed": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-msix-installed.ps1",
     "publish:msstore": "node scripts/publish-msstore.mjs",
-    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder"
+    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.1.0",
+    "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "playwright": "^1.64.1",
-    "rimraf": "^6.1.3"
+    "rimraf": "^6.1.4"
   },
   "build": {
     "appId": "com.frieve.effetune",
@@ -90,6 +92,7 @@
     "files": [
       "electron/**/*",
       "js/**/*",
+      "scripts/build-dsd-wasm.mjs",
       "plugins/**/*",
       "!plugins/dsp/effetune-dsp.debug.wasm",
       "features/**/*",
@@ -107,6 +110,43 @@
       "README.md"
     ],
     "fileAssociations": [
+      { "ext": "dsf", "name": "DSF Audio", "description": "DSF Audio File", "icon": "icon", "role": "None", "mimeType": "audio/x-dsf" },
+      { "ext": "dff", "name": "DSDIFF Audio", "description": "Uncompressed DFF Audio File", "icon": "icon", "role": "None", "mimeType": "audio/x-dff" },
+      {
+        "ext": "mid",
+        "name": "Standard MIDI File",
+        "description": "Standard MIDI File",
+        "role": "Viewer",
+        "mimeType": "audio/midi"
+      },
+      {
+        "ext": "midi",
+        "name": "Standard MIDI File",
+        "description": "Standard MIDI File",
+        "role": "Viewer",
+        "mimeType": "audio/midi"
+      },
+      {
+        "ext": "kar",
+        "name": "MIDI Karaoke File",
+        "description": "MIDI Karaoke File",
+        "role": "Viewer",
+        "mimeType": "audio/midi"
+      },
+      {
+        "ext": "musicxml",
+        "name": "MusicXML Score",
+        "description": "MusicXML Score File",
+        "role": "Viewer",
+        "mimeType": "application/vnd.recordare.musicxml+xml"
+      },
+      {
+        "ext": "mxl",
+        "name": "Compressed MusicXML Score",
+        "description": "Compressed MusicXML Score File",
+        "role": "Viewer",
+        "mimeType": "application/vnd.recordare.musicxml"
+      },
       {
         "ext": "effetune_preset",
         "name": "EffeTune Preset",
@@ -218,6 +258,10 @@
           "to": "openhome/effetune-openhome-sidecar.exe"
         },
         {
+          "from": "out/native/renderer-power/win32-x64/effetune-renderer-power.exe",
+          "to": "renderer-power/effetune-renderer-power.exe"
+        },
+        {
           "from": "native/openhome-sidecar/THIRD_PARTY_NOTICES.txt",
           "to": "openhome/THIRD_PARTY_NOTICES.txt"
         }
@@ -322,14 +366,15 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.64.0",
+    "@mediabunny/flac-encoder": "1.65.2",
     "electron-updater": "6.8.11",
-    "mediabunny": "1.64.0",
-    "music-metadata": "^12.3.2",
+    "mediabunny": "1.65.2",
+    "music-metadata": "^12.3.4",
     "qrcode-generator": "^2.0.4",
-    "ws": "^8.22.0"
+    "ws": "^8.22.1"
   },
   "overrides": {
+    "minimatch@9 || 10": "11.0.4",
     "@electron/get": {
       "global-agent": "4.1.3"
     }

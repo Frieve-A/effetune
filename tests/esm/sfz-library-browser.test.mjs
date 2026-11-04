@@ -47,7 +47,7 @@ test('SFZ library uses the IR layout without decay and filters, sorts, loads and
     await modal.render();
     await nextTurn();
     assert.equal(byClass(modal.element, 'ir-library-dialog').length, 1);
-    assert.equal(flatten(modal.element).find(node => node.tagName === 'H2').textContent, 'SFZ Library');
+    assert.equal(flatten(modal.element).find(node => node.tagName === 'H2').textContent, 'SoundFont Library');
     assert.equal(byClass(modal.element, 'ir-library-decay').length, 0);
     assert.deepEqual(rows(modal).map(rowName), ['Alpha.sfz', 'Bravo.sfz', 'Cello.sfz']);
     assert.equal(byClass(rows(modal)[0], 'ir-library-badge')[0].textContent, '1.0 MiB · Files: 8 · Regions: 12');

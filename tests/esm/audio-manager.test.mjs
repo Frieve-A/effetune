@@ -1767,6 +1767,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(preferencesAtRequest, {
       stored: {
         ...silentWithEquivalentDefaults,
+        midiInputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -1787,6 +1788,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       JSON.parse(storageValues.get('effetune_audio_preferences')),
       {
         ...silentWithEquivalentDefaults,
+        midiInputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -1852,6 +1854,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       JSON.parse(storageValues.get('effetune_audio_preferences')),
       {
         ...silentFromDefault,
+        midiInputDeviceKey: '',
         outputDeviceId: 'default',
         outputDeviceLabel: '',
         sampleRate: 96000,
@@ -1889,6 +1892,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(selection.requestedRevisions, [11]);
     assert.deepEqual(JSON.parse(storedAtRequest), {
       ...silentWithEquivalentDefaults,
+      midiInputDeviceKey: '',
       outputDeviceId: 'default',
       sampleRate: 96000,
       useInputWithPlayer: false,
@@ -1900,6 +1904,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
     assert.equal(storageValues.get('effetune_audio_preferences'), JSON.stringify({
       ...storedMicrophone,
+      midiInputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1909,6 +1914,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     }));
     assert.deepEqual(windowObject.audioPreferences, {
       ...storedMicrophone,
+      midiInputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1918,6 +1924,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     });
     assert.deepEqual(windowObject.electronIntegration.audioPreferences, {
       ...storedMicrophone,
+      midiInputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1946,6 +1953,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       JSON.parse(storageValues.get('effetune_audio_preferences')),
       {
         ...silentWithEquivalentDefaults,
+        midiInputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -2428,5 +2436,57 @@ test('device settings changes keep Browser playback selected while rebuilding th
     assert.equal(await manager._executeReset({ inputDeviceId: 'new' }), '');
     assert.equal(resets, 1);
     assert.equal(manager.ioManager.browserInput.selected, true);
+  });
+});
+
+
+test('explicit WASM asset readiness follows an active B owner and invalidates changed or removed B targets', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ fakes, manager, calls }) => {
+    const primary = fakes.workletNode;
+    const secondary = createWorkletNode('midiSecondary', calls);
+    manager._parallelActive = true;
+    manager._parallelWorkletB = secondary;
+    const prepare = (node, id, state) => {
+      const key = manager._wasmAssetKey(id, 0);
+      const descriptor = { operationRevision: 1, payload: new ArrayBuffer(4) };
+      let notify = () => {};
+      const plugin = { id,
+        getWasmAssets: () => new Map([[0, descriptor]]),
+        getWasmAssetRevisionDescriptor: () => descriptor,
+        addWasmAssetSnapshotChangeListener(listener) { notify = listener; return () => { notify = () => {}; }; }
+      };
+      manager._wasmAssetMembershipByNode.set(node, new Map([[id, plugin]]));
+      manager._wasmAssetStatesByNode.set(node, new Map([[key, state]]));
+      manager._wasmAssetExpectedRevisionsByNode.set(node, new Map([[key, 1]]));
+      manager._wasmAssetExpectedReplayEpochsByNode.set(node, new Map([[key, 0]]));
+      return { key, plugin, notify: () => notify() };
+    };
+    const a = prepare(primary, 8, 3);
+    assert.equal((await manager.waitForEffectiveActiveWasmAssets(a.plugin, [0])).ready, true);
+    const ready = prepare(secondary, 7, 3);
+    assert.equal((await manager.waitForEffectiveActiveWasmAssets(ready.plugin, [0], { primaryWorklet: secondary })).ready, true);
+    const pending = prepare(secondary, 7, 2);
+    let settled = false;
+    const waiting = manager.waitForEffectiveActiveWasmAssets(pending.plugin, [0], { primaryWorklet: secondary })
+      .then(result => { settled = true; return result; });
+    await flushMicrotasks();
+    assert.equal(settled, false);
+    manager._wasmAssetStatesByNode.get(secondary).set(pending.key, 3);
+    pending.notify();
+    assert.equal((await waiting).ready, true);
+    const swapped = prepare(secondary, 7, 2);
+    const swapWait = manager.waitForEffectiveActiveWasmAssets(swapped.plugin, [0], { primaryWorklet: secondary });
+    manager._wasmAssetMembershipByNode.set(secondary, new Map([[7, { id: 7 }]]));
+    swapped.notify();
+    assert.equal((await swapWait).stale, true);
+    const removed = prepare(secondary, 7, 2);
+    const removeWait = manager.waitForEffectiveActiveWasmAssets(removed.plugin, [0], { primaryWorklet: secondary });
+    manager._parallelActive = false;
+    manager._parallelWorkletB = null;
+    manager.dispatchEvent('parallelInvalidated', { reason: 'removed' });
+    const removal = await removeWait;
+    assert.equal(removal.ready, false);
+    assert.equal(removal.stale, true);
+    assert.equal((await manager.waitForEffectiveActiveWasmAssets(a.plugin, [0])).ready, true);
   });
 });

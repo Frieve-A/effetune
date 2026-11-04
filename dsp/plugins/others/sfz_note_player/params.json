@@ -2,7 +2,7 @@
   "type": "SFZNotePlayerPlugin",
   "parityReference": "production-native-promoted-v1",
   "tolerance": {
-    "abs": 0.000001,
+    "abs": 1e-06,
     "policy": "per-sample"
   },
   "assets": [
@@ -191,8 +191,19 @@
       "name": "detection",
       "key": "dt",
       "kind": "enum",
-      "values": ["Classic", "Event"],
+      "values": [
+        "Classic",
+        "Event"
+      ],
       "default": "Classic"
+    },
+    {
+      "name": "preset",
+      "key": "sp0",
+      "kind": "int",
+      "min": -1,
+      "max": 8388607,
+      "default": -1
     }
   ]
 }

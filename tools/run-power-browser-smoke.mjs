@@ -70,6 +70,17 @@ const fixtureHtml = String.raw`<!doctype html>
       deriveInputSignalObservation
     } from '/js/audio/power-policy.js';
     import { PowerPolicyController } from '/js/audio/power-policy-controller.js';
+    import { AudioManager } from '/js/audio-manager.js';
+    import { audioManagerWasmAssetMethods } from '/js/audio/audio-manager-wasm-assets.js';
+    import { audioManagerSfzRuntimeMethods } from '/js/audio/audio-manager-sfz-runtime.js';
+    import { midiPlaybackMethods } from '/js/ui/audio-player/midi-playback.js';
+    import { DSP_PARAM_PACKERS } from '/js/audio/dsp-params.generated.js';
+    import { instantiateDspBinding } from '/js/audio/dsp-engine-binding.js';
+    import { parseSfz } from '/js/sfz/parser.js';
+    import { packSfzAsset } from '/js/sfz/asset.js';
+    import { samplePlayerPreparationData } from '/js/sfz/effect-cost.js';
+    import { materializeSfzAsset, sfzPlayerKind } from '/js/sfz/preparation-context.js';
+    import { compileSfzScript } from '/js/sfz/script-compiler.js';
 
     const SCENARIO_NOW = 1_000_000;
     const activeResources = new Set();
@@ -513,6 +524,142 @@ const fixtureHtml = String.raw`<!doctype html>
       }
     }
 
+    async function runMidiAvailabilityScenario() {
+      const mic = await createLiveMic(), worklet = await createRunningAudioWorklet(mic);
+      const resource = { mic, ...worklet };
+      activeResources.add(resource);
+      let owner;
+      try {
+        const { node, context, observer } = resource;
+        const module = await WebAssembly.compileStreaming(fetch('/plugins/dsp/effetune-dsp.wasm'));
+        node.port.postMessage({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
+        node.port.postMessage({ type: 'dspModule', module });
+        await observer.waitFor(message => message.type === 'dspReady');
+        const membership = new Map(), key = '7:0';
+        const manager = Object.assign({}, audioManagerWasmAssetMethods, {
+          workletNode: node, audioContext: context, currentPipeline: 'A', pipelineA: [], pipelineB: [],
+          getCurrentPipeline: AudioManager.prototype.getCurrentPipeline,
+          _getPrimaryWorkletNode: () => node, _getActiveDspWorklets: () => new Set([node]),
+          _isActiveDspWorklet: candidate => candidate === node,
+          _getSfzRuntimeAssetIdentity: audioManagerSfzRuntimeMethods._getSfzRuntimeAssetIdentity,
+          _wasmAssetMembershipByNode: new Map([[node, membership]]),
+          _wasmAssetStatesByNode: new Map([[node, new Map()]]),
+          _wasmAssetExpectedRevisionsByNode: new Map([[node, new Map()]]),
+          _wasmAssetExpectedReplayEpochsByNode: new Map([[node, new Map()]]),
+          getSfzSamplePreparation: () => null
+        });
+        node.port.addEventListener('message', ({ data }) => {
+          if (data.type === 'assetState') manager._updateWasmAssetState(node, data.pluginId, data.slot,
+            data.state, data.operationRevision, data.replayEpoch);
+          if (data.type === 'dspTelemetry') node.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
+        });
+        const state = { isPlaying: false, isPaused: true, playbackMode: 'midi', playbackSpeed: 1 };
+        let failures = 0, ended = 0;
+        owner = Object.assign({}, midiPlaybackMethods, {
+          audioManager: manager, audioPlayer: { audioContext: context }, midiSource: resource.source,
+          midiTimeline: { duration: 4, events: [
+            { seconds: 0, status: 0xb0, data1: 7, data2: 23 },
+            { seconds: .01, status: 0x90, data1: 60, data2: 127 },
+            { seconds: 2, status: 0x90, data1: 60, data2: 127 }
+          ] }, stopRequestToken: 1, activeSourceGeneration: 1, playerVolume: 100,
+          getCurrentState: () => state, updateState: patch => Object.assign(state, patch),
+          stagePlaybackActivation: async () => null, releasePlaybackActivationStage() {},
+          ensurePipelineSourceConnected: () => true, setPrivatePipelineSourceMuted: () => true,
+          getUseInputWithPlayer: () => true, setupBufferMonitoring() {}, clearBufferMonitoring() {},
+          maintainSilentSource() {}, rearmPreparedAutomaticMove() {},
+          reportPlaybackSourceFailure() { failures++; }, handleTrackEnded() { ended++; }
+        });
+        await owner.playMidi();
+        const generation = owner.midiGeneration, anchor = owner.midiAnchorTime;
+        const { identity } = await configureWorklet(resource, {});
+        const first = await requestPowerObservation(resource, identity);
+        const controller = Object.assign(Object.create(PowerPolicyController.prototype), {
+          audioManager: manager, player: { contextManager: owner }, now: () => performance.now(),
+          _getTokensAndGuards: () => ({ tokens: identity }), _getActiveWorkletNodes: () => [node],
+          workletObservations: new Map([[node, { ...first, receivedAtEpochMs: performance.now() }]])
+        });
+        const temporal = controller._analyzeTemporalCapabilities([]);
+        const decision = decidePowerTarget({ ...makeFacts({ playerState: 'playing', noRouteElapsedMs: 70_000, inputUnusedElapsedMs: 0 }),
+          ...identity, transportDemand: true, temporalSkipEligible: temporal.temporalSkipEligible,
+          temporalMustProcess: false,
+          monitoringFastWakeEligible: temporal.temporalSkipEligible,
+          freshActiveRenderSequence: first.renderSequence, renderSequence: first.renderSequence
+        }, { mode: 'maximum', silenceThresholdDb: -80, fullSuspendDelaySeconds: 60 }, SCENARIO_NOW);
+        const control = decision.workletControl;
+        if (!control.shouldArmAutomaticMonitoring) throw new Error('Silent MIDI did not permit normal automatic monitoring: ' +
+          JSON.stringify({ decision, temporal, first }));
+        const commandId = nextCommandId++;
+        node.port.postMessage({ type: 'setPowerProcessingState', commandId, skipEpoch: control.nextSkipEpoch,
+          state: 'active', processingDirective: 'allow-automatic',
+          armAfterRenderSequence: control.armAfterRenderSequence, ...identity });
+        await waitForCommandAck(resource, commandId);
+        await observer.waitFor(message => message.state === 'monitoring' && message.workletGraphGeneration === identity.workletGraphGeneration);
+        const monitoringBefore = await requestPowerObservation(resource, identity), songBefore = owner.getCurrentMidiTime();
+        await wait(80);
+        const monitoringAfter = await requestPowerObservation(resource, identity);
+        const monitoring = { contextState: context.state, songAdvance: owner.getCurrentMidiTime() - songBefore,
+          counters: counterDelta(monitoringBefore.counters, monitoringAfter.counters), eligible: temporal.temporalSkipEligible,
+          midiPending: monitoringAfter.midiPending, policyState: decision.targetState };
+        const { regions } = await parseSfz({ selectedPath: 'authored.sfz',
+          readText: async () => '<region> sample=tone.wav key=60 loop_mode=loop_continuous', onDiagnostic: null });
+        const script = compileSfzScript('on init declare %bad[1] if (%CC[7] # 23) message(%bad[2]) end if end on ' +
+          'on controller play_note(60,127,-1,1000000) end on');
+        let asset = packSfzAsset(regions, new Map([['tone.wav', {
+          channels: [new Float32Array(4096).fill(.25)], sampleRate: 48000 }]]), { script });
+        asset.operationRevision = 1;
+        const parameters = { enabled: true, sf: 'a'.repeat(24), mc: 0, pl: 64, og: 0,
+          ...Object.fromEntries(Array.from({ length: 16 }, (_, channel) => ['sp' + channel, -1])) };
+        const plugin = { id: 7, constructor: { name: 'SoundFontPlayerPlugin' }, enabled: true, sf: parameters.sf,
+          temporalCapability: 'reset-on-resume', getParameters: () => parameters, getWasmAssetRevisionDescriptor: () => asset };
+        membership.set(7, plugin); manager.pipelineA = [plugin];
+        manager._wasmAssetExpectedRevisionsByNode.get(node).set(key, 1);
+        manager._wasmAssetExpectedReplayEpochsByNode.get(node).set(key, null);
+        manager._wasmAssetStatesByNode.get(node).set(key, 1);
+        const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+        node.port.postMessage({ type: 'updatePlugins', plugins: [{ id: 7, type: 'SoundFontPlayerPlugin', enabled: true,
+          parameters, inputBus: 0, outputBus: 0, channel: 'A', wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash }], masterBypass: false });
+        const requestId = nextObservationRequestId++;
+        const preparationPromise = observer.waitFor(message => message.type === 'sfzPreparationContext' && message.requestId === requestId);
+        node.port.postMessage({ type: 'sfzGetPreparationContext', requestId, pluginId: 7 });
+        const preparation = await preparationPromise;
+        if (!preparation.ok) throw new Error('The worklet did not provide an instrument preparation context.');
+        const costBinding = await instantiateDspBinding(module);
+        try {
+          asset = await materializeSfzAsset(asset,
+            { ...preparation.context, playerKind: sfzPlayerKind(plugin.constructor.name) }, 64 * 1024 * 1024,
+            (payload, geometry, formatTag) => {
+              const { control, payloadBytes } = samplePlayerPreparationData(payload);
+              return costBinding.estimateSfzEffectPreparation(control, geometry, formatTag, payloadBytes);
+            });
+        } finally { costBinding.destroyEngine(); }
+        node.port.postMessage({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...asset, formatTag: 1 });
+        await observer.waitFor(message => message.type === 'assetState' && message.pluginId === 7 && (message.state & 255) === 3);
+        const deadline = performance.now() + 4000;
+        while (owner.getCurrentMidiTime() < .6) { if (performance.now() > deadline) throw new Error('MIDI clock stopped'); await wait(10); }
+        const driver = await requestPowerObservation(resource, identity);
+        controller.workletObservations.set(node, { ...driver, receivedAtEpochMs: performance.now() });
+        const readyTemporal = controller._analyzeTemporalCapabilities([plugin]);
+        const analyser = context.createAnalyser(), samples = new Float32Array(256), analysisGate = context.createGain();
+        analyser.fftSize = 256; analysisGate.gain.value = 0;
+        node.connect(analyser); analyser.connect(analysisGate).connect(context.destination);
+        await wait(40);
+        analyser.getFloatTimeDomainData(samples);
+        const beforePeak = Math.max(...samples.map(Math.abs));
+        while (owner.getCurrentMidiTime() < 2.15) { if (performance.now() > deadline) throw new Error('Future MIDI note did not arrive'); await wait(10); }
+        analyser.getFloatTimeDomainData(samples);
+        const afterPeak = Math.max(...samples.map(Math.abs)); analyser.disconnect(); analysisGate.disconnect();
+        return { monitoring, driverPending: driver.midiPending, driverState: driver.state,
+          readyEligible: readyTemporal.temporalSkipEligible, beforePeak, afterPeak,
+          generationStable: owner.midiGeneration === generation, anchorStable: owner.midiAnchorTime === anchor,
+          failures, ended, contextState: context.state };
+      } finally {
+        owner?.midiCheckpointRequest?.finish(false); owner?.midiPreparation?.finish(false);
+        if (owner) { owner.midiNaturalTail = false; await owner.stopMidi(); }
+        mic.stop(); resource.observer.dispose(); resource.node.disconnect();
+        resource.routeGate.disconnect(); resource.source.disconnect(); await resource.context.close(); activeResources.delete(resource);
+      }
+    }
+
     async function waitForServiceWorkerState(worker, targetState, timeoutMs = 15_000) {
       if (!worker) throw new Error('Service worker registration returned no worker.');
       if (worker.state === targetState) return;
@@ -657,6 +804,7 @@ const fixtureHtml = String.raw`<!doctype html>
       ready: true,
       policies: Object.freeze({ ...PowerPolicy }),
       runPlayerOnlyScenario,
+      runMidiAvailabilityScenario,
       probeControllerEnablement,
       verifyServiceWorkerPrecache,
       verifyActivatedServiceWorkerPrecache,
@@ -863,7 +1011,8 @@ async function loadSmokeSpecs() {
     mp3ResumeSpec,
     mdResumeSpec,
     controllerMappingSpec,
-    audioGestureSpec
+    audioGestureSpec,
+    midiInputSpec
   ] = await Promise.all([
     import('../tests/browser/power-policy-smoke.spec.mjs'),
     import('../tests/browser/cue-region-smoke.spec.mjs'),
@@ -874,7 +1023,8 @@ async function loadSmokeSpecs() {
     import('../tests/browser/mp3-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/md-simulator-resume-wasm-smoke.spec.mjs'),
     import('../tests/browser/controller-mapping-dialog-smoke.spec.mjs'),
-    import('../tests/browser/audio-gesture-smoke.spec.mjs')
+    import('../tests/browser/audio-gesture-smoke.spec.mjs'),
+    import('../tests/browser/midi-input-smoke.spec.mjs')
   ]);
   if (typeof powerSpec.runPowerPolicyBrowserSmoke !== 'function') {
     throw new TypeError('power-policy-smoke.spec.mjs must export runPowerPolicyBrowserSmoke().');
@@ -921,6 +1071,9 @@ async function loadSmokeSpecs() {
       'runControllerMappingDialogBrowserSmoke().'
     );
   }
+  if (typeof midiInputSpec.runMidiInputBrowserSmoke !== 'function') {
+    throw new TypeError('midi-input-smoke.spec.mjs must export runMidiInputBrowserSmoke().');
+  }
   return [
     powerSpec.runPowerPolicyBrowserSmoke,
     cueRegionSpec.runCueRegionBrowserSmoke,
@@ -931,7 +1084,8 @@ async function loadSmokeSpecs() {
     mp3ResumeSpec.runMp3ResumeWasmBrowserSmoke,
     mdResumeSpec.runMdSimulatorResumeWasmBrowserSmoke,
     controllerMappingSpec.runControllerMappingDialogBrowserSmoke,
-    audioGestureSpec.runAudioGestureBrowserSmoke
+    audioGestureSpec.runAudioGestureBrowserSmoke,
+    midiInputSpec.runMidiInputBrowserSmoke
   ];
 }
 

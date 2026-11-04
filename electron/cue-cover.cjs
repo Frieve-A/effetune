@@ -11,6 +11,7 @@ function cueCoverCandidateFileNames(audioRelativePath) {
   const audioFileName = path.posix.basename(String(audioRelativePath ?? '').replaceAll('\\', '/'));
   const extension = path.posix.extname(audioFileName);
   const stem = extension ? audioFileName.slice(0, -extension.length) : audioFileName;
+  if (/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(audioFileName)) return ['cover.jpg', 'folder.jpg'];
   const candidates = [
     'cover.jpg', 'cover.png', 'front.jpg', 'front.png',
     `${stem}.jpg`, `${stem}.png`,
@@ -38,6 +39,12 @@ function selectCueCoverFileName(entries, audioRelativePath) {
     if (folded.length === 1) return folded[0];
   }
   return null;
+}
+
+function isTrackCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath) {
+  if (cueRelativePath) return isCueCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath);
+  if (!/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(String(audioRelativePath ?? ''))) return false;
+  return isCueCoverRelativePath(audioRelativePath, audioRelativePath, coverRelativePath);
 }
 
 function isCueCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath) {
@@ -71,5 +78,6 @@ module.exports = {
   cueCoverCandidateFileNames,
   cueCoverMimeType,
   isCueCoverRelativePath,
+  isTrackCoverRelativePath,
   selectCueCoverFileName
 };

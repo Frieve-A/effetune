@@ -252,3 +252,14 @@ test('LocalPlaybackIngress cancel and dispose abort active metadata and close th
   assert.equal(ingress.isDisposed(), true);
   assert.throws(() => ingress.beginRequest(), error => error?.code === 'selection-stale');
 });
+
+
+test('score and DSD extensions use the same canonical local authorization as mixed audio files', async t => {
+  const root = createTempDirectory();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const paths = ['song.mid', 'other.MIDI', 'audio.wav', 'song.DSF', 'other.dff', 'score.musicxml', 'old.XML', 'packed.mxl']
+    .map(name => writeFixture(root, name, 'fixture'));
+  const admitted = await admitLocalPlaybackPaths(paths);
+  assert.deepEqual(admitted.map(item => item.path), paths.map(file => fs.realpathSync.native(file)));
+  assert.deepEqual(admitted.map(item => item.byteLength), paths.map(() => 7));
+});

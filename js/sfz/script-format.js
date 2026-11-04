@@ -1,0 +1,1 @@
+export const SFZ_SCRIPT_PROGRAM_VERSION = 2;

@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import { ASPECTS, MOD_SOURCES, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, COLOR_ADJUST_PARAMETERS, FONT_FAMILIES, COUNTER_FONT_FAMILIES, COUNTER_APPEARANCES, applyCounterAppearance, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { PLAYBACK_ACTIONS, PLAYBACK_APPEARANCES, SEEK_APPEARANCES, NOTE_TEXT_TYPES } from './visualizer-model.js';
@@ -103,7 +104,7 @@ export class VisualizerEditor {
         this.root.hidden = true;
         // Selected item ids; empty means Background.
         this.selection = new Set();
-        const divisions = Number(localStorage.getItem('effetune_visualizer_grid_divisions'));
+        const divisions = Number(getSettingsStorage().getItem('effetune_visualizer_grid_divisions'));
         this.gridDivisions = GRID_DIVISIONS.includes(divisions) ? divisions : 0;
         this.itemBounds = document.createElement('div');
         this.itemBounds.className = 'visualizer-item-bounds';
@@ -210,6 +211,11 @@ export class VisualizerEditor {
     applyViewport() {
         if (!this.viewport) return null;
         const width = REFERENCE_WIDTH * this.zoom, height = width / this.viewport.aspect;
+        // Keep a visible portion of the artboard even after panning, zooming, or resizing.
+        const limitX = (this.viewport.width + width) / 2 - Math.min(64, this.viewport.width, width);
+        const limitY = (this.viewport.height + height) / 2 - Math.min(64, this.viewport.height, height);
+        this.panX = Math.max(-limitX, Math.min(limitX, this.panX));
+        this.panY = Math.max(-limitY, Math.min(limitY, this.panY));
         Object.assign(this.view.stage.style, {
             width: `${width}px`, height: `${height}px`,
             left: `${(this.viewport.width - width) / 2 + this.panX}px`,
@@ -549,7 +555,7 @@ export class VisualizerEditor {
             { min: 0.5, max: 3, step: 0.05, unit: '×' });
         this.field(scene, this.t('visualizer.grid', 'Snap to grid'), 'select', String(this.gridDivisions), value => {
             this.gridDivisions = Number(value);
-            localStorage.setItem('effetune_visualizer_grid_divisions', value);
+            getSettingsStorage().setItem('effetune_visualizer_grid_divisions', value);
             this.updateGrid();
         }, { values: [['0', this.t('visualizer.paramChoice.Off', 'Off')], ...GRID_DIVISIONS.map(value => [String(value), `${value} × ${value}`])] });
         const bg = this.group(this.navigationContent, this.t('visualizer.background', 'Background'));
@@ -642,9 +648,11 @@ export class VisualizerEditor {
             this.root.appendChild(note);
         }
         const properties = this.group(this.root, this.t('visualizer.properties', 'Properties'));
-        if (VISUAL_TYPES.includes(item.type)) {
+        if (VISUAL_TYPES.includes(item.type) && !['midi', 'midi-event-list'].includes(item.type)) {
             const channels = [['', '1–2'], ['L', 'L'], ['R', 'R'], ...Array.from({ length: 7 }, (_, i) => [`${i * 2 + 3}${i * 2 + 4}`, `${i * 2 + 3}–${i * 2 + 4}`]), ...Array.from({ length: 16 }, (_, i) => [`${i + 1}`, `${i + 1}`])];
-            this.field(properties, this.t('visualizer.channel', 'Channel'), 'select', item.channel || '', value => { item.channel = value || null; this.changed(); }, { values: channels });
+            const midiMode = ['notes', 'drums', 'guitar'].includes(item.type) &&
+                item.params.preferMidi !== false && this.view.sources?.getMidiPresentation?.()?.hasMidi === true;
+            this.field(properties, this.t('visualizer.channel', 'Channel'), 'select', item.channel || '', value => { item.channel = value || null; this.changed(); }, { values: channels, disabled: midiMode });
         }
         if (item.type === 'text') this.field(properties, this.t('visualizer.textContent', 'Text'), 'textarea', item.params.text,
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
@@ -657,7 +665,7 @@ export class VisualizerEditor {
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
         else if (TEXT_STYLE_TYPES.includes(item.type) && (item.type !== 'playback-control' || item.params.display !== 'icon')) this.textStyle(properties, item.style, item.type, item.params);
         else if (item.type === 'shape') this.shapeStyle(properties, item.style);
-        if (!PICTURE_TYPES.includes(item.type)) this.palette(this.root, item.palette, item.type);
+        if (!PICTURE_TYPES.includes(item.type)) this.palette(this.root, item.palette, item.type, false, item.params.preferMidi !== false);
         this.effects(this.root, item.effects, 'item', item.type);
     }
 
@@ -767,6 +775,7 @@ export class VisualizerEditor {
             for (const [key, fallback] of [['beatFillColor', 'Fill color'], ['beatStrokeColor', 'Border color']]) {
                 this.field(circle, label(key, fallback), 'color', value(key), set(key), { disabled: value('beatUsePalette') });
             }
+            this.field(circle, label('beatOrbitDot', 'Orbit dot'), 'checkbox', value('beatOrbitDot'), set('beatOrbitDot'));
             this.field(circle, label('beatFitBpm', 'Fit BPM inside circle'), 'checkbox', value('beatFitBpm'), set('beatFitBpm'));
         }
         select(parent, 'fontFamily', 'Font', type === 'counter' ? COUNTER_FONT_FAMILIES : FONT_FAMILIES);
@@ -848,27 +857,115 @@ export class VisualizerEditor {
             return;
         }
         const analogMeter = item.type === 'analog-meter';
+        const supportsMidi = ['notes', 'drums', 'guitar', 'rhythm-analyzer'].includes(item.type);
+        const midiMode = supportsMidi && params.preferMidi !== false && this.view?.sources?.getMidiPresentation?.()?.hasMidi === true;
+        if (supportsMidi) this.field(parent, this.t('visualizer.param.preferMidi', 'Prefer MIDI'), 'checkbox',
+            params.preferMidi !== false, value => { params.preferMidi = value; this.changed(true); });
         const rhythm = item.type === 'rhythm-analyzer';
         const guitar = item.type === 'guitar';
         const drums = item.type === 'drums';
         const lyrics = item.type === 'lyrics';
         const update = (key, value) => {
+            if (key === 'lyricsPart') params.lyricsVerse = '';
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
                 (analogMeter && ['sc', 'ln', 'ls', 'dc'].includes(key)) || (rhythm && key === 'sp') || (guitar && key === 'ro') ? Number(value) : value;
             // Mode, Detector, and dial choices decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time;
             // a fixed Root enables the Scale Guide.
-            this.changed((analogMeter && ['md', 'sc', 'de', 'dc'].includes(key)) || key === 'pk' || (guitar && key === 'ro') || key === 'lyricsView' || key === 'lyricsMotion');
+            this.changed((analogMeter && ['md', 'sc', 'de', 'dc'].includes(key)) || key === 'pk' || (guitar && key === 'ro') || key === 'lyricsView' || key === 'lyricsMotion' || key === 'lyricsPart' ||
+                (item.type === 'midi' && ['showControllers', 'knobStyle', 'flashChanges', 'keyboardColor', 'showKeyboard', 'showLevel'].includes(key)));
         };
-        const disabled = key => analogMeter && params.md === 'Custom' && key !== 'md' &&
-            !(window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true);
+        const disabled = key => (midiMode && item.type === 'guitar' && ['th', 'cf'].includes(key)) ||
+            (analogMeter && params.md === 'Custom' && key !== 'md' && !(window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true));
         const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values, disabled: disabled(key) });
         const orientation = () => select('orientation', 'Orientation', [
             ['horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')],
             ['vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]
         ]);
         const range = (key, label, min, max, step, unit = '', scale = 1, hint = null) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, unit, scale, hint, disabled: disabled(key) });
-        const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
+        const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value), { disabled: midiMode && disabled(key) });
+        if (item.type === 'midi-event-list') {
+            const label = (key, fallback) => this.t(`visualizer.eventList.${key}`, fallback);
+            this.field(parent, label('scrollMode', 'Scroll mode'), 'select', params.scrollMode,
+                value => update('scrollMode', value), { values: [
+                    ['row', label('row', 'Row')], ['smooth', label('smooth', 'Smooth')]
+                ] });
+            this.field(parent, label('fontFamily', 'Font'), 'select', params.fontFamily,
+                value => update('fontFamily', value), { values: FONT_FAMILIES.map(([family, name, key]) =>
+                    [family, this.t(key || `visualizer.value.${family}`, name)]) });
+            this.field(parent, label('fontSize', 'Text size'), 'range', params.fontSize,
+                value => update('fontSize', value), { min: 8, max: 32, step: 1, unit: 'px' });
+            this.field(parent, label('rowSpacing', 'Row spacing'), 'range', params.rowSpacing,
+                value => update('rowSpacing', value), { min: 1, max: 3, step: .05, unit: '%', scale: 100 });
+            return;
+        }
+        if (item.type === 'midi') {
+            const labels = (key, fallback) => this.t(`visualizer.midi.${key}`, fallback);
+            const channelFields = {};
+            for (const [key, fallback] of [['channelStart', 'First channel'], ['channelEnd', 'Last channel']]) {
+                channelFields[key] = this.field(parent, labels(key, fallback), 'range', params[key], value => {
+                    params[key] = Math.round(value);
+                    if (params.channelStart > params.channelEnd) {
+                        const other = key === 'channelStart' ? 'channelEnd' : 'channelStart';
+                        params[other] = params[key];
+                        this.syncRangeField(channelFields[other], params[other]);
+                    }
+                    this.changed(false, false, key);
+                }, { min: 1, max: 16, step: 1 });
+            }
+            for (const [key, fallback] of [['showPatch', 'Patch'], ['showKeyboard', 'Sounding notes'],
+                ['showLevel', 'Level'], ['showControllers', 'Controllers'], ['showState', 'Mute and Solo'],
+                ['showVoices', 'Voices']]) {
+                this.field(parent, labels(key, fallback), 'checkbox', params[key], value => update(key, value));
+            }
+            this.field(parent, labels('knobValuePosition', 'Values'), 'select', params.knobValuePosition,
+                value => update('knobValuePosition', value), { disabled: !params.showControllers,
+                    values: [['right', labels('right', 'Right')], ['below', labels('below', 'Below')],
+                        ['none', labels('none', 'None (knobs only)')]] });
+            this.field(parent, labels('knobSize', 'Knob size'), 'range', params.knobSize,
+                value => update('knobSize', value), { min: 50, max: 150, step: 5, unit: '%', disabled: !params.showControllers });
+            this.field(parent, labels('knobStyle', 'Knob style'), 'select', params.knobStyle,
+                value => update('knobStyle', value), { disabled: !params.showControllers,
+                    values: [['filled', labels('filled', 'Filled')], ['outline', labels('outline', 'Outline')]] });
+            for (const [key, fallback] of [['knobFillColor', 'Knob fill'], ['knobOutlineColor', 'Knob outline'],
+                ['knobIndicatorColor', 'Knob indicator']]) {
+                this.field(parent, labels(key, fallback), 'color', params[key], value => update(key, value),
+                    { disabled: !params.showControllers || key === 'knobFillColor' && params.knobStyle !== 'filled' });
+            }
+            this.field(parent, labels('flashChanges', 'Flash on MIDI changes'), 'checkbox', params.flashChanges,
+                value => update('flashChanges', value));
+            this.field(parent, labels('flashColor', 'Flash color'), 'color', params.flashColor,
+                value => update('flashColor', value), { disabled: !params.flashChanges });
+            this.field(parent, labels('keyboardColor', 'Keyboard color'), 'select', params.keyboardColor,
+                value => update('keyboardColor', value), { values: [
+                    ['normal', labels('normal', 'Normal')], ['channel', labels('channel', 'Channel')],
+                    ['rainbow', this.t('visualizer.noteColors', 'Note Colors')] ] });
+            this.field(parent, labels('keyboardActiveColor', 'Sounding key color'), 'color', params.keyboardActiveColor,
+                value => update('keyboardActiveColor', value), { disabled: !params.showKeyboard || params.keyboardColor !== 'normal' });
+            this.field(parent, labels('fontFamily', 'Font'), 'select', params.fontFamily,
+                value => update('fontFamily', value), { values: FONT_FAMILIES.map(([family, name, key]) =>
+                    [family, this.t(key || `visualizer.value.${family}`, name)]) });
+            this.field(parent, labels('fontSize', 'Text size'), 'range', params.fontSize,
+                value => update('fontSize', value), { min: 8, max: 24, step: 1, unit: 'px' });
+            if (params.showLevel) {
+                const level = this.group(parent, this.t('visualizer.type.level-meter', 'Level Meter'));
+                this.parameters(level, { type: 'level-meter', params: params.levelMeter });
+                this.palette(level, params.levelPalette, 'level-meter', false, true, null);
+            }
+            return;
+        }
         if (lyrics) {
+            const score = this.view?.sources?.getMidiPresentation?.()?.timeline?.lyrics;
+            if (score?.source === 'musicxml' || params.lyricsPart || params.lyricsVerse) {
+                const auto = ['', this.t('visualizer.paramChoice.lyricsAuto', 'Automatic')];
+                const parts = [...new Set((score?.cues || []).map(cue => cue.part))];
+                if (params.lyricsPart && !parts.includes(params.lyricsPart)) parts.push(params.lyricsPart);
+                select('lyricsPart', 'Part', [auto, ...parts.map(part => [part,
+                    score?.parts?.find(entry => entry.id === part)?.name || part])]);
+                const selectedPart = params.lyricsPart || parts[0];
+                const verses = [...new Set((score?.cues || []).filter(cue => cue.part === selectedPart).map(cue => cue.verse))];
+                if (params.lyricsVerse && !verses.includes(params.lyricsVerse)) verses.push(params.lyricsVerse);
+                select('lyricsVerse', 'Verse', [auto, ...verses.map(verse => [verse, verse])]);
+            }
             select('lyricsView', 'View', [['list', this.t('visualizer.paramChoice.lyricsList', 'List')],
                 ['line', this.t('visualizer.paramChoice.lyricsLine', 'Single line')]]);
             if (params.lyricsView === 'line') check('lyricsNext', 'Show next line');
@@ -1093,7 +1190,7 @@ export class VisualizerEditor {
             check('vm', 'Timing lanes');
             check('ve', 'Echo rows');
             // 'vl' already labels the Notes item's Volume checkbox; the lens checkbox uses its own label key.
-            this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
+            this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value), { disabled: disabled('vl') });
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, 'dB');
         if (guitar || drums || lyrics) return;
@@ -1146,23 +1243,26 @@ export class VisualizerEditor {
         range(face, 'vignette', 'Vignette', 0, 1, 0.01, '%', 100);
     }
 
-    palette(parent, palette, itemType = null, disabled = false) {
-        const group = this.group(parent, this.t('visualizer.palette', 'Palette'));
+    palette(parent, palette, itemType = null, disabled = false, preferMidi = true, title = this.t('visualizer.palette', 'Palette')) {
+        const group = title === null ? parent : this.group(parent, title);
         const octave = itemType === 'notes' || itemType === 'guitar' || itemType === 'chroma';
         if (itemType) {
             const labels = {
                 solid: this.t('visualizer.solid', 'Solid'),
                 gradient: this.t('visualizer.gradient', 'Gradient'),
                 'note-colors': this.t('visualizer.noteColors', 'Note Colors'),
+                'channel-colors': this.t('visualizer.channelColors', 'Channel Colors'),
                 heatmap: this.t('visualizer.heatmap', 'Heatmap')
             };
-            const modes = paletteModesForType(itemType).map(mode => [mode, labels[mode]]);
-            this.field(group, this.t('visualizer.colorMode', 'Color mode'), 'select', palette.mode, value => {
+            const modes = paletteModesForType(itemType)
+                .filter(mode => mode !== 'channel-colors' || preferMidi).map(mode => [mode, labels[mode]]);
+            const selectedMode = palette.mode === 'channel-colors' && !preferMidi ? 'solid' : palette.mode;
+            this.field(group, this.t('visualizer.colorMode', 'Color mode'), 'select', selectedMode, value => {
                 if (value === 'gradient' && palette.direction === undefined && !GRADIENT_DIRECTION_TYPES.includes(itemType))
                     palette.direction = 'linear';
                 palette.mode = value; this.changed(true);
             }, { values: modes });
-            if (palette.mode === 'solid') {
+            if (palette.mode === 'solid' || palette.mode === 'channel-colors') {
                 this.field(group, this.t('visualizer.color', 'Color'), 'color', palette.color,
                     value => { palette.color = value; this.changed(); });
                 return;

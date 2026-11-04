@@ -7,6 +7,8 @@ const STEREO_FRAME = 6;
 const NOTE_SPECTROGRAM_FRAME = 24;
 const NOTE_TIMBRE_FRAME = 31;
 const NOTE_CHORD_KEY_FRAME = 32;
+const SFZ_SCRIPT_MESSAGE_FRAME = 33;
+const SFZ_KEYSWITCHES_FRAME = 34;
 const NOTE_SPECTROGRAM_REVISION_PLANES = [[2, 5312, 5316], [4, 7076, 7080], [8, 28, 3552]];
 const PITCH_METER_FRAME = 26;
 const ANALOG_METER_FRAME = 27;
@@ -40,6 +42,8 @@ const ANALYZER_FRAMES = Object.freeze({
   SpectrumAnalyzer: [SPECTRUM_FRAME, [1, 2]],
   Spectrogram: [SPECTROGRAM_FRAME, [1, 2]],
   StereoMeter: [STEREO_FRAME, [2]],
+  SoundFontPlayer: [SFZ_SCRIPT_MESSAGE_FRAME, [1]],
+  SFZNotePlayer: [SFZ_SCRIPT_MESSAGE_FRAME, [1]],
   TonalBalanceEQ: [TONAL_BALANCE_FRAME, [1]]
 });
 
@@ -59,6 +63,22 @@ function common(node, kind, sequence, dropped) {
     sequence,
     dropped
   };
+}
+
+function decodeSfzScriptMessage(payload, node, sequence, dropped) {
+  if (payload.byteLength < 8) return null;
+  const length = payload.getUint16(4, true);
+  if (length > 127 || payload.getUint16(6, true) !== 0 || payload.byteLength !== 8 + length) return null;
+  const text = new TextDecoder().decode(new Uint8Array(payload.buffer, payload.byteOffset + 8, length));
+  return { ...common(node, 'sfz-script-message', sequence, dropped), text,
+    suppressed: payload.getUint32(0, true) };
+}
+
+function decodeSfzKeyswitches(payload, node, sequence, dropped) {
+  if (payload.byteLength !== 32) return null;
+  const keys = Array.from({ length: 16 }, (_, channel) => payload.getInt16(channel * 2, true));
+  if (keys.some(key => key < -1 || key > 127)) return null;
+  return { ...common(node, 'sfz-keyswitches', sequence, dropped), keys };
 }
 
 function decodeLevel(payload, node, sequence, dropped) {
@@ -825,6 +845,12 @@ function decodeTonalBalance(payload, node, sequence, dropped) {
 }
 
 function decodePayload(frameType, formatVersion, payload, node, sequence, dropped) {
+  if (frameType === SFZ_KEYSWITCHES_FRAME && formatVersion === 1) {
+    return decodeSfzKeyswitches(payload, node, sequence, dropped);
+  }
+  if (frameType === SFZ_SCRIPT_MESSAGE_FRAME && formatVersion === 1) {
+    return decodeSfzScriptMessage(payload, node, sequence, dropped);
+  }
   if (formatVersion === 2 &&
       (frameType === SPECTRUM_FRAME || frameType === SPECTROGRAM_FRAME)) {
     return decodeMultiresHq(payload, node, sequence, dropped, frameType);
@@ -880,6 +906,8 @@ export function decodeTelemetryPacket(packet, bytes, nodesByTap, initialDropped 
     const node = nodesByTap.get(tapId);
     const expected = node ? ANALYZER_FRAMES[node.effectType] : null;
     if ((expected?.[0] === frameType && expected[1].includes(formatVersion)) ||
+        ((node?.effectType === 'SoundFontPlayer' || node?.effectType === 'SFZNotePlayer') &&
+          frameType === SFZ_KEYSWITCHES_FRAME && formatVersion === 1) ||
         (node?.effectType === 'NoteSpectrogram' &&
           (frameType === NOTE_TIMBRE_FRAME || frameType === NOTE_CHORD_KEY_FRAME) && formatVersion === 1)) {
       const payload = new DataView(

@@ -154,6 +154,46 @@ test('group delay hints follow the temporary plugin sample rate', async () => {
     }
 });
 
+test('SoundFont preset hints describe Note Player selection while MIDI mixer patches remain transient', async () => {
+    const sources = (await Promise.all(['sfz-instrument.js', 'others/sfz_note_player.js', 'others/soundfont_player.js'].map(file =>
+        fs.readFile(new URL(`../../plugins/${file}`, import.meta.url), 'utf8')
+    ))).join('\n');
+    const window = loadClasses({ sources });
+    const manager = createPluginManager({
+        'SoundFont Note Player': window.SFZNotePlayerPlugin,
+        'SoundFont Player': window.SoundFontPlayerPlugin
+    });
+    assert.deepEqual(wire(describeEffect(manager, 'SoundFont Player')).params
+        .filter(parameter => /^sp\d+$/.test(parameter.key)), []);
+    const presets = wire(describeEffect(manager, 'SoundFont Note Player')).params
+        .filter(parameter => /^sp\d+$/.test(parameter.key));
+    assert.deepEqual(presets.map(parameter => parameter.key), ['sp0']);
+    const [preset] = presets;
+    assert.equal(preset.source, 'hint');
+    assert.equal(preset.type, 'number');
+    assert.equal(preset.default, -1);
+    assert.equal(preset.control, 'number');
+    assert.equal(preset.min, -1);
+    assert.equal(preset.max, 8388607);
+    assert.equal(preset.step, 1);
+    assert.equal(preset.integer, true);
+    assert.equal(preset.options, undefined);
+    assert.match(preset.description, /bank \* 128 \+ program/);
+    assert.match(preset.description, /0–127/);
+    assert.match(preset.description, /first playable preset/);
+    assert.equal(preset.label, 'Preset');
+    const plugin = manager.createPlugin('SoundFont Note Player', { audioHostActive: false });
+    try {
+        const before = wire(plugin.getParameters());
+        for (const [input, expected] of [[-2, -1], [8388608, 8388607], [257.6, 258]]) {
+            plugin.setParameters({ sp0: input });
+            assert.deepEqual(wire(plugin.getParameters()), { ...before, sp0: expected });
+        }
+    } finally {
+        plugin.cleanup();
+    }
+});
+
 test('describing effects never connects temporary instances to the live audio host', () => {
     const hostCalls = [];
     const window = loadClasses({

@@ -228,3 +228,14 @@ test('post-dominating mute proof rejects bypass, parallel, downstream, and bus p
     }]
   })).proven, false);
 });
+
+
+test('an active MIDI scheduler requires processing during rests and releases that demand after Stop', () => {
+  const plugins = [{ id: 1, enabled: true, temporalCapability: 'reset-on-resume' }];
+  const playing = analyzeTemporalCapabilities(plugins, { mustProcess: true });
+  assert.equal(playing.temporalSkipEligible, false);
+  assert.equal(playing.blockerReason, 'temporal-must-process');
+  const stopped = analyzeTemporalCapabilities(plugins, { mustProcess: false });
+  assert.equal(stopped.temporalSkipEligible, true);
+  assert.equal(stopped.capabilities[0].capability, 'reset-on-resume');
+});

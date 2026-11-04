@@ -7,7 +7,9 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const baseCss = read('../../css/effetune-theme.css') +
   read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '');
 const extensionCss = read('../../extension/editor.css');
+const settingsUrl = 'data:text/javascript;base64,' + Buffer.from(read('../../js/settings-storage.js')).toString('base64');
 const collapseManagerSource = read('../../js/ui/plugin-list/collapse-manager.js')
+  .replace('../../settings-storage.js', settingsUrl)
   .replace('export class CollapseManager', 'class CollapseManager');
 
 async function captureLayout(page, { extension, collapsed, columns }) {

@@ -326,6 +326,13 @@ WebAssembly modules. ABI version 1 is not a supported public native ABI or a
 native binary-compatibility promise. See the
 [Phase 0 native ABI audit](../experiments/dsp-library-phase0/native-abi-audit.md).
 
+Native hosts can compile the C interface with the matching core source and
+header. Use `et_instance_asset_begin_ptr` to upload a compiled bank: it returns
+a native pointer, including on 64-bit systems. The older
+`et_instance_asset_begin` entry returns a WASM32 address and fails without
+changing the asset on native 64-bit builds. This source-level hosting interface
+does not extend ABI version 1 into a cross-release native binary guarantee.
+
 The main ABI rules are:
 
 - Exported signatures use only 32-bit handles and offsets; they contain no
@@ -337,6 +344,196 @@ The main ABI rules are:
 - Hosts must refresh arena views after either lifecycle call and before the
   next audio quantum.
 - Audio processing never allocates or grows memory.
+
+#### Native MIDI sample-player hosts
+
+`SoundFontPlayerPlugin` accepts ordinary MIDI independently of the app, an
+SMF file, a browser, or a virtual MIDI device. The host prepares the engine and
+compiled SF2/SFZ bank off audio, then supplies `et_midi_event` batches through
+`et_instance_set_midi_events` before processing. A batch uses the instrument's
+generation; `offset_frames` is relative to the current instrument-input block,
+and `note_id` identifies the corresponding note on/off. The absolute MIDI
+render clock is distinct from this block offset. Advance that clock only by
+frames actually processed, rather than by wall time or a changing project
+position. Use `et_instance_midi_clock_low/high` to observe the committed clock.
+
+Set `et_host_transport` with `et_engine_set_host_transport` before each process
+call. Tempo is quarter-note beats per minute; PPQ and bar start are quarter
+notes. Set validity flags only for host-supplied fields. The engine copies the
+context, does not advance it, and shifts playing PPQ back by each node's input
+latency. `NULL` clears the context; non-finite or invalid fields lose their
+validity flags, and unknown flags are rejected without changing the prior
+context. A stopped project can still deliver live MIDI and process sample
+voices. A seek or loop is a host lifecycle decision, not an instruction to
+derive the instrument clock from project time. Reset/retime the generation and
+send current controller state deliberately; CC120/CC123 provide the ordinary
+MIDI sound-off/note-off actions.
+
+A host mixer sends bank-select, program-change and CC messages through that same
+event ingress. For an editor changing channel state, use `ET_MIDI_CONTROL_ONLY`
+alone with the current generation and offset-zero messages: bank select,
+program change, CC7/10/11/91/93. This validated control operation is also accepted
+while paused; it leaves queued musical events, scripts, triggers and clocks
+untouched. Incoming musical MIDI remains authoritative. A host retaining paused
+checkpoints recaptures its existing checkpoint after an accepted editor change
+so resume does not restore older controller state.
+
+`et_instance_set_midi_channel_mix` atomically changes one channel's mute/solo
+flag between blocks. Channel is zero-based 0..15; actions are `UNMUTE` (0), `MUTE` (1),
+`UNSOLO` (2) and `SOLO` (3) (the public `ET_MIDI_CHANNEL_*` constants). Other channel
+bits remain unchanged. Mute takes precedence over solo. It gates voice
+output and new effect sends while voice/controller/filter clocks continue.
+Already accumulated shared effect tails follow the ordinary drain policy. A new
+MIDI generation or reset clears the masks. These session controls are not saved
+plugin parameters or checkpoint fields. Telemetry frame 35/version 1 reports each
+channel's resolved preset, accepted controllers, active-note bitmap and release
+voice count; its fixed layout is documented beside the C declaration.
+
+Recognized complete GM, GS or XG reset packets map to a typed
+`ET_MIDI_SYSTEM_RESET` event: `message = 0`, `note_id` is
+`ET_MIDI_SYSTEM_GM/GS/XG`, clock fields are zero, and `offset_frames` is the
+packet's block offset. It clears voices and channel/controller/program/drum
+state at that offset without rewinding transport, the committed clock or the
+remaining event batch. Later events at the same offset retain their order.
+A state-hydration batch uses the same marker for channel/global state only,
+without replaying voice actions or clearing current session mute/solo controls.
+The host recognizes these packets; this marker is not a general SysEx decoder.
+
+GS/XG drum-part designations use `ET_MIDI_DRUM_MODE` on the same event API:
+`message = (channel << 8) | (mode << 16)`, with zero-based channel 0..15,
+`note_id = 0`, zero clock fields, and the original block offset. Mode 0 selects
+melodic playback; modes 1..3 select the SF2 percussion bank 128. Program Change
+selects the kit, using the existing missing-preset fallback. Switching back to
+melodic playback restores the committed melodic bank; a pending Bank Select
+still waits for Program Change. Existing voices keep their original preset.
+The marker is also accepted in channel hydration and sample forecasts; seek,
+checkpoints and reset use the same channel state. Reset restores channel 10 to
+percussion and all other channels to melodic playback.
+
+Hosts recognize complete Roland GS packets
+`F0 41 1n 42 12 40 1p 15 mm cc F7`, where `mm` is 0..2 and the address, data
+and checksum sum to zero modulo 128. Block `p=0` maps to channel 10; blocks
+1..9 map to channels 1..9, and A..F to channels 11..16. Yamaha XG packets are
+`F0 43 1n 4C 08 pp 07 mm F7`, where `pp` is 0..15 and `mm` is 0..3.
+Ignore incomplete packets, invalid values and incorrect GS checksums. Map/setup
+numbers designate percussion parts; this SF2 profile does not implement GS/XG
+per-key drum setup editing or manufacturer-specific sound sets. Packet definitions:
+[Roland MIDI implementation](https://static.roland.com/assets/media/pdf/FP-50_MI.pdf),
+[Yamaha S03 data list](https://jp.yamaha.com/files/download/other_assets/0/316550/S03J2.pdf).
+As with reset, native and VST3 adapters normalize their incoming complete SysEx
+to this typed event; the kernel does not parse raw SysEx or depend on JavaScript.
+
+For VST3 adapters, register an event input and consume note on/off and poly
+pressure from `IEventList`. Map controllers, pitch bend and channel pressure
+through `IMidiMapping` and all points in `IParameterChanges`; program selection
+uses the host's program/unit mapping. Do not assume all MIDI messages arrive in
+the event list. Split events alongside the existing audio slices: an event at
+host offset `e` in a slice starting at `s`, with oversampling factor `r`, has
+engine offset `(e - s) * r`. Apply the factor once. Account for the target
+instrument's input latency when aligning MIDI with routed audio. A source-only
+host can provide a prepared zero-filled planar input buffer to the same process
+API; missing physical input is not a reason to stop generating audio.
+
+The existing JS SF2/SFZ compiler produces the bank payload and sample metadata;
+a native host does not need another SF2 parser. Query
+`et_sample_player_preparation_bytes` on the target native build using the
+complete control-metadata prefix and declared full payload size. The query
+does not read or copy inline source PCM. Required `footprintBytes` is exactly
+the declared compiled payload byte count plus the returned additional bytes.
+This includes native bank/index/script/typed-state/cache/forecast storage and
+processing preparation, including banks without bus effects. Do not add a
+compiler-private base estimate or repeat native `sizeof` calculations. The
+compiled payload extent is distinct from the external sample library extent;
+a streamed library can be much larger without being copied into the payload.
+Fixed instance preparation, allocator metadata and process RSS are separate.
+Use the real processing rate, maximum block and
+output width. Pass the same minimum physical BPM to
+`et_instance_asset_begin_ptr` when uploading the queried bank. A value of zero
+uses the same standalone 120 BPM fallback as the size query, independently of
+the current MIDI map. The C++ transactional bank-update path likewise accepts
+an explicit bound in `captureInstanceAssetSnapshot`. This bound controls
+preparation capacity; it is not a live transport clock. The legacy WASM32
+`et_instance_asset_begin` entry uses the current context and has no separate
+caller-selected floor.
+
+Streaming hosts configure a bank generation with
+`et_instance_stream_configure`, take bounded requests with
+`et_instance_stream_take_requests`, and supply decoded pages with
+`et_instance_stream_publish`. Page PCM is **interleaved**; engine process audio
+is **planar**. Preserve full 64-bit sample-page and generation identities.
+SF2 collection admission requires validated metadata and prepared DSP, not a
+resident onset from every preset. Prime pages for the actual MIDI lookahead and
+active voices before starting where possible. V10 SFZ preparation pins authored
+loading windows, generated cycles and required impulse responses; automatic
+ordinary sample onsets do not require whole-collection residency. Mode0 keeps
+F32 cache storage; mode1 uses signed PCM16 slots and rounds/saturates F32 pages
+on control. Native IDs distinguish format variants even when they share the
+same file reader. Transfer/publish PCM remains F32. File/range access and decoding belong to an
+editor-independent control service. Transfer completed page buffers through
+the host's ownership handoff, and serialize configure/take/publish with the
+engine owner between blocks; these calls do not make an Engine thread-safe.
+
+For budget-admitted lookahead, use `et_instance_stream_prefetch` with
+`ET_STREAM_FORECAST_ADMIT | ET_STREAM_FORECAST_BEGIN`, subsequent ADMIT chunks,
+then ADMIT|COMMIT with count0. Supply sorted `offset_frames` relative to the
+prediction's first processed output frame, not file/source frames or wall
+time. Convert SMF times by playback speed; a VST host's block offsets are already
+on its processing axis. The native maximum is two seconds, not an instruction
+to request that much unconditionally. Choose a working window that includes
+the intended control-service interruption and refill interval, and admit it
+against the prepared fixed budget. NoteOn birth regions and relevant later
+SF2 CC/RPN/bend states share the same source/pitch/FIR/loop page geometry.
+
+An ADMIT `ET_ERR_OOM` means this optional plan did not fit: the previous valid
+prediction and asset remain usable, without latching a cache error. It is not
+permission to ignore ordinary allocation failures or mandatory overflow.
+Unexpected actual sample demand takes precedence over optional predictions;
+retiring those predictions also invalidates their readiness snapshot.
+`ET_NEED_SAMPLE` at COMMIT means planned data ACKs are still pending. Reuse the
+existing take/publish operations; do not wait inside an audio callback.
+
+`et_instance_stream_readiness` returns six uint32 fields: MIDI generation,
+scope, admitted frames, ready-ahead frames, planned pages and pending pages.
+It is a control-only, allocation/scan-free snapshot. KNOWN_MIDI ready-ahead is
+positive only after every planned page is actually ready, and expires with the
+native completed-render sample counter even before MIDI ownership is attached.
+Generation0 is valid for an unjoined instance. SELECTED_PRESETS covers short
+current-preset onsets using the prepared maximum block plus native source/FIR
+geometry; existing voices retain the requested horizon. It does not predict
+unknown future live notes. BEST_EFFORT uses conservative SFZ/analysis preview
+and reports real page ACKs with unknown future horizon. These latter scopes
+always report zero ready-ahead; pending-pages0 describes the bounded plan,
+not an entirely resident font.
+
+Renew a prediction after source, generation or unplanned controller changes.
+An initial preparation gate belongs to the instrument, not the media clock:
+continue the player's processed-sample timeline silently while preparing,
+hydrate current controls and join future notes once usable. Do not replay old
+NoteOns. If optional capacity is exhausted, permit limited best-effort playback
+instead of a permanent preparing state. An already-playing instrument continues
+its ordinary availability-gap/recovery behavior during refill.
+
+Real-time valid page unavailability supplies zero for unavailable source PCM
+while the whole processed quantum commits once. The existing runtime-event
+interface reports nonlatched availability-gap and recovery episodes. This is
+observable underrun behavior, not lossless reproduction of missing PCM.
+Invalid metadata or exhausted request capacity remains an error.
+
+Offline export must use the strict graph path, not treat that real-time policy
+as successful export. Configure the prepared instances and assets with
+`et_graph_configure_offline`, then obtain a token with
+`et_graph_prepare_offline`. For each block, send its MIDI batch once and call
+`et_graph_process_offline`. On `ET_NEED_SAMPLE`, keep the same block dimensions,
+time and token, service sample requests off audio, then retry without resending
+events. No musical state or clock commits until the block succeeds. The same
+public node handles remain available to the page APIs while a block waits.
+Do not perform blocking file I/O in the host's real-time callback; an offline
+driver must own the retry loop or finish its required preparation before
+starting the host callback.
+
+The native `testNativeMidiHostAndStrictOffline` acceptance in
+`test/graph_test.cpp` exercises this public path with a generated SF2 bank,
+64-bit-safe asset upload, host block slicing, late-page retry and recovery.
 
 #### Engine Arena
 

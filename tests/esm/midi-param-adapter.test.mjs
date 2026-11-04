@@ -51,6 +51,9 @@ async function loadPluginClasses() {
   vm.runInContext(await fs.readFile(path.join(pluginRoot, 'plugin-base.js'), 'utf8'), context, {
     filename: 'plugins/plugin-base.js'
   });
+  vm.runInContext(await fs.readFile(path.join(pluginRoot, 'sfz-instrument.js'), 'utf8'), context, {
+    filename: 'plugins/sfz-instrument.js'
+  });
   const entries = (await fs.readFile(path.join(pluginRoot, 'plugins.txt'), 'utf8'))
     .split(/\r?\n/)
     .map(line => /^([^#\s][^:]*):\s*[^|]+\|\s*[^|]+\|\s*([^|\s]+)/.exec(line))
@@ -212,7 +215,7 @@ test('ParamAdapter reachability matches the frozen exclusions for every generate
     }
   }
   // SFZ Note Player adds fourteen descriptors; Cassette Artifacts Mode adds one.
-  assert.equal(descriptorCount, 1035);
+  assert.equal(descriptorCount, 1036);
   assert.deepEqual(observedUnassignable, UNASSIGNABLE_DESCRIPTORS);
 });
 

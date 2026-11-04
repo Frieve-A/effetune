@@ -3,11 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
+import { checkDsdWasm } from './build-dsd-wasm.mjs';
+
+checkDsdWasm();
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(repoRoot, 'node_modules', 'mediabunny', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const expectedVersion = '1.64.0';
+const expectedVersion = '1.65.2';
 if (packageJson.version !== expectedVersion) {
   throw new Error(`Expected mediabunny ${expectedVersion}, found ${packageJson.version}`);
 }
@@ -23,7 +26,7 @@ await esbuild.build({
   target: ['es2021'],
   minify: true,
   legalComments: 'none',
-  banner: { js: `/* EffeTune rolling PCM decoder; mediabunny ${expectedVersion} (MPL-2.0) */` }
+  banner: { js: `/* EffeTune rolling PCM decoder; mediabunny ${expectedVersion} (MPL-2.0); FFmpeg-derived DST decoder (LGPL-2.1-or-later). See rolling-pcm-decoder-worker.NOTICE.txt. */` }
 });
 
 const output = fs.readFileSync(outputPath);
@@ -41,6 +44,10 @@ const notice = [
   'mediabunny license:',
   '',
   license,
+  '',
+  fs.readFileSync(path.join(repoRoot, 'js', 'audio', 'dsd', 'dst-decoder.NOTICE.txt'), 'utf8').trim(),
+  '',
+  fs.readFileSync(path.join(repoRoot, 'js', 'audio', 'dsd', 'dst-decoder.LICENSE.txt'), 'utf8').trim(),
   ''
 ].join('\n');
 fs.writeFileSync(noticePath, notice);

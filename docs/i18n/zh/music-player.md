@@ -16,6 +16,38 @@ lang: zh
 
 如果只把 EffeTune 当作播放器使用，请在 **音频设置** 中将 **输入设备：** 设为 **无（仅音乐文件播放器）**，这样 EffeTune 就不会使用实时音频输入。
 
+## DSD 文件 {#dsd-files}
+
+像打开其他音乐文件一样打开 `.dsf`（DSF）或 `.dff`（DSDIFF）文件。DFF 支持未压缩和 DST 压缩两种格式。EffeTune 将单声道或立体声 DSD64、DSD128 和 DSD256 转换为 PCM，再通过当前效果链播放。音频设备接收的是 PCM，而非原生 DSD 或 DoP。
+
+不支持部分 DST 编码方式（将帧划分为多个分段）、超过两个声道的文件、DSD512，以及基于 48 kHz 的 DSD。如果文件无法播放，请使用未压缩的 DFF 或兼容的 PCM 副本，例如 FLAC 或 WAV。桌面应用和网页/PWA 播放器可播放 DSD 文件，Android 原生应用则不支持。
+
+高采样率 DSD 文件需要更多处理能力，尤其在加快播放速度时。如果声音断续或播放停止，请降低播放速度。
+
+## MIDI 文件
+
+MIDI 和 MusicXML 的播放及音乐库收录功能可在桌面应用和 Web/PWA 播放器中使用，Android 应用暂不支持。
+
+使用常规音乐文件选择器或拖放方式打开 `.mid`、`.midi` 或 `.kar`。MIDI 保存的是音符和演奏时间，而非录制的声音。从 **Others** 向 Effect Pipeline 添加 [**SoundFont Player**](plugins/others.md#soundfont-player)，再用 **SoundFont Library…** 选择音源。打开 MIDI 文件不会自动添加音源。也可以把 MIDI 加入 Music Library。
+要在 Visualizer 的 **Lyrics** 中显示歌词，可使用 MIDI 内嵌歌词，或在旁边放置同名 `.wrd` 文件。在网页中，除非文件夹已通过 Music Library 授权，否则请将两个文件一起选择或拖入。`.wrd` 是配套文件，不会成为单独曲目；即使无法读取，MIDI 也会继续播放。
+
+MIDI 和 MusicXML 可使用同一文件夹中的 `cover.jpg`（优先）或 `folder.jpg` 作为封面。网页版中，除非可通过 Music Library 访问该文件夹，否则请将图片与音乐文件一起选择或拖入。
+
+如果尚未添加 SoundFont Player、尚未加载音源，或音源仍在加载，播放器会显示提示，并在无声状态下按乐曲进度继续发送 MIDI，不会因此跳到下一首。曲目仍会正常播放到结束。你可以在播放过程中添加 SoundFont Player 或加载音源；准备就绪后，会根据此后到来的 MIDI 数据发声，并使用各通道当前的音色和控制器设置。此前已经开始的音符不会重新响起，即使它们在乐曲中仍处于延音状态。
+
+播放、暂停、跳转、重复、随机播放、速度、音量和静音控件照常使用。改变速度会调整 MIDI 的演奏节奏，但不会改变音高。播放 MIDI 时无法切换 **保持音高**。加载 SF2/SF3 音色库后，一个 SoundFont Player 就能独立跟随全部 16 个通道的 Bank Select 和 Program Change，默认由第 10 通道使用鼓组音色库。用 **MIDI Mixer** 调整各通道的 **Patch**、音量等演奏控制。这些操作是临时的，会跟随后续 MIDI 消息，并在下一首曲目时初始化。SFZ 乐器使用自身的音符映射。
+
+要保存为音频，请先准备好 SoundFont Player 的音源，再在离线文件处理中选择 MIDI。处理会从头渲染整首曲目，使用所选音源及其后方的效果，速度为1倍、曲目增益为1，并按输出设置保存为 WAV 或 FLAC。如果尾音时长达到上限，应用会提示并截断剩余声音。
+
+支持 Standard MIDI File 格式0和1。格式2或 RMID 文件需先转换为格式0或1的标准 `.mid` 文件。
+
+## MusicXML 文件 {#musicxml-files}
+
+`.musicxml`、`.xml` 和压缩的 `.mxl` 文件可以像 MIDI 文件一样打开。要听到声音，请添加 **SoundFont Player** 并加载音源。它们使用上述 MIDI 播放控件，但不会显示乐谱。也可以将这些文件加入 Music Library。
+播放 MusicXML 时，歌词可以显示在 Visualizer 的 **Lyrics** 中。如果乐谱有多组歌词，可选择**声部**和**段落**，也可保持**自动**。
+
+支持音符、休止符、和弦、声部、延音线、速度变化，以及带不同结尾的常见反复记号。装饰音、倚音等部分记谱细节不会再现。如果乐谱包含嵌套反复、小节反复记号或微分音，或依赖 D.C.、D.S.、Coda、Fine，或者文件是包含多首乐谱的 opus 乐谱集，请先用制谱软件导出标准 MIDI 文件，再打开导出的文件。
+
 ## 播放控制
 
 - 暂停、继续播放，或用 **×** 关闭播放器时，会使用短暂的淡入淡出来避免咔嗒声。

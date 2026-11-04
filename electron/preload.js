@@ -1,4 +1,11 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const settingsNameArgument = process.argv?.find(argument => argument.startsWith('--effetune-settings-name='));
+const settingsName = settingsNameArgument ? decodeURIComponent(settingsNameArgument.slice('--effetune-settings-name='.length)) : '';
+function accessSettings(operation, key, value) {
+  const result = ipcRenderer.sendSync('settings-storage', { operation, key: String(key), value });
+  if (!result?.ok) throw new Error('Settings could not be saved or loaded.');
+  return result.value;
+}
 
 async function invokeNetworkMusic(method, request = {}) {
   const response = await ipcRenderer.invoke(`network-music:${method}`, request);
@@ -40,7 +47,7 @@ const libraryCatalogV1 = Object.freeze({
   queryPlaylistItems: (request) => ipcRenderer.invoke('library-catalog-v1:query-playlist-items', request),
   tombstonePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:tombstone-playlist', request),
   addFolder: (request = {}) => ipcRenderer.invoke('library-catalog-v1:add-folder', request),
-  requestFolderAccess: (folderId, options = {}) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId, includeVideo: options.includeVideo === true }),
+  requestFolderAccess: (folderId, options = {}) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId, includeVideo: options.includeVideo === true, includeMidi: options.includeMidi === true }),
   scanFolders: (request) => ipcRenderer.invoke('library-catalog-v1:scan-folders', request),
   cancelScan: (scanId) => ipcRenderer.invoke('library-catalog-v1:cancel-scan', { scanId }),
   removeFolder: (folderId) => ipcRenderer.invoke('library-catalog-v1:remove-folder', { folderId }),
@@ -149,7 +156,10 @@ const sfzLibraryV1 = Object.freeze({
   list: () => ipcRenderer.invoke('sfz-library-v1:list'),
   remove: request => ipcRenderer.invoke('sfz-library-v1:remove', request),
   readRelative: request => ipcRenderer.invoke('sfz-library-v1:read-relative', request),
-  statRelative: request => ipcRenderer.invoke('sfz-library-v1:stat-relative', request)
+  readRelativeRange: request => ipcRenderer.invoke('sfz-library-v1:read-relative-range', request),
+  openRangePort: request => ipcRenderer.invoke('sfz-library-v1:open-range-port', request),
+  statRelative: request => ipcRenderer.invoke('sfz-library-v1:stat-relative', request),
+  listSampleCandidates: request => ipcRenderer.invoke('sfz-library-v1:list-sample-candidates', request)
 });
 
 const libraryServiceV1 = Object.freeze({
@@ -210,6 +220,10 @@ const airPlayV1 = Object.freeze({
   rendererUnavailable: () => ipcRenderer.invoke('airplay-v1:renderer-unavailable', {}),
   stopSession: () => ipcRenderer.invoke('airplay-v1:stop-session', {}),
   onStatus: callback => addSingleArgIpcListener('airplay-v1:status', callback)
+});
+
+ipcRenderer.on('sfz-library-v1:range-port', (event, token) => {
+  if (event.ports?.length === 1) window.postMessage({ type: 'effetune-sfz-range-port', token }, '*', [event.ports[0]]);
 });
 
 ipcRenderer.on('airplay-v1:port', event => {
@@ -331,6 +345,12 @@ contextBridge.exposeInMainWorld(
     // Platform identifier ('darwin' | 'win32' | 'linux'). Synchronous so the
     // renderer can branch on it without an async round-trip.
     platform: process.platform,
+    settingsName,
+    settingsStorage: settingsName ? {
+      getItem: key => accessSettings('get', key),
+      setItem: (key, value) => accessSettings('set', key, String(value)),
+      removeItem: key => accessSettings('remove', key)
+    } : null,
     isMsix: process.windowsStore === true,
     browser: Object.freeze({
       prepareCapture: () => ipcRenderer.sendSync('browser:prepare-capture'),
@@ -358,7 +378,11 @@ contextBridge.exposeInMainWorld(
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
+    readMidiWrd: filePath => ipcRenderer.invoke('read-midi-wrd', filePath),
     readTrackTags: filePath => ipcRenderer.invoke('read-track-tags', filePath),
+    openPlaybackRange: filePath => ipcRenderer.invoke('open-playback-range', filePath),
+    readPlaybackRange: (token, offset, length) => ipcRenderer.invoke('read-playback-range', token, offset, length),
+    closePlaybackRange: token => ipcRenderer.invoke('close-playback-range', token),
     getPathForFile: file => {
       const filePath = webUtils.getPathForFile(file);
       if (filePath && !ipcRenderer.sendSync('grant-dropped-file', filePath)) {
@@ -442,6 +466,11 @@ contextBridge.exposeInMainWorld(
       : ipcRenderer.invoke('save-audio-preferences', preferences, options),
     loadAudioPreferences: () => ipcRenderer.invoke('load-audio-preferences'),
     getWindowVisibility: () => ipcRenderer.invoke('get-window-visibility'),
+    getBackgroundProcessingStatus: () => ipcRenderer.invoke('get-background-processing-status'),
+    reportDesktopAudioActivity: activity => ipcRenderer.send('desktop-audio-activity', {
+      processingActive: activity?.processingActive === true,
+      playbackActive: activity?.playbackActive === true
+    }),
 
     // Listen for events from main process
     onExportPreset: (callback) => {

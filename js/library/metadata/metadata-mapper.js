@@ -65,6 +65,8 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
   const mappedMetadata = withRiffInfoTags(metadata, riffInfoTags, baseTextHints);
   const common = mappedMetadata?.common || {};
   const format = mappedMetadata?.format || {};
+  // DSF's field describes byte bit order (1 or 8), not the one-bit audio depth.
+  const isDsf = format.container === 'DSF';
   const commonTitle = stringOrEmpty(common.title, baseTextHints);
   const title = getMetadataText(mappedMetadata, TITLE_NATIVE_IDS, commonTitle, baseTextHints) || fallback.title;
   const textHints = addRepairReferenceTexts(baseTextHints, [title]);
@@ -112,8 +114,8 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
     sortAlbumArtist: getMetadataText(mappedMetadata, ALBUM_ARTIST_SORT_NATIVE_IDS, getSortText(common, ['albumartistsort', 'albumArtistSort', 'sortalbumartist'], textHints), textHints),
     durationSec: numberOrNull(format.duration),
     sampleRate: numberOrNull(format.sampleRate),
-    bitrate: numberOrNull(format.bitrate),
-    bitsPerSample: numberOrNull(format.bitsPerSample),
+    bitrate: numberOrNull(isDsf ? format.sampleRate * format.numberOfChannels : format.bitrate),
+    bitsPerSample: isDsf ? 1 : numberOrNull(format.bitsPerSample),
     channels: numberOrNull(format.numberOfChannels),
     codec: stringOrEmpty(format.codec, textHints) || stringOrEmpty(format.dataformat, textHints).toUpperCase() || fallback.codec,
     artworkBytes: pictureBytes,

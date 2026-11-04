@@ -203,7 +203,7 @@ Shows estimated fundamental pitches (F0s) from A0 to C8 in a scrolling piano rol
 
 ### Limitations
 
-- Chord detection covers 11 types and their inversions: major, minor, diminished, augmented, major seventh, minor seventh, dominant seventh, diminished seventh, half-diminished seventh, sus2, and sus4. Note and chord names use # or ♭ spellings based on the key estimated from accumulated observations; sharps are used until that estimate is available.
+- Chord detection covers 11 types and their inversions: major, minor, diminished, augmented, major seventh, minor seventh, dominant seventh, diminished seventh, half-diminished seventh, sus2, and sus4. Note and chord names use # or ♭ spellings based on the current local key; sharps are used until that estimate is available.
 - Validation on real pop and rock performances is limited; treat these estimates as listening aids.
 
 

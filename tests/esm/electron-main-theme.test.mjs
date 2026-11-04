@@ -35,7 +35,19 @@ test('native chrome uses the selected theme scheme and the registry default', ()
   const startup = source.slice(source.indexOf('async function initializeApp()'));
   assert.ok(startup.indexOf('constants.setAppConfig(cfg)') < startup.indexOf('applyNativeTheme(cfg)'));
   assert.ok(startup.indexOf('applyNativeTheme(cfg)') < startup.indexOf('createWindow()'));
-  const registration = startup.match(/ipcHandlers\.registerIpcHandlers\(\{([^}]*)\}\)/);
+  const registration = startup.match(/ipcHandlers\.registerIpcHandlers\(\{[\s\S]*?\n  \}\);/);
   assert.ok(registration);
-  assert.match(registration[1], /(?:^|,)\s*onConfigSaved:\s*applyNativeTheme\s*(?:,|$)/);
+  let onConfigSaved;
+  const refreshed = [];
+  runInNewContext(registration[0], {
+    ipcHandlers: { registerIpcHandlers(handlers) { onConfigSaved = handlers.onConfigSaved; } },
+    applyNativeTheme: apply,
+    macPlaybackPower: { refreshConfig() { refreshed.push('mac'); } },
+    windowsRendererPower: { refreshConfig() { refreshed.push('windows'); } },
+    alacPlaybackSource: {}
+  });
+  onConfigSaved({ theme: 'paper' });
+  assert.equal(nativeTheme.themeSource, 'light');
+  assert.equal(browserPreset, themeRegistry.getThemePreset('paper'));
+  assert.deepEqual(refreshed, ['mac', 'windows']);
 });

@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 export class CollapseManager {
     constructor(pluginListManager) {
         this.pluginListManager = pluginListManager;
@@ -33,7 +34,7 @@ export class CollapseManager {
     // Load collapsed category state from localStorage
     loadCollapsedState() {
         try {
-            const savedState = localStorage.getItem('collapsedCategories');
+            const savedState = getSettingsStorage().getItem('collapsedCategories');
             if (savedState) {
                 this.collapsedCategories = JSON.parse(savedState);
             }
@@ -46,7 +47,7 @@ export class CollapseManager {
     // Save collapsed category state to localStorage
     saveCollapsedState() {
         try {
-            localStorage.setItem('collapsedCategories', JSON.stringify(this.collapsedCategories));
+            getSettingsStorage().setItem('collapsedCategories', JSON.stringify(this.collapsedCategories));
         } catch (e) {
             console.error('Error saving collapsed categories state:', e);
         }

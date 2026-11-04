@@ -1,5 +1,7 @@
 import { readRiffInfoTagsFromBlob } from '../../library/metadata/riff-info.js';
 import { decodeLegacyMetadataBytes, repairLegacyMetadataMojibake } from '../../library/metadata/text-encoding.js';
+import { isDsdSource } from './dsd-source.js';
+import { createTrackFromMetadata } from '../../library/metadata/metadata-mapper.js';
 
 export const audioContextManagerMetadataMethods = {
   getMetadataRepairHints(referenceTexts = []) {
@@ -168,6 +170,19 @@ export const audioContextManagerMetadataMethods = {
    * Read ID3 tags from a file
    */
   readID3Tags(file, currentIndex, metadataRequest = null) {
+    if (isDsdSource({ file })) {
+      import('../../vendor/music-metadata-browser.mjs').then(async ({ parseBlob }) => {
+        const metadata = await parseBlob(file, { duration: false, skipCovers: false });
+        const mapped = createTrackFromMetadata({ fileName: file.name, size: file.size }, metadata);
+        if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
+        this.applyTagMetadata({ ...mapped, picture: metadata.common?.picture?.[0] },
+          null, file.name, 'DSD metadata loaded');
+      }).catch(error => {
+        console.debug('DSD metadata unavailable:', error);
+        this.fallbackToMediaSession(currentIndex, metadataRequest);
+      });
+      return;
+    }
     const riffInfoPromise = this.createRiffInfoMetadataPromise(file);
     const applyMetadata = (tags = {}, riffInfo = null) => {
       if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return false;

@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   advanceSubmission, checkCredentialExpiry, compareVersions, parseStatus, releaseVersion,
-  requestJson, updateListing, verifyEvidence
+  requestJson, updateListing, uploadWithStoreCli, verifyEvidence
 } from '../../scripts/publish-msstore.mjs';
 
 const identity = { name: 'Example.EffeTune', publisher: 'CN=Example', productId: '9EXAMPLE0001' };
@@ -191,4 +196,52 @@ test('Store releases use hosted package checks without a VM job or installed rep
   assert.match(store, /cancel-in-progress: false/);
   assert.doesNotMatch(store.split('  submit:')[0], /MSSTORE_CLIENT_SECRET|apppublisher@/);
   assert.doesNotMatch(store, /^\s+(?:push|pull_request):/m);
+});
+
+test('Store CLI subprocess avoids interactive reset and reports safe failure stages', async () => {
+  const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'store-cli-test-')));
+  const fixture = path.join(temporary, 'cli.cjs');
+  const calls = path.join(temporary, 'calls.jsonl');
+  const secret = 'fixture-secret-never-log';
+  try {
+    await fs.writeFile(fixture, `
+      const fs = require('node:fs');
+      const args = process.argv.slice(2);
+      fs.appendFileSync(process.env.CLI_CALLS, JSON.stringify(args) + '\\n');
+      if (args.includes('--reset')) process.exit(99);
+      if (args[0] === process.env.CLI_FAIL) {
+        process.stdout.write(process.env.MSSTORE_CLIENT_SECRET);
+        process.stderr.write('https://example.test/upload?sig=' + process.env.MSSTORE_CLIENT_SECRET);
+        process.exit(23);
+      }
+    `);
+    const env = { ...process.env, CLI_CALLS: calls, MSSTORE_TENANT_ID: 'tenant',
+      MSSTORE_SELLER_ID: 'seller', MSSTORE_CLIENT_ID: 'client', MSSTORE_CLIENT_SECRET: secret };
+    const execute = promisify(execFile);
+    const fakeCli = (command, args, options) => {
+      assert.equal(command, 'msstore');
+      return execute(process.execPath, [fixture, ...args], options);
+    };
+    const readCalls = async () => (await fs.readFile(calls, 'utf8')).trim().split('\n').map(JSON.parse);
+    await uploadWithStoreCli('package.msix', identity.productId, env, fakeCli);
+    assert.deepEqual((await readCalls()).map(args => args[0]), ['reconfigure', 'publish']);
+    assert.deepEqual((await readCalls())[1], ['publish', 'package.msix', '--appId', identity.productId, '--noCommit']);
+    for (const [command, stage, count] of [['reconfigure', 'configuration', 1], ['publish', 'package upload', 2]]) {
+      await fs.writeFile(calls, '');
+      await assert.rejects(uploadWithStoreCli('package.msix', identity.productId,
+        { ...env, CLI_FAIL: command }, fakeCli), error => {
+        assert.ok(error.message.includes(stage));
+        assert.match(error.message, /exit 23/);
+        assert.ok(!error.stack.includes(secret));
+        assert.ok(!error.message.includes('sig='));
+        assert.equal(error.cause, undefined);
+        return true;
+      });
+      const observed = await readCalls();
+      assert.equal(observed.length, count);
+      assert.ok(observed.every(args => !args.includes('--reset')));
+    }
+  } finally {
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });

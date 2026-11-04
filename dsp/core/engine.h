@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace effetune {
 
@@ -55,6 +56,27 @@ public:
   et_instance createInstance(const char *type_name) noexcept;
   void destroyInstance(et_instance instance) noexcept;
   et_status resetInstance(et_instance instance) noexcept;
+  et_status setInstanceMidiEvents(et_instance instance, const et_midi_event *events,
+                                  std::uint32_t count, std::uint32_t generation,
+                                  std::uint32_t flags) noexcept;
+  et_status setInstanceMidiGain(et_instance instance, float gain) noexcept;
+  et_status setInstanceMidiMetering(et_instance instance, std::uint32_t enabled) noexcept;
+  et_status setInstanceMidiChannelMix(et_instance instance, std::uint32_t channel,
+                                      std::uint32_t action) noexcept;
+  et_status setInstanceMidiTransportMap(et_instance instance, const et_midi_transport_point *points,
+                                        std::uint32_t count) noexcept;
+  et_status setInstanceMidiTransport(et_instance instance, std::uint64_t frame, double seconds,
+                                     double speed, double duration, std::uint32_t flags) noexcept;
+  et_status setInstanceMidiClock(et_instance instance, std::uint64_t frame,
+                                 std::uint32_t generation, std::uint32_t flags) noexcept;
+  [[nodiscard]] std::uint32_t instanceMidiState(et_instance instance) const noexcept;
+  [[nodiscard]] std::uint64_t instanceMidiClock(et_instance instance) const noexcept;
+  [[nodiscard]] std::uint32_t instanceMidiGeneration(et_instance instance) const noexcept;
+  [[nodiscard]] std::uint32_t instanceMidiCheckpointSize(et_instance instance) const noexcept;
+  et_status writeInstanceMidiCheckpoint(et_instance instance, std::uint8_t *destination,
+                                        std::uint32_t bytes) const noexcept;
+  et_status readInstanceMidiCheckpoint(et_instance instance, const std::uint8_t *source,
+                                       std::uint32_t bytes) noexcept;
   et_status streamBoundaryInstance(et_instance instance) noexcept;
   [[nodiscard]] std::uint32_t instanceLatency(et_instance instance) const noexcept;
   et_status setInstanceAnalysisSource(et_instance consumer, et_instance producer) noexcept;
@@ -66,19 +88,33 @@ public:
   et_status setInstanceParamBytes(et_instance instance, const std::uint8_t *packed,
                                   std::uint32_t byte_count, std::uint32_t params_hash,
                                   std::uint32_t offset_frames) noexcept;
-  std::uint8_t *beginInstanceAsset(et_instance instance, std::uint32_t slot,
-                                   const AssetBeginInfo &info) noexcept;
+  std::uint8_t *
+  beginInstanceAsset(et_instance instance, std::uint32_t slot, const AssetBeginInfo &info,
+                     std::optional<double> minimumPhysicalBpm = std::nullopt) noexcept;
   et_status commitInstanceAsset(et_instance instance, std::uint32_t slot, std::uint32_t byte_size,
                                 std::uint32_t format_tag) noexcept;
   void abortInstanceAsset(et_instance instance, std::uint32_t slot) noexcept;
   [[nodiscard]] std::uint32_t instanceAssetState(et_instance instance,
                                                  std::uint32_t slot) const noexcept;
+  et_status configureInstanceSampleStream(et_instance instance, std::uint64_t generation) noexcept;
+  et_status takeInstanceSampleRequests(et_instance instance, et_sfz_sample_request *requests,
+                                       std::uint32_t capacity, std::uint32_t &count) noexcept;
+  et_status publishInstanceSamplePage(et_instance instance, std::uint64_t generation,
+                                      std::uint32_t sample, std::uint64_t page, const float *pcm,
+                                      std::uint32_t frames, std::uint32_t channels,
+                                      std::uint32_t flags) noexcept;
   class InstanceAssetSnapshot;
+  et_status prefetchInstanceSamples(et_instance instance, const et_midi_event *events,
+                                    std::uint32_t count, std::uint32_t generation,
+                                    std::uint32_t window_frames, std::uint32_t flags) noexcept;
+  et_status instanceStreamReadiness(et_instance instance, et_stream_readiness &out) noexcept;
   class InstanceAssetUpdate;
   // Capture supersedes older requests on the owner thread between blocks.
   // Static preparation touches only the snapshot and caller-owned payload.
-  et_status captureInstanceAssetSnapshot(et_instance instance, std::uint32_t slot,
-                                         InstanceAssetSnapshot &snapshot) noexcept;
+  et_status
+  captureInstanceAssetSnapshot(et_instance instance, std::uint32_t slot,
+                               InstanceAssetSnapshot &snapshot,
+                               std::optional<double> minimumPhysicalBpm = std::nullopt) noexcept;
   static et_status prepareInstanceAssetUpdate(const InstanceAssetSnapshot &snapshot,
                                               const AssetBeginInfo &info,
                                               const std::uint8_t *payload, std::uint32_t byte_size,
@@ -89,6 +125,12 @@ public:
   // Apply on the owner between blocks, including while audio is stopped.
   // Leaves retired storage in update for reclamation off the audio thread.
   et_status applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept;
+  et_status configureInstanceAssetStream(InstanceAssetUpdate &update,
+                                         std::uint64_t generation) noexcept;
+  et_status publishInstanceAssetSamplePage(InstanceAssetUpdate &update, std::uint64_t generation,
+                                           std::uint32_t sample, std::uint64_t page,
+                                           const float *pcm, std::uint32_t frames,
+                                           std::uint32_t channels, std::uint32_t flags) noexcept;
   et_status processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                             std::uint32_t frame_count, double time_seconds) noexcept;
   et_status readInstanceRuntimeEvent(et_instance instance, RuntimeEventState &state) const noexcept;
@@ -130,13 +172,19 @@ public:
   [[nodiscard]] bool pipelineTapLatency(et_instance instance,
                                         PipelineTapLatency &latency) const noexcept;
 
-  et_status configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes) noexcept;
+  et_status configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes,
+                           bool offline_pipeline = false) noexcept;
   et_status resetGraph() noexcept;
   et_status setGraphInstanceParams(et_instance instance, const float *packed,
                                    std::uint32_t float_count, std::uint32_t params_hash,
                                    std::uint32_t changed_index) noexcept;
   et_status processGraph(std::uint32_t channel_count, std::uint32_t frame_count,
                          double time_seconds) noexcept;
+  // Control-thread reservation. Reset or graph replacement invalidates the returned token.
+  et_status prepareOfflineGraph(std::uint64_t &generation) noexcept;
+  // NEED_SAMPLE retains the block; retry with identical dimensions/time and the same token.
+  et_status processOfflineGraph(std::uint32_t channel_count, std::uint32_t frame_count,
+                                double time_seconds, std::uint64_t generation) noexcept;
   [[nodiscard]] std::uint32_t graphLatency() const noexcept { return graph_.latency(); }
   [[nodiscard]] std::uint32_t graphSnapshotSize() const noexcept {
     return static_cast<std::uint32_t>(graph_.snapshot().size());
@@ -206,6 +254,7 @@ private:
   [[nodiscard]] static et_instance makeHandle(std::uint32_t slot,
                                               std::uint16_t generation) noexcept;
   [[nodiscard]] InstanceSlot *findInstance(et_instance instance) noexcept;
+  PreparedAsset *validatedInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept;
   [[nodiscard]] const InstanceSlot *findInstance(et_instance instance) const noexcept;
   void destroySlot(InstanceSlot &slot) noexcept;
   void destroyAllInstances() noexcept;
@@ -214,12 +263,19 @@ private:
   // Process info for a kernel whose input lags the engine input by input_latency frames.
   [[nodiscard]] ProcessInfo nodeProcessInfo(double time_seconds,
                                             std::uint32_t input_latency) noexcept;
+  [[nodiscard]] ProcessInfo nodeProcessInfo(double time_seconds, std::uint32_t input_latency,
+                                            const HostTransport *captured) noexcept;
   void processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
                    std::uint32_t frame_count, const ProcessInfo &info,
                    et_instance pipeline_instance = 0) noexcept;
-  void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept;
+  et_status processOfflineSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
+                               std::uint32_t frame_count, const ProcessInfo &info,
+                               bool retry) noexcept;
+  void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count,
+                           bool force = false) noexcept;
   void invalidatePipeline() noexcept;
   void invalidateGraph() noexcept;
+  void invalidateOfflineGraph() noexcept;
   void releaseGraphOwnership() noexcept;
   void installGraphOwnership() noexcept;
   [[nodiscard]] bool graphUniformOutputLatency(const InstanceSlot &slot) const noexcept;
@@ -258,6 +314,7 @@ private:
   std::uint32_t max_channels_ = 0;
   std::uint32_t max_frames_ = 0;
   GraphPlan graph_;
+  std::uint64_t graph_offline_generation_ = 1u, graph_offline_prepared_ = 0u;
   et_graph_diagnostic graph_diagnostic_{
       ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
   bool prepared_ = false;
@@ -273,6 +330,7 @@ private:
   const Engine *owner_ = nullptr;
   std::uint64_t identity_ = 0u;
   AssetPreparer preparer_ = nullptr;
+  PrepareInfo prepare_info_{};
   et_instance instance_ = 0u;
   std::uint64_t revision_ = 0u;
   std::uint32_t slot_ = 0u, capacity_ = 0u, max_channels_ = 0u;

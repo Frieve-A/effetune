@@ -318,6 +318,17 @@ Avant de partager une sauvegarde, vérifiez la sélection : elle peut contenir d
 
 Ouvrez **Paramètres > Configuration...** pour choisir la **Langue**, régler **Vue au démarrage :** (`Effect Pipeline (par défaut)`, `Bibliothèque musicale` ou `Visualizer`), configurer **Pipeline d'effets au démarrage :** et sélectionner un **Thème** (`Graphite`, `Paper`, `Midnight`, `Ember` ou `Mint`). Lorsque **Vue au démarrage :** est réglée sur **Bibliothèque musicale**, vous pouvez aussi choisir la catégorie de la bibliothèque qui s'ouvre en premier. Dans l’application de bureau, vous pouvez aussi choisir **Browser** comme vue au démarrage.
 
+Pour enregistrer des réglages distincts dans l’application de bureau, indiquez un nom de configuration au lancement d’EffeTune. Par exemple, sous Windows :
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+Chaque nouveau nom démarre avec les réglages par défaut, puis retrouve ses propres périphériques audio, son pipeline d’effets et ses réglages d’affichage et de démarrage lors des lancements suivants. Entourez de guillemets les noms contenant des espaces, comme `--settings-name="Living room"`. Omettez cette option pour utiliser vos réglages habituels. Les mesures, les préréglages enregistrés et les bibliothèques de musique, de réponses impulsionnelles et d’instruments utilisent le même emplacement de stockage, quel que soit le nom de configuration. Avant d’ouvrir les données de mesure dans une autre instance d’EffeTune, fermez l’application qui les utilisait.
+
+Vous pouvez lancer EffeTune avec plusieurs noms de configuration en même temps. **Démarrage > Autoriser plusieurs instances** permet aussi d’ouvrir plusieurs fenêtres avec le même nom ; cette option est désactivée par défaut. Après l’avoir modifiée, fermez toutes les fenêtres EffeTune et relancez l’application. Les fenêtres qui utilisent le même nom de configuration partagent les réglages enregistrés.
+
 Dans **Colonnes de la chaîne d’effets**, choisissez **Manuel** pour régler le nombre de colonnes avec les boutons +/−, ou **Automatique** (par défaut) pour que les colonnes et la liste des effets tiennent dans la largeur de la fenêtre. Le mode automatique ajuste le nombre de colonnes lorsque vous redimensionnez la fenêtre.
 
 La version Microsoft Store reçoit ses mises à jour via Microsoft Store. Dans **Paramètres > Configuration...**, utilisez **Ouvrir les mises à jour du Microsoft Store** pour rechercher des mises à jour et **Ouvrir les paramètres de démarrage de Windows** pour choisir si EffeTune se lance automatiquement. Cette version conserve ses paramètres et ses connexions dans Browser séparément des autres versions de bureau.
@@ -506,7 +517,8 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Spatial   | Spatial Mapper | Sépare le son Direct, Diffuse et Residual pour un routage multicanal flexible | [Détails](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Contrôle la largeur stéréo, de la stéréo à polarité inversée à la stéréo élargie en passant par le mono | [Détails](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Générateur de sons de test et de bruit pour vérifier enceintes/casques | [Détails](plugins/others.md#oscillator) |
-| Others    | SFZ Note Player | Joue un instrument SFZ importé à partir des notes détectées | [Détails](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Note Player | Joue les notes détectées avec des SoundFonts SF2/SF3 et des instruments SFZ | [Détails](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Player | Joue des morceaux MIDI avec des SoundFonts SF2/SF3 ou des instruments SFZ, avec 16 canaux SF2/SF3 indépendants | [Détails](plugins/others.md#soundfont-player) |
 | Control   | Section | Regroupe les effets pour contourner ou rétablir toute une section | [Détails](plugins/control.md) |
 
 ## Informations techniques

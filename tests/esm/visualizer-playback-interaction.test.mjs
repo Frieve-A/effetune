@@ -58,6 +58,10 @@ test('Visualizer shares AirPlay metadata, artwork and reported time without a pl
         meta: { title: 'Local song', artist: 'Local artist', composer: 'Local composer', date: '2026',
             originalTrackNumber: 4, sampleRate: 44100, bitsPerSample: 24, channels: 2, bitrate: 960000 } };
     assert.equal(view.metadata().title, 'Local song');
+    state.isTrackPresentationPending = true;
+    assert.equal(view.metadata().artworkPending, true);
+    state.isTrackPresentationPending = false;
+    assert.equal(view.metadata().artworkPending, false);
     assert.match(view.metadata()['track-info'], /Composer: Local composer/);
     assert.match(view.metadata()['track-info'], /Date: 2026\nTrack number: 4/);
     assert.match(view.metadata()['track-info'], /Source audio: FLAC \/ 48 kHz \/ 24-bit \/ 2 ch \/ 960 kbps/);

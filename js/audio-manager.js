@@ -1,5 +1,8 @@
 import { AudioContextManager } from './audio/audio-context-manager.js';
+import { sfzPluginPreparationContext } from './sfz/preparation-context.js';
 import { audioManagerWasmAssetMethods, DSP_BYTES_READY_TIMEOUT_MS } from './audio/audio-manager-wasm-assets.js';
+import { audioManagerSfzRuntimeMethods } from './audio/audio-manager-sfz-runtime.js';
+import { audioManagerLiveMidiMethods } from './audio/audio-manager-live-midi.js';
 import {
     AudioIOManager,
     MIC_DENIED_PREFIX
@@ -546,6 +549,7 @@ export class AudioManager {
         if (this._visualSyncUpdateTimer != null) clearTimeout(this._visualSyncUpdateTimer);
         this._visualSyncUpdateTimer = null;
         this._removeDspVisibilityListener();
+        this._cancelLiveMidiInput?.();
         this.powerPolicyController.dispose();
         this.ioManager.cleanupAudio({ releaseInput });
         this.contextManager.workletNode?.disconnect();
@@ -915,6 +919,8 @@ export class AudioManager {
     ) {
         if (!workletNode?.port || !this.dspModuleInfo) return Promise.resolve(false);
         this._completeDspActivationRequest(workletNode, false);
+        for (const plugin of this._wasmAssetMembershipByNode?.get(workletNode)?.values() ?? []) plugin.dropWasmAssetTarget?.(workletNode);
+        this._wasmAssetMembershipByNode?.delete(workletNode);
         let resolve;
         const promise = new Promise(done => { resolve = done; });
         const posted = this.startDspOnWorklet(workletNode);
@@ -980,6 +986,8 @@ export class AudioManager {
         }
         this._parallelDspBarrier = null;
         this._advancePowerWorkletGraphGeneration();
+        this._pruneSfzRuntimeTargets();
+        this._syncLiveMidiInputTargets?.();
         return this._audioGraphGeneration;
     }
 
@@ -1263,33 +1271,36 @@ export class AudioManager {
         return waitForPipelineSwitch(seconds);
     }
 
-    _applyDspReadyPipeline(workletNode, enabledTypes = this.getEnabledDspTypes()) {
+    async _applyDspReadyPipeline(workletNode, enabledTypes = this.getEnabledDspTypes()) {
         workletNode.port.postMessage({
             type: 'dspEnableTypes',
             types: enabledTypes
         });
+        let pipeline;
         if (this._parallelActive) {
             if (workletNode === this._getPrimaryWorkletNode()) {
                 this._postBlindPlugins(workletNode, this.pipelineA);
-                this._syncWasmAssetMembership(workletNode, this.pipelineA, { trackState: true });
-                return;
+                pipeline = this.pipelineA;
             }
             if (workletNode === this._parallelWorkletB) {
                 this._postBlindPlugins(workletNode, this.pipelineB || []);
-                this._syncWasmAssetMembership(workletNode, this.pipelineB || []);
-                return;
+                pipeline = this.pipelineB || [];
             }
         }
-
-        const plugins = this.pipelineProcessor.prepareSectionAwarePluginData();
-        workletNode.port.postMessage({
-            type: 'updatePlugins',
-            plugins,
-            masterBypass: this.masterBypass
-        });
-        this._syncWasmAssetMembership(workletNode, this.pipeline, {
-            trackState: workletNode === this._getPrimaryWorkletNode()
-        });
+        if (!pipeline) {
+            pipeline = this.pipeline;
+            const plugins = this.pipelineProcessor.prepareSectionAwarePluginData();
+            workletNode.port.postMessage({ type: 'updatePlugins', plugins, masterBypass: this.masterBypass });
+        }
+        const previous = this._wasmAssetMembershipByNode?.get(workletNode) ?? new Map();
+        const generation = this._audioGraphGeneration;
+        const trackState = workletNode === this._getPrimaryWorkletNode();
+        if (this._syncWasmAssetMembership(workletNode, pipeline, { generation, replayNew: false }) === null) return false;
+        const prepared = await this._prepareWasmAssetMapsForTarget(workletNode, pipeline, { generation });
+        if (!prepared) return false;
+        const replay = pipeline.filter(plugin => previous.get(plugin.id) !== plugin || prepared.changed.has(plugin));
+        return this._replayPipelineWasmAssets(workletNode, replay,
+            { generation, trackState, assetMaps: prepared.assetMaps }) !== null;
     }
 
     _isDspTransitionSnapshotCurrent(snapshot) {
@@ -1529,13 +1540,18 @@ export class AudioManager {
                         pluginDataB: branchSnapshot.pipelineB.pluginData,
                         preparingAssets: true
                     })) return false;
+                    const targetA = await this._prepareWasmAssetMapsForTarget(workletA, branchSnapshot.pipelineA.plugins,
+                        { generation: barrier.generation, assetMaps: branchSnapshot.pipelineA.assetMaps });
+                    const targetB = await this._prepareWasmAssetMapsForTarget(workletB, branchSnapshot.pipelineB.plugins,
+                        { generation: barrier.generation, assetMaps: branchSnapshot.pipelineB.assetMaps });
+                    if (!targetA || !targetB || !requestIsCurrent()) return false;
                     const expectedA = this._replayPipelineWasmAssets(
                         workletA,
                         branchSnapshot.pipelineA.plugins,
                         {
                             generation: barrier.generation,
                             trackState: true,
-                            assetMaps: branchSnapshot.pipelineA.assetMaps,
+                            assetMaps: targetA.assetMaps,
                             assetReadinessPlugins: branchSnapshot.pipelineA.assetReadinessPlugins
                         }
                     );
@@ -1544,7 +1560,7 @@ export class AudioManager {
                         branchSnapshot.pipelineB.plugins,
                         {
                             generation: barrier.generation,
-                            assetMaps: branchSnapshot.pipelineB.assetMaps,
+                            assetMaps: targetB.assetMaps,
                             assetReadinessPlugins: branchSnapshot.pipelineB.assetReadinessPlugins
                         }
                     );
@@ -1753,11 +1769,11 @@ export class AudioManager {
         }
         return this._runDspOutputTransition(
             [workletNode],
-            () => {
+            async () => {
                 if (!this._isActiveDspWorklet(workletNode) ||
                     (this._dspReadyTokens?.get(workletNode) || 0) !== token ||
                     this._dspCapabilitiesByNode?.get(workletNode) !== data) return false;
-                this._applyDspReadyPipeline(workletNode, options.enabledTypes ?? this.getEnabledDspTypes());
+                if (!await this._applyDspReadyPipeline(workletNode, options.enabledTypes ?? this.getEnabledDspTypes())) return false;
                 this.dispatchEvent('dspReady', data);
                 return true;
             },
@@ -1885,7 +1901,7 @@ export class AudioManager {
     }
 
     getDspTelemetryRate(state = null) {
-        if (this.visualizerSources?.length > 0) return 60;
+        if (this.visualizerSources?.length > 0 || this._soundFontMidiMeteringPlugins?.size > 0) return 60;
         const controller = this.powerPolicyController;
         const hidden = typeof state?.hidden === 'boolean'
             ? state.hidden
@@ -2416,6 +2432,8 @@ export class AudioManager {
     handleWorkletMessage(event, workletNode = this.workletNode) {
         const data = event?.data || {};
         if (!this._isActiveDspWorklet(workletNode)) return;
+        if (this._handleLiveMidiInputMessage?.(workletNode, data)) return;
+        if (this._handleSfzRuntimeMessage(workletNode, data)) return;
         if (data.type === 'dspLatencyResponse' || data.type === 'outputDelaySet' ||
             data.type === 'jsFallbackBudgetState' || data.type === 'outputReady') {
             this._settleDspControlResponse(workletNode, data);
@@ -2428,6 +2446,7 @@ export class AudioManager {
                 data.operationRevision,
                 data.replayEpoch
             );
+            void this.startSfzRuntimeForAsset(workletNode, data);
         } else if (data.type === 'assetLoadRejected') {
             this._updateWasmAssetRejection(workletNode, data);
         } else if (data.type === 'powerStateAck' || data.type === 'powerObservation' ||
@@ -2522,6 +2541,25 @@ export class AudioManager {
                 getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
                 this._invalidateParallelFallbackBudget(branch || 'A');
             }
+        } else if (data.type === 'sfzSampleAvailability') {
+            if (!this._isActiveDspWorklet?.(workletNode) || data.latched !== false ||
+                !['available', 'sampleUnavailable'].includes(data.cause) ||
+                !['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(data.pluginType) ||
+                !Number.isInteger(data.generation) || data.generation < 0 || data.generation > 0xffffffff ||
+                !Number.isInteger(data.instanceEpoch) || data.instanceEpoch < 0) return;
+            const plugin = this._wasmAssetMembershipByNode?.get(workletNode)?.get(data.pluginId);
+            if (plugin?.constructor?.name !== data.pluginType) return;
+            this._dspRuntimeEventsByNode ??= new WeakMap();
+            let states = this._dspRuntimeEventsByNode.get(workletNode);
+            if (!states) this._dspRuntimeEventsByNode.set(workletNode, states = new Map());
+            const previous = states.get(data.pluginId);
+            if (previous && (data.instanceEpoch < previous.instanceEpoch ||
+                data.instanceEpoch === previous.instanceEpoch && data.generation <= previous.generation)) return;
+            states.set(data.pluginId, { instanceEpoch: data.instanceEpoch, generation: data.generation, cause: data.cause });
+            plugin.onSfzSampleAvailability?.({ available: data.cause === 'available',
+                headroomFrames: data.cause === 'sampleUnavailable' ? 0 : null });
+            if (data.generation) console[data.cause === 'sampleUnavailable' ? 'warn' : 'info'](
+                'SoundFont sample availability:', data.cause, { pluginId: data.pluginId, generation: data.generation });
         } else if (data.type === 'tubeSimulatorCircuitFault' ||
             data.type === 'adaptivePredictionFault') {
             const adaptive = data.type === 'adaptivePredictionFault';
@@ -2893,9 +2931,9 @@ export class AudioManager {
         }
         return this._runDspOutputTransition(
             nodes,
-            () => {
+            async () => {
                 for (const workletNode of nodes) {
-                    this._applyDspReadyPipeline(workletNode, targetTypes);
+                    if (!await this._applyDspReadyPipeline(workletNode, targetTypes)) return false;
                 }
                 return true;
             },
@@ -2909,6 +2947,61 @@ export class AudioManager {
      * @param {Object} audioPreferences - Audio preferences object
      * @returns {Promise<boolean>|undefined} DSP transition result when applicable
      */
+    _sfzProcessingWidthChanges(pipeline, outputChannelCount) {
+        return pipeline.some(plugin => {
+            if (!['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.constructor.name)) return false;
+            const descriptor = plugin.getWasmAssets?.().get(0);
+            if (!descriptor?.preparationContext) return false;
+            const context = sfzPluginPreparationContext(plugin, { outputChannelCount,
+                sampleRate: descriptor.preparationContext.sampleRate, maxFrames: descriptor.preparationContext.maxFrames });
+            return context.processingChannels !== descriptor.preparationContext.processingChannels;
+        });
+    }
+
+    rebindSfzProcessingContext(plugin) {
+        const outputChannels = this.contextManager?.outputChannelCount ?? this.audioContext?.destination?.channelCount ?? 2;
+        if (!this.dspModuleInfo || !this._sfzProcessingWidthChanges([plugin], outputChannels)) return false;
+        void this._rebindSfzDspGraph(() => this.commitPowerTopologyMutation({ type: 'updatePlugin',
+            plugin: plugin.getWorkletPluginData() }, { reason: 'plugin-parameter-update' }));
+        return true;
+    }
+
+    _rebindSfzDspGraph(applyConfiguration) {
+        const previous = this._sfzContextRebindPromise;
+        const execute = async () => {
+            if (previous) await previous;
+            const context = this.audioContext, generation = this._audioGraphGeneration;
+            const nodes = this._getActiveDspWorklets();
+            await this.prepareSfzRuntimeGraphReset();
+            if (this.audioContext !== context || this._audioGraphGeneration !== generation) return false;
+            try {
+                // Captured native state is paused before changing any processing geometry.
+                for (const node of nodes) node.port.postMessage({ type: 'dspEnableTypes', types: [] });
+                applyConfiguration();
+                const ready = await Promise.all([...nodes].map(node =>
+                    this._reinitializeDspWorklet(node, this.getEnabledDspTypes())));
+                if (!ready.every(Boolean) || this.audioContext !== context || this._audioGraphGeneration !== generation) return false;
+                for (const node of nodes) for (const plugin of this._wasmAssetMembershipByNode?.get(node)?.values() ?? []) {
+                    if (!['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.constructor.name) || !plugin.getWasmAssets?.().size) continue;
+                    const active = await this.waitForEffectiveActiveWasmAssets(plugin, [0], { primaryWorklet: node,
+                        getPreparation: () => this.getSfzSamplePreparation(plugin, node) });
+                    if (!active.ready || active.stale) return false;
+                }
+                if (!await this.waitForSfzRuntimeStarts()) return false;
+                const player = window.uiManager?.audioPlayer?.contextManager;
+                if (player?.midiTimeline) await player.rebindCurrentPlayback({ stopCurrentFirst: false, newAudioContext: context });
+                this.resumeSfzRuntimes();
+                return true;
+            } finally {
+                if (this.audioContext === context && this._audioGraphGeneration === generation) this.finishSfzRuntimeGraphMigration();
+            }
+        };
+        const promise = execute().catch(error => { console.error('Instrument audio configuration could not be restored:', error); return false; });
+        this._sfzContextRebindPromise = promise;
+        void promise.finally(() => { if (this._sfzContextRebindPromise === promise) this._sfzContextRebindPromise = null; });
+        return promise;
+    }
+
     updateAudioConfig(audioPreferences) {
         const nodes = this._getActiveDspWorklets();
         if (nodes.size === 0) return undefined;
@@ -2918,13 +3011,17 @@ export class AudioManager {
         if (window.electronAPI) return true;
 
         const outputChannels = audioPreferences.outputChannels || 2;
-        this.commitPowerTopologyMutation({
-            type: 'updateAudioConfig',
-            outputChannels,
-            ...(this.audioContext?.sampleRate !== undefined && {
-                sampleRate: this.audioContext.sampleRate
-            })
+        const applyConfiguration = () => {
+            this.contextManager.outputChannelCount = outputChannels;
+            return this.commitPowerTopologyMutation({
+            type: 'updateAudioConfig', outputChannels,
+            ...(this.audioContext?.sampleRate !== undefined && { sampleRate: this.audioContext.sampleRate })
         }, { reason: 'audio-config-update' });
+        };
+        if (this.dspModuleInfo && this._sfzProcessingWidthChanges(this.pipeline, outputChannels)) {
+            return this._rebindSfzDspGraph(applyConfiguration);
+        }
+        applyConfiguration();
         if (this.dspModuleInfo) {
             return this._transitionDspConfiguration(
                 nodes,
@@ -3158,6 +3255,34 @@ export class AudioManager {
      * then rebuilds context → worklet → pipeline.
      */
     async _doReset(audioPreferences = null) {
+        const previousContext = this.audioContext;
+        const player = globalThis.window?.uiManager?.audioPlayer?.contextManager;
+        if (!player?.midiTimeline && !this.hasSfzRuntimeToPreserve()) return this._rebuildAudioGraph(audioPreferences);
+        const wasPlaying = player?.midiPlaying === true;
+        const stopToken = player?.stopRequestToken;
+        const release = this.powerPolicyController?.started
+            ? this.powerPolicyController.acquireLease('sfz-graph-preservation', { mode: 'force-active' }) : null;
+        let completed = false;
+        try {
+            if (release) await this.powerPolicyController.requestReconcile('sfz-graph-preservation');
+            await this.prepareSfzRuntimeGraphReset();
+            const result = await this._rebuildAudioGraph(audioPreferences);
+            completed = !result;
+            return result;
+        } catch (error) {
+            console.error('[AudioManager] Instrument state preservation failed:', error);
+            return 'Audio Error: Instrument playback could not be paused safely. Please try again.';
+        } finally {
+            if (!completed && this.audioContext === previousContext) {
+                this.resumeSfzRuntimes();
+                if (wasPlaying && player.stopRequestToken === stopToken) await player.playMidi();
+            }
+            if (completed || this.audioContext === previousContext) this.finishSfzRuntimeGraphMigration();
+            release?.();
+        }
+    }
+
+    async _rebuildAudioGraph(audioPreferences = null) {
         const fadeToken = await this.fadeOutOutputForTeardown();
         const browser = this.ioManager.browserInput;
         const inputSnapshot = this.ioManager.getInputSnapshot?.();
@@ -3267,7 +3392,11 @@ export class AudioManager {
         }
 
         await this.waitForDspActivationBeforeOutput();
+        if (!await this.waitForSfzRuntimeStarts()) {
+            return 'Audio Error: Instrument playback could not be restored. Please try again.';
+        }
         await this._notifyAudioGraphRebuilt();
+        this.resumeSfzRuntimes();
 
         // After a reset the new outputGainNode starts at 0; ramp it up once
         // the pipeline plays at full level. Same primitive as startup in App.
@@ -3295,6 +3424,7 @@ export class AudioManager {
         }
 
         await this.ioManager.browserInput?.bindGraph();
+        this._pruneSfzRuntimeTargets();
         this.dispatchEvent('audioGraphRebuilt', {
             audioContext: this.audioContext,
             workletNode: this.workletNode,
@@ -4312,10 +4442,13 @@ export class AudioManager {
                 replayNew: false,
                 trackState: true
             }) === null) return false;
+            const target = await this._prepareWasmAssetMapsForTarget(wA, primaryPipeline,
+                { generation: this._audioGraphGeneration, assetMaps: primaryAssetMaps });
+            if (!target) return false;
             const expected = this._replayPipelineWasmAssets(wA, primaryPipeline, {
                 generation: this._audioGraphGeneration,
                 trackState: true,
-                assetMaps: primaryAssetMaps,
+                assetMaps: target.assetMaps,
                 assetReadinessPlugins: primaryMasterBypass
                     ? []
                     : primaryAssetReadinessPlugins
@@ -4610,3 +4743,5 @@ export class AudioManager {
 }
 
 Object.assign(AudioManager.prototype, audioManagerWasmAssetMethods);
+Object.assign(AudioManager.prototype, audioManagerSfzRuntimeMethods);
+Object.assign(AudioManager.prototype, audioManagerLiveMidiMethods);

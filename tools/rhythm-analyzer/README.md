@@ -75,3 +75,15 @@ The focused gate-diagnostic test also requires SoundFile.
 Keep manifests, audio, detailed numerical checkpoints and all per-excerpt
 outputs private and untracked. Public provenance is restricted to dataset
 names, aggregate recipes/results and shipped artifact integrity hashes.
+
+`export.py --drums --checkpoint <trusted-checkpoint> --summary <EMA-summary.json>
+--out <output-directory> --clang-format <compatible-clang-format>` regenerates
+the frozen r4own-vs4 drum weights, provenance and original synthetic fixtures.
+The checkpoint is the C0 model trained from scratch for 60,000 steps, with SHA-256
+`b4d35fd97dce60012df8c2ece2762f56411858a22ba69c52f469b54ff5b2740f`.
+The summary must identify that checkpoint and EMA evaluation, and contain the
+fixed KD/SD/HH/TT/CY logit thresholds `0.0/-0.3/0.6/2.1/0.9` plus dataset
+aggregates. Run in the default thread environment; changing BLAS thread settings
+can change fixture rounding. The 1,133,338-byte binary16 export has SHA-256
+`1d30dfe0d0a983bf22a2b7fa9a2b79219c4730ea4571c249dabc4d3f76bec235`.
+The 128-band mel frontend, AGC, inference shapes and event timing are unchanged.

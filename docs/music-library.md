@@ -18,7 +18,13 @@ Music Library stores its catalog, artwork cache, and playlists inside the app. I
 
 Music Library indexes common audio file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, and AAC. It can also use an external CUE sheet to divide a WAV or FLAC album file in the same folder into individual tracks.
 
+Music Library also indexes `.dsf` and `.dff` files. Rescan an existing folder to find them; see [DSD files](music-player.md#dsd-files) for playback support.
+
 To include MP4, WebM, M4V, MOV, MKV, and 3GP files, enable **Include video file formats in Music Library** under **Settings > Config... > General**, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. Actual playback support, including the audio codec inside a video file, depends on the browser or OS decoder. See the [Music Player guide](music-player.md#video) for video display.
+
+To include MIDI/KAR (`.mid`, `.midi`, `.kar`) and MusicXML (`.musicxml`, `.xml`, `.mxl`) files, enable **Include MIDI files in Music Library** in the same settings, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. To hear these files, add SoundFont Player and load an instrument; see [MIDI files](music-player.md#midi-files) and [MusicXML files](music-player.md#musicxml-files). MIDI and MusicXML playback and library registration are available in the desktop app and web/PWA player. They are not supported in the Android app.
+
+These settings only affect Music Library. You can still open supported files directly in Music Player.
 
 ## Opening Music Library
 

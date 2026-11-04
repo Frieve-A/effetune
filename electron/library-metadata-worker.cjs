@@ -22,6 +22,15 @@ parentPort?.on('message', async message => {
       return;
     }
     const candidate = createCandidate(message);
+    const midi = await import(pathToFileURL(path.join(__dirname, '../js/library/metadata/midi-metadata.js')).href);
+    if (midi.isScoreFile(candidate.fileName)) {
+      const stat = await fs.stat(message.filePath);
+      if (stat.size > midi.SCORE_MAX_BYTES) throw typedError('metadata-too-large', 'Score file exceeds the byte limit');
+      const bytes = await fs.readFile(message.filePath);
+      const track = await midi.createScoreTrackMetadata(candidate, bytes, Date.now(), message.languageHints);
+      parentPort.postMessage({ type: 'result', requestId: message.requestId, result: normalizeMetadata(track) });
+      return;
+    }
     const riffInfoTagsPromise = candidate.ext === 'wav'
       ? readRiffInfoTagsFromFile(message.filePath, support.readRiffInfoTagsFromReader).catch(() => [])
       : Promise.resolve([]);
@@ -217,6 +226,7 @@ function serializeError(error) {
 }
 
 function classifyError(error) {
+  if (['metadata-too-large', 'unsupported-container', 'corrupt-container'].includes(error?.code)) return error.code;
   const code = String(error?.code || '').toUpperCase();
   if (['EACCES', 'EPERM'].includes(code)) return 'temporary-permission';
   if (['ENOENT', 'EBUSY'].includes(code)) return 'transient-io';

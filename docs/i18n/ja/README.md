@@ -320,6 +320,17 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 
 **設定 > 環境設定...** では、**言語**の選択、**起動時の表示:**（`Effect Pipeline (デフォルト)`、`Music Library`、`Visualizer`）と **起動時のエフェクトパイプライン:** の設定、**テーマ**（`Graphite`、`Paper`、`Midnight`、`Ember`、`Mint`）の選択ができます。**起動時の表示:** を **Music Library** にした場合は、最初に開くライブラリのカテゴリも選べます。 デスクトップ版では、起動時の表示に **Browser** も選べます。
 
+デスクトップ版で設定を分けて保存するには、起動時に設定名を指定します。Windowsでは、たとえば次のように起動します。
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+初めて使う設定名では既定の設定で起動し、次回以降はその名前の音声デバイス、エフェクトパイプライン、表示や起動の設定を復元します。空白を含む名前は `--settings-name="Living room"` のように引用符で囲んでください。指定を省略すると通常の設定を使います。測定結果、保存したプリセット、音楽・IR・音源のライブラリは、設定名にかかわらず同じ保存先を使います。別のEffeTuneで測定結果を開く前に、その測定結果を使っていたアプリを終了してください。
+
+異なる設定名のEffeTuneは同時に起動できます。**起動 > 二重起動を許可する** を有効にすると、同じ設定名でも複数起動できます。既定では無効です。変更後はすべてのEffeTuneを終了して起動し直してください。同じ設定名で起動したウィンドウは、設定の保存先も共通になります。
+
 **エフェクトパイプラインの列数**で **手動**を選ぶと、＋／−ボタンで列数を調整できます。**自動**（初期設定）を選ぶと、エフェクト一覧と合わせてウィンドウの幅に収まるように列数が決まり、ウィンドウのサイズを変えるたびに調整されます。
 
 Microsoft Store版の更新はMicrosoft Storeで管理されます。**設定 > 環境設定...** の **Microsoft Storeの更新画面を開く** で更新を確認し、**Windowsのスタートアップ設定を開く** で自動起動するかどうかを設定できます。設定やBrowserのログイン情報は、ほかのデスクトップ版とは別に保存されます。
@@ -513,7 +524,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial   | Spatial Mapper | 音をDirect、Diffuse、Residualに分けて柔軟にマルチチャンネルへルーティング | [詳細](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | 極性反転ステレオからモノラルを経て拡張ステレオまでステレオ幅を制御 | [詳細](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | スピーカーやヘッドホン確認用のテストトーン/ノイズジェネレーター | [詳細](plugins/others.md#oscillator) |
-| Others    | SFZ Note Player | 検出したノートを取り込んだ SFZ 音源で再生 | [詳細](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Note Player | 検出した音符をSF2/SF3 SoundFontやSFZ音源で再生 | [詳細](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Player | SF2/SF3 SoundFontやSFZ音源でMIDIを再生。SF2/SF3は16チャンネルを独立した音色で演奏 | [詳細](plugins/others.md#soundfont-player) |
 | Control   | Section | 複数のエフェクトをグループ化し、セクション全体をバイパスまたは復帰 | [詳細](plugins/control.md) |
 
 ## 技術情報

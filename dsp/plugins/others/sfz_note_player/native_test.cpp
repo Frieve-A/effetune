@@ -1,4 +1,8 @@
+#include "../../../test/sample_player_fixture.h"
 #include "../../analyzer/note_spectrogram/spectral_analysis.h"
+#include "../soundfont_player/modulation_fixture.h"
+#include "../soundfont_player/script_fixture.h"
+#include "../soundfont_player/sf2_fixture.h"
 #include "NoteSpectrogramPluginParams.h"
 #include "SFZNotePlayerPluginParams.h"
 #include "VolumePluginParams.h"
@@ -16,6 +20,7 @@
 #include <latch>
 #include <limits>
 #include <memory>
+#include <span>
 #include <thread>
 #include <vector>
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_SFZNotePlayerPlugin() noexcept;
@@ -52,14 +57,37 @@ Region region() {
   r[LoopEnd] = 1023;
   r[Sustain] = 100;
   r[Release] = .005F;
+  r[LowChannel] = 1;
+  r[HighChannel] = 16;
+  r[LowBend] = -8192;
+  r[HighBend] = 8191;
+  r[HighChannelAftertouch] = r[HighPolyAftertouch] = r[HighProgram] = 127;
+  for (auto field = static_cast<unsigned>(SwitchLow); field <= SwitchDefault; ++field)
+    r[field] = -1;
+  r[Polyphony] = r[NotePolyphony] = 128;
+  r[BendUp] = 200;
+  r[BendDown] = -200;
+  r[LoopCount] = -1;
+  r[Cutoff] = 20000;
+  r[AmpKeyCenter] = 60;
+  r[OffTime] = .006F;
+  r[EQ1Frequency] = 50;
+  r[EQ2Frequency] = 500;
+  r[EQ3Frequency] = 5000;
+  r[EQ1Bandwidth] = r[EQ2Bandwidth] = r[EQ3Bandwidth] = 1;
   return r;
 }
 struct Bank {
   std::vector<float> words;
   std::uint32_t footprint = 0;
-  explicit Bank(std::vector<Region> regions = {region()}, std::uint32_t samples = 1024) {
+  explicit Bank(std::vector<Region> regions = {region()}, std::uint32_t samples = 1024,
+                std::span<const std::uint8_t> script = {},
+                std::vector<std::pair<std::uint32_t, float>> controls = {}) {
     const auto count = static_cast<std::uint32_t>(regions.size());
-    words.resize(8u + kHeader + count * kStride + samples, .25F);
+    const auto controlWords = static_cast<std::uint32_t>(controls.size()) * 2u;
+    const auto scriptOffset = kHeader + count * kStride + controlWords;
+    const auto pool = scriptOffset + static_cast<std::uint32_t>(script.size() / 4u);
+    words.resize(8u + pool + samples, .25F);
     auto *bytes = reinterpret_cast<std::uint8_t *>(words.data());
     std::fill_n(bytes, 32u, std::uint8_t{0});
     binary_io::writeU32(bytes, 0x31415445u);
@@ -68,26 +96,38 @@ struct Bank {
     binary_io::writeU32(bytes + 12, 1u);
     auto *h = words.data() + 8;
     const std::array<std::uint32_t, kHeader> header = {
-        kMagic,
-        kVersion,
-        count,
-        kStride,
-        kHeader + count * kStride,
-        static_cast<std::uint32_t>(words.size() - 8u),
-        1u,
-        0u};
+        kMagic,       kVersion,
+        count,        kStride,
+        pool,         static_cast<std::uint32_t>(words.size() - 8u),
+        1u,           controlWords,
+        scriptOffset, static_cast<std::uint32_t>(script.size()),
+        0u,           0u};
     for (std::size_t i = 0; i < header.size(); ++i)
       h[i] = std::bit_cast<float>(header[i]);
-    std::uint32_t spans = 0;
     for (std::size_t i = 0; i < regions.size(); ++i) {
       std::copy(regions[i].begin(), regions[i].end(), h + kHeader + i * kStride);
       for (std::uint32_t field = 0; field < kStride; ++field)
         if (isIndexField(field))
           h[kHeader + i * kStride + field] =
               std::bit_cast<float>(static_cast<std::uint32_t>(regions[i][field]));
-      spans += static_cast<std::uint32_t>(regions[i][HighKey] - regions[i][LowKey] + 1);
+      if (!controls.empty()) {
+        auto *r = h + kHeader + i * kStride;
+        r[ControlOffset] = std::bit_cast<float>(kHeader + count * kStride);
+        r[ControlCount] = std::bit_cast<float>(static_cast<std::uint32_t>(controls.size()));
+      }
     }
-    footprint = static_cast<std::uint32_t>(words.size() * 4u) + 4u * (131u + spans);
+    for (auto i = 0u; i < controls.size(); ++i) {
+      h[kHeader + count * kStride + 2u * i] = std::bit_cast<float>(controls[i].first);
+      h[kHeader + count * kStride + 2u * i + 1u] = controls[i].second;
+    }
+    if (!script.empty())
+      std::memcpy(h + scriptOffset, script.data(), script.size());
+    // Legacy fixture budgets do not depend on rate/block geometry. Resolve
+    // their complete native storage once, before negative tests mutate them.
+    auto preparedInfo = info();
+    CHECK(test::addSamplePlayerFixtureStorage(preparedInfo, {bytes, words.size() * sizeof(float)},
+                                              {48000, 4, 1024}) == ET_OK);
+    footprint = preparedInfo.footprintBytes;
   }
   AssetBeginInfo info() const {
     return {1u,        static_cast<std::uint32_t>(words.size() - 8u), 0u, 0u, 1u, 0u, 0u, 2u,
@@ -102,7 +142,7 @@ struct Harness {
   std::uint32_t analysis_latency = 0u;
   generated::SFZNotePlayerPluginParams params{.5F,    -30.0F, 3.0F, 28.0F, 91.0F,  32.0F, 0.0F,
                                               100.0F, 0.0F,   0.0F, 1.0F,  1.0F,   1.0F,  0.0F,
-                                              18.0F,  0.0F,   0.0F, -1.0F, 100.0F, 0.0F};
+                                              18.0F,  0.0F,   0.0F, -1.0F, 100.0F, 0.0F,  -1.0F};
   double time = 0;
   explicit Harness(float sampleRate = 48000) : rate(sampleRate) {
     kernel = descriptor->construct(storage.data());
@@ -147,16 +187,25 @@ struct Harness {
   }
   et_status load(Bank &bank, bool prepare = true) {
     const auto bytes = static_cast<std::uint32_t>(bank.words.size() * 4u);
-    auto *target = kernel->beginAsset(0, bank.info());
+    auto info = bank.info();
+    // Compiled fixtures replace Bank::words wholesale and still carry producer
+    // estimates. Legacy fixtures already own their native budget; preserve any
+    // intentional malformed payload or budget instead of querying it again.
+    if (std::bit_cast<std::uint32_t>(bank.words[9]) != kVersion) {
+      const auto storageStatus = test::addSamplePlayerFixtureStorage(
+          info, {reinterpret_cast<const std::uint8_t *>(bank.words.data()), bytes},
+          {rate, 4, 1024});
+      if (storageStatus != ET_OK)
+        return storageStatus;
+    }
+    auto *target = kernel->beginAsset(0, info);
     CHECK(target);
     if (!target)
       return ET_ERR_ARGS;
     std::memcpy(target, bank.words.data(), bytes);
-    et_status status;
-    {
-      allocation_guard::Scope guard;
-      status = kernel->commitAsset(0, bytes, 1);
-    }
+    // Flat bank validation, index/cache sizing and optional Program/Session preparation
+    // belong to the control task. Playback and prepared-asset exchange stay guarded.
+    const auto status = kernel->commitAsset(0, bytes, 1);
     if (prepare)
       for (unsigned i = 0; i < 10000 && kernel->assetState(0) == ET_ASSET_STATE_PREPARING; ++i) {
         std::vector<float> a(256);
@@ -202,6 +251,168 @@ float peak(const std::vector<float> &a) {
   for (float v : a)
     p = std::max(p, std::abs(v));
   return p;
+}
+void sharedSf2Features() {
+  const auto run = [](float preset) {
+    Harness h;
+    h.params.preset = preset;
+    h.sync();
+    Bank bank;
+    bank.words.resize(kSf2NativeFixture.size() / 4u);
+    std::memcpy(bank.words.data(), kSf2NativeFixture.data(), kSf2NativeFixture.size());
+    bank.footprint = kSf2NativeFootprint;
+    CHECK(h.load(bank, false) == ET_OK);
+    CHECK(h.kernel->configureSampleStream(7) == ET_OK);
+    std::array<float, 64> sample;
+    sample.fill(.25F);
+    CHECK(h.kernel->publishSamplePage(7, 0, 0, sample.data(), 64, 1, 1) == ET_OK);
+    CHECK(h.kernel->assetState(0) == ET_ASSET_STATE_ACTIVE);
+    CHECK(h.kernel->setMidiEvents(nullptr, 0, 1, ET_MIDI_RETIME) == ET_OK);
+    CHECK(h.kernel->prefetchSampleEvents(nullptr, 0, 1, 12000, 1) == ET_OK);
+    CHECK(h.kernel->prefetchSampleEvents(nullptr, 0, 1, 12000, 2) == ET_OK);
+    CHECK(h.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
+    const auto result = peak(h.attack(60));
+    CHECK(result > .0001F);
+    CHECK((h.kernel->midiState() & ET_MIDI_STATE_VOICES) != 0);
+    const auto midi = et_midi_event{0, 0x90u | (60u << 8u) | (127u << 16u), 1, 0, 0, 0};
+    CHECK(h.kernel->setMidiEvents(&midi, 1, 1, 0) == ET_ERR_UNSUPPORTED);
+    return result;
+  };
+  const auto base = run(-1), quiet = run(1);
+  CHECK(std::abs(quiet / base - .1F) < .0001F);
+}
+void sharedSfzFeatures() {
+  auto r = region();
+  r[KeyTrack] = 0;
+  // Both selection and modulation must observe initial CC7=100, even though Note starts at unity.
+  Bank initial(
+      {r}, 1024, {},
+      {{LowCC * 512u + 7u, 100.0F}, {HighCC * 512u + 7u, 100.0F}, {VolumeCC * 512u + 7u, -12.7F}});
+  Harness h;
+  CHECK(h.kernel->setMidiEvents(nullptr, 0, 1, ET_MIDI_HYDRATE_CHANNEL_STATE) ==
+        ET_ERR_UNSUPPORTED);
+  CHECK(h.load(initial) == ET_OK);
+  const auto level = peak(h.attack(60));
+  CHECK(std::abs(level - .25F * std::pow(10.0F, -.5F)) < .0001F);
+
+  // A static initial controller drives the same envelope and EQ graph in both ingress modes.
+  Bank envelope({r}, 1024, {}, {{InitialCC * 512u + 1u, 127.0F}, {AmpAttackCC * 512u + 1u, .05F}});
+  Harness delayed;
+  CHECK(delayed.load(envelope) == ET_OK);
+  CHECK(peak(delayed.attack(60, 1, 0, 256)) < .04F);
+  auto eqRegion = r;
+  eqRegion[EQ2Frequency] = 1000;
+  Bank eq({eqRegion}, 1024, {}, {{InitialCC * 512u + 1u, 127.0F}, {EQ2GainCC * 512u + 1u, 12.0F}});
+  const auto pcm = 8u + std::bit_cast<std::uint32_t>(eq.words[8u + 4u]);
+  for (auto i = 0u; i < 1024u; ++i)
+    eq.words[pcm + i] = .1F * std::sin(6.283185307179586F * 1000.0F * i / 48000.0F);
+  Harness equalized;
+  CHECK(equalized.load(eq) == ET_OK);
+  CHECK(peak(equalized.attack(60, 1, 0, 1024)) > .2F);
+
+  // A fully prepared replacement must apply its initial controller without an explicit reset.
+  Bank replacement(
+      {r}, 1024, {},
+      {{LowCC * 512u + 1u, 127.0F}, {HighCC * 512u + 1u, 127.0F}, {InitialCC * 512u + 1u, 127.0F}});
+  std::unique_ptr<PreparedAsset> update;
+  CHECK(h.kernel->assetPreparer(0)({h.rate, 4, 1024}, replacement.info(),
+                                   reinterpret_cast<const std::uint8_t *>(replacement.words.data()),
+                                   ET_ASSET_F32_MULTICH, update) == ET_OK);
+  {
+    allocation_guard::Scope guard;
+    CHECK(h.kernel->exchangePreparedAsset(0, update) == ET_OK);
+  }
+  CHECK(peak(h.attack(60)) > .2F);
+
+  Bank scripted({r}, 1024, kScriptNoteWaitFixture);
+  Harness detected;
+  CHECK(detected.load(scripted) == ET_OK);
+  CHECK(detected.kernel->setMidiEvents(nullptr, 0, 1, ET_MIDI_RETIME) == ET_OK);
+  CHECK(detected.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
+  const auto first = detected.event(60, 1, 0, 512);
+  CHECK(peak(first) == 0);
+  CHECK((detected.kernel->midiState() & ET_MIDI_STATE_CALLBACKS) != 0);
+  const auto second = detected.event(60, 1, 0, 768);
+  CHECK(peak(second) > .2F);
+  auto telemetry = detected.snapshot();
+  CHECK(telemetry[20u + 72u * 8u] == 1u);
+  CHECK(telemetry[20u + 60u * 8u] == 0u);
+  const et_midi_event pause{7, 0, 0, ET_MIDI_PAUSE, 0, 0};
+  const auto before = detected.kernel->midiClock();
+  CHECK(detected.kernel->setMidiEvents(&pause, 1, 1, 0) == ET_OK);
+  detected.event(60, 1, 0, 128);
+  CHECK(detected.kernel->midiClock() == before + 7u);
+  CHECK(detected.kernel->midiCheckpointSize() > 0);
+}
+void sharedGenericModulation() {
+  const auto run = [](std::span<const std::uint8_t> payload, std::uint32_t footprint) {
+    Harness h;
+    Bank bank;
+    bank.words.resize(payload.size() / 4u);
+    std::memcpy(bank.words.data(), payload.data(), payload.size());
+    bank.footprint = footprint;
+    CHECK(h.load(bank) == ET_OK);
+    const auto audio = h.attack(60, 1, 0, 1024);
+    CHECK(
+        std::all_of(audio.begin(), audio.end(), [](float value) { return std::isfinite(value); }));
+    CHECK((h.kernel->midiState() & ET_MIDI_STATE_VOICES) != 0);
+    return audio;
+  };
+  const auto basic = run(kV3BasicPayload, kV3BasicFootprint);
+  CHECK(std::abs(peak(basic) - .25F * std::pow(10.0F, -6.0F / 20)) < .00001F);
+  const auto delayed = run(kV3DelayedPayload, kV3DelayedFootprint);
+  CHECK(delayed[0] == 0 && peak(delayed) > .2F);
+  const auto modulated = run(kV3LfoPayload, kV3LfoFootprint);
+  const auto [low, high] = std::minmax_element(modulated.begin(), modulated.begin() + 1024);
+  CHECK(*high > .4F && *high - *low > .1F);
+  Harness preview;
+  Bank bank;
+  bank.words.resize(kV3BasicPayload.size() / sizeof(float));
+  std::memcpy(bank.words.data(), kV3BasicPayload.data(), kV3BasicPayload.size());
+  bank.footprint = kV3BasicFootprint;
+  CHECK(preview.load(bank) == ET_OK);
+  preview.params.previewMidi = 60;
+  preview.sync();
+  std::vector<float> block(512);
+  preview.process(block);
+  CHECK(peak(block) > .1F);
+  preview.params.previewMidi = -1;
+  preview.sync();
+  preview.process(block);
+  CHECK(block[255] == 0 && preview.snapshot()[16] == 0);
+}
+void scriptTerminalFailure() {
+  for (const auto offline : {false, true}) {
+    auto r = region();
+    r[Release] = .001F;
+    Bank bank({r}, 1024, kScriptRuntimeFailureFixture);
+    Harness h;
+    CHECK(h.load(bank) == ET_OK);
+    CHECK(h.kernel->setMidiEvents(nullptr, 0, 1, ET_MIDI_RETIME) == ET_OK);
+    CHECK(h.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
+    h.event(60, 1, 0, 512);
+    CHECK((h.kernel->midiState() & ET_MIDI_STATE_CALLBACKS) != 0);
+    bool failed = false;
+    for (auto block = 0u; block < 12u && !failed; ++block) {
+      std::vector<float> audio(256);
+      if (offline) {
+        allocation_guard::Scope guard;
+        const auto status = h.kernel->processOffline(audio.data(), 2, 128, {0});
+        failed = status == ET_ERR_STATE;
+        CHECK(status == ET_OK || failed);
+      } else {
+        h.process(audio);
+        failed = h.kernel->assetState(0) == ET_ASSET_STATE_ERROR;
+      }
+    }
+    CHECK(failed && h.kernel->midiState() == ET_MIDI_STATE_SCRIPT_ERROR);
+    for (auto block = 0; block < 450; ++block) {
+      std::vector<float> audio(256);
+      h.process(audio);
+      CHECK(peak(audio) == 0);
+    }
+    CHECK(h.kernel->midiState() == ET_MIDI_STATE_SCRIPT_ERROR);
+  }
 }
 void onsetRule() {
   const OnsetRuleSettings settings{.75F, .65F, .5F, .3F, .3F, 6u};
@@ -975,7 +1186,7 @@ void noteHold() {
       h.params.noteHoldMs = static_cast<float>(hold_ms);
       h.sync();
       CHECK(h.kernel->latencySamples() == latency);
-      CHECK(h.attack(84, 1, 0, 512).back() == .25F);
+      CHECK(std::abs(h.attack(84, 1, 0, 512).back() - .25F) < .000001F);
       std::vector<float> output;
       const auto capture = [&h, &output](unsigned frames,
                                          const NoteAnalysisFrame *event = nullptr) {
@@ -1044,8 +1255,8 @@ void noteSelection() {
     h.kernel->reset();
     CHECK(chord(h, {{60, 1, 0}}).back() == ((mask & 5u) ? .25F : 0.0F));
     h.kernel->reset();
-    CHECK(chord(h, {{60, 1, 0}, {72, 1, 0}}).back() ==
-          .25F * (((mask & 1u) != 0) + ((mask & 4u) != 0)));
+    CHECK(std::abs(chord(h, {{60, 1, 0}, {72, 1, 0}}).back() -
+                   .25F * (((mask & 1u) != 0) + ((mask & 4u) != 0))) < .000001F);
   }
   for (bool high : {false, true}) {
     Harness h;
@@ -1058,8 +1269,9 @@ void noteSelection() {
     const auto farther = high ? 76.0F : 44.0F;
     const auto inside = high ? 74.0F : 46.0F;
     const auto outsideBand = high ? 69.0F : 51.0F;
-    CHECK(chord(h, {{outer, .8F, -3}, {60, .6F, -10}}).back() == .25F);
-    CHECK(chord(h, {{outer, .8F, -3}, {farther, .7F, -3}, {60, .6F, -10}}).back() == .25F);
+    CHECK(std::abs(chord(h, {{outer, .8F, -3}, {60, .6F, -10}}).back() - .25F) < .000001F);
+    CHECK(std::abs(chord(h, {{outer, .8F, -3}, {farther, .7F, -3}, {60, .6F, -10}}).back() - .25F) <
+          .000001F);
     CHECK(std::abs(chord(h, {{outer, .8F, -3}, {farther, .8F, -3}, {60, .6F, -10}}).back() - .5F) <
           .000001F);
     CHECK(std::abs(chord(h, {{outer, .8F, -3}, {farther, .8F, -3}, {inside, .8F, -3}}).back() -
@@ -1074,14 +1286,15 @@ void noteSelection() {
   memory.load(bank);
   memory.params.playLowest = memory.params.playMiddle = 0;
   memory.sync();
-  CHECK(chord(memory, {{72, 1, 0}}).back() == .25F);
+  CHECK(std::abs(chord(memory, {{72, 1, 0}}).back() - .25F) < .000001F);
   std::vector<float> audio;
   for (unsigned i = 0; i < 20; ++i)
     audio = chord(memory, {{48, 1, 0}});
   CHECK(peak(audio) == 0); // The old release ended, but the register has not jumped to the bass.
   for (unsigned i = 0; i < 47; ++i)
     audio = chord(memory, {{48, 1, 0}});
-  CHECK(audio.back() == .25F); // A held input can enter once the history catches up.
+  // A held input can enter once history catches up; FIR reduction rounds in F32.
+  CHECK(std::abs(audio.back() - .25F) < .000001F);
   for (unsigned i = 0; i < 30; ++i)
     chord(memory, {});
   CHECK(chord(memory, {{36, 1, 0}}).back() == .25F);
@@ -1103,11 +1316,11 @@ void noteSelection() {
   middle.params.playHighest = 1;
   middle.params.octaveShift = 1;
   middle.sync();
-  CHECK(chord(middle, {{64, 1, 0}}).back() == .25F);
+  CHECK(std::abs(chord(middle, {{64, 1, 0}}).back() - .25F) < .000001F);
   middle.kernel->clearAsset(0);
   CHECK(peak(chord(middle, {{64, 1, 0}})) == 0);
   middle.load(bank);
-  CHECK(chord(middle, {{36, 1, 0}}).back() == .25F);
+  CHECK(std::abs(chord(middle, {{36, 1, 0}}).back() - .25F) < .000001F);
 }
 void timingOffset() {
   Bank bank;
@@ -1150,7 +1363,7 @@ void timingOffset() {
           std::find_if(rendered.begin(), rendered.end(), [](float v) { return v != 0; });
       CHECK(static_cast<unsigned>(first - rendered.begin()) ==
             wetDelay + static_cast<unsigned>(rate * .01F) + 1u);
-      CHECK(rendered.back() == .25F);
+      CHECK(std::abs(rendered.back() - .25F) < .000001F);
     }
   }
   Harness h;
@@ -1757,8 +1970,8 @@ struct AssetEngineHarness {
     player = engine->createInstance("SFZNotePlayerPlugin");
     volume = engine->createInstance("VolumePlugin");
     const generated::NoteSpectrogramPluginParams analysis{83, 83, 0, 0};
-    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,   0,
-                                                      1,    1,   1, 0,  18, 0,  0, -1,  100, 0};
+    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0,  100, 0, 0, 1,
+                                                      1,    1,   0, 18, 0,  0,  -1, 100, 0, -1};
     const generated::VolumePluginParams gain{-6.020599913F};
     CHECK(engine->setInstanceParams(source, reinterpret_cast<const float *>(&analysis),
                                     analysis.kFloatCount, analysis.kHash, 0u) == ET_OK);
@@ -1929,7 +2142,7 @@ void preparedAssetUpdatesAndFailures() {
   CHECK(h.prepare(snapshot, bad_header, update) == ET_ERR_ARGS);
   Bank bad_index({r});
   bad_index.footprint = bad_index.info().byteSize + 131u * 4u;
-  CHECK(h.prepare(snapshot, bad_index, update) == ET_ERR_ARGS);
+  CHECK(h.prepare(snapshot, bad_index, update) == ET_ERR_OOM);
   auto info = original.info();
   CHECK(Engine::prepareInstanceAssetUpdate(snapshot, info, nullptr, info.byteSize, 1u, update) ==
         ET_ERR_ARGS);
@@ -2083,6 +2296,10 @@ void preparedAssetEngineReplacement() {
 }
 } // namespace
 int main() {
+  sharedGenericModulation();
+  sharedSf2Features();
+  sharedSfzFeatures();
+  scriptTerminalFailure();
   onsetRule();
   onsetBoundary();
   onsetHoldAndReservations();

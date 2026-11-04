@@ -259,6 +259,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.generationFence = null;
         this.modeTimeFence = null;
         this.lastObservedTimeSeconds = null;
+        this.midiPosition = null;
         this.intensity = new Float32Array(MULTI_F0_PITCH_COUNT);
         this.levelIntensity = new Float32Array(MULTI_F0_PITCH_COUNT);
         this.levelReference = MULTI_F0_LEVEL_FLOOR;
@@ -491,7 +492,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
         this.localKey = localKey;
         this.overallKey = overallKey;
-        this._setNotationKey(overallKey);
+        this._setNotationKey(localKey);
         this.lastChordKeyFrameIndex = frameIndex;
     }
 
@@ -610,7 +611,9 @@ class NoteSpectrogramPlugin extends PluginBase {
     _noteDisplayColor(column, midi, value, palette, externalColor = null, applyHighlight = true, noteMidi = midi, fadeHistory = false) {
         const note = this.timbreEnabled() ? this._timbreForColumn(column, noteMidi) : null;
         const probabilities = note?.probabilities;
-        const customColor = externalColor ?? this.displayOptions?.noteColor?.(midi, value);
+        const channel = this.midiChannelHistory?.[column * MULTI_F0_NOTE_COUNT + Math.round(noteMidi) - MULTI_F0_FIRST_MIDI];
+        const customColor = externalColor ?? this.displayOptions?.noteColor?.(midi, value,
+            this.midiPosition !== null && channel ? channel - 1 : undefined);
         let color = customColor ??
             (this.cl === 'Rainbow' ? multiF0NoteColor(midi)
                 : this.cl === 'Instrument3' || this.cl === 'Instrument9'
@@ -921,6 +924,7 @@ class NoteSpectrogramPlugin extends PluginBase {
     clearHistory(preserveActiveTimbre = false) {
         this.history?.fill(0);
         this.pitchCentsHistory?.fill(0);
+        this.midiChannelHistory?.fill(0);
         this.levelHistory?.fill(0);
         this.volumeLevelHistory?.fill(NaN);
         this.volumeFrameEnds?.fill(1);
@@ -950,6 +954,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.latestHopSeconds = 0;
         this.latestFrameTimeSeconds = null;
         this.lastFrameIndex = null;
+        this.midiPosition = null;
         this.levelReference = MULTI_F0_LEVEL_FLOOR;
         this.levelReferenceHold = 0;
         this.meterCurrent?.fill(MULTI_F0_LEVEL_FLOOR);
@@ -1110,6 +1115,82 @@ class NoteSpectrogramPlugin extends PluginBase {
         for (let pitch = 0; pitch < MULTI_F0_PITCH_COUNT; pitch++) {
             this.levelIntensity[pitch] = this._normalizedLevel(snapshot.volumeLevels[pitch]);
         }
+    }
+
+    // Project MIDI note intervals into the same pitch history used by audio telemetry.
+    // Velocity controls visible strength; no acoustic dB or instrument classification is inferred.
+    handleMidiSnapshot(snapshot) {
+        const position = snapshot.position;
+        if (!Number.isFinite(position) || !this.history) return;
+        const period = this.columnPeriod;
+        const previous = this.midiPosition;
+        const rebuild = previous === null || position < previous || position - previous >= this.ts;
+        if (rebuild) this.clearHistory();
+        this.midiChannelHistory ||= new Uint8Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_NOTE_COUNT);
+        const previousPosition = this.midiPosition;
+        const total = previousPosition === null ? MULTI_F0_HISTORY_WIDTH :
+            this.columnPhase + (position - previousPosition) / period;
+        const advance = previousPosition === null ? MULTI_F0_HISTORY_WIDTH : Math.floor(total);
+        this.columnPhase = previousPosition === null ? 0 : total - advance;
+        const first = this.writeColumn;
+        const notes = [...snapshot.history, ...snapshot.notes];
+        for (let offset = 0; offset < Math.max(1, advance); offset++) {
+            const latest = advance === 0 || offset === advance - 1;
+            const column = (first + (advance ? offset : MULTI_F0_HISTORY_WIDTH - 1)) % MULTI_F0_HISTORY_WIDTH;
+            const start = position - (advance ? advance - offset + this.columnPhase : 1) * period;
+            const end = start + period + (latest ? period : 0);
+            const historyOffset = column * MULTI_F0_PITCH_COUNT;
+            this.history.fill(0, historyOffset, historyOffset + MULTI_F0_PITCH_COUNT);
+            this.levelHistory.fill(0, historyOffset, historyOffset + MULTI_F0_PITCH_COUNT);
+            this.volumeLevelHistory.fill(NaN, historyOffset, historyOffset + MULTI_F0_PITCH_COUNT);
+            this.pitchCentsHistory.fill(0, column * MULTI_F0_NOTE_COUNT,
+                (column + 1) * MULTI_F0_NOTE_COUNT);
+            this.midiChannelHistory.fill(0, column * MULTI_F0_NOTE_COUNT, (column + 1) * MULTI_F0_NOTE_COUNT);
+            this.confirmedChords[column] = latest ? snapshot.chord?.name ?? null : null;
+            this.volumeFrameEnds[column] = 1;
+            for (const note of notes) {
+                const noteEnd = note.end ?? position + period;
+                if (note.start >= end || noteEnd <= start) continue;
+                const midi = Math.round(note.pitch);
+                if (midi < MULTI_F0_FIRST_MIDI || midi > MULTI_F0_LAST_MIDI) continue;
+                const fine = Math.max(0, Math.min(MULTI_F0_FINE_DIVISIONS - 1,
+                    Math.round((note.pitch - midi) * MULTI_F0_FINE_DIVISIONS) + MULTI_F0_FINE_CENTER));
+                const pitch = (midi - MULTI_F0_FIRST_MIDI) * MULTI_F0_FINE_DIVISIONS + fine;
+                const strength = Math.fround(note.velocity / 127);
+                // Match the strongest velocity per pitch; ties keep the existing note order.
+                if (strength > this._bagConfidence(historyOffset, midi)) {
+                    this.midiChannelHistory[column * MULTI_F0_NOTE_COUNT + midi - MULTI_F0_FIRST_MIDI] =
+                        Number.isInteger(note.channel) ? note.channel + 1 : 0;
+                }
+                if (strength <= this.history[historyOffset + pitch]) continue;
+                this.history[historyOffset + pitch] = strength;
+                this.levelHistory[historyOffset + pitch] = strength;
+                this.pitchCentsHistory[column * MULTI_F0_NOTE_COUNT + midi - MULTI_F0_FIRST_MIDI] =
+                    (note.pitch - midi) * 100;
+            }
+        }
+        this.writeColumn = (first + advance) % MULTI_F0_HISTORY_WIDTH;
+        this.columnSerial += advance;
+        this.midiPosition = position;
+        this.meterCurrent.fill(MULTI_F0_LEVEL_FLOOR);
+        this.levelReference = MULTI_F0_LEVEL_CEILING_DB;
+        for (const note of snapshot.notes) {
+            const midi = Math.round(note.pitch);
+            if (midi >= MULTI_F0_FIRST_MIDI && midi <= MULTI_F0_LAST_MIDI) {
+                const index = midi - MULTI_F0_FIRST_MIDI;
+                const level = MULTI_F0_LEVEL_CEILING_DB - MULTI_F0_LEVEL_RANGE_DB * (1 - note.velocity / 127);
+                if (level > this.meterCurrent[index]) this.meterCurrent[index] = level;
+            }
+        }
+        if (advance) {
+            this.paintColumns(first, advance);
+            this._paintVolumeColumns(first, advance);
+        } else {
+            const latest = (this.writeColumn + MULTI_F0_HISTORY_WIDTH - 1) % MULTI_F0_HISTORY_WIDTH;
+            this.paintColumns(latest, 1);
+            this._paintVolumeColumns(latest, 1);
+        }
+        this._graphReadout?.clear();
     }
 
     handleTelemetry(frame) {

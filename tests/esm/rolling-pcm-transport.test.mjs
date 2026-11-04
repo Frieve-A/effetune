@@ -503,6 +503,7 @@ test('a resumed seek publishes replacement sources before retiring the previous 
     assert.equal(transport.promoteReservation(), true);
     assert.equal(transport.activate(), true);
     assert.ok(transport.scheduled.size > 1, profileId);
+    context.currentTime = transport.anchorContextTime + 0.1;
     const beforeSeek = transport.getDiagnosticSnapshot();
 
     context.operations.length = 0;
@@ -549,7 +550,7 @@ test('a resumed seek bridges the audible source while its predecessor end is pen
   assert.ok(oldScheduled.length > 1);
   const expiredSource = oldScheduled[0].source;
   const audibleScheduled = oldScheduled[1];
-  context.currentTime = (audibleScheduled.record.startFrame - transport.anchorFrame + 1) /
+  context.currentTime = transport.anchorContextTime + (audibleScheduled.record.startFrame - transport.anchorFrame + 1) /
     transport.metadata.sampleRate;
 
   context.operations.length = 0;
@@ -592,6 +593,54 @@ test('a source-start failure during seek adoption releases both transport genera
   assert.equal(diagnostics.liveSourceNodes, 0);
   assert.equal(diagnostics.liveAudioBuffers, 0);
   assert.equal(diagnostics.livePcmBytes, 0);
+});
+
+test('an immediate start resolves its shared anchor after preparing the first source', async () => {
+  for (const requestedTime of [0, 5]) {
+    const context = new FakeAudioContext();
+    const createSource = context.createBufferSource.bind(context);
+    let first = true;
+    context.createBufferSource = () => {
+      if (first) { context.currentTime += 0.008; first = false; }
+      return createSource();
+    };
+    const transport = new RollingPcmTransport(context, {
+      workerFactory: () => new FakeWorker({ totalFrames: 960000, slabFrames: 96000 })
+    });
+    try {
+      await transport.prepare(canonical(new Uint8Array([1])));
+      transport.activate({ when: requestedTime });
+      const anchor = context.starts[0][0];
+      if (requestedTime === 0) assert.ok(anchor >= 0.028);
+      else assert.equal(anchor, requestedTime, 'a future gapless reservation stays fixed');
+      assert.equal(transport.anchorContextTime, anchor);
+      assert.equal(Math.round((context.starts[1][0] - anchor) * context.sampleRate), 96000);
+      assert.equal(transport.getPositionFrame(), 0);
+    } finally { await transport.dispose(); }
+  }
+});
+
+test('Pause cancels a seek waiting at its prepared transition boundary', { timeout: 3000 }, async () => {
+  const transport = new RollingPcmTransport(new FakeAudioContext(), {
+    workerFactory: () => new FakeWorker({ totalFrames: 960000, slabFrames: 96000 })
+  });
+  let release;
+  let reachedBoundary;
+  const boundary = new Promise(resolve => { reachedBoundary = resolve; });
+  try {
+    await transport.prepare(canonical(new Uint8Array([1])));
+    transport.activate();
+    const originalWorker = transport.worker;
+    const seeking = transport.seek(48000, { resume: true,
+      beforeAdoption: () => new Promise(resolve => { release = resolve; reachedBoundary(); }) });
+    await boundary;
+    assert.equal(transport.worker, originalWorker);
+    transport.pause();
+    release();
+    assert.equal(await seeking, false);
+    assert.equal(transport.playing, false);
+    assert.equal(transport.worker, originalWorker);
+  } finally { release?.(); await transport.dispose(); }
 });
 
 test('a throwing resumed-seek decision leaves the committed reservation active', async () => {
@@ -1051,7 +1100,7 @@ test('pause freezes the integer position synchronously and requeues resident PCM
   });
   await transport.prepare(canonical(new Uint8Array([1])));
   transport.activate({ when: 0, frame: 0 });
-  context.currentTime = 0.5;
+  context.currentTime = transport.anchorContextTime + 0.5;
   assert.equal(transport.pause(), true);
   assert.equal(transport.positionFrame, 24000);
   assert.equal(transport.playing, false);
@@ -1183,7 +1232,7 @@ test('a delayed successor cannot start after its audible timeline has already ga
   const prior = [...transport.scheduled][0];
   assert.ok(prior);
   const delayedOnEnded = prior.source.onended;
-  context.currentTime = prior.record.frameCount / context.sampleRate + 0.01;
+  context.currentTime = transport.anchorContextTime + prior.record.frameCount / context.sampleRate + 0.01;
 
   worker.flushOneFill();
 

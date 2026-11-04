@@ -17,6 +17,31 @@ const {
 
 const noInput = '__effetune_no_audio_input__';
 
+test('MIDI-only IPC preserves audio preferences and never reloads, including rejected mixed changes', async () => {
+  const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-midi-preferences-')));
+  const preferencesPath = path.join(tempRoot, 'audio-preferences.json');
+  const messages = [], timers = [];
+  const mainWindow = { webContents: { send: (...args) => messages.push(args) }, reload() { assert.fail('reload'); } };
+  try {
+    await fs.writeFile(preferencesPath, JSON.stringify({ inputDeviceId: 'mic', sampleRate: 48000 }));
+    const handlers = registerAudioPreferencesHandlers(tempRoot, mainWindow);
+    const save = handlers.get('save-audio-preferences');
+    await withPatchedPropertyAsync(global, 'setTimeout', (...args) => timers.push(args), async () => {
+      assert.deepEqual(await save(null, { midiInputDeviceKey: 'Virtual\0' + '2' }, { applyInPlace: 'midi-input' }), { success: true });
+      const stored = JSON.parse(await fs.readFile(preferencesPath, 'utf8'));
+      assert.equal(stored.midiInputDeviceKey, 'Virtual\0' + '2');
+      assert.equal(stored.inputDeviceId, 'mic');
+      assert.equal(stored.sampleRate, 48000);
+      assert.equal((await save(null, { midiInputDeviceKey: '', sampleRate: 96000 }, { applyInPlace: 'midi-input' })).success, false);
+      assert.deepEqual(JSON.parse(await fs.readFile(preferencesPath, 'utf8')), stored);
+      assert.deepEqual(await save(null, { midiInputDeviceKey: '' }, { applyInPlace: 'midi-input' }), { success: true });
+      assert.equal((await handlers.get('load-audio-preferences')()).preferences.midiInputDeviceKey, '');
+      assert.deepEqual(messages, []);
+      assert.deepEqual(timers, []);
+    });
+  } finally { await fs.rm(tempRoot, { recursive: true, force: true }); }
+});
+
 test('Electron accepts reload suppression only for a gapless-only change', () => {
   const previous = {
     inputDeviceId: 'default',
@@ -222,6 +247,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
   // Stored preferences keep the live input enabled while the renderer mirror
   // was switched to player-only for this session (command-line music files).
   const storedPreferences = {
+    midiInputDeviceKey: '',
     inputDeviceId: 'mic-1',
     outputDeviceId: 'speaker-1',
     inputDeviceLabel: 'Microphone (no permission)',

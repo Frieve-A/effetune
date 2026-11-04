@@ -1,5 +1,6 @@
 #ifndef EFFETUNE_DSP_SMOOTHING_H
 #define EFFETUNE_DSP_SMOOTHING_H
+#include "denormal.h"
 
 #include <cmath>
 #include <cstdint>
@@ -27,7 +28,7 @@ public:
   }
 
   [[nodiscard]] double process(double input) noexcept {
-    state_ += coefficient_ * (input - state_);
+    state_ = flushSubnormal(state_ + coefficient_ * (input - state_));
     return state_;
   }
 
@@ -58,7 +59,7 @@ public:
       magnitude = 0.0;
     }
     const double coefficient = magnitude > state_ ? attack_ : release_;
-    state_ += coefficient * (magnitude - state_);
+    state_ = flushSubnormal(state_ + coefficient * (magnitude - state_));
     return state_;
   }
 

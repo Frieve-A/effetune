@@ -2660,3 +2660,21 @@ function runSqliteWorker(dbPath, mode) {
     });
   });
 }
+
+
+test('score tracks accept only the supported sibling JPEG artwork claims', async t => {
+  const { host, directory } = await openCatalog(t);
+  await seedFolder(host, directory);
+  await host.upsertTracks([createTrack(1, { relativePath: 'Album/song.mid', fileName: 'song.mid',
+    fileIdentity: 'score-file', size: 20, mtimeMs: 1 })]);
+  const utilitySessionId = 'score-cover-test';
+  await host.beginArtworkUtilitySession({ utilitySessionId });
+  const source = await host.getArtworkSource({ trackUid: 'track_000001' });
+  for (const [name, allowed] of [['Album/cover.jpg', true], ['Album/FOLDER.JPG', true],
+    ['Other/cover.jpg', false], ['Album/front.jpg', false], ['Album/cover.png', false]]) {
+    const result = await host.claimArtworkSource({ claim: { ...source, sourceKind: 'external-file',
+      canonicalSourceIdentity: name, utilitySessionId,
+      externalArtworkStat: { fileIdentity: name, size: 2, mtimeMs: 3 } } });
+    assert.equal(Boolean(result.claim), allowed, name);
+  }
+});

@@ -66,6 +66,39 @@ function loadPreload(harness) {
   });
 }
 
+test('preload exposes named settings storage with string values and useful failure messages', () => {
+  const harness = createPreloadHarness();
+  const entries = new Map();
+  harness.electron.ipcRenderer.sendSync = (channel, request) => {
+    assert.equal(channel, 'settings-storage');
+    if (request.operation === 'get') return { ok: true, value: entries.get(request.key) ?? null };
+    if (request.operation === 'set') entries.set(request.key, request.value);
+    else entries.delete(request.key);
+    return { ok: true, value: null };
+  };
+  withPatchedProperty(process, 'argv', ['app', '--effetune-settings-name=My%20speakers'], () => loadPreload(harness));
+  const api = harness.exposed.electronAPI;
+  assert.equal(api.settingsName, 'My speakers');
+  api.settingsStorage.setItem('hdr', true);
+  assert.equal(api.settingsStorage.getItem('hdr'), 'true');
+  api.settingsStorage.removeItem('hdr');
+  assert.equal(api.settingsStorage.getItem('hdr'), null);
+  harness.electron.ipcRenderer.sendSync = () => ({ ok: false });
+  assert.throws(() => api.settingsStorage.setItem('hdr', true), /Settings could not be saved or loaded/);
+});
+
+test('preload sends only boolean desktop audio activity facts', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const report = harness.exposed.electronAPI.reportDesktopAudioActivity;
+  report({ processingActive: true, playbackActive: false });
+  report({ processingActive: 'true', playbackActive: true });
+  assert.deepEqual(harness.sends, [
+    ['desktop-audio-activity', { processingActive: true, playbackActive: false }],
+    ['desktop-audio-activity', { processingActive: false, playbackActive: true }]
+  ]);
+});
+
 test('preload exposes independent network music and integrated remote client contracts', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -202,11 +235,11 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   harness.listeners.get('browser:focus-address')(event);
   assert.equal(focusRequests.length, 2);
   unsubscribeFocus();
-  assert.deepEqual([...harness.listeners.keys()], ['airplay-v1:port']);
+  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port']);
 
   assert.throws(() => browser.onState(null), TypeError);
   assert.throws(() => browser.onFocusAddress(null), TypeError);
-  assert.deepEqual([...harness.listeners.keys()], ['airplay-v1:port']);
+  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port']);
 });
 
 test('SFZ library preload forwards file and folder selection modes', async () => {
@@ -252,6 +285,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['saveAudioPreferences', [{ sampleRate: 48000 }], ['save-audio-preferences', { sampleRate: 48000 }]],
     ['loadAudioPreferences', [], ['load-audio-preferences']],
     ['getWindowVisibility', [], ['get-window-visibility']],
+    ['getBackgroundProcessingStatus', [], ['get-background-processing-status']],
     ['getAppVersion', [], ['get-app-version']],
     ['getCommandLinePresetFile', [], ['get-command-line-preset-file']],
     ['reloadWindow', [], ['reload-window']],

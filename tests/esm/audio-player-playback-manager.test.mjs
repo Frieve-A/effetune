@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import fs from 'node:fs/promises';
+import { AudioActivationCoordinator } from '../../js/audio/audio-activation-coordinator.js';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { parseSmf } from '../../js/midi/smf-parser.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 import { PLAYBACK_SPEED_STEPS, normalizePlaybackSpeed } from '../../js/ui/audio-player/playback-speed.js';
@@ -2036,5 +2040,89 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     const manager = makeManager(createAudioPlayer());
     await manager.loadPlayerState();
     await manager.savePlayerState();
+  });
+});
+
+
+test('MIDI repeat ONE reuses the current timeline backend through the normal seamless transition', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const player = createAudioPlayer({ repeatMode: 'ONE', state: { playbackMode: 'midi' } });
+    const manager = makeManager(player);
+    manager.playlist = [{ name: 'MIDI song', path: '/music/song.mid' }];
+    assert.equal(await manager.playNext(false), true);
+    assert.ok(player.calls.some(call => call[0] === 'seamlessTransition' && call[1] === 'MIDI song'));
+  });
+});
+
+
+test('MIDI queue play reaches the real activation coordinator and commits before its clock advances', async () => {
+  await withPlaybackGlobals({}, async ({ calls }) => {
+    const bytes = process.env.MIDI_ACTIVATION_FIXTURE
+      ? await fs.readFile(process.env.MIDI_ACTIVATION_FIXTURE)
+      : Uint8Array.from([77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 1, 224,
+        77, 84, 114, 107, 0, 0, 0, 13, 0, 144, 60, 100, 143, 0, 128, 60, 0, 0, 255, 47, 0]);
+    const timeline = parseSmf(bytes);
+    assert.ok(timeline.duration > 0);
+    const player = createAudioPlayer({ state: { playbackSpeed: 1, isStopped: true } });
+    const context = { currentTime: 10, sampleRate: 48000, state: 'running' };
+    player.audioContext = context;
+    const listeners = new Set(), sent = [], stages = [];
+    const node = { port: { addEventListener(_type, listener) { listeners.add(listener); },
+      removeEventListener(_type, listener) { listeners.delete(listener); }, start() {},
+      postMessage(message) {
+        sent.push(message);
+        if (message.type === 'midiTransport' && message.preparing) queueMicrotask(() => {
+          for (const listener of listeners) listener({ data: { type: 'midiPrepared', generation: message.generation } });
+        });
+      } } };
+    const graph = { audioGraphGeneration: 1, workletGraphGeneration: 1, topologyRevision: 1 };
+    const coordinator = new AudioActivationCoordinator({ getGraphSnapshot: () => graph,
+      getActiveWorklets: () => [node], freshRenderTimeoutMs: 100,
+      broadcast: request => queueMicrotask(() => coordinator.recordWorkletEvent({ ...request,
+        type: 'powerObservation', state: 'active', processingDirective: 'full-process', renderSequence: 1 }, node)) });
+    class SoundFontPlayerPlugin {}
+    const plugin = Object.assign(new SoundFontPlayerPlugin(), { id: 1, enabled: true, sf: 'bank',
+      getParameters: () => ({ sf: 'bank', mc: 0 }) });
+    const audioManager = { workletNode: node, audioContext: context,
+      _getActiveDspWorklets: () => [node], _isActiveDspWorklet: value => value === node,
+      _wasmAssetMembershipByNode: new Map([[node, new Map([[1, plugin]])]]),
+      getEffectiveActiveWasmAssetSnapshot: () => ({ ready: true, stale: false }),
+      isStagedAudioActivationEnabled: () => true,
+      stageAudioActivation: async intent => {
+        try { const stage = await coordinator.stageIntent(intent); stages.push(stage); return stage; }
+        catch (error) { calls.push(['activation failed', error]); throw error; }
+      },
+      activateStagedAudioCandidate: (stage, callbacks) => coordinator.activate(stage, callbacks) };
+    const owner = Object.assign(Object.create(AudioContextManager.prototype), {
+      audioPlayer: player, audioManager, activeSourceGeneration: 1, stopRequestToken: 0,
+      playerVolume: 100, playerMute: false, midiTimeline: timeline, midiSource: {},
+      getCurrentState: () => player.state, updateState: patch => Object.assign(player.state, patch),
+      setGraphRebuildTransportIntent: () => null, hasActiveGraphRebuildRequest: () => false, cancelVideoNaturalEnd() {},
+      getUseInputWithPlayer: () => false, ensurePipelineSourceConnected: () => true,
+      setPrivatePipelineSourceMuted: () => true, setManagedSourceNode() {}, getPipelineSourceNode: value => value,
+      setupBufferMonitoring() {}, rearmPreparedAutomaticMove() {},
+      async loadTrack(track, index) {
+        Object.assign(player.state, { currentTrack: track, currentTrackIndex: index, playbackMode: 'midi', currentTrackDuration: timeline.duration });
+        return true;
+      }
+    });
+    player.contextManager = owner;
+    const manager = makeManager(player);
+    setPlaylist(manager, ['MIDI song', 'Do not skip']);
+    try {
+      assert.equal(await manager.play(), true, calls.flat().map(value => value?.message ?? String(value)).join(" | "));
+      assert.equal(stages.length, 1);
+      assert.equal(stages[0].descriptor.backend, 'midi');
+      assert.equal(stages[0].state, 'active');
+      assert.equal(player.state.currentTrackIndex, 0);
+      assert.equal(player.state.isPlaying, true);
+      const start = sent.find(message => message.type === 'midiStart');
+      assert.ok(start);
+      context.currentTime += .27;
+      assert.equal(owner.getCurrentMidiTime(), 0);
+      for (const listener of listeners) listener({ data: { type: 'midiPosition', generation: start.generation,
+        processedFrame: start.anchorFrame + 12000, position: .25 } });
+      assert.equal(owner.getCurrentMidiTime(), .25);
+    } finally { manager.dispose(); }
   });
 });

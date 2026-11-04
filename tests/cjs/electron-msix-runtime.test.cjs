@@ -54,6 +54,7 @@ test('MSIX startup leaves login items and protocol registration to the package m
     const calls = [];
     vm.runInNewContext(login + protocol, {
       process: { windowsStore: isMsix }, cfg: { autoLaunch: true }, applyNativeTheme() {},
+      settingsProfile: require('../../electron/settings-profile.cjs'),
       app: {
         setLoginItemSettings(settings) { calls.push(['login', settings.openAtLogin]); },
         setAsDefaultProtocolClient(scheme) { calls.push(['protocol', scheme]); }

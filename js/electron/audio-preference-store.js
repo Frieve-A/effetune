@@ -45,15 +45,23 @@ const DEVICE_LABEL_ID_KEYS = Object.freeze({
 });
 
 export function isGaplessPlaybackOnlyChange(previousPreferences, nextPreferences) {
+  return isPreferenceOnlyChange(previousPreferences, nextPreferences, 'gaplessPlayback');
+}
+
+export function isMidiInputOnlyChange(previousPreferences, nextPreferences) {
+  return isPreferenceOnlyChange(previousPreferences, nextPreferences, 'midiInputDeviceKey');
+}
+
+function isPreferenceOnlyChange(previousPreferences, nextPreferences, field) {
   const previous = normalizeWebAudioPreferences(previousPreferences || {});
   const next = mergeWebAudioPreferences(previousPreferences || {}, nextPreferences);
   if (!previous || !next) return false;
-  if (previous.gaplessPlayback === next.gaplessPlayback) return false;
+  if (previous[field] === next[field]) return false;
   const keys = new Set([
     ...Object.keys(previous),
     ...Object.keys(next)
   ]);
-  return [...keys].every(key => key === 'gaplessPlayback' ||
+  return [...keys].every(key => key === field ||
     Object.is(previous[key], next[key]) ||
     (key in DEVICE_LABEL_ID_KEYS &&
       Object.is(previous[DEVICE_LABEL_ID_KEYS[key]], next[DEVICE_LABEL_ID_KEYS[key]])));

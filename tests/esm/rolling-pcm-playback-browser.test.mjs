@@ -486,6 +486,7 @@ test('rolling worker reproduces same-rate WAV and FLAC reference PCM in Chromium
         const sampleRate = 48000;
         const channelCount = 2;
         const frameCount = 12000;
+        const startFrame = 128;
         const reference = new AudioBuffer({
           numberOfChannels: channelCount,
           length: frameCount,
@@ -508,7 +509,7 @@ test('rolling worker reproduces same-rate WAV and FLAC reference PCM in Chromium
             wavSampleFormat: 'pcm16',
             flacSampleFormat: 'pcm16'
           });
-          const context = new OfflineAudioContext(channelCount, frameCount, sampleRate);
+          const context = new OfflineAudioContext(channelCount, startFrame + frameCount, sampleRate);
           let ended = 0;
           const transport = new RollingPcmTransport(context, { onEnded: () => ended++ });
           const metadata = await transport.prepare({
@@ -518,7 +519,7 @@ test('rolling worker reproduces same-rate WAV and FLAC reference PCM in Chromium
             format
           });
           transport.connect(context.destination);
-          if (!transport.activate({ when: 0, frame: 0 })) {
+          if (!transport.activate({ when: startFrame / sampleRate, frame: 0 })) {
             throw new Error(`Failed to activate ${format} transport`);
           }
           const rendered = await context.startRendering();
@@ -526,7 +527,7 @@ test('rolling worker reproduces same-rate WAV and FLAC reference PCM in Chromium
           let maxError = 0;
           for (let channel = 0; channel < channelCount; channel++) {
             const expected = reference.getChannelData(channel);
-            const actual = rendered.getChannelData(channel);
+            const actual = rendered.getChannelData(channel).subarray(startFrame);
             for (let frame = 0; frame < frameCount; frame++) {
               const error = Math.abs(expected[frame] - actual[frame]);
               if (error > maxError) maxError = error;

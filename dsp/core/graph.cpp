@@ -112,7 +112,8 @@ void GraphPlan::fail(et_status status, std::uint32_t kind, std::uint32_t index, 
 }
 
 et_status GraphPlan::configure(Engine &engine, const std::uint8_t *descriptor,
-                               std::uint32_t descriptor_bytes) {
+                               std::uint32_t descriptor_bytes, bool offline_pipeline) {
+  offline_pipeline_ = offline_pipeline;
   diagnostic_ = {ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
   const et_status parsed = parseDescriptor(engine, descriptor, descriptor_bytes);
   if (parsed != ET_OK) {
@@ -143,6 +144,9 @@ et_status GraphPlan::parseDescriptor(Engine &engine, const std::uint8_t *descrip
   schedule_.clear();
   output_edges_.clear();
   buffers_.clear();
+  offline_input_.clear();
+  offline_prepared_ = offline_pending_ = offline_node_prepared_ = offline_retry_ = offline_failed_ =
+      false;
   snapshot_.clear();
   output_latency_ = {};
   output_delays_ = {};
@@ -161,9 +165,9 @@ et_status GraphPlan::parseDescriptor(Engine &engine, const std::uint8_t *descrip
   const std::uint32_t node_count = readU32(descriptor + 8u);
   const std::uint32_t edge_count = readU32(descriptor + 12u);
   const std::uint32_t string_bytes = readU32(descriptor + 16u);
-  if (magic != kDescriptorMagic || version != kDescriptorVersion ||
-      readU32(descriptor + 20u) != 0u || readU32(descriptor + 24u) != 0u ||
-      readU32(descriptor + 28u) != 0u) {
+  if (magic != (offline_pipeline_ ? 0x464f5445u : kDescriptorMagic) ||
+      version != kDescriptorVersion || readU32(descriptor + 20u) != 0u ||
+      readU32(descriptor + 24u) != 0u || readU32(descriptor + 28u) != 0u) {
     fail(ET_ERR_GRAPH_INVALID, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_DOCUMENT);
     return ET_ERR_GRAPH_INVALID;
   }
@@ -261,6 +265,7 @@ et_status GraphPlan::parseDescriptor(Engine &engine, const std::uint8_t *descrip
     edge.gain = readF32(record + 24u);
     edge.pan = readF32(record + 28u);
     edge.flags = readU32(record + 32u);
+    edge.channelMask = offline_pipeline_ ? readU32(record + 36u) : 0xffffu;
     if (!read_string(readU32(record + 8u), readU32(record + 12u), 128u, false, edge.id)) {
       fail(ET_ERR_GRAPH_INVALID, ET_GRAPH_DIAGNOSTIC_EDGE, index, ET_GRAPH_PATH_EDGE_ID);
       return ET_ERR_GRAPH_INVALID;
@@ -286,7 +291,8 @@ et_status GraphPlan::parseDescriptor(Engine &engine, const std::uint8_t *descrip
       return ET_ERR_GRAPH_INVALID;
     }
     if ((edge.flags & ~(kEdgeFlagMute | kEdgeFlagSolo | kEdgeFlagPan)) != 0u ||
-        readU32(record + 36u) != 0u) {
+        (offline_pipeline_ ? (edge.channelMask == 0u || edge.channelMask > 0xffffu)
+                           : readU32(record + 36u) != 0u)) {
       fail(ET_ERR_GRAPH_INVALID, ET_GRAPH_DIAGNOSTIC_EDGE, index, ET_GRAPH_PATH_EDGE_CONTROL);
       return ET_ERR_GRAPH_INVALID;
     }
@@ -346,6 +352,10 @@ et_status GraphPlan::validateStructure() {
       --indegree[destination];
     }
   }
+
+  // The internal pipeline may have silent source buses or unused auxiliary outputs.
+  if (offline_pipeline_)
+    return ET_OK;
 
   std::vector<bool> from_input(node_count, false);
   for (const Edge &edge : edges_) {
@@ -539,6 +549,8 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
       const std::array<std::uint32_t, 16> *source_latency =
           edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
       for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+        if ((edge.channelMask & (1u << channel)) == 0u)
+          continue;
         const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
         node.inputLatency[channel] =
             latency > node.inputLatency[channel] ? latency : node.inputLatency[channel];
@@ -549,6 +561,8 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
       const std::array<std::uint32_t, 16> *source_latency =
           edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
       for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+        if ((edge.channelMask & (1u << channel)) == 0u)
+          continue;
         const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
         edge.compensation[channel] = node.inputLatency[channel] - latency;
       }
@@ -582,6 +596,8 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
     const std::array<std::uint32_t, 16> *source_latency =
         edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
     for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+      if ((edge.channelMask & (1u << channel)) == 0u)
+        continue;
       const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
       output_latency_[channel] =
           latency > output_latency_[channel] ? latency : output_latency_[channel];
@@ -592,6 +608,8 @@ et_status GraphPlan::buildLatencyAndStorage(Engine &engine) {
     const std::array<std::uint32_t, 16> *source_latency =
         edge.source == kEndpoint ? nullptr : &nodes_[edge.source].outputLatency;
     for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+      if ((edge.channelMask & (1u << channel)) == 0u)
+        continue;
       const std::uint32_t latency = source_latency == nullptr ? 0u : (*source_latency)[channel];
       edge.compensation[channel] = output_latency_[channel] - latency;
     }
@@ -776,9 +794,9 @@ float *GraphPlan::buffer(std::uint32_t slot) noexcept {
   return buffers_.data() + static_cast<std::size_t>(slot) * slab;
 }
 
-const float *GraphPlan::sourceBuffer(const Engine &engine, std::uint32_t source) const noexcept {
+const float *GraphPlan::sourceBuffer(const float *input, std::uint32_t source) const noexcept {
   if (source == kEndpoint) {
-    return const_cast<Engine &>(engine).arena_.combined();
+    return input;
   }
   const std::uint32_t slot = nodes_[source].bufferSlot;
   const std::size_t slab = static_cast<std::size_t>(max_channels_) * max_frames_;
@@ -789,6 +807,8 @@ const float *GraphPlan::sourceBuffer(const Engine &engine, std::uint32_t source)
 void GraphPlan::mixEdge(Edge &edge, const float *source, float *destination,
                         std::uint32_t frame_count) noexcept {
   for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+    if ((edge.channelMask & (1u << channel)) == 0u)
+      continue;
     float channel_gain = edge.gain;
     if ((edge.flags & kEdgeFlagPan) != 0u) {
       if (channel == 0u && edge.pan > 0.0F) {
@@ -816,10 +836,39 @@ void GraphPlan::mixEdge(Edge &edge, const float *source, float *destination,
 
 et_status GraphPlan::process(Engine &engine, std::uint32_t channel_count, std::uint32_t frame_count,
                              double time_seconds) noexcept {
+  if (offline_pending_)
+    return ET_ERR_STATE;
+  return processBlock(engine, channel_count, frame_count, time_seconds, false);
+}
+
+et_status GraphPlan::prepareOffline() {
+  if (!configured_ || offline_pending_)
+    return ET_ERR_STATE;
+  const auto samples = static_cast<std::size_t>(max_channels_) * max_frames_;
+  if (static_cast<std::uint64_t>(workspace_bytes_) + samples * sizeof(float) > kMaxWorkspaceBytes)
+    return ET_ERR_GRAPH_CAPACITY;
+  offline_input_.resize(samples);
+  offline_prepared_ = true;
+  return ET_OK;
+}
+
+et_status GraphPlan::processOffline(Engine &engine, std::uint32_t channel_count,
+                                    std::uint32_t frame_count, double time_seconds) noexcept {
+  if (!offline_prepared_ || offline_failed_)
+    return ET_ERR_STATE;
+  if (offline_pending_ && (frame_count != offline_frames_ || time_seconds != offline_time_))
+    return ET_ERR_ARGS;
+  return processBlock(engine, channel_count, frame_count, time_seconds, true);
+}
+
+et_status GraphPlan::processBlock(Engine &engine, std::uint32_t channel_count,
+                                  std::uint32_t frame_count, double time_seconds,
+                                  bool offline) noexcept {
   if (!configured_) {
     return ET_ERR_STATE;
   }
-  if (channel_count != max_channels_) {
+  if (channel_count != max_channels_ || frame_count == 0u || frame_count > max_frames_ ||
+      !std::isfinite(time_seconds)) {
     return ET_ERR_ARGS;
   }
   if (identity_) {
@@ -833,46 +882,91 @@ et_status GraphPlan::process(Engine &engine, std::uint32_t channel_count, std::u
     return ET_OK;
   }
 
-  for (std::uint32_t node_index : schedule_) {
+  if (offline && !offline_pending_) {
+    std::copy_n(main_bus, total_floats, offline_input_.data());
+    offline_frames_ = frame_count;
+    offline_time_ = time_seconds;
+    offline_node_ = 0u;
+    offline_node_prepared_ = offline_retry_ = false;
+    offline_transport_ = engine.host_transport_;
+    offline_has_transport_ = engine.host_transport_set_;
+    offline_pending_ = true;
+  }
+  const float *input = offline ? offline_input_.data() : main_bus;
+  for (auto position = offline ? offline_node_ : 0u; position < schedule_.size(); ++position) {
+    const auto node_index = schedule_[position];
     Node &node = nodes_[node_index];
     float *output = buffer(node.bufferSlot);
-    std::memset(output, 0, static_cast<std::size_t>(total_floats) * sizeof(float));
-    for (std::uint32_t edge_index : node.incomingEdges) {
-      Edge &edge = edges_[edge_index];
-      mixEdge(edge, sourceBuffer(engine, edge.source), output, frame_count);
-    }
-    const std::uint32_t pre_delay = maximum(node.preDelay, max_channels_);
-    if (pre_delay != 0u) {
-      for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
-        const std::uint32_t delay = node.preDelay[channel];
-        if (delay == 0u) {
-          continue;
-        }
-        float *audio = output + channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          node.preDelayLine.push(channel, audio[frame]);
-          audio[frame] = node.preDelayLine.read(channel, delay);
+    if (!offline || !offline_node_prepared_) {
+      std::memset(output, 0, static_cast<std::size_t>(total_floats) * sizeof(float));
+      for (std::uint32_t edge_index : node.incomingEdges) {
+        Edge &edge = edges_[edge_index];
+        mixEdge(edge, sourceBuffer(input, edge.source), output, frame_count);
+      }
+      const std::uint32_t pre_delay = maximum(node.preDelay, max_channels_);
+      if (pre_delay != 0u) {
+        for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
+          const std::uint32_t delay = node.preDelay[channel];
+          if (delay == 0u) {
+            continue;
+          }
+          float *audio = output + channel * frame_count;
+          for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+            node.preDelayLine.push(channel, audio[frame]);
+            audio[frame] = node.preDelayLine.read(channel, delay);
+          }
         }
       }
+      if (offline)
+        offline_node_prepared_ = true;
     }
     if (!node.enabled) {
+      if (offline) {
+        offline_node_ = position + 1u;
+        offline_node_prepared_ = false;
+      }
       continue;
     }
     Engine::InstanceSlot *slot = engine.findInstance(node.instance);
     if (slot == nullptr) {
+      if (offline) {
+        offline_failed_ = true;
+        std::fill_n(main_bus, total_floats, 0.0F);
+      }
       return ET_ERR_STATE;
     }
     // The kernel input is aligned to its output latency minus its own latency.
     const std::uint32_t input_latency = node.outputLatency[node.firstChannel] - node.kernelLatency;
-    engine.processSlot(*slot, output + node.firstChannel * frame_count, node.channelCount,
-                       frame_count, engine.nodeProcessInfo(time_seconds, input_latency));
+    if (offline) {
+      // The final mix slab is unused until all nodes commit, so it also holds each trial.
+      float *trial = buffer(buffer_slot_count_ - 1u);
+      std::copy_n(output, total_floats, trial);
+      const auto info = engine.nodeProcessInfo(
+          offline_time_, input_latency, offline_has_transport_ ? &offline_transport_ : nullptr);
+      const auto status =
+          engine.processOfflineSlot(*slot, trial + node.firstChannel * frame_count,
+                                    node.channelCount, frame_count, info, offline_retry_);
+      if (status != ET_OK) {
+        offline_node_ = position;
+        offline_retry_ = true;
+        offline_failed_ = status != ET_NEED_SAMPLE;
+        std::fill_n(main_bus, total_floats, 0.0F);
+        return status;
+      }
+      std::copy_n(trial, total_floats, output);
+      offline_node_ = position + 1u;
+      offline_node_prepared_ = offline_retry_ = false;
+    } else {
+      engine.processSlot(*slot, output + node.firstChannel * frame_count, node.channelCount,
+                         frame_count, engine.nodeProcessInfo(time_seconds, input_latency));
+    }
   }
 
   float *output = buffer(buffer_slot_count_ - 1u);
   std::memset(output, 0, static_cast<std::size_t>(total_floats) * sizeof(float));
   for (std::uint32_t edge_index : output_edges_) {
     Edge &edge = edges_[edge_index];
-    mixEdge(edge, sourceBuffer(engine, edge.source), output, frame_count);
+    mixEdge(edge, sourceBuffer(input, edge.source), output, frame_count);
   }
   for (std::uint32_t channel = 0u; channel < max_channels_; ++channel) {
     const std::uint32_t delay = output_delays_[channel];
@@ -886,10 +980,13 @@ et_status GraphPlan::process(Engine &engine, std::uint32_t channel_count, std::u
     }
   }
   std::memcpy(main_bus, output, static_cast<std::size_t>(total_floats) * sizeof(float));
+  offline_pending_ = false;
   return ET_OK;
 }
 
 void GraphPlan::reset() noexcept {
+  offline_pending_ = offline_node_prepared_ = offline_retry_ = offline_failed_ = false;
+  offline_node_ = 0u;
   std::fill(buffers_.begin(), buffers_.end(), 0.0F);
   for (Edge &edge : edges_) {
     edge.delayLine.reset();

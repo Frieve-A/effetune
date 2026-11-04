@@ -810,8 +810,30 @@ bool runAssetCase(const Options &options, const Control &control, const std::vec
     return false;
   }
 
-  std::uint8_t *staging =
-      engine.beginInstanceAsset(instance, control.asset.slot, control.asset.begin);
+  auto asset_begin = control.asset.begin;
+  if (options.type == "SoundFontPlayerPlugin" || options.type == "SFZNotePlayerPlugin") {
+    if (control.asset.bytes.size() > UINT32_MAX) {
+      std::fputs("Sample player payload exceeds the supported extent\n", stderr);
+      return false;
+    }
+    const auto payload_bytes = static_cast<std::uint32_t>(control.asset.bytes.size());
+    std::uint64_t additional = 0;
+    if (!checkStatus("et_sample_player_preparation_bytes",
+                     et_sample_player_preparation_bytes(
+                         control.asset.bytes.data(), payload_bytes, payload_bytes,
+                         control.asset.format, control.sampleRate, control.channels,
+                         prepared_frames, 0.0, &additional,
+                         options.type == "SoundFontPlayerPlugin" ? ET_SAMPLE_PLAYER_MAIN
+                                                                 : ET_SAMPLE_PLAYER_NOTE))) {
+      return false;
+    }
+    if (additional > UINT32_MAX - payload_bytes) {
+      std::fputs("Sample player preparation exceeds the supported extent\n", stderr);
+      return false;
+    }
+    asset_begin.footprintBytes = payload_bytes + static_cast<std::uint32_t>(additional);
+  }
+  std::uint8_t *staging = engine.beginInstanceAsset(instance, control.asset.slot, asset_begin);
   if (staging == nullptr) {
     std::fputs("Engine::beginInstanceAsset failed\n", stderr);
     return false;

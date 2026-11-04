@@ -1266,7 +1266,13 @@ test('Browser page zoom follows app CSS zoom without moving bounds twice or repl
   await page.waitForFunction(url => window.uiManager.browserView.state.url === url &&
     !window.uiManager.browserView.state.loading, startPage);
   await checkZoom(1.5);
-  await browserEvaluate(application, `Boolean(window.open(${JSON.stringify(`${fixture.origin}/source?zoom-popup=1`)}, 'zoom-popup', 'width=350,height=300'))`);
+  const popupUrl = `${fixture.origin}/source?zoom-popup=1`;
+  assert.equal(await browserEvaluate(application, `Boolean(window.open(${JSON.stringify(popupUrl)}, 'zoom-popup', 'width=350,height=300'))`), true);
+  await application.evaluate(async ({ BrowserWindow }, url) => {
+    while (!BrowserWindow.getAllWindows().some(window => window.webContents.getURL() === url)) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }, popupUrl);
   await application.evaluate(({ Menu }) => { Menu.getApplicationMenu().getMenuItemById('view.resetZoom').click(); });
   await checkZoom(1);
   const popup = await application.evaluate(({ BrowserWindow }) => {

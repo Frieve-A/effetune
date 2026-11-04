@@ -4,7 +4,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { loadFreshModule, withModuleLoadStub } = require('../helpers/cjs-module-utils.cjs');
-const { registerSfzLibraryIpc, SFZ_LIBRARY_CHANNELS: channels, SFZ_SOURCE_MAX_BYTES } = require('../../electron/sfz-library-ipc.js');
+const { registerSfzLibraryIpc, SFZ_LIBRARY_CHANNELS: channels, SFZ_SOURCE_MAX_BYTES,
+  SFZ_RANGE_MAX_BYTES } = require('../../electron/sfz-library-ipc.js');
 
 async function fixture(t) {
   const root = await fs.promises.realpath(await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sfz-reference-')));
@@ -55,11 +56,33 @@ test('SFZ selection persists references only and reads current source bytes afte
   await fs.promises.writeFile(path.join(f.source, 'tone.wav'), 'updated');
   const request = { id: entry.id, relativePath: 'tone.wav', maxBytes: 1024 };
   assert.equal(Buffer.from((await f.call('readRelative', request)).data).toString(), 'updated');
-  assert.deepEqual((await f.call('statRelative', request)).data, { size: 7 });
+  const metadata = (await f.call('statRelative', request)).data;
+  assert.equal(metadata.size, 7);
+  assert.match(metadata.revision, /^[a-f0-9]{64}$/);
   assert.equal((await f.call('remove', { id: entry.id })).data, true);
   assert.deepEqual((await f.call('list')).data, []);
   assert.equal(await fs.promises.readFile(path.join(f.source, 'tone.wav'), 'utf8'), 'updated');
   assert.equal((await f.call('readRelative', request)).ok, false);
+});
+
+test('SoundFont SF2 and SF3 collections share granted references and bounded range readers', async t => {
+  const f = await fixture(t);
+  await fs.promises.writeFile(path.join(f.source, 'Compressed.sf3'), Buffer.from([5, 6, 7, 8]));
+  await fs.promises.writeFile(path.join(f.source, 'Collection.sf2'), Buffer.from([1, 2, 3, 4]));
+  const entry = (await f.call('select')).data.banks.find(bank => bank.name === 'Collection.sf2');
+  assert.ok(entry);
+  f.restart();
+  assert.ok((await f.call('list')).data.some(bank => bank.id === entry.id));
+  const stats = (await f.call('statRelative', { id: entry.id, relativePath: entry.selectedPath })).data;
+  const result = await f.call('readRelativeRange', { id: entry.id, relativePath: entry.selectedPath,
+    revision: stats.revision, offset: 2, length: 2 });
+  assert.equal(result.ok, true); assert.deepEqual([...result.data.bytes], [3, 4]);
+  const compressed = (await f.call('list')).data.find(bank => bank.name === 'Compressed.sf3');
+  assert.ok(compressed);
+  const compressedStats = (await f.call('statRelative', { id: compressed.id, relativePath: compressed.selectedPath })).data;
+  const compressedResult = await f.call('readRelativeRange', { id: compressed.id, relativePath: compressed.selectedPath,
+    revision: compressedStats.revision, offset: 2, length: 2 });
+  assert.equal(compressedResult.ok, true); assert.deepEqual([...compressedResult.data.bytes], [7, 8]);
 });
 
 test('SFZ relative reads reject escapes, foreign IDs, directories and oversized sources', async t => {
@@ -74,7 +97,7 @@ test('SFZ relative reads reject escapes, foreign IDs, directories and oversized 
   assert.deepEqual(await f.call('readRelative', { ...request, relativePath: 'missing.wav' }), { ok: true, data: null });
   const large = await fs.promises.open(path.join(f.source, 'large.wav'), 'w');
   try { await large.truncate(SFZ_SOURCE_MAX_BYTES + 1); } finally { await large.close(); }
-  assert.deepEqual(await f.call('statRelative', { id, relativePath: 'large.wav' }), { ok: false, code: 'too-large' });
+  assert.equal((await f.call('statRelative', { id, relativePath: 'large.wav' })).data.size, SFZ_SOURCE_MAX_BYTES + 1);
   assert.deepEqual(await f.call('readRelative', { id, relativePath: 'large.wav', maxBytes: Number.MAX_SAFE_INTEGER }),
     { ok: false, code: 'too-large' });
 });
@@ -139,7 +162,13 @@ test('SFZ sample stat reads WAV, FLAC and AIFF metadata without loading audio bo
     ['compressed.flac', { size: 42, channels: 2, frames: 96000, sampleRate: 48000 }],
     ['sample.aiff', { size: 38, channels: 1, frames: 128, sampleRate: 44100 }],
     ['tone.wav', { size: 5 }]
-  ]) assert.deepEqual(await f.call('statRelative', { id, relativePath }), { ok: true, data: expected });
+  ]) {
+    const result = await f.call('statRelative', { id, relativePath });
+    assert.equal(result.ok, true);
+    const { revision, ...metadata } = result.data;
+    assert.match(revision, /^[a-f0-9]{64}$/);
+    assert.deepEqual(metadata, expected);
+  }
 });
 
 test('SFZ canonical containment rejects dependencies linked outside the selected folder', async t => {
@@ -150,7 +179,7 @@ test('SFZ canonical containment rejects dependencies linked outside the selected
   await fs.promises.writeFile(path.join(outside, 'Outside.sfz'), '<region> sample=secret.wav');
   try { await fs.promises.symlink(outside, path.join(f.source, 'linked'), 'junction'); }
   catch (error) {
-    if (error.code === 'EPERM' || error.code === 'EACCES') { t.skip('Host cannot create directory links'); return; }
+    if (error.code === 'EPERM' || error.code === 'EACCES') { t.skip(`Host cannot create directory links (${error.code})`); return; }
     throw error;
   }
   const banks = (await f.call('select')).data.banks;
@@ -159,6 +188,102 @@ test('SFZ canonical containment rejects dependencies linked outside the selected
   const request = { id, relativePath: 'linked/secret.wav', maxBytes: 1024 };
   assert.equal((await f.call('readRelative', request)).ok, false);
   assert.equal((await f.call('statRelative', request)).ok, false);
+  assert.equal((await f.call('readRelativeRange', { ...request, offset: 0, length: 1,
+    revision: 'a'.repeat(64) })).ok, false);
+});
+
+test('SFZ range reads return exact bytes with bounded requests and a stable revision', async t => {
+  const f = await fixture(t);
+  const { id } = (await f.call('select')).data.banks[0];
+  const request = { id, relativePath: 'tone.wav' };
+  const { revision, size } = (await f.call('statRelative', request)).data;
+  const range = { ...request, revision, offset: 1, length: 3 };
+  const result = await f.call('readRelativeRange', range);
+  assert.equal(result.ok, true);
+  assert.equal(Buffer.from(result.data.bytes).toString(), 'udi');
+  assert.equal(result.data.revision, revision);
+  assert.equal((await f.call('statRelative', request)).data.revision, revision);
+  assert.equal((await f.call('readRelativeRange', { ...range, offset: size, length: 0 })).data.bytes.length, 0);
+  for (const change of [{ offset: -1 }, { offset: .5 }, { offset: Number.MAX_SAFE_INTEGER },
+    { length: -1 }, { length: .5 }, { length: SFZ_RANGE_MAX_BYTES + 1 }, { offset: 4, length: 2 },
+    { revision: '' }, { revision: 'not-a-revision' }, { id: '0'.repeat(24) },
+    { relativePath: '../outside' }, { relativePath: '.' }]) {
+    assert.equal((await f.call('readRelativeRange', { ...range, ...change })).ok, false, JSON.stringify(change));
+  }
+  await fs.promises.writeFile(path.join(f.source, 'tone.wav'), 'changed');
+  assert.deepEqual(await f.call('readRelativeRange', range), { ok: false, code: 'source-changed' });
+  await fs.promises.unlink(path.join(f.source, 'tone.wav'));
+  assert.deepEqual(await f.call('readRelativeRange', range), { ok: false, code: 'source-changed' });
+});
+
+test('SFZ range reads address sparse files past4GiB without whole-file admission', async t => {
+  const f = await fixture(t);
+  const { id } = (await f.call('select')).data.banks[0];
+  const target = path.join(f.source, 'large-sample.wav');
+  await fs.promises.writeFile(target, '');
+  if (process.platform === 'win32') {
+    const { execFile } = require('node:child_process');
+    const { promisify } = require('node:util');
+    await promisify(execFile)('fsutil.exe', ['sparse', 'setflag', target], { windowsHide: true });
+  }
+  const position = 2 ** 32 + 37;
+  const handle = await fs.promises.open(target, 'r+');
+  try { await handle.write(Buffer.from([11, 22, 33, 44]), 0, 4, position); }
+  finally { await handle.close(); }
+  const request = { id, relativePath: 'large-sample.wav' };
+  const metadata = await f.call('statRelative', request);
+  assert.equal(metadata.ok, true);
+  assert.equal(metadata.data.size, position + 4);
+  const range = await f.call('readRelativeRange', { ...request, revision: metadata.data.revision,
+    offset: position, length: 4 });
+  assert.equal(range.ok, true);
+  assert.deepEqual([...range.data.bytes], [11, 22, 33, 44]);
+  const fullPage = await f.call('readRelativeRange', { ...request, revision: metadata.data.revision,
+    offset: 0, length: SFZ_RANGE_MAX_BYTES });
+  assert.equal(fullPage.ok, true);
+  assert.equal(fullPage.data.bytes.length, SFZ_RANGE_MAX_BYTES);
+  assert.ok(fullPage.data.bytes.every(byte => byte === 0));
+  assert.deepEqual(await f.call('readRelative', { ...request, maxBytes: Number.MAX_SAFE_INTEGER }),
+    { ok: false, code: 'too-large' });
+});
+
+test('SFZ range revision rejects a replaced file even when size and modification time match', async t => {
+  const f = await fixture(t);
+  const { id } = (await f.call('select')).data.banks[0];
+  const target = path.join(f.source, 'tone.wav');
+  const original = await fs.promises.stat(target);
+  const request = { id, relativePath: 'tone.wav' };
+  const { revision } = (await f.call('statRelative', request)).data;
+  const replacement = path.join(f.source, 'replacement.wav');
+  await fs.promises.writeFile(replacement, 'other');
+  await fs.promises.utimes(replacement, original.atime, original.mtime);
+  await fs.promises.rename(replacement, target);
+  assert.deepEqual(await f.call('readRelativeRange', { ...request, revision, offset: 0, length: 5 }),
+    { ok: false, code: 'source-changed' });
+});
+
+test('SFZ range reads reject a source modified during the admitted read', async t => {
+  const f = await fixture(t);
+  const { id } = (await f.call('select')).data.banks[0];
+  const target = await fs.promises.realpath(path.join(f.source, 'tone.wav'));
+  const request = { id, relativePath: 'tone.wav' };
+  const { revision } = (await f.call('statRelative', request)).data;
+  const open = fs.promises.open;
+  t.after(() => { fs.promises.open = open; });
+  fs.promises.open = async (file, ...args) => {
+    const handle = await open(file, ...args);
+    if (file === target) {
+      const read = handle.read.bind(handle);
+      handle.read = async (...readArgs) => {
+        const result = await read(...readArgs);
+        await fs.promises.writeFile(target, 'replaced');
+        return result;
+      };
+    }
+    return handle;
+  };
+  assert.deepEqual(await f.call('readRelativeRange', { ...request, revision, offset: 0, length: 5 }),
+    { ok: false, code: 'source-changed' });
 });
 
 test('SFZ chooser cancellation changes no references and missing dependencies stay missing', async t => {
@@ -186,4 +311,35 @@ test('preload exposes only the SFZ reference operations through the dedicated ch
   assert.equal(api.apiVersion, 1);
   for (const method of Object.keys(channels)) await api[method]({ id: 'a'.repeat(24) });
   assert.deepEqual(calls.map(([channel]) => channel), Object.values(channels));
+});
+
+test('fingerprint candidates stay in the requested granted parent and reject exhausted or revoked grants', async t => {
+  const f = await fixture(t);
+  await fs.promises.mkdir(path.join(f.source, 'Samples'));
+  await fs.promises.mkdir(path.join(f.source, 'Samples', 'Nested'));
+  await fs.promises.writeFile(path.join(f.source, 'Samples', 'renamed.wav'), 'audio');
+  await fs.promises.writeFile(path.join(f.source, 'Samples', 'Nested', 'other.wav'), 'other');
+  const { id } = (await f.call('select')).data.banks[0];
+  const request = { id, relativePath: 'Samples/missing.wav', maxEntries: 10 };
+  assert.deepEqual(await f.call('listSampleCandidates', request), { ok: true, data: ['Samples/renamed.wav'] });
+  assert.deepEqual(await f.call('listSampleCandidates', { ...request, relativePath: 'Absent/missing.wav' }),
+    { ok: true, data: [] });
+  for (const relativePath of ['../settings/missing.wav', 'C:\\secret.wav', '/secret.wav']) {
+    assert.equal((await f.call('listSampleCandidates', { ...request, relativePath })).ok, false);
+  }
+  assert.deepEqual(await f.call('listSampleCandidates', { ...request, relativePath: 'missing.wav', maxEntries: 1 }),
+    { ok: false, code: 'sample-lookup-limit' });
+  await f.call('remove', { id });
+  assert.equal((await f.call('listSampleCandidates', request)).ok, false);
+});
+
+test('fingerprint candidate search rejects a linked parent outside its granted root', async t => {
+  const f = await fixture(t);
+  const { id } = (await f.call('select')).data.banks[0];
+  try { await fs.promises.symlink(f.data, path.join(f.source, 'Escape'), 'junction'); }
+  catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) { t.skip(`Host cannot create directory links (${error.code})`); return; }
+    throw error;
+  }
+  assert.equal((await f.call('listSampleCandidates', { id, relativePath: 'Escape/missing.wav', maxEntries: 10 })).ok, false);
 });

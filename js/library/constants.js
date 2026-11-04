@@ -1,3 +1,5 @@
+import { SCORE_EXTENSIONS } from '../midi/score-file.js';
+
 export const MUSIC_LIBRARY_UI_STORAGE_KEY = 'effetune_library_ui';
 export const MUSIC_LIBRARY_STARTUP_VIEWS = Object.freeze([
   'tracks',
@@ -11,6 +13,9 @@ export const MUSIC_LIBRARY_STARTUP_VIEWS = Object.freeze([
 ]);
 
 export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze([
+  'dsf',
+  'dff',
+  ...SCORE_EXTENSIONS,
   'mp3',
   'wav',
   'ogg',
@@ -40,6 +45,7 @@ export const SUPPORTED_CUE_EXTENSIONS = Object.freeze(['cue']);
 
 export const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
 export const SUPPORTED_VIDEO_EXTENSION_SET = new Set(SUPPORTED_VIDEO_EXTENSIONS);
+export const SUPPORTED_MIDI_EXTENSION_SET = new Set(SCORE_EXTENSIONS);
 export const SUPPORTED_PLAYLIST_EXTENSION_SET = new Set(SUPPORTED_PLAYLIST_EXTENSIONS);
 export const SUPPORTED_CUE_EXTENSION_SET = new Set(SUPPORTED_CUE_EXTENSIONS);
 export const DEFAULT_SCAN_BATCH_SIZE = 200;
@@ -52,10 +58,11 @@ export function normalizeMusicLibraryStartupView(value) {
 }
 
 export function getFileExtension(pathOrName = '') {
-  const clean = String(pathOrName).split(/[?#]/)[0];
+  const value = String(pathOrName);
+  const clean = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value.split(/[?#]/, 1)[0] : value;
   const slash = clean.split(/[\\/]/).pop() || clean;
   const dot = slash.lastIndexOf('.');
-  return dot >= 0 ? slash.slice(dot + 1).toLowerCase() : '';
+  return dot >= 0 ? slash.slice(dot + 1).split(/[?#]/, 1)[0].toLowerCase() : '';
 }
 
 export function getFileName(pathOrName = '') {
@@ -76,8 +83,14 @@ export function isSupportedVideoPath(pathOrName = '') {
   return SUPPORTED_VIDEO_EXTENSION_SET.has(getFileExtension(pathOrName));
 }
 
-export function isSupportedLibraryPath(pathOrName = '', includeVideo = false) {
-  return isSupportedAudioPath(pathOrName) && (includeVideo === true || !isSupportedVideoPath(pathOrName));
+export function isSupportedMidiPath(pathOrName = '') {
+  return SUPPORTED_MIDI_EXTENSION_SET.has(getFileExtension(pathOrName));
+}
+
+export function isSupportedLibraryPath(pathOrName = '', includeVideo = false, includeMidi = false) {
+  return isSupportedAudioPath(pathOrName) &&
+    (includeVideo === true || !isSupportedVideoPath(pathOrName)) &&
+    (includeMidi === true || !isSupportedMidiPath(pathOrName));
 }
 
 export function isSupportedPlaylistPath(pathOrName = '') {

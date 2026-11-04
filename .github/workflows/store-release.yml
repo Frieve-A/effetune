@@ -65,8 +65,10 @@ jobs:
         uses: microsoft/microsoft-store-apppublisher@781cadc9d347f025460d72480e777ef074cdbe98 # main
         with:
           version: v0.4.3
+      - name: Install private credential service dependencies
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y dbus gnome-keyring
       - name: Advance the recorded Store submission
-        run: node scripts/publish-msstore.mjs --submit
+        run: dbus-run-session -- node scripts/with-msstore-keyring.mjs
         env:
           GH_TOKEN: ${{ github.token }}
           MSSTORE_AUTOPUBLISH_ENABLED: ${{ vars.MSSTORE_AUTOPUBLISH_ENABLED }}

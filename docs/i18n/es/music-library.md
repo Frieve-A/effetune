@@ -18,7 +18,13 @@ La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de
 
 La Biblioteca musical indexa extensiones de audio habituales como MP3, WAV, OGG, FLAC, Opus, M4A y AAC. También puede usar una hoja CUE externa para dividir en pistas individuales un álbum WAV o FLAC situado en la misma carpeta.
 
+La Biblioteca musical también indexa archivos `.dsf` y `.dff`. Vuelve a escanear una carpeta ya añadida para encontrarlos; consulta [Archivos DSD](music-player.md#dsd-files) para conocer los formatos reproducibles.
+
 Para incluir archivos MP4, WebM, M4V, MOV, MKV y 3GP, activa **Incluir formatos de vídeo en la Biblioteca musical** en **Configuración > Configuración... > General** y después añade o vuelve a escanear una carpeta. Esta opción está desactivada de forma predeterminada; cambiarla no modifica de inmediato el catálogo existente. La reproducción efectiva, incluido el códec de audio dentro de un archivo de vídeo, depende del decodificador del navegador o del sistema operativo. Para ver cómo se muestra el vídeo, consulta la [guía del Reproductor de música](music-player.md#video).
+
+Para incluir archivos MIDI/KAR (`.mid`, `.midi`, `.kar`) y MusicXML (`.musicxml`, `.xml`, `.mxl`), activa **Incluir archivos MIDI en la Biblioteca musical** en los mismos ajustes y después añade o vuelve a escanear una carpeta. Esta opción está desactivada de forma predeterminada; cambiarla no modifica de inmediato el catálogo existente. Para escuchar estos archivos, añade SoundFont Player y carga un instrumento; consulta [Archivos MIDI](music-player.md#archivos-midi) y [Archivos MusicXML](music-player.md#musicxml-files). La reproducción de MIDI y MusicXML y su incorporación a la biblioteca están disponibles en la aplicación de escritorio y en el reproductor web/PWA. No se admiten en la aplicación de Android.
+
+Estos ajustes solo afectan a la Biblioteca musical. Puedes seguir abriendo los archivos compatibles directamente en el Reproductor de música.
 
 ## Abrir la Biblioteca musical
 

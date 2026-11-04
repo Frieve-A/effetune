@@ -18,7 +18,13 @@ La Bibliothèque musicale enregistre son catalogue, le cache des pochettes et le
 
 La Bibliothèque musicale indexe les extensions de fichiers audio courantes telles que MP3, WAV, OGG, FLAC, Opus, M4A et AAC. Elle peut aussi utiliser une feuille CUE externe pour découper en pistes individuelles un fichier d’album WAV ou FLAC placé dans le même dossier.
 
+La Bibliothèque musicale indexe aussi les fichiers `.dsf` et `.dff`. Relancez l’analyse d’un dossier déjà ajouté pour les trouver ; consultez [Fichiers DSD](music-player.md#dsd-files) pour connaître les formats lisibles.
+
 Pour inclure les fichiers MP4, WebM, M4V, MOV, MKV et 3GP, activez **Inclure les formats vidéo dans la Bibliothèque musicale** dans **Paramètres > Configuration... > Général**, puis ajoutez un dossier ou relancez son analyse. Cette option est désactivée par défaut ; sa modification ne change pas immédiatement le catalogue existant. La prise en charge effective de la lecture, y compris le codec audio d’un fichier vidéo, dépend du décodeur du navigateur ou du système d’exploitation. Pour l’affichage des vidéos, consultez le [guide du lecteur de musique](music-player.md#video).
+
+Pour inclure les fichiers MIDI/KAR (`.mid`, `.midi`, `.kar`) et MusicXML (`.musicxml`, `.xml`, `.mxl`), activez **Inclure les fichiers MIDI dans la Bibliothèque musicale** dans les mêmes paramètres, puis ajoutez un dossier ou relancez son analyse. Cette option est désactivée par défaut ; sa modification ne change pas immédiatement le catalogue existant. Pour écouter ces fichiers, ajoutez SoundFont Player et chargez un instrument ; consultez [Fichiers MIDI](music-player.md#fichiers-midi) et [Fichiers MusicXML](music-player.md#musicxml-files). La lecture MIDI et MusicXML et l’ajout de ces fichiers à la bibliothèque sont disponibles dans l’application de bureau et le lecteur web/PWA. Ces fonctions ne sont pas prises en charge dans l’application Android.
+
+Ces paramètres concernent uniquement la Bibliothèque musicale. Vous pouvez toujours ouvrir les fichiers compatibles directement dans le lecteur de musique.
 
 ## Ouvrir la Bibliothèque musicale
 

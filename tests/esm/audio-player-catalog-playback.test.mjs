@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { normalizePlaybackSourceDescriptor } from '../../js/ui/audio-player/playback-source-policy.js';
 import {
   CatalogSequence,
   claimFolderPermissionAttempt
@@ -87,6 +89,85 @@ async function withPlaybackHarness(callback) {
     File: class FakeFile {}
   }, () => callback(createHarness()));
 }
+
+test('catalog score titles preserve MIDI decoding through provisional, playlist, and next-track playback', async () => {
+  const midi = Uint8Array.from([
+    77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96,
+    77, 84, 114, 107, 0, 0, 0, 12,
+    0, 0x90, 60, 100, 96, 0x80, 60, 0, 0, 0xff, 0x2f, 0
+  ]);
+  const xml = new TextEncoder().encode('<score-partwise><part-list><score-part id="P1"/></part-list>' +
+    '<part id="P1"><measure><attributes><divisions>1</divisions></attributes>' +
+    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>' +
+    '</measure></part></score-partwise>');
+  for (const extension of ['mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl']) {
+    await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+      const bytes = ['mid', 'midi', 'kar'].includes(extension) ? midi : xml;
+      const activations = [];
+      const decoder = Object.assign(Object.create(AudioContextManager.prototype), {
+        audioPlayer: { audioContext: {
+          sampleRate: 48000,
+          createBufferSource: () => ({ start() {} }),
+          createBuffer: () => ({})
+        } },
+        resolveTrackProvider: track => track,
+        createPlaybackSourceDescriptor: normalizePlaybackSourceDescriptor,
+        loadTrackData: descriptor => descriptor.readBytes(),
+        preparePlaybackSource() {},
+        connectPrivatePipelineSource: () => true
+      });
+      const activate = async (track, ordinal) => {
+        assert.equal(track.name, 'Catalog title', extension);
+        assert.equal(decoder.isMidiTrack(track), true, extension);
+        const prepared = await decoder.prepareTrackTransitionRequest(track, ordinal, () => false);
+        const candidate = await decoder.prepareTransitionCandidate(prepared, 1, () => false);
+        assert.equal(candidate.mode, 'midi', extension);
+        assert.ok(candidate.timeline.events.some(event => event.status === 0x90 && event.data1 === 60));
+        activations.push(ordinal);
+        return true;
+      };
+      Object.assign(audioPlayer.contextManager, {
+        loadTrack: activate,
+        seamlessTransition: activate,
+        transitionToNextTrack: activate,
+        resolveTrackProvider: decoder.resolveTrackProvider,
+        createPlaybackRequestSnapshot: (track, ordinal) => decoder.createPlaybackRequestSnapshot(track, ordinal)
+      });
+      const source = () => ({ kind: 'electron-file', path: `D:\\Music\\piece.${extension}`,
+        byteLength: bytes.byteLength, readBytes: async () => bytes.slice().buffer });
+      const entry = { entryInstanceId: 'score-first', trackUid: 'score-0', title: 'Catalog title', fileName: `piece.${extension}` };
+      assert.equal((await manager.installBulkPlayProvisional({ receipt: {
+        operationId: `score-${extension}`, provisionalEntry: entry
+      }, service: {}, resolveSource: source })).accepted, true);
+      assert.equal((await manager.loadCatalogSequence({
+        sequenceId: `score-playlist-${extension}`, itemCount: 2,
+        readPage: async () => ({ rows: [entry, { ...entry, entryInstanceId: 'score-next', trackUid: 'score-1' }] }),
+        resolveSource: source
+      }, { currentOrdinal: 0, autoPlay: true })).accepted, true);
+      audioPlayer.stateManager.updateState({ isPlaying: true, isPaused: false, isStopped: false }, 'playing score');
+      const plan = await manager.preparePlannedAutomaticMove();
+      assert.equal(plan.preparedRequest.decisionRecord.committedMode, 'midi');
+      assert.equal((await manager.transportNext(true)).accepted, true);
+      assert.deepEqual(activations, [0, 0, 1]);
+    });
+  }
+});
+
+test('score recognition uses source names before display titles and retains direct-open names', async () => {
+  const decoder = Object.create(AudioContextManager.prototype);
+  for (const extension of ['mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl']) {
+    assert.equal(decoder.isMidiTrack({ name: `Title.${extension}`, path: '/music/actual.flac' }), false);
+    assert.equal(decoder.isMidiTrack({ name: 'Catalog title', fileName: `actual.${extension}` }), true);
+    assert.equal(decoder.isMidiTrack({ name: 'Catalog title', file: { name: `actual.${extension}` } }), true);
+    assert.equal(decoder.isMidiTrack({ name: `actual.${extension}` }), true);
+    assert.equal(decoder.isMidiTrack({ path: `/music/actual.${extension}` }), true);
+    assert.equal(decoder.isMidiTrack(`actual.${extension}`), true);
+    await assert.rejects(decoder.prepareMidiTrack({ name: 'Catalog title', path: `/music/actual.${extension}` },
+      { byteLength: 33 * 1024 * 1024 }, () => false), {
+      code: ['mid', 'midi', 'kar'].includes(extension) ? 'midi-too-large' : 'musicxml-too-large'
+    });
+  }
+});
 
 test('million-item catalog playback pages metadata and resolves only the selected source', async () => {
   await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {

@@ -74,6 +74,7 @@ const rules = {
         return spectrumAge({ pt, sc: 'log-hq' }, rate, execution, true);
     }),
     LevelMeterPlugin: rule(),
+    SoundFontPlayerPlugin: rule(),
     SFZNotePlayerPlugin: rule((p, rate) => -Math.max(0, bounded(p.tm, 0, -100, 100)) * rate / 1000),
     PhaseSelectEqPlugin: rule(phaseSelectAge, 'input'),
     SpectrumAnalyzerPlugin: rule((p, rate, execution) => spectrumAge(p, rate, execution, true)),

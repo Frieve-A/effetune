@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -60,63 +61,81 @@ void testAllocationGuardScope() {
   }
 }
 
-void testAudioThreadEnablesDenormalFlush() {
+void testRenderScopesDenormalFlush() {
 #if defined(ET_TEST_HAS_X86_MXCSR)
-  auto engine_storage = std::make_unique<Engine>();
-  Engine &engine = *engine_storage;
+  auto engineStorage = std::make_unique<Engine>();
+  Engine &engine = *engineStorage;
   ET_CHECK(engine.prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
-  const et_instance instance = engine.createInstance("TestGainPlugin");
+  const auto instance = engine.createInstance("TestGainPlugin");
   ET_CHECK(instance != 0u);
   const float gain = 1.0F;
   ET_CHECK(engine.setInstanceParams(instance, &gain, 1u, kTestHash, 0u) == ET_OK);
   std::array<std::uint8_t, 20> pipeline{};
-  pipeline[0] = 1u;
-  pipeline[4] = 1u;
-  pipeline[8] = static_cast<std::uint8_t>(instance);
-  pipeline[9] = static_cast<std::uint8_t>(instance >> 8u);
-  pipeline[10] = static_cast<std::uint8_t>(instance >> 16u);
-  pipeline[11] = static_cast<std::uint8_t>(instance >> 24u);
-  pipeline[12] = 1u;
+  pipeline[0] = pipeline[4] = pipeline[12] = pipeline[16] = 1u;
+  for (auto byte = 0u; byte < 4u; ++byte)
+    pipeline[8u + byte] = static_cast<std::uint8_t>(instance >> (8u * byte));
   pipeline[15] = static_cast<std::uint8_t>(-2);
-  pipeline[16] = 1u;
-  ET_CHECK(engine.configurePipeline(pipeline.data(), static_cast<std::uint32_t>(pipeline.size())) ==
+  ET_CHECK(engine.configurePipeline(pipeline.data(), static_cast<unsigned>(pipeline.size())) ==
            ET_OK);
-
-  const auto entryEnablesFlush = [&](auto process, et_status expectedStatus) {
-    bool enabled = false;
+  std::array<std::uint8_t, 32> emptyGraph{};
+  emptyGraph[0] = 'E';
+  emptyGraph[1] = 'T';
+  emptyGraph[2] = 'G';
+  emptyGraph[3] = '1';
+  emptyGraph[4] = 1;
+  std::uint64_t offlineGeneration = 0;
+  struct Observation {
+    bool enabled = true;
+    unsigned calls = 0;
+  } observation;
+  engine.setPipelineObserver(
+      [](void *context, et_instance, const float *, std::uint32_t, std::uint32_t, std::uint32_t,
+         bool) noexcept {
+        auto &result = *static_cast<Observation *>(context);
+        constexpr auto mask = (1u << 15u) | (1u << 6u);
+        result.enabled = result.enabled && (_mm_getcsr() & mask) == mask;
+        ++result.calls;
+      },
+      &observation);
+  const auto preservesCaller = [&](auto process, et_status expected) {
+    bool preserved = true;
     std::thread audioThread([&]() {
-      constexpr unsigned int kFlushToZero = 1u << 15u;
-      constexpr unsigned int kDenormalsAreZero = 1u << 6u;
-      const unsigned int original = _mm_getcsr();
-      const unsigned int sentinel = (original & ~(kFlushToZero | kDenormalsAreZero)) | (1u << 13u);
-      _mm_setcsr(sentinel);
-      const et_status status = process();
-      const unsigned int configured = _mm_getcsr();
-      enabled =
-          status == expectedStatus &&
-          (configured & (kFlushToZero | kDenormalsAreZero)) == (kFlushToZero | kDenormalsAreZero) &&
-          (configured & (1u << 13u)) != 0u;
+      constexpr unsigned ftz = 1u << 15u, daz = 1u << 6u;
+      const auto original = _mm_getcsr();
+      // The caller may change its FP policy between calls on the same thread.
+      for (const auto mode : {0u, ftz, daz, ftz | daz}) {
+        const auto sentinel = (original & ~(ftz | daz)) | (1u << 13u) | mode;
+        _mm_setcsr(sentinel);
+        preserved = preserved && process() == expected && _mm_getcsr() == sentinel;
+      }
       _mm_setcsr(original);
     });
     audioThread.join();
-    return enabled;
+    return preserved;
   };
-
-  std::array<float, 8> instanceAudio{};
-  ET_CHECK(entryEnablesFlush(
-      [&]() { return engine.processInstance(instance, instanceAudio.data(), 2u, 4u, 0.0); },
-      ET_OK));
-  ET_CHECK(entryEnablesFlush([&]() { return engine.processPipeline(2u, 4u, 0.0, 0u); }, ET_OK));
-  ET_CHECK(entryEnablesFlush([&]() { return engine.processGraph(2u, 4u, 0.0); }, ET_ERR_STATE));
-  ET_CHECK(entryEnablesFlush(
+  std::array<float, 8> audio{};
+  ET_CHECK(preservesCaller(
       [&]() -> et_status {
-        if (engine.processInstance(instance, instanceAudio.data(), 2u, 4u, 0.0) != ET_OK ||
-            engine.processPipeline(2u, 4u, 0.0, 0u) != ET_OK) {
-          return ET_ERR_ARGS;
-        }
-        return engine.processGraph(2u, 4u, 0.0);
+        audio.fill(std::bit_cast<float>(0x007fffffu));
+        const auto status = engine.processInstance(instance, audio.data(), 2u, 4u, 0.0);
+        for (auto value : audio)
+          if (value != 0)
+            return ET_ERR_STATE;
+        return status;
       },
-      ET_ERR_STATE));
+      ET_OK));
+  ET_CHECK(preservesCaller([&]() { return engine.processPipeline(2u, 4u, 0.0, 0u); }, ET_OK));
+  ET_CHECK(observation.calls == 8u && observation.enabled);
+  // Graph configuration intentionally invalidates the separate pipeline.
+  ET_CHECK(engine.configureGraph(emptyGraph.data(), static_cast<unsigned>(emptyGraph.size())) ==
+           ET_OK);
+  ET_CHECK(engine.prepareOfflineGraph(offlineGeneration) == ET_OK);
+  ET_CHECK(preservesCaller([&]() { return engine.processGraph(2u, 4u, 0.0); }, ET_OK));
+  ET_CHECK(preservesCaller(
+      [&]() { return engine.processOfflineGraph(2u, 4u, 0.0, offlineGeneration); }, ET_OK));
+  ET_CHECK(preservesCaller([&]() { return engine.processGraph(0u, 4u, 0.0); }, ET_ERR_ARGS));
+  ET_CHECK(preservesCaller([&]() { return engine.processInstance(instance, nullptr, 2u, 4u, 0.0); },
+                           ET_ERR_ARGS));
 #endif
 }
 
@@ -200,6 +219,52 @@ std::vector<std::uint8_t> pipelineDescriptor(std::initializer_list<PipelineNodeD
     ++index;
   }
   return bytes;
+}
+
+void testMidiChannelMix() {
+  const auto engine = et_engine_create();
+  ET_CHECK(engine != 0);
+  ET_CHECK(et_engine_prepare(engine, 96000.0F, 4u, 128u, 8192u) == ET_OK);
+  const auto main = et_instance_create(engine, "SoundFontPlayerPlugin");
+  const auto note = et_instance_create(engine, "SFZNotePlayerPlugin");
+  ET_CHECK(main && note);
+  ET_CHECK(et_instance_set_midi_channel_mix(engine, main, 1u, ET_MIDI_CHANNEL_SOLO) == ET_OK);
+  ET_CHECK(et_instance_set_midi_metering(engine, main, 1u) == ET_OK);
+  ET_CHECK(et_instance_set_midi_metering(engine, main, 0u) == ET_OK);
+  ET_CHECK(et_instance_set_midi_metering(engine, main, 2u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_metering(engine, note, 1u) == ET_ERR_UNSUPPORTED);
+  ET_CHECK(et_instance_set_midi_metering(engine, 0u, 1u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_metering(0u, main, 1u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_channel_mix(engine, main, 0x10000u, 0u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_channel_mix(engine, main, 0u, 4u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_channel_mix(engine, note, 0u, 0u) == ET_ERR_UNSUPPORTED);
+  ET_CHECK(et_instance_set_midi_channel_mix(engine, 0u, 0u, 0u) == ET_ERR_ARGS);
+  ET_CHECK(et_instance_set_midi_channel_mix(0u, main, 0u, 0u) == ET_ERR_ARGS);
+  et_engine_destroy(engine);
+}
+void testStreamReadinessArguments() {
+  const auto engine = et_engine_create();
+  ET_CHECK(engine != 0u);
+  ET_CHECK(et_engine_prepare(engine, 48000.0F, 2u, 128u, 256u) == ET_OK);
+  const auto volume = et_instance_create(engine, "VolumePlugin");
+  ET_CHECK(volume != 0u);
+  ET_CHECK(et_instance_stream_readiness(engine, volume, nullptr) == ET_ERR_ARGS);
+  et_stream_readiness readiness{};
+  const auto reset = [&]() {
+    ET_CHECK(readiness.generation == 0u && readiness.scope == 0u &&
+             readiness.admitted_frames == 0u && readiness.ready_ahead_frames == 0u &&
+             readiness.planned_pages == 0u && readiness.pending_pages == 0u);
+  };
+  readiness = {1u, 2u, 3u, 4u, 5u, 6u};
+  ET_CHECK(et_instance_stream_readiness(0u, volume, &readiness) == ET_ERR_ARGS);
+  reset();
+  readiness = {1u, 2u, 3u, 4u, 5u, 6u};
+  ET_CHECK(et_instance_stream_readiness(engine, 0u, &readiness) == ET_ERR_ARGS);
+  reset();
+  readiness = {1u, 2u, 3u, 4u, 5u, 6u};
+  ET_CHECK(et_instance_stream_readiness(engine, volume, &readiness) == ET_ERR_UNSUPPORTED);
+  reset();
+  et_engine_destroy(engine);
 }
 
 void testDiscoveryAndLifecycle() {
@@ -1077,38 +1142,42 @@ void testPipelineObserver() {
 void testHostTransport() {
   constexpr float kRate = 48000.0F;
   constexpr std::uint32_t kLatency = 192u;
-  auto engine = std::make_unique<Engine>();
-  ET_CHECK(engine->prepare(kRate, 2u, 128u, 0u) == ET_OK);
-  const et_instance head = engine->createInstance("TestGainPlugin");
-  const et_instance delay = engine->createInstance("TestDelayPlugin");
-  const et_instance tail = engine->createInstance("TestGainPlugin");
+  const et_engine engine = et_engine_create();
+  ET_CHECK(engine != 0u);
+  ET_CHECK(et_engine_prepare(engine, kRate, 2u, 128u, 0u) == ET_OK);
+  const et_instance head = et_instance_create(engine, "TestGainPlugin");
+  const et_instance delay = et_instance_create(engine, "TestDelayPlugin");
+  const et_instance tail = et_instance_create(engine, "TestGainPlugin");
   const float unity = 1.0F;
-  ET_CHECK(engine->setInstanceParams(head, &unity, 1u, kTestHash, 0u) == ET_OK);
-  ET_CHECK(engine->setInstanceParams(tail, &unity, 1u, kTestHash, 0u) == ET_OK);
+  ET_CHECK(et_instance_set_params(engine, head, &unity, 1u, kTestHash, 0u) == ET_OK);
+  ET_CHECK(et_instance_set_params(engine, tail, &unity, 1u, kTestHash, 0u) == ET_OK);
   const auto chain =
       pipelineDescriptor({{head, 0u, 0u, -2}, {delay, 0u, 0u, -2}, {tail, 0u, 0u, -2}});
-  ET_CHECK(engine->configurePipeline(chain.data(), static_cast<std::uint32_t>(chain.size())) ==
+  ET_CHECK(et_pipeline_configure(engine, chain.data(), static_cast<std::uint32_t>(chain.size())) ==
            ET_OK);
   const auto received = [&](et_instance instance) {
-    return testGainTransport(et_engine_instance_kernel_for_testing(engine.get(), instance));
+    return testGainTransport(et_instance_kernel_for_testing(engine, instance));
   };
-  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
   ET_CHECK(received(head) == nullptr && received(tail) == nullptr);
 
-  HostTransport host{};
-  host.flags = HostTransport::kPlaying | HostTransport::kTempoValid |
-               HostTransport::kPositionValid | HostTransport::kBarStartValid |
-               HostTransport::kTimeSignatureValid;
-  host.tempoBpm = 120.0;
-  host.ppqPosition = 10.0;
-  host.barStartPpq = 8.0;
-  host.timeSignatureNumerator = 6u;
-  host.timeSignatureDenominator = 8u;
-  engine->setHostTransport(&host);
+  et_host_transport host{};
+  host.flags = ET_HOST_TRANSPORT_PLAYING | ET_HOST_TRANSPORT_TEMPO_VALID |
+               ET_HOST_TRANSPORT_POSITION_VALID | ET_HOST_TRANSPORT_BAR_START_VALID |
+               ET_HOST_TRANSPORT_TIME_SIGNATURE_VALID;
+  host.tempo_bpm = 120.0;
+  host.ppq_position = 10.0;
+  host.bar_start_ppq = 8.0;
+  host.time_signature_numerator = 6u;
+  host.time_signature_denominator = 8u;
   {
     allocation_guard::Scope scope;
-    ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+    ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_OK);
+    ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
   }
+  // The public setter copies caller-owned context; it never borrows this object.
+  host.ppq_position = 99.0;
+  ET_CHECK(et_pipeline_process(engine, 2u, 64u, 128.0 / kRate, 0u) == ET_OK);
   const HostTransport *first = received(head);
   const HostTransport *shifted = received(tail);
   ET_CHECK(first != nullptr && shifted != nullptr);
@@ -1118,39 +1187,62 @@ void testHostTransport() {
   ET_CHECK(shifted->barStartPpq == 8.0 && shifted->timeSignatureNumerator == 6u &&
            shifted->timeSignatureDenominator == 8u);
 
+  host.ppq_position = 10.0;
+  // Reset preserves the caller's context; prepare starts without one.
+  ET_CHECK(et_engine_reset(engine) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(head) != nullptr && received(head)->ppqPosition == 10.0);
   // A stopped transport keeps its position; invalid fields drop their flags.
-  host.flags &= ~HostTransport::kPlaying;
-  engine->setHostTransport(&host);
-  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  host.flags &= ~ET_HOST_TRANSPORT_PLAYING;
+  ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
   ET_CHECK(received(tail) != nullptr && received(tail)->ppqPosition == 10.0);
-  host.flags |= HostTransport::kPlaying;
-  host.tempoBpm = std::nan("");
-  host.barStartPpq = INFINITY;
-  host.timeSignatureDenominator = 0u;
-  engine->setHostTransport(&host);
-  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  host.flags |= ET_HOST_TRANSPORT_PLAYING | ET_HOST_TRANSPORT_LOOPING;
+  host.ppq_position = .5;
+  ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 64u, 0.0, 0u) == ET_OK);
+  ET_CHECK((received(tail)->flags & ET_HOST_TRANSPORT_LOOPING) != 0u);
+  ET_CHECK(std::fabs(received(tail)->ppqPosition - (.5 - kLatency * 2.0 / kRate)) < 1e-12);
+  host.ppq_position = 10.0;
+  host.flags &= ~ET_HOST_TRANSPORT_LOOPING;
+  host.flags |= ET_HOST_TRANSPORT_PLAYING;
+  host.tempo_bpm = std::nan("");
+  host.bar_start_ppq = INFINITY;
+  host.time_signature_denominator = 0u;
+  ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
   ET_CHECK(received(tail) != nullptr &&
-           received(tail)->flags == (HostTransport::kPlaying | HostTransport::kPositionValid) &&
+           received(tail)->flags ==
+               (ET_HOST_TRANSPORT_PLAYING | ET_HOST_TRANSPORT_POSITION_VALID) &&
            received(tail)->ppqPosition == 10.0);
 
-  engine->setHostTransport(nullptr);
-  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  const auto previousFlags = received(tail)->flags;
+  host.flags |= 0x80000000u;
+  ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_ERR_ARGS);
+  ET_CHECK(et_engine_set_host_transport(0u, &host) == ET_ERR_ARGS);
+  ET_CHECK(et_pipeline_process(engine, 2u, 32u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(tail)->flags == previousFlags);
+  host.flags &= ~0x80000000u;
+  ET_CHECK(et_engine_set_host_transport(engine, nullptr) == ET_OK);
+  ET_CHECK(et_pipeline_process(engine, 2u, 128u, 0.0, 0u) == ET_OK);
   ET_CHECK(received(tail) == nullptr);
 
-  engine->setHostTransport(&host);
-  ET_CHECK(engine->prepare(kRate, 2u, 128u, 0u) == ET_OK);
-  const et_instance fresh = engine->createInstance("TestGainPlugin");
+  ET_CHECK(et_engine_set_host_transport(engine, &host) == ET_OK);
+  ET_CHECK(et_engine_prepare(engine, kRate, 2u, 128u, 0u) == ET_OK);
+  const et_instance fresh = et_instance_create(engine, "TestGainPlugin");
   std::array<float, 256> audio{};
-  ET_CHECK(engine->processInstance(fresh, audio.data(), 2u, 128u, 0.0) == ET_OK);
-  ET_CHECK(testGainTransport(et_engine_instance_kernel_for_testing(engine.get(), fresh)) ==
-           nullptr);
+  ET_CHECK(et_instance_process(engine, fresh, audio.data(), 2u, 128u, 0.0) == ET_OK);
+  ET_CHECK(testGainTransport(et_instance_kernel_for_testing(engine, fresh)) == nullptr);
+  et_engine_destroy(engine);
 }
 
 void runAbiTests() {
   testAllocationGuardScope();
-  testAudioThreadEnablesDenormalFlush();
+  testRenderScopesDenormalFlush();
   testNothrowStorageContract();
   testDiscoveryAndLifecycle();
+  testMidiChannelMix();
+  testStreamReadinessArguments();
   testPipelineValidationAndRouting();
   testPipelineObserver();
   testHostTransport();

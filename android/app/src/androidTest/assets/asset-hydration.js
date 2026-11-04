@@ -99,7 +99,7 @@
         },
         async seed() {
             const ir = window.pluginManager.createPlugin('IR Reverb');
-            const sfz = window.pluginManager.createPlugin('SFZ Note Player');
+            const sfz = window.pluginManager.createPlugin('SoundFont Note Player');
             manager.pipeline = manager.pipelineA = [ir, sfz]; manager.currentPipeline = 'A';
             await manager.rebuildPipeline();
             ir.setParameters({ dw: 0, dl: -96, de: false, cm: 'mono', cr: 'full' });

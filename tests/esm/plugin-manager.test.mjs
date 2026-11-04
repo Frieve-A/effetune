@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
+import vm from 'node:vm';
 
 import { PluginManager } from '../../js/plugin-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -28,6 +30,7 @@ function createLoaderHarness(options = {}) {
         appended.push(element);
         const url = element.src || element.href;
         calls.push(['appendChild', element.tagName, url]);
+        options.onAppend?.(element, url);
         if (options.throwOnAppend?.has(url)) {
           throw new Error(`append failed: ${url}`);
         }
@@ -261,7 +264,7 @@ test('loadPlugins loads resources, tracks progress, registers classes, and toler
   assert.ok(harness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Failed to initialize plugin Throwing')));
   assert.deepEqual(
     harness.calls.filter(call => call[0] === 'progress').map(call => call[1]),
-    [0, 7, 13, 20, 27, 33, 40, 47, 53, 60, 67, 73, 80, 87, 93, 100]
+    [0, 6, 13, 19, 25, 31, 38, 44, 50, 56, 63, 69, 75, 81, 88, 94, 100]
   );
   assert.deepEqual(harness.appended.filter(element => element.tagName === 'SCRIPT')
     .slice(0, 6).map(element => element.src),
@@ -363,4 +366,34 @@ test('loadPlugins catches base, JS batch, CSS batch, and fetch-level failures', 
     await assert.rejects(() => manager.loadPlugins(), /network failed/);
   });
   assert.ok(fetchHarness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Error loading plugins')));
+});
+
+
+test('both SFZ plugin definitions load after their shared base independently of sibling order', async () => {
+  let sandbox;
+  class PluginBase {
+    constructor(name, description) { this.name = name; this.description = description; this.enabled = true; }
+    registerProcessor() {}
+    getParameters() { return { type: this.constructor.name, enabled: true }; }
+  }
+  const harness = createLoaderHarness({
+    pluginsText: '[categories]\nOthers: Instruments\n[plugins]\nothers/soundfont_player: SoundFont Player|Others|SoundFontPlayerPlugin\nothers/sfz_note_player: SoundFont Note Player|Others|SFZNotePlayerPlugin',
+    onAppend(element, url) {
+      if (element.tagName !== 'SCRIPT' || (!url.includes('sfz') && !url.includes('soundfont'))) return;
+      const source = fs.readFileSync(new URL('../../' + url, import.meta.url), 'utf8');
+      vm.runInContext(source, sandbox, { filename: url });
+    }
+  });
+  sandbox = vm.createContext({ PluginBase, window: harness.globals.window });
+  const manager = new PluginManager();
+  await withGlobals(harness.globals, async () => {
+    await manager.loadPlugins();
+    assert.equal(manager.createPlugin('SoundFont Player').constructor.name, 'SoundFontPlayerPlugin');
+    assert.equal(manager.createPlugin('SoundFont Note Player').constructor.name, 'SFZNotePlayerPlugin');
+  });
+  const scripts = harness.appended.filter(element => element.tagName === 'SCRIPT').map(element => element.src);
+  assert.ok(scripts.indexOf('plugins/sfz-instrument.js') < scripts.indexOf('plugins/others/soundfont_player.js'));
+  const { SFZInstrumentPlugin, SoundFontPlayerPlugin, SFZNotePlayerPlugin } = harness.globals.window;
+  assert.equal(Object.getPrototypeOf(SoundFontPlayerPlugin.prototype), SFZInstrumentPlugin.prototype);
+  assert.equal(Object.getPrototypeOf(SFZNotePlayerPlugin.prototype), SFZInstrumentPlugin.prototype);
 });

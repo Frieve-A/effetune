@@ -749,7 +749,7 @@ test('Electron scan runtime removes every old track before a reduced folder is r
 });
 
 test('Electron catalog resumes an interrupted folder deletion after restart', async t => {
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-remove-restart-'));
+  const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-remove-restart-')));
   const libraryRoot = path.join(temporary, 'Music');
   const dbPath = path.join(temporary, 'catalog.sqlite');
   await fs.mkdir(libraryRoot);
@@ -775,17 +775,46 @@ test('Electron catalog resumes an interrupted folder deletion after restart', as
 
   const added = await runtime.addFolder({});
   assert.equal((await waitForTerminal(runtime, added.scan.scanId)).status, 'completed');
-  const firstChunk = await host.removeScanFolder({
-    folderId: added.folder.id,
-    expectedLifecycleVersion: added.folder.lifecycleVersion
-  });
-  assert.equal(firstChunk.deleted, 100);
-  assert.equal(firstChunk.hasMore, true);
-  assert.equal((await host.getScanFolderTrackCount({ folderId: added.folder.id })).trackCount, 1);
-
   await runtime.close();
   runtime = null;
   await host.close();
+  host = null;
+
+  // Commit exactly one real deletion chunk without a worker that can finish it
+  // in background maintenance before the interrupted state is inspected.
+  const core = await import('../../js/library/repository/catalog-runtime-core.js?folder-delete-restart');
+  const interruptedDatabase = new DatabaseSync(dbPath);
+  core.catalogState.database = interruptedDatabase;
+  core.bindCatalogPlatform({
+    updateDirectoryMembership(previous, next) {
+      // Every fixture track is at the root, so it has no directory ancestors.
+      assert.equal(path.posix.dirname(previous.relativePath), '.');
+      assert.equal(next, null);
+    }
+  });
+  const lifecycleVersion = added.folder.lifecycleVersion + 1;
+  const jobId = core.folderDeletionJobId(added.folder.id, lifecycleVersion);
+  try {
+    interruptedDatabase.exec('PRAGMA foreign_keys = ON; BEGIN IMMEDIATE');
+    assert.equal(Number(interruptedDatabase.prepare(`
+      UPDATE folders SET status = 'removed', path = NULL, lifecycle_version = lifecycle_version + 1
+      WHERE id = ? AND lifecycle_version = ?
+    `).run(added.folder.id, added.folder.lifecycleVersion).changes), 1);
+    core.ensureFolderDeletionJob(added.folder.id, lifecycleVersion);
+    const firstChunk = core.runFolderDeletionChunkInTransaction(added.folder.id, lifecycleVersion, jobId);
+    assert.equal(firstChunk.deleted, 100);
+    assert.equal(firstChunk.hasMore, true);
+    interruptedDatabase.exec('COMMIT');
+    assert.equal(Number(interruptedDatabase.prepare(`
+      SELECT count(*) AS count FROM tracks WHERE folder_id = ?
+    `).get(added.folder.id).count), 1);
+    const job = interruptedDatabase.prepare('SELECT state, track_uid AS trackUid FROM deletion_jobs WHERE job_id = ?').get(jobId);
+    assert.equal(job.state, 'active');
+    assert.equal(typeof job.trackUid, 'string');
+  } finally {
+    interruptedDatabase.close();
+    core.catalogState.database = undefined;
+  }
   host = await LibraryCatalogHost.open({ dbPath });
 
   const deadline = Date.now() + 3000;
@@ -1398,14 +1427,15 @@ test('Electron lazy artwork binds its source then decodes before storage admissi
   assert.deepEqual(calls[4][1].claim, calls[4][1].expectedSourceClaim);
 });
 
-test('Electron CUE library artwork falls back to a sibling source-named image', async t => {
+for (const [extension, coverName] of [['flac', 'DISC.PNG'], ['mid', 'COVER.JPG'], ['kar', 'folder.jpg'], ['mxl', 'cover.jpg']])
+test(`Electron ${extension} library artwork resolves its permitted sibling image`, async t => {
   const root = await fs.realpath(
     await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-cue-cover-'))
   );
   const albumDirectory = path.join(root, 'Album');
   await fs.mkdir(albumDirectory);
-  await fs.writeFile(path.join(albumDirectory, 'disc.flac'), 'audio');
-  await fs.writeFile(path.join(albumDirectory, 'DISC.PNG'), 'cue-cover');
+  await fs.writeFile(path.join(albumDirectory, `disc.${extension}`), 'audio');
+  await fs.writeFile(path.join(albumDirectory, coverName), 'cue-cover');
   const calls = [];
   const host = {
     on() {},
@@ -1416,8 +1446,8 @@ test('Electron CUE library artwork falls back to a sibling source-named image', 
     beginScanFolder() {},
     getCachedArtwork: async () => null,
     getTrackStorageIdentity: async () => ({
-      trackUid: 'cue-track', folderId: 'folder', relativePath: 'Album/disc.flac',
-      sourceKind: 'cue-track', cueRelativePath: 'Album/disc.cue',
+      trackUid: 'cue-track', folderId: 'folder', relativePath: `Album/disc.${extension}`,
+      sourceKind: extension === 'flac' ? 'cue-track' : 'file', cueRelativePath: extension === 'flac' ? 'Album/disc.cue' : null,
       fileIdentity: 'audio-device:inode', size: 5, mtimeMs: 200, lifecycleVersion: 3
     }),
     async claimArtworkSource({ claim }) {
@@ -1442,7 +1472,7 @@ test('Electron CUE library artwork falls back to a sibling source-named image', 
     host,
     dialog: { async showOpenDialog() { return { canceled: true, filePaths: [] }; } },
     metadataParser: { async parse() { return {}; } },
-    artworkWorkerPool: { async extract() { return null; }, async close() {} },
+    artworkWorkerPool: { async extract() { assert.equal(extension, 'flac'); return null; }, async close() {} },
     artworkThumbnailer: async source => {
       calls.push(['thumbnail', Buffer.from(source).toString()]);
       return { bytes: new Uint8Array([1, 2]), width: 1, height: 1, mimeType: 'image/jpeg' };
@@ -1460,7 +1490,7 @@ test('Electron CUE library artwork falls back to a sibling source-named image', 
   });
   assert.equal(calls[0][1].sourceKind, 'embedded-file');
   assert.equal(calls[2][1].sourceKind, 'external-file');
-  assert.equal(calls[2][1].canonicalSourceIdentity, 'Album/DISC.PNG');
+  assert.equal(calls[2][1].canonicalSourceIdentity, `Album/${coverName}`);
   assert.deepEqual(calls[3], ['thumbnail', 'cue-cover']);
   assert.equal(calls[2][1].externalArtworkStat.size, 9);
   assert.deepEqual(calls.at(-1)[1].claim, calls.at(-1)[1].expectedSourceClaim);

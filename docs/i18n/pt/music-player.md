@@ -16,6 +16,38 @@ Abra um arquivo de música no EffeTune para ouvi-lo com a cadeia de efeitos atua
 
 Para usar apenas o player, defina **Dispositivo de Entrada:** como **Nenhum (somente player de arquivos de música)** em **Configuração de Áudio**; assim o EffeTune não usa uma entrada de áudio ao vivo.
 
+## Arquivos DSD {#dsd-files}
+
+Abra arquivos `.dsf` (DSF) ou `.dff` (DSDIFF) como qualquer outro arquivo de música. Arquivos DFF sem compressão e comprimidos com DST são compatíveis. O EffeTune converte DSD64, DSD128 e DSD256 mono ou estéreo em PCM para reproduzi-los com os efeitos atuais. O dispositivo de áudio recebe PCM, não DSD nativo nem DoP.
+
+Algumas variantes de codificação DST (quadros segmentados), arquivos com mais de dois canais, DSD512 e DSD baseado em 48 kHz não são compatíveis. Se um arquivo não tocar, use um DFF sem compressão ou uma cópia PCM compatível, como FLAC ou WAV. A reprodução de DSD está disponível no aplicativo desktop e no player web/PWA, mas não no aplicativo Android nativo.
+
+Arquivos DSD de taxa elevada exigem mais processamento, sobretudo em velocidades de reprodução maiores. Se o áudio falhar ou parar, reduza a velocidade.
+
+## Arquivos MIDI
+
+A reprodução de MIDI e MusicXML e a inclusão desses arquivos na biblioteca estão disponíveis no aplicativo de desktop e no player web/PWA. Não são compatíveis com o aplicativo Android.
+
+Abra arquivos `.mid`, `.midi` ou `.kar` pelo seletor de música habitual ou arraste-os para a janela. MIDI contém notas e tempos, não áudio gravado. Adicione [**SoundFont Player**](plugins/others.md#soundfont-player) de **Others** ao Effect Pipeline e escolha um instrumento em **SoundFont Library…**. Abrir o arquivo não adiciona um instrumento automaticamente. Você também pode adicioná-lo à Music Library.
+Para ver a letra em **Lyrics** no Visualizer, use a letra incorporada ao MIDI ou coloque um arquivo `.wrd` com o mesmo nome ao lado dele. Na web, selecione ou solte os dois arquivos juntos, a menos que a pasta esteja acessível pela Music Library. O `.wrd` acompanha a música e não vira outra faixa; se não puder ser lido, o MIDI continua tocando.
+
+Para mostrar uma capa com MIDI ou MusicXML, coloque `cover.jpg` (prioritário) ou `folder.jpg` na mesma pasta. Na web, selecione ou arraste a imagem junto com o arquivo de música, a menos que a pasta esteja acessível pela Music Library.
+
+Se o SoundFont Player estiver ausente, nenhum instrumento estiver carregado ou o carregamento ainda estiver em andamento, o player mostra orientações e continua enviando MIDI no tempo da música, em silêncio, sem pular para a próxima faixa. A música termina normalmente. Você pode adicionar o SoundFont Player ou carregar um instrumento durante a reprodução: quando estiver pronto, ele responderá aos eventos MIDI que chegarem a partir desse momento, com os sons e ajustes de controle atuais de cada canal. As notas anteriores não são tocadas novamente, mesmo que ainda estejam sustentadas na música.
+
+Use os controles habituais de reprodução, pausa, busca, repetição, ordem aleatória, velocidade, volume e silenciamento. A velocidade altera o andamento do MIDI sem mudar a altura das notas. **Manter o tom** não pode ser alterado durante a reprodução MIDI. Com uma coleção SF2/SF3, um único SoundFont Player segue Bank Select e Program Change de forma independente nos 16 canais, usando o banco de percussão no canal 10 por padrão. Use **MIDI Mixer** para ajustar o **Patch**, o nível e os outros controles de execução de cada canal. Essas alterações são temporárias, seguem as mensagens MIDI posteriores e são reiniciadas na próxima música. Instrumentos SFZ preservam seu próprio mapeamento.
+
+Para salvar áudio, prepare o instrumento no SoundFont Player e selecione o MIDI no processamento de arquivos offline. A música inteira é processada com o instrumento e os efeitos posteriores, em velocidade 1 e ganho unitário da música, e salva em WAV ou FLAC conforme as configurações de saída. Ao atingir o limite da cauda, o aplicativo avisa e corta o som restante.
+
+São aceitos Standard MIDI File nos formatos 0 e 1. Converta arquivos de formato 2 ou RMID em um `.mid` padrão de formato 0 ou 1 antes de abri-los.
+
+## Arquivos MusicXML {#musicxml-files}
+
+Abra arquivos `.musicxml`, `.xml` ou `.mxl` compactados como arquivos MIDI. Para ouvi-los, adicione **SoundFont Player** e carregue um instrumento. Eles usam os controles MIDI descritos acima, mas a partitura não é exibida. Você também pode incluí-los na Music Library.
+A letra do MusicXML pode aparecer em **Lyrics** no Visualizer durante a reprodução. Escolha **Parte** e **Verso** se houver mais de uma opção, ou mantenha **Automático**.
+
+Notas, pausas, acordes, vozes, ligaduras de prolongamento, mudanças de andamento e repetições comuns com finais alternativos são reproduzidos. Alguns detalhes da notação, como ornamentos e notas de apojatura, não são reproduzidos. Se a partitura tiver repetições aninhadas, sinais de repetição de compassos ou notas microtonais, ou depender de D.C., D.S., Coda ou Fine, ou se o arquivo for uma coletânea opus com várias partituras, exporte-a como MIDI padrão em um aplicativo de partituras e abra o arquivo resultante.
+
 ## Controles de reprodução
 
 - Pausar, retomar ou fechar o player com **×** aplica um fade curto para evitar estalos.

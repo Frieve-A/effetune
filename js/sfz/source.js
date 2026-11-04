@@ -1,11 +1,23 @@
 import { normalizeSfzPath } from './parser.js';
+import { embeddedSfzRanges } from './embedded-sample.js';
 
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 const legacy = new TextDecoder('windows-1252');
 
 export function decodeSfzText(bytes) {
-  try { return utf8.decode(bytes); }
-  catch { return legacy.decode(bytes); }
+  const decode = part => { try { return utf8.decode(part); } catch { return legacy.decode(part); } };
+  // Embedded payloads are byte alphabets, not UTF-8 or Windows-1252 text.
+  // Isolate them before text decoding so all 256 byte values remain reversible.
+  let raw = '';
+  for (let index = 0; index < bytes.length; index += 8192) raw += String.fromCharCode(...bytes.subarray(index, index + 8192));
+  const ranges = embeddedSfzRanges(raw);
+  if (!ranges.length) return decode(bytes);
+  let text = '', cursor = 0;
+  for (const range of ranges) {
+    text += decode(bytes.subarray(cursor, range.dataStart)) + raw.slice(range.dataStart, range.end);
+    cursor = range.end;
+  }
+  return text + decode(bytes.subarray(cursor));
 }
 
 function attributes(text) {

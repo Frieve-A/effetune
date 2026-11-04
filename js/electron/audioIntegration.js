@@ -8,11 +8,13 @@ import {
 } from './webSettingsStorage.js';
 import {
   isGaplessPlaybackOnlyChange,
+  isMidiInputOnlyChange,
   loadAudioPreferences,
   saveAudioPreferences
 } from './audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
+import { bindMidiInputSettings } from '../midi/input-settings.js';
 export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
@@ -204,7 +206,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
 
     // Get current sample rate preference or default to 96000
     const currentSampleRate = audioPreferences?.sampleRate || 96000;
-    const nativeAudio = isAndroidHost() ? await getAndroidBridge().request('snapshot.get') : null;
+    const androidHost = isAndroidHost();
+    const nativeAudio = androidHost ? await getAndroidBridge().request('snapshot.get') : null;
     
     // Get translation function from UIManager
     if (!window.uiManager) {
@@ -233,6 +236,12 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <label for="use-input-with-player">${t('dialog.audioConfig.useInputWithPlayer')}</label>
           </div>
         </div>
+        ${!androidHost ? `<div class="device-section">
+          <label for="midi-input-device">${t('dialog.audioConfig.midiInput')}</label>
+          <select id="midi-input-device"></select>
+          <button type="button" id="refresh-midi-input">${t('dialog.audioConfig.midiInput.refresh')}</button>
+          <div class="device-help" id="midi-input-help"></div>
+        </div>` : ''}
         <div class="device-section">
           <label for="output-device">${t('dialog.audioConfig.outputDevice')}</label>
           <select id="output-device"></select>
@@ -406,10 +415,26 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     }
     
     let dialogClosed = false;
-    let applyInProgress = false;
+    let applyInProgress = true;
+    let cleanupMidiSettings;
+    cancelButton.addEventListener('click', closeDialog);
+    document.addEventListener('keydown', handleKeydown);
+    if (!androidHost) {
+      const midiManager = await window.app?.ensureMidiControllerManager?.();
+      if (dialogClosed) return;
+      cleanupMidiSettings = bindMidiInputSettings({
+        manager: midiManager,
+        select: document.getElementById('midi-input-device'),
+        refreshButton: document.getElementById('refresh-midi-input'),
+        status: document.getElementById('midi-input-help'),
+        selectedKey: audioPreferences.midiInputDeviceKey || '', t
+      });
+    }
+    applyInProgress = false;
     function closeDialog() {
       if (dialogClosed) return;
       dialogClosed = true;
+      cleanupMidiSettings?.();
       if (dialogElement.parentNode) {
         dialogElement.parentNode.removeChild(dialogElement);
       }
@@ -435,9 +460,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       }
     }
 
-    // Cancel button
-    cancelButton.addEventListener('click', closeDialog);
-    document.addEventListener('keydown', handleKeydown);
+    // Cancel and keyboard handlers also remain available during MIDI setup.
     
     // Apply button
     async function applyPreferences() {
@@ -487,6 +510,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       // Save preferences
       const preferences = {
+        ...(!androidHost ? { midiInputDeviceKey: document.getElementById('midi-input-device').value } : {}),
         inputDeviceId: inputDeviceSelect.value,
         outputDeviceId: selectedOutputDeviceId,
         inputDeviceLabel: inputDevice?.label || '',
@@ -500,6 +524,21 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       };
       
       const effectivePreferences = mergeWebAudioPreferences(audioPreferences, preferences);
+      if (!androidHost && isMidiInputOnlyChange(audioPreferences, effectivePreferences)) {
+        const saved = await saveAudioPreferences(isElectron, {
+          midiInputDeviceKey: effectivePreferences.midiInputDeviceKey
+        }, { applyInPlace: 'midi-input' });
+        if (!saved) {
+          window.uiManager?.setError?.('error.audioSettingsSaveFailed', true);
+          return;
+        }
+        window.audioPreferences = effectivePreferences;
+        if (window.electronIntegration) window.electronIntegration.audioPreferences = effectivePreferences;
+        await window.app?.applyMidiInputPreference?.(effectivePreferences.midiInputDeviceKey);
+        closeDialog();
+        callback?.(effectivePreferences);
+        return;
+      }
       const gaplessOnlyChange = isGaplessPlaybackOnlyChange(audioPreferences, effectivePreferences);
       if (gaplessOnlyChange && typeof window.audioManager?.applyGaplessPlaybackPreference === 'function') {
         closeDialog();
@@ -559,6 +598,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         if (callback) {
           callback(preferences);
         }
+        if (!resetResult && !androidHost) await window.app?.applyMidiInputPreference?.(preferences.midiInputDeviceKey);
         return;
       }
 

@@ -1,0 +1,99 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Live MIDI input smoke</title>
+<body><script type="module">
+import { audioManagerLiveMidiMethods } from '/js/audio/audio-manager-live-midi.js';
+import { parseSfz } from '/js/sfz/parser.js';
+import { packSfzAsset } from '/js/sfz/asset.js';
+import { DSP_PARAM_PACKERS } from '/js/audio/dsp-params.generated.js';
+import { instantiateDspBinding } from '/js/audio/dsp-engine-binding.js';
+import { samplePlayerPreparationData } from '/js/sfz/effect-cost.js';
+import { materializeSfzAsset, sfzPlayerKind } from '/js/sfz/preparation-context.js';
+
+window.runMidiInputSmoke = async artifact => {
+    const context = new AudioContext({ sampleRate: 48000 });
+    let node, source;
+    const wait = async predicate => {
+        const end = performance.now() + 8000;
+        while (!predicate()) {
+            if (performance.now() > end) throw new Error('Live MIDI browser fixture timed out');
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+    };
+    try {
+        await context.audioWorklet.addModule('/plugins/audio-processor.js');
+        node = new AudioWorkletNode(context, 'plugin-processor', { numberOfInputs: 1,
+            numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { initialOutputChannelCount: 2 } });
+        const analyser = context.createAnalyser(); analyser.fftSize = 256;
+        node.connect(analyser); analyser.connect(context.destination);
+        source = context.createBufferSource(); source.buffer = context.createBuffer(2, 1, context.sampleRate);
+        source.loop = true; source.connect(node); source.start();
+        const parsed = await parseSfz({ selectedPath: 'live.sfz', onDiagnostic: null,
+            readText: async () => '<region> sample=tone.wav key=60 amp_veltrack=0 ampeg_release=.001 loop_mode=loop_continuous' });
+        const pcm = Float32Array.from({ length: 480 }, (_, frame) => .2 * Math.sin(2 * Math.PI * frame / 48));
+        let asset = packSfzAsset(parsed.regions, new Map([['tone.wav', { channels: [pcm], sampleRate: 48000 }]]), { modulation: parsed.modulation });
+        let ready = false, nativeVoices = 0, leases = 0, dspReady = false, preparation = null;
+        const plugin = { id: 7, enabled: true, constructor: { name: 'SoundFontPlayerPlugin' } };
+        const power = { started: true, player: null, acquireLease() { leases++; return () => leases--; },
+            async requestReconcile() { await context.resume(); } };
+        const manager = Object.assign({}, audioManagerLiveMidiMethods, { audioContext: context,
+            powerPolicyController: power, contextManager: { resumeAudioContext: () => context.resume() },
+            _getActiveDspWorklets: () => [node], _isActiveDspWorklet: target => target === node,
+            _wasmAssetMembershipByNode: new Map([[node, new Map([[7, plugin]])]]),
+            _wasmAssetExpectedRevisionsByNode: new Map([[node, new Map([['7:0', 1]])]]),
+            getEffectiveActiveWasmAssetSnapshot: () => ({ ready, revisions: new Map([[0, { operationRevision: 1 }]]) }),
+            waitForEffectiveActiveWasmAssets: () => wait(() => ready) });
+        node.port.onmessage = ({ data }) => {
+            manager._handleLiveMidiInputMessage(node, data);
+            if (data.type === 'dspReady') dspReady = true;
+            if (data.type === 'sfzPreparationContext' && data.requestId === 1) preparation = data;
+            if (data.type === 'assetState' && data.pluginId === 7) ready = (data.state & 255) === 3;
+            if (data.type === 'dspTelemetry') {
+                const view = new DataView(data.packet);
+                for (let at = 0; at + 16 <= data.bytes;) {
+                    const length = view.getUint16(at + 12, true);
+                    if (view.getUint16(at, true) === 30) nativeVoices = view.getUint16(at + 16, true);
+                    at += (16 + length + 3) & ~3;
+                }
+                node.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
+            }
+        };
+        const parameters = { enabled: true, sf: 'a'.repeat(24), mc: 0, pl: 64, og: 0 };
+        const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+        node.port.postMessage({ type: 'updatePlugins', plugins: [{ id: 7, type: 'SoundFontPlayerPlugin', enabled: true,
+            parameters, inputBus: 0, outputBus: 0, channel: 'A', wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash }], masterBypass: false });
+        node.port.postMessage({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
+        const module = await WebAssembly.compileStreaming(fetch('/plugins/dsp/' + artifact));
+        node.port.postMessage({ type: 'dspModule', module });
+        await context.resume(); await wait(() => dspReady);
+        node.port.postMessage({ type: 'sfzGetPreparationContext', requestId: 1, pluginId: 7 });
+        await wait(() => preparation);
+        if (!preparation.ok) throw new Error('The worklet did not provide an instrument preparation context.');
+        const costBinding = await instantiateDspBinding(module);
+        try {
+            asset = await materializeSfzAsset(asset,
+                { ...preparation.context, playerKind: sfzPlayerKind(plugin.constructor.name) }, 64 * 1024 * 1024,
+                (payload, geometry, formatTag) => {
+                    const { control, payloadBytes } = samplePlayerPreparationData(payload);
+                    return costBinding.estimateSfzEffectPreparation(control, geometry, formatTag, payloadBytes);
+                });
+        } finally { costBinding.destroyEngine(); }
+        node.port.postMessage({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...asset, formatTag: 1, operationRevision: 1 });
+        await wait(() => ready);
+        manager.setLiveMidiInputSource('fixture-port');
+        await context.suspend();
+        const suspended = context.state;
+        manager.enqueueLiveMidiInput({ sourceKey: 'fixture-port', data: new Uint8Array([0x9f, 60, 127]), timeStamp: performance.now() });
+        const samples = new Float32Array(analyser.fftSize);
+        let peak = 0;
+        await wait(() => { analyser.getFloatTimeDomainData(samples); peak = Math.max(...samples.map(Math.abs)); return peak > .01; });
+        const running = context.state;
+        manager.enqueueLiveMidiInput({ sourceKey: 'fixture-port', data: new Uint8Array([0x8f, 60, 0]), timeStamp: performance.now() });
+        await wait(() => !manager._liveMidi.flushing && leases === 0);
+        await wait(() => { analyser.getFloatTimeDomainData(samples); return samples.every(value => Math.abs(value) < 1e-6); });
+        manager.setLiveMidiInputSource(null); manager._cancelLiveMidiInput();
+        return { suspended, running, peak, nativeVoices, leases, sampleRate: context.sampleRate };
+    } finally {
+        source?.stop(); source?.disconnect(); node?.disconnect();
+        await context.close();
+    }
+};
+</script></body></html>

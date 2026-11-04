@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const fileAccess = require('../../electron/file-access.cjs');
 
 const { LibraryCatalogHost } = require('../../electron/library-catalog-host.cjs');
 const {
@@ -838,14 +839,23 @@ test('playback resolution returns the grant-aware absolute path without a post-a
   assert.deepEqual(resolverCalls, [['track-1']]);
 });
 
-test('IPC exposes session operation tracking and grant-verified playback paths without transport history', async () => {
+test('IPC exposes session operation tracking and grant-verified playback paths without transport history', async t => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-playback-access-')));
+  fileAccess.clear();
+  t.after(async () => {
+    fileAccess.clear();
+    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
   const ipcMain = createFakeIpcMain();
   const coordinator = new EventEmitter();
   coordinator.start = async request => ({ method: 'start', request });
   coordinator.status = async value => ({ method: 'status', value });
   coordinator.cancel = async value => ({ method: 'cancel', value });
   coordinator.readSequencePage = async value => ({ method: 'readSequencePage', value });
-  const playbackPath = path.resolve('Music', 'track.flac');
+  const playbackPath = path.join(directory, 'track.flac');
+  const siblingPath = path.join(directory, 'other.flac');
+  fs.writeFileSync(playbackPath, 'audio');
+  fs.writeFileSync(siblingPath, 'other audio');
   coordinator.resolveSequenceEntrySource = async value => ({
     kind: 'electron-file',
     trackUid: value.trackUid,
@@ -879,6 +889,10 @@ test('IPC exposes session operation tracking and grant-verified playback paths w
   assert.equal(Object.hasOwn(LIBRARY_SERVICE_CHANNELS, 'lookupResult'), false);
   assert.equal(Object.hasOwn(LIBRARY_PLAYBACK_CHANNELS, 'applyTransportUndo'), false);
   const sourceRequest = { trackUid: 'track-1' };
+  const resolveSource = ipcMain.handlers.get(LIBRARY_PLAYBACK_CHANNELS.resolveSequenceEntrySource);
+  assert.throws(() => resolveSource({ sender: {} }, sourceRequest),
+    error => error.code === 'unauthorizedLibraryServiceSender');
+  assert.throws(() => fileAccess.assertPath(playbackPath, 'read'), /Select this file/);
   assert.deepEqual(
     await ipcMain.handlers.get(LIBRARY_PLAYBACK_CHANNELS.resolveSequenceEntrySource)(
       { sender: webContents },
@@ -893,6 +907,9 @@ test('IPC exposes session operation tracking and grant-verified playback paths w
       fileName: 'track.flac'
     }
   );
+  assert.doesNotThrow(() => fileAccess.assertPath(playbackPath, 'read'));
+  assert.throws(() => fileAccess.assertPath(playbackPath, 'write'), /Select this file/);
+  assert.throws(() => fileAccess.assertPath(siblingPath, 'read'), /Select this file/);
   coordinator.emit('event', { kind: 'progress', progress: { operationId: 'op', processed: 1 } });
   assert.deepEqual(sends, [[
     LIBRARY_SERVICE_EVENT_CHANNEL,

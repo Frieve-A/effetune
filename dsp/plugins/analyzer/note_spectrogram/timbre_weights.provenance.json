@@ -65,12 +65,12 @@
   "seed": 20261010,
   "trunk": "stem-As1-c",
   "trunk_weights_sha256": "e68045df25465629f8ab5960417a349bc12505b7d3beffb054a2656987248289",
-  "weights_sha256": "cbcd35c885e90ea34f282aab79293d5f4872cbe8e87484bd1cf98c5148234718",
+  "weights_sha256": "47810eaa0de1a457e6ebe9039d395d279a43323ea6c058a7ad26246f526b1e8c",
   "weights_bytes": 250188,
   "checkpoint_sha256": {
-    "base": "c0c6c37e172c7c4315c6f0733f3823c16743f422119d1ac8f127cd32dd7683d5",
-    "link": "8c599e013695f6b3204ddbf28b0a136fd954d99830f04bbcbcd8d481d95a742f",
-    "refinement": "a34637860ac029a9d8f773ab17ec8de5a3b4ccab2e13cef3acca35c5c91a419e"
+    "base": "fbc947b206c6be1e001d0cfb348b94a4b02b0e63f32dd583410aea3829463ceb",
+    "link": "1ac5808bce8242e187397598bc551d8c060e5d905ce3badd7904ae9e9f080d65",
+    "refinement": "3530049f13bfd1550be7c8279d6ba6609b21c3b67a7785ec83023dec6044c8bc"
   },
   "training_sources": [
     "Slakh2100-redux",
@@ -78,7 +78,7 @@
     "Karoryfer bass recordings",
     "Proprietary dataset"
   ],
-  "training": "Selected same-seed base, LinkNet and context/inventory refinement; popmix weight 0.3, proprietary separation labels (Demucs, MIT), Vocal label threshold 0.6; no runtime adaptation",
+  "training": "Selected same-seed base, LinkNet and context/inventory refinement; popmix weight 0.3, proprietary separation labels (Demucs, MIT), Vocal label threshold 0.6; no runtime adaptation; base batches augmented with vocal-only soft stem labels",
   "precision": "H inputs and the base projection used by LinkNet and refinement are rounded through float16, matching classifier training and inference",
   "feature_columns": {
     "envelope": [

@@ -32,17 +32,29 @@ constexpr std::uint32_t kIrDryLevelIndex = 5u;
 constexpr float kIrDrySilenceDb = -96.0F;
 std::atomic<std::uint64_t> next_engine_identity{1u};
 
-void enableDenormalFlushForCurrentThread() noexcept {
+class ScopedDenormalFlush {
+public:
+  ScopedDenormalFlush() noexcept {
 #if defined(ET_HAS_X86_MXCSR)
-  thread_local bool enabled = false;
-  if (!enabled) {
+    previous_ = _mm_getcsr();
     constexpr unsigned int kFlushToZero = 1u << 15u;
     constexpr unsigned int kDenormalsAreZero = 1u << 6u;
-    _mm_setcsr(_mm_getcsr() | kFlushToZero | kDenormalsAreZero);
-    enabled = true;
-  }
+    _mm_setcsr(previous_ | kFlushToZero | kDenormalsAreZero);
 #endif
-}
+  }
+  ~ScopedDenormalFlush() noexcept {
+#if defined(ET_HAS_X86_MXCSR)
+    _mm_setcsr(previous_);
+#endif
+  }
+  ScopedDenormalFlush(const ScopedDenormalFlush &) = delete;
+  ScopedDenormalFlush &operator=(const ScopedDenormalFlush &) = delete;
+
+private:
+#if defined(ET_HAS_X86_MXCSR)
+  unsigned int previous_ = 0;
+#endif
+};
 
 #if defined(__EMSCRIPTEN__)
 void addDenormalNoise(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -151,9 +163,15 @@ void Engine::invalidatePipeline() noexcept {
 }
 
 void Engine::invalidateGraph() noexcept {
+  invalidateOfflineGraph();
   releaseGraphOwnership();
   graph_ = GraphPlan{};
   graph_diagnostic_ = {ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
+}
+
+void Engine::invalidateOfflineGraph() noexcept {
+  ++graph_offline_generation_;
+  graph_offline_prepared_ = 0u;
 }
 
 void Engine::releaseGraphOwnership() noexcept {
@@ -276,6 +294,7 @@ et_status Engine::reset() noexcept {
   }
   resetGraphOwnedInstances();
   resetPipelineDelayHistory();
+  invalidateOfflineGraph();
   graph_.reset();
   return ET_OK;
 }
@@ -285,6 +304,7 @@ et_status Engine::resetGraph() noexcept {
     return ET_ERR_STATE;
   }
   resetGraphOwnedInstances();
+  invalidateOfflineGraph();
   graph_.reset();
   return ET_OK;
 }
@@ -432,6 +452,93 @@ void Engine::destroyInstance(et_instance instance) noexcept {
   }
 }
 
+et_status Engine::setInstanceMidiEvents(et_instance instance, const et_midi_event *events,
+                                        std::uint32_t count, std::uint32_t generation,
+                                        std::uint32_t flags) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiEvents(events, count, generation, flags) : ET_ERR_ARGS;
+}
+et_status Engine::setInstanceMidiGain(et_instance instance, float gain) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiGain(gain) : ET_ERR_ARGS;
+}
+et_status Engine::setInstanceMidiMetering(et_instance instance, std::uint32_t enabled) noexcept {
+  if (enabled > 1u)
+    return ET_ERR_ARGS;
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiMetering(enabled != 0u) : ET_ERR_ARGS;
+}
+et_status Engine::setInstanceMidiChannelMix(et_instance instance, std::uint32_t channel,
+                                            std::uint32_t action) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiChannelMix(channel, action) : ET_ERR_ARGS;
+}
+et_status Engine::setInstanceMidiTransportMap(et_instance instance,
+                                              const et_midi_transport_point *points,
+                                              std::uint32_t count) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  if (!slot)
+    return ET_ERR_ARGS;
+  const auto previous = slot->kernel->minimumMidiPreparationBpm();
+  const auto status = slot->kernel->setMidiTransportMap(points, count);
+  if (status == ET_OK && previous != slot->kernel->minimumMidiPreparationBpm())
+    slot->assetRevision = ++asset_revision_;
+  return status;
+}
+et_status Engine::setInstanceMidiTransport(et_instance instance, std::uint64_t frame,
+                                           double seconds, double speed, double duration,
+                                           std::uint32_t flags) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiTransport(frame, seconds, speed, duration, flags)
+              : ET_ERR_ARGS;
+}
+et_status Engine::setInstanceMidiClock(et_instance instance, std::uint64_t frame,
+                                       std::uint32_t generation, std::uint32_t flags) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->setMidiClock(frame, generation, flags) : ET_ERR_ARGS;
+}
+std::uint32_t Engine::instanceMidiState(et_instance instance) const noexcept {
+  const auto *slot = findInstance(instance);
+  return slot ? slot->kernel->midiState() : 0u;
+}
+std::uint64_t Engine::instanceMidiClock(et_instance instance) const noexcept {
+  const auto *slot = findInstance(instance);
+  return slot ? slot->kernel->midiClock() : 0u;
+}
+std::uint32_t Engine::instanceMidiGeneration(et_instance instance) const noexcept {
+  const auto *slot = findInstance(instance);
+  return slot ? slot->kernel->midiGeneration() : 0u;
+}
+std::uint32_t Engine::instanceMidiCheckpointSize(et_instance instance) const noexcept {
+  const auto *slot = findInstance(instance);
+  return slot ? slot->kernel->midiCheckpointSize() : 0u;
+}
+et_status Engine::writeInstanceMidiCheckpoint(et_instance instance, std::uint8_t *destination,
+                                              std::uint32_t bytes) const noexcept {
+  const auto *slot = findInstance(instance);
+  return slot ? slot->kernel->writeMidiCheckpoint(destination, bytes) : ET_ERR_ARGS;
+}
+et_status Engine::readInstanceMidiCheckpoint(et_instance instance, const std::uint8_t *source,
+                                             std::uint32_t bytes) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->readMidiCheckpoint(source, bytes) : ET_ERR_ARGS;
+}
 et_status Engine::resetInstance(et_instance instance) noexcept {
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr) {
@@ -554,14 +661,19 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
 }
 
 std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t asset_slot,
-                                         const AssetBeginInfo &info) noexcept {
+                                         const AssetBeginInfo &info,
+                                         std::optional<double> minimumPhysicalBpm) noexcept {
   InstanceSlot *slot = findInstance(instance);
   if (slot == nullptr || slot->graphOwned ||
       !validAssetInfo(info, slot->kernel->assetCapacity(asset_slot), max_channels_)) {
     return nullptr;
   }
+  const auto minimum = minimumPhysicalBpm.value_or(slot->kernel->minimumMidiPreparationBpm());
+  if (!std::isfinite(minimum) || minimum < 0)
+    return nullptr;
   slot->assetRevision = ++asset_revision_;
-  return slot->kernel->beginAsset(asset_slot, info);
+  return slot->kernel->beginAssetWithContext(asset_slot, info,
+                                             {sample_rate_, max_channels_, max_frames_, minimum});
 }
 
 et_status Engine::commitInstanceAsset(et_instance instance, std::uint32_t asset_slot,
@@ -592,8 +704,70 @@ std::uint32_t Engine::instanceAssetState(et_instance instance,
                          : slot->kernel->assetState(asset_slot);
 }
 
+et_status Engine::configureInstanceSampleStream(et_instance instance,
+                                                std::uint64_t generation) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot && slot->graphOwned && graph_.offlinePending())
+    return ET_ERR_STATE;
+  return slot ? slot->kernel->configureSampleStream(generation) : ET_ERR_ARGS;
+}
+et_status Engine::takeInstanceSampleRequests(et_instance instance, et_sfz_sample_request *requests,
+                                             std::uint32_t capacity,
+                                             std::uint32_t &count) noexcept {
+  count = 0;
+  auto *slot = findInstance(instance);
+  return slot ? slot->kernel->takeSampleRequests(requests, capacity, count) : ET_ERR_ARGS;
+}
+et_status Engine::publishInstanceSamplePage(et_instance instance, std::uint64_t generation,
+                                            std::uint32_t sample, std::uint64_t page,
+                                            const float *pcm, std::uint32_t frames,
+                                            std::uint32_t channels, std::uint32_t flags) noexcept {
+  auto *slot = findInstance(instance);
+  return slot ? slot->kernel->publishSamplePage(generation, sample, page, pcm, frames, channels,
+                                                flags)
+              : ET_ERR_ARGS;
+}
+
+PreparedAsset *Engine::validatedInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept {
+  const auto &snapshot = update.snapshot_;
+  auto *slot = findInstance(snapshot.instance_);
+  return update.ready_ && snapshot.owner_ == this && snapshot.identity_ == identity_ && slot &&
+                 !slot->graphOwned && snapshot.revision_ == slot->assetRevision &&
+                 snapshot.preparer_ == slot->kernel->assetPreparer(snapshot.slot_)
+             ? update.asset_.get()
+             : nullptr;
+}
+et_status Engine::configureInstanceAssetStream(InstanceAssetUpdate &update,
+                                               std::uint64_t generation) noexcept {
+  auto *asset = validatedInstanceAssetUpdate(update);
+  return asset ? asset->configureSampleStream(generation) : ET_ERR_STATE;
+}
+et_status Engine::publishInstanceAssetSamplePage(InstanceAssetUpdate &update,
+                                                 std::uint64_t generation, std::uint32_t sample,
+                                                 std::uint64_t page, const float *pcm,
+                                                 std::uint32_t frames, std::uint32_t channels,
+                                                 std::uint32_t flags) noexcept {
+  auto *asset = validatedInstanceAssetUpdate(update);
+  return asset ? asset->publishSamplePage(generation, sample, page, pcm, frames, channels, flags)
+               : ET_ERR_STATE;
+}
+
+et_status Engine::prefetchInstanceSamples(et_instance instance, const et_midi_event *events,
+                                          std::uint32_t count, std::uint32_t generation,
+                                          std::uint32_t window_frames,
+                                          std::uint32_t flags) noexcept {
+  auto *slot = findInstance(instance);
+  return slot ? slot->kernel->prefetchSampleEvents(events, count, generation, window_frames, flags)
+              : ET_ERR_ARGS;
+}
+et_status Engine::instanceStreamReadiness(et_instance instance, et_stream_readiness &out) noexcept {
+  out = {};
+  auto *slot = findInstance(instance);
+  return slot ? slot->kernel->sampleStreamReadiness(out) : ET_ERR_ARGS;
+}
 et_status Engine::captureInstanceAssetSnapshot(et_instance instance, std::uint32_t asset_slot,
-                                               InstanceAssetSnapshot &snapshot) noexcept {
+                                               InstanceAssetSnapshot &snapshot,
+                                               std::optional<double> minimumPhysicalBpm) noexcept {
   snapshot = {};
   auto *slot = findInstance(instance);
   if (!slot)
@@ -603,6 +777,9 @@ et_status Engine::captureInstanceAssetSnapshot(et_instance instance, std::uint32
   const auto preparer = slot->kernel->assetPreparer(asset_slot);
   if (!preparer)
     return ET_ERR_UNSUPPORTED;
+  const auto minimum = minimumPhysicalBpm.value_or(slot->kernel->minimumMidiPreparationBpm());
+  if (!std::isfinite(minimum) || minimum < 0)
+    return ET_ERR_ARGS;
   slot->assetRevision = ++asset_revision_;
   snapshot.owner_ = this;
   snapshot.instance_ = instance;
@@ -612,6 +789,7 @@ et_status Engine::captureInstanceAssetSnapshot(et_instance instance, std::uint32
   snapshot.capacity_ = slot->kernel->assetCapacity(asset_slot);
   snapshot.max_channels_ = max_channels_;
   snapshot.preparer_ = preparer;
+  snapshot.prepare_info_ = {sample_rate_, max_channels_, max_frames_, minimum};
   return ET_OK;
 }
 
@@ -626,7 +804,8 @@ et_status Engine::prepareInstanceAssetUpdate(const InstanceAssetSnapshot &snapsh
   if (!payload || byte_size != info.byteSize ||
       !validAssetInfo(info, snapshot.capacity_, snapshot.max_channels_))
     return ET_ERR_ARGS;
-  const auto status = snapshot.preparer_(info, payload, format_tag, update.asset_);
+  const auto status =
+      snapshot.preparer_(snapshot.prepare_info_, info, payload, format_tag, update.asset_);
   if (status == ET_OK) {
     update.snapshot_ = snapshot;
     update.ready_ = true;
@@ -673,13 +852,14 @@ et_status Engine::validateProcessArgs(const float *audio, std::uint32_t channel_
   return ET_OK;
 }
 
-void Engine::maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept {
+void Engine::maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count,
+                                 bool force) noexcept {
   if (telemetry_rate_hz_ <= 0.0F || telemetry_.capacity() == 0u) {
     return;
   }
   slot.telemetryFrames += frame_count;
   const double interval = static_cast<double>(sample_rate_) / telemetry_rate_hz_;
-  if (slot.telemetryFrames < interval) {
+  if (!force && slot.telemetryFrames < interval) {
     return;
   }
   slot.telemetryFrames = std::fmod(slot.telemetryFrames, interval);
@@ -709,10 +889,15 @@ void Engine::setHostTransport(const HostTransport *transport) noexcept {
 }
 
 ProcessInfo Engine::nodeProcessInfo(double time_seconds, std::uint32_t input_latency) noexcept {
-  if (!host_transport_set_) {
+  return nodeProcessInfo(time_seconds, input_latency,
+                         host_transport_set_ ? &host_transport_ : nullptr);
+}
+ProcessInfo Engine::nodeProcessInfo(double time_seconds, std::uint32_t input_latency,
+                                    const HostTransport *captured) noexcept {
+  if (!captured) {
     return {time_seconds};
   }
-  node_transport_ = host_transport_;
+  node_transport_ = *captured;
   constexpr std::uint32_t kAdvancing =
       HostTransport::kPlaying | HostTransport::kTempoValid | HostTransport::kPositionValid;
   if ((node_transport_.flags & kAdvancing) == kAdvancing) {
@@ -720,6 +905,38 @@ ProcessInfo Engine::nodeProcessInfo(double time_seconds, std::uint32_t input_lat
                                    (60.0 * static_cast<double>(sample_rate_));
   }
   return {time_seconds, &node_transport_};
+}
+
+et_status Engine::processOfflineSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
+                                     std::uint32_t frame_count, const ProcessInfo &info,
+                                     bool retry) noexcept {
+  if (!retry)
+    slot.kernel->applyPendingParameters();
+#if defined(__EMSCRIPTEN__)
+  const bool add_noise_after = requiresPostKernelDenormalNoise(*slot.descriptor);
+  prepareDenormalProtectedInput(audio, channel_count, frame_count, info.timeSeconds, sample_rate_,
+                                !add_noise_after);
+#endif
+  auto kernel_info = info;
+  if (!slot.graphOwned && slot.analysisSource != 0u) {
+    const auto *source = findInstance(slot.analysisSource);
+    if (source && !source->graphOwned)
+      kernel_info.noteAnalysis = source->kernel->noteAnalysisView();
+  }
+  const auto status = slot.kernel->processOffline(audio, channel_count, frame_count, kernel_info);
+  if (status != ET_OK) {
+    // Terminal diagnostics are observable even though the failed audio block is not committed.
+    // A sample-page retry must retain its transaction without duplicate telemetry.
+    if (status < 0)
+      maybeWriteTelemetry(slot, frame_count, true);
+    return status;
+  }
+#if defined(__EMSCRIPTEN__)
+  if (add_noise_after)
+    addDenormalNoise(audio, channel_count, frame_count, info.timeSeconds, sample_rate_);
+#endif
+  maybeWriteTelemetry(slot, frame_count);
+  return ET_OK;
 }
 
 void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
@@ -758,7 +975,7 @@ void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel
 
 et_status Engine::processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                                   std::uint32_t frame_count, double time_seconds) noexcept {
-  enableDenormalFlushForCurrentThread();
+  ScopedDenormalFlush denormalScope;
   const et_status validation = validateProcessArgs(audio, channel_count, frame_count, time_seconds);
   if (validation != ET_OK) {
     return validation;
@@ -1217,7 +1434,7 @@ bool Engine::pipelineTapLatency(et_instance instance, PipelineTapLatency &latenc
 
 et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                                   double time_seconds, std::uint32_t master_bypass) noexcept {
-  enableDenormalFlushForCurrentThread();
+  ScopedDenormalFlush denormalScope;
   float *main_bus = arena_.combined();
   const et_status validation =
       validateProcessArgs(main_bus, channel_count, frame_count, time_seconds);
@@ -1345,8 +1562,8 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
   return ET_OK;
 }
 
-et_status Engine::configureGraph(const std::uint8_t *descriptor,
-                                 std::uint32_t descriptor_bytes) noexcept {
+et_status Engine::configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes,
+                                 bool offline_pipeline) noexcept {
   if (!prepared_) {
     graph_diagnostic_ = {
         ET_ERR_STATE, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_DOCUMENT, 0u, 0u};
@@ -1357,12 +1574,13 @@ et_status Engine::configureGraph(const std::uint8_t *descriptor,
 #if defined(ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY)
   et_status status = ET_ERR_OOM;
   try {
-    status = candidate.configure(*this, descriptor, descriptor_bytes);
+    status = candidate.configure(*this, descriptor, descriptor_bytes, offline_pipeline);
   } catch (...) {
     status = ET_ERR_OOM;
   }
 #else
-  const et_status status = candidate.configure(*this, descriptor, descriptor_bytes);
+  const et_status status =
+      candidate.configure(*this, descriptor, descriptor_bytes, offline_pipeline);
 #endif
   if (status != ET_OK) {
     graph_diagnostic_ = candidate.diagnostic();
@@ -1373,6 +1591,7 @@ et_status Engine::configureGraph(const std::uint8_t *descriptor,
     return status;
   }
   invalidatePipeline();
+  invalidateOfflineGraph();
   releaseGraphOwnership();
   graph_ = std::move(candidate);
   installGraphOwnership();
@@ -1386,7 +1605,7 @@ et_status Engine::setGraphInstanceParams(et_instance instance, const float *pack
                                          std::uint32_t float_count, std::uint32_t params_hash,
                                          std::uint32_t changed_index) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (!graph_.configured() || slot == nullptr || !slot->graphOwned) {
+  if (!graph_.configured() || slot == nullptr || !slot->graphOwned || graph_.offlinePending()) {
     return ET_ERR_STATE;
   }
   const std::uint32_t node_index = graph_.originalIndex(instance);
@@ -1438,7 +1657,7 @@ et_status Engine::setGraphInstanceParams(et_instance instance, const float *pack
 
 et_status Engine::processGraph(std::uint32_t channel_count, std::uint32_t frame_count,
                                double time_seconds) noexcept {
-  enableDenormalFlushForCurrentThread();
+  ScopedDenormalFlush denormalScope;
   float *main_bus = arena_.combined();
   const et_status validation =
       validateProcessArgs(main_bus, channel_count, frame_count, time_seconds);
@@ -1446,6 +1665,48 @@ et_status Engine::processGraph(std::uint32_t channel_count, std::uint32_t frame_
     return validation;
   }
   return graph_.process(*this, channel_count, frame_count, time_seconds);
+}
+
+et_status Engine::prepareOfflineGraph(std::uint64_t &generation) noexcept {
+  generation = 0u;
+  if (!graph_.configured() || graph_.offlinePending())
+    return ET_ERR_STATE;
+  graph_offline_prepared_ = 0;
+  for (std::uint32_t index = 0; index < instances_.size(); ++index) {
+    auto &slot = instances_[index];
+    if (slot.kernel && graph_.references(makeHandle(index, slot.generation))) {
+      const auto prepared = slot.kernel->prepareOfflineProcessing();
+      if (prepared != ET_OK)
+        return prepared;
+    }
+  }
+#if defined(ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY)
+  et_status status = ET_ERR_OOM;
+  try {
+    status = graph_.prepareOffline();
+  } catch (...) {
+    return ET_ERR_OOM;
+  }
+#else
+  const auto status = graph_.prepareOffline();
+#endif
+  if (status == ET_OK) {
+    graph_offline_prepared_ = ++graph_offline_generation_;
+    generation = graph_offline_prepared_;
+  }
+  return status;
+}
+
+et_status Engine::processOfflineGraph(std::uint32_t channel_count, std::uint32_t frame_count,
+                                      double time_seconds, std::uint64_t generation) noexcept {
+  if (generation == 0u || generation != graph_offline_prepared_)
+    return ET_ERR_STATE;
+  ScopedDenormalFlush denormalScope;
+  const auto validation =
+      validateProcessArgs(arena_.combined(), channel_count, frame_count, time_seconds);
+  if (validation != ET_OK)
+    return validation;
+  return graph_.processOffline(*this, channel_count, frame_count, time_seconds);
 }
 
 et_status Engine::copyGraphSnapshot(std::uint8_t *output,

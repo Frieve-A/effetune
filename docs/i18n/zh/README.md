@@ -318,6 +318,17 @@ EffeTune 专为想要获得更理想听音体验的音频爱好者而设计。�
 
 打开 **设置 > 配置...**，可选择 **语言**、设置 **启动时显示:**（**Effect Pipeline（默认）**、**音乐库** 或 **Visualizer**）、配置 **启动时的效果流程:**，以及选择 **主题**（Graphite、Paper、Midnight、Ember 或 Mint）。当 **启动时显示:** 设为 **音乐库** 时，还可以选择首先打开的音乐库分类。 桌面版还可以选择 **Browser** 作为启动时显示的页面。
 
+要在桌面版中分别保存设置，请在启动 EffeTune 时指定设置名称。例如，在 Windows 上可以这样启动：
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+首次使用某个设置名称时，应用会采用默认设置；以后使用同一名称启动时，会恢复该名称对应的音频设备、效果流程、显示和启动设置。含有空格的名称请用引号括起来，例如 `--settings-name="Living room"`。省略此选项即可使用原有设置。测量结果、保存的预设以及音乐、IR 和音源资料库都使用同一存储位置，不受设置名称影响。在另一个 EffeTune 中打开测量结果前，请先退出使用这些结果的应用。
+
+不同设置名称的 EffeTune 可以同时运行。启用 **启动 > 允许同时运行多个实例** 后，同一设置名称也可以启动多个窗口；此选项默认关闭。更改后，请关闭所有 EffeTune 窗口并重新启动应用。使用同一设置名称的窗口会共用保存的设置。
+
 在 **效果流水线列数** 中，选择 **手动** 可用 +/− 按钮调整列数；选择 **自动**（默认），则会根据窗口宽度调整列数，让各列与效果列表一同容纳在窗口内。调整窗口大小时，自动模式会随之调整列数。
 
 Microsoft Store 版通过 Microsoft Store 获取更新。在 **设置 > 配置...** 中，使用 **打开 Microsoft Store 更新页面** 检查更新，或使用 **打开 Windows 启动应用设置** 选择是否自动启动 EffeTune。此版本的设置和 Browser 登录信息与其他桌面版分开保存。
@@ -507,7 +518,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial   | Spatial Mapper | 将声音分为 Direct、Diffuse 和 Residual，以便灵活进行多通道路由 | [详情](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | 从极性互换的立体声经单声道到增强立体声，控制声场宽度 | [详情](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
-| Others    | SFZ Note Player | 用导入的 SFZ 乐器播放检测到的音符 | [详情](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Note Player | 使用 SF2/SF3 SoundFont 和 SFZ 乐器演奏检测到的音符 | [详情](plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Player | 使用 SF2/SF3 SoundFont 或 SFZ 乐器播放 MIDI，SF2/SF3 支持 16 个独立音色通道 | [详情](plugins/others.md#soundfont-player) |
 | Control   | Section | 将效果分组，让整个区段可被旁路或恢复 | [详情](plugins/control.md) |
 
 ## 技术信息

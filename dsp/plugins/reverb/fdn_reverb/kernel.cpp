@@ -1,5 +1,7 @@
 #include "effetune/kernel.h"
 #include "FDNReverbPluginParams.h"
+#include "effetune/dsp/denormal.h"
+#include "effetune/dsp/effect_storage_geometry.h"
 #include "effetune/dsp/xorshift_rng.h"
 
 #include <algorithm>
@@ -35,11 +37,8 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     max_frames_ = info.maxFrames;
-    const double delay_ceiling = std::ceil(sample_rate_ * 0.175);
-    delay_line_length_ = delay_ceiling < 1.0 ? 1u : static_cast<std::uint32_t>(delay_ceiling);
-    const double pre_delay_ceiling = std::ceil(sample_rate_ * 0.1);
-    pre_delay_length_ =
-        pre_delay_ceiling < 1.0 ? 1u : static_cast<std::uint32_t>(pre_delay_ceiling);
+    delay_line_length_ = dsp::fdnDelayFrames(sample_rate_);
+    pre_delay_length_ = dsp::fdnPredelayFrames(sample_rate_);
     for (std::vector<float> &line : delay_lines_)
       line.resize(delay_line_length_);
     pre_delay_.resize(pre_delay_length_);
@@ -175,7 +174,7 @@ public:
       std::uint32_t &pre_position = pre_delay_position_;
       const double tank_input =
           readPreDelay(input, pre_delay, pre_position, pre_delay_ramp_.value(frame));
-      pre_delay[pre_position] = static_cast<float>(input);
+      pre_delay[pre_position] = dsp::flushSubnormal(static_cast<float>(input));
       ++pre_position;
       if (pre_position >= pre_delay_length_)
         pre_position = 0u;
@@ -202,7 +201,8 @@ public:
           index1 += length;
         const double sample0 = static_cast<double>(delay_line[static_cast<std::size_t>(index0)]);
         const double sample1 = static_cast<double>(delay_line[static_cast<std::size_t>(index1)]);
-        fdn_outputs[line] = static_cast<float>(sample0 + (sample1 - sample0) * fraction);
+        fdn_outputs[line] =
+            dsp::flushSubnormal(static_cast<float>(sample0 + (sample1 - sample0) * fraction));
       }
 
       for (std::uint32_t row = 0u; row < density; ++row) {
@@ -211,7 +211,7 @@ public:
           sum += static_cast<double>(kHadamard[row][column]) *
                  static_cast<double>(fdn_outputs[column]);
         }
-        hadamard_outputs[row] = static_cast<float>(sum * inverse_sqrt_density);
+        hadamard_outputs[row] = dsp::flushSubnormal(static_cast<float>(sum * inverse_sqrt_density));
       }
 
       for (std::uint32_t line = 0u; line < density; ++line) {
@@ -219,18 +219,18 @@ public:
         const double diffused = static_cast<double>(hadamard_outputs[line]) * diffusion;
         double signal = tank_input + diffused * static_cast<double>(feedback_gains[line]);
         if (lowpass_alpha > 0.0) {
-          lowpass_states_[line] =
+          lowpass_states_[line] = dsp::flushSubnormal(
               static_cast<float>((1.0 - lowpass_alpha) * signal +
-                                 lowpass_alpha * static_cast<double>(lowpass_states_[line]));
+                                 lowpass_alpha * static_cast<double>(lowpass_states_[line])));
           signal = static_cast<double>(lowpass_states_[line]);
         }
         if (apply_highpass) {
           const double low_component = (1.0 - highpass_alpha) * signal +
                                        highpass_alpha * static_cast<double>(highpass_states_[line]);
           signal -= low_component;
-          highpass_states_[line] = static_cast<float>(low_component);
+          highpass_states_[line] = dsp::flushSubnormal(static_cast<float>(low_component));
         }
-        delay_lines_[line][write] = static_cast<float>(signal);
+        delay_lines_[line][write] = dsp::flushSubnormal(static_cast<float>(signal));
         std::uint32_t next = write + 1u;
         if (next >= delay_line_length_)
           next = 0u;
@@ -261,8 +261,8 @@ public:
           const double side = channel == 0u ? left_wet : right_wet;
           wet = mono * (1.0 - width) + side * width;
         }
-        audio[audio_index] =
-            static_cast<float>(static_cast<double>(audio[audio_index]) * dry_mix + wet * wet_mix);
+        audio[audio_index] = dsp::flushSubnormal(
+            static_cast<float>(static_cast<double>(audio[audio_index]) * dry_mix + wet * wet_mix));
       }
     }
     pre_delay_ramp_.advance(frame_count);

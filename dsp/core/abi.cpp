@@ -1,5 +1,6 @@
 #include "effetune/abi.h"
 
+#include "../plugins/others/sfz/sfz_processing_cost.h"
 #include "arena.h"
 #include "engine.h"
 #include "registry.h"
@@ -20,6 +21,14 @@ effetune::Engine *findEngine(et_engine handle) noexcept {
 }
 
 } // namespace
+
+#if defined(ET_ENABLE_TEST_KERNEL)
+extern "C" effetune::PluginKernel *et_instance_kernel_for_testing(et_engine engine,
+                                                                  et_instance instance) noexcept {
+  auto *target = findEngine(engine);
+  return target ? target->instanceKernelForTesting(instance) : nullptr;
+}
+#endif
 
 extern "C" {
 
@@ -116,6 +125,54 @@ et_status et_engine_set_telemetry_rate(et_engine engine, float rate_hz) {
   return target == nullptr ? ET_ERR_ARGS : target->setTelemetryRate(rate_hz);
 }
 
+et_status et_engine_set_host_transport(et_engine engine, const et_host_transport *transport) {
+  auto *target = findEngine(engine);
+  if (!target)
+    return ET_ERR_ARGS;
+  if (!transport) {
+    target->setHostTransport(nullptr);
+    return ET_OK;
+  }
+  constexpr std::uint32_t kFlags =
+      ET_HOST_TRANSPORT_PLAYING | ET_HOST_TRANSPORT_TEMPO_VALID | ET_HOST_TRANSPORT_POSITION_VALID |
+      ET_HOST_TRANSPORT_BAR_START_VALID | ET_HOST_TRANSPORT_TIME_SIGNATURE_VALID |
+      ET_HOST_TRANSPORT_LOOPING;
+  if (transport->flags & ~kFlags)
+    return ET_ERR_ARGS;
+  const effetune::HostTransport value{transport->flags,
+                                      transport->tempo_bpm,
+                                      transport->ppq_position,
+                                      transport->bar_start_ppq,
+                                      transport->time_signature_numerator,
+                                      transport->time_signature_denominator};
+  target->setHostTransport(&value);
+  return ET_OK;
+}
+
+et_status et_sample_player_preparation_bytes(const std::uint8_t *control,
+                                             std::uint32_t control_bytes,
+                                             std::uint32_t payload_bytes, std::uint32_t format_tag,
+                                             float sample_rate, std::uint32_t processing_channels,
+                                             std::uint32_t max_frames, double minimum_physical_bpm,
+                                             std::uint64_t *additional_bytes,
+                                             std::uint32_t player_kind) {
+  if (!additional_bytes)
+    return ET_ERR_ARGS;
+  *additional_bytes = 0;
+  if (!control || player_kind > ET_SAMPLE_PLAYER_MAIN)
+    return ET_ERR_ARGS;
+  const auto voices = player_kind == ET_SAMPLE_PLAYER_MAIN ? 1024u : 128u;
+  const effetune::PrepareInfo info{sample_rate, processing_channels, max_frames,
+                                   minimum_physical_bpm};
+  std::uint64_t bytes = 0;
+  const auto status = effetune::plugins::others::sfz::processingPreparationBytes(
+      {control, control_bytes}, payload_bytes, format_tag, info, processing_channels, bytes,
+      voices);
+  if (status == ET_OK)
+    *additional_bytes = bytes;
+  return status;
+}
+
 et_instance et_instance_create(et_engine engine, const char *type_name) {
   effetune::Engine *target = findEngine(engine);
   return target == nullptr ? 0u : target->createInstance(type_name);
@@ -141,6 +198,39 @@ std::uint32_t et_instance_latency(et_engine engine, et_instance instance) {
 et_status et_instance_stream_boundary(et_engine engine, et_instance instance) {
   auto *target = findEngine(engine);
   return target == nullptr ? ET_ERR_ARGS : target->streamBoundaryInstance(instance);
+}
+
+// Paged reads, retained forecasts and resumable offline trials share this capability.
+std::uint32_t et_sfz_stream_capability(void) { return 1u; }
+et_status et_instance_stream_configure(et_engine engine, et_instance instance,
+                                       std::uint32_t generation_low,
+                                       std::uint32_t generation_high) {
+  auto *target = findEngine(engine);
+  const auto generation = generation_low | static_cast<std::uint64_t>(generation_high) << 32u;
+  return target ? target->configureInstanceSampleStream(instance, generation) : ET_ERR_ARGS;
+}
+et_status et_instance_stream_take_requests(et_engine engine, et_instance instance,
+                                           et_sfz_sample_request *requests, std::uint32_t capacity,
+                                           std::uint32_t *count) {
+  if (!count || capacity > 4096u || (capacity && !requests))
+    return ET_ERR_ARGS;
+  *count = 0;
+  auto *target = findEngine(engine);
+  return target ? target->takeInstanceSampleRequests(instance, requests, capacity, *count)
+                : ET_ERR_ARGS;
+}
+et_status et_instance_stream_publish(et_engine engine, et_instance instance,
+                                     std::uint32_t generation_low, std::uint32_t generation_high,
+                                     std::uint32_t sample, std::uint32_t page_low,
+                                     std::uint32_t page_high, const float *pcm,
+                                     std::uint32_t frames, std::uint32_t channels,
+                                     std::uint32_t flags) {
+  auto *target = findEngine(engine);
+  const auto generation = generation_low | static_cast<std::uint64_t>(generation_high) << 32u;
+  const auto page = page_low | static_cast<std::uint64_t>(page_high) << 32u;
+  return target ? target->publishInstanceSamplePage(instance, generation, sample, page, pcm, frames,
+                                                    channels, flags)
+                : ET_ERR_ARGS;
 }
 
 et_status et_instance_set_analysis_source(et_engine engine, et_instance consumer,
@@ -184,15 +274,60 @@ std::uint32_t et_instance_asset_begin(et_engine engine, et_instance instance, st
                                       std::uint32_t rate_divider, std::uint32_t path_count,
                                       std::uint32_t input_count, std::uint32_t processing_channels,
                                       std::uint32_t footprint_bytes, std::uint32_t byte_size) {
+  if constexpr (sizeof(std::uintptr_t) > sizeof(std::uint32_t)) {
+    return 0u;
+  } else {
+    auto *target = findEngine(engine);
+    if (target == nullptr)
+      return 0u;
+    const effetune::AssetBeginInfo info{
+        channels,        frames,     topology,    head_block,
+        rate_divider,    path_count, input_count, processing_channels,
+        footprint_bytes, byte_size};
+    auto *staging = target->beginInstanceAsset(instance, slot, info);
+    return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(staging));
+  }
+}
+
+std::uint8_t *et_instance_asset_begin_ptr(et_engine engine, et_instance instance,
+                                          std::uint32_t slot, std::uint32_t channels,
+                                          std::uint32_t frames, std::uint32_t topology,
+                                          std::uint32_t head_block, std::uint32_t rate_divider,
+                                          std::uint32_t path_count, std::uint32_t input_count,
+                                          std::uint32_t processing_channels,
+                                          std::uint32_t footprint_bytes, std::uint32_t byte_size,
+                                          double minimum_physical_bpm) {
   effetune::Engine *target = findEngine(engine);
   if (target == nullptr) {
-    return 0u;
+    return nullptr;
   }
   const effetune::AssetBeginInfo info{channels,        frames,     topology,    head_block,
                                       rate_divider,    path_count, input_count, processing_channels,
                                       footprint_bytes, byte_size};
-  std::uint8_t *staging = target->beginInstanceAsset(instance, slot, info);
-  return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(staging));
+  return target->beginInstanceAsset(instance, slot, info, minimum_physical_bpm);
+}
+
+// Compatibility bridge for private WASM fixtures that used an explicit candidate
+// context before the portable pointer entry carried it.
+std::uint32_t et_instance_asset_begin_with_context(
+    et_engine engine, et_instance instance, std::uint32_t slot, std::uint32_t channels,
+    std::uint32_t frames, std::uint32_t topology, std::uint32_t head_block,
+    std::uint32_t rate_divider, std::uint32_t path_count, std::uint32_t input_count,
+    std::uint32_t processing_channels, std::uint32_t footprint_bytes, std::uint32_t byte_size,
+    double minimum_physical_bpm) {
+  if constexpr (sizeof(std::uintptr_t) > sizeof(std::uint32_t)) {
+    return 0;
+  } else {
+    auto *target = findEngine(engine);
+    if (!target)
+      return 0;
+    const effetune::AssetBeginInfo info{
+        channels,        frames,     topology,    head_block,
+        rate_divider,    path_count, input_count, processing_channels,
+        footprint_bytes, byte_size};
+    auto *staging = target->beginInstanceAsset(instance, slot, info, minimum_physical_bpm);
+    return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(staging));
+  }
 }
 
 et_status et_instance_asset_commit(et_engine engine, et_instance instance, std::uint32_t slot,
@@ -215,6 +350,97 @@ std::uint32_t et_instance_asset_state(et_engine engine, et_instance instance, st
                            : target->instanceAssetState(instance, slot);
 }
 
+et_status et_instance_stream_prefetch(et_engine engine, et_instance instance,
+                                      const et_midi_event *events, std::uint32_t count,
+                                      std::uint32_t generation, std::uint32_t window_frames,
+                                      std::uint32_t flags) {
+  auto *target = findEngine(engine);
+  return target ? target->prefetchInstanceSamples(instance, events, count, generation,
+                                                  window_frames, flags)
+                : ET_ERR_ARGS;
+}
+et_status et_instance_stream_readiness(et_engine engine, et_instance instance,
+                                       et_stream_readiness *out) {
+  if (!out)
+    return ET_ERR_ARGS;
+  *out = {};
+  auto *target = findEngine(engine);
+  return target ? target->instanceStreamReadiness(instance, *out) : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_events(et_engine engine, et_instance instance,
+                                      const et_midi_event *events, std::uint32_t count,
+                                      std::uint32_t generation, std::uint32_t flags) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiEvents(instance, events, count, generation, flags)
+                : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_gain(et_engine engine, et_instance instance, float gain) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiGain(instance, gain) : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_metering(et_engine engine, et_instance instance,
+                                        std::uint32_t enabled) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiMetering(instance, enabled) : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_channel_mix(et_engine engine, et_instance instance,
+                                           std::uint32_t channel, std::uint32_t action) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiChannelMix(instance, channel, action) : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_transport_map(et_engine engine, et_instance instance,
+                                             const et_midi_transport_point *points,
+                                             std::uint32_t count) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiTransportMap(instance, points, count) : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_transport(et_engine engine, et_instance instance, std::uint32_t low,
+                                         std::uint32_t high, double seconds, double speed,
+                                         double duration, std::uint32_t flags) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiTransport(instance,
+                                                   static_cast<std::uint64_t>(high) << 32u | low,
+                                                   seconds, speed, duration, flags)
+                : ET_ERR_ARGS;
+}
+et_status et_instance_set_midi_clock(et_engine engine, et_instance instance, std::uint32_t low,
+                                     std::uint32_t high, std::uint32_t generation,
+                                     std::uint32_t flags) {
+  auto *target = findEngine(engine);
+  return target ? target->setInstanceMidiClock(
+                      instance, static_cast<std::uint64_t>(high) << 32u | low, generation, flags)
+                : ET_ERR_ARGS;
+}
+std::uint32_t et_instance_midi_state(et_engine engine, et_instance instance) {
+  const auto *target = findEngine(engine);
+  return target ? target->instanceMidiState(instance) : 0u;
+}
+std::uint32_t et_instance_midi_clock_low(et_engine engine, et_instance instance) {
+  const auto *target = findEngine(engine);
+  return target ? static_cast<std::uint32_t>(target->instanceMidiClock(instance)) : 0u;
+}
+std::uint32_t et_instance_midi_clock_high(et_engine engine, et_instance instance) {
+  const auto *target = findEngine(engine);
+  return target ? static_cast<std::uint32_t>(target->instanceMidiClock(instance) >> 32u) : 0u;
+}
+std::uint32_t et_instance_midi_generation(et_engine engine, et_instance instance) {
+  const auto *target = findEngine(engine);
+  return target ? target->instanceMidiGeneration(instance) : 0u;
+}
+std::uint32_t et_instance_midi_checkpoint_size(et_engine engine, et_instance instance) {
+  const auto *target = findEngine(engine);
+  return target ? target->instanceMidiCheckpointSize(instance) : 0u;
+}
+et_status et_instance_write_midi_checkpoint(et_engine engine, et_instance instance,
+                                            std::uint8_t *destination, std::uint32_t bytes) {
+  const auto *target = findEngine(engine);
+  return target ? target->writeInstanceMidiCheckpoint(instance, destination, bytes) : ET_ERR_ARGS;
+}
+et_status et_instance_read_midi_checkpoint(et_engine engine, et_instance instance,
+                                           const std::uint8_t *source, std::uint32_t bytes) {
+  auto *target = findEngine(engine);
+  return target ? target->readInstanceMidiCheckpoint(instance, source, bytes) : ET_ERR_ARGS;
+}
 et_status et_instance_process(et_engine engine, et_instance instance, float *audio,
                               std::uint32_t channel_count, std::uint32_t frame_count,
                               double time_seconds) {
@@ -437,6 +663,38 @@ et_status et_graph_configure(et_engine engine, const std::uint8_t *descriptor,
                              std::uint32_t descriptor_bytes) {
   effetune::Engine *target = findEngine(engine);
   return target == nullptr ? ET_ERR_ARGS : target->configureGraph(descriptor, descriptor_bytes);
+}
+
+et_status et_graph_configure_offline(et_engine engine, const std::uint8_t *descriptor,
+                                     std::uint32_t descriptor_bytes) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS
+                           : target->configureGraph(descriptor, descriptor_bytes, true);
+}
+
+et_status et_graph_prepare_offline(et_engine engine, std::uint32_t *generation_low,
+                                   std::uint32_t *generation_high) {
+  effetune::Engine *target = findEngine(engine);
+  if (target == nullptr || generation_low == nullptr || generation_high == nullptr)
+    return ET_ERR_ARGS;
+  std::uint64_t generation = 0u;
+  const auto status = target->prepareOfflineGraph(generation);
+  if (status == ET_OK) {
+    *generation_low = static_cast<std::uint32_t>(generation);
+    *generation_high = static_cast<std::uint32_t>(generation >> 32u);
+  }
+  return status;
+}
+
+et_status et_graph_process_offline(et_engine engine, std::uint32_t channel_count,
+                                   std::uint32_t frame_count, double time_seconds,
+                                   std::uint32_t generation_low, std::uint32_t generation_high) {
+  effetune::Engine *target = findEngine(engine);
+  const auto generation = static_cast<std::uint64_t>(generation_low) |
+                          (static_cast<std::uint64_t>(generation_high) << 32u);
+  return target == nullptr
+             ? ET_ERR_ARGS
+             : target->processOfflineGraph(channel_count, frame_count, time_seconds, generation);
 }
 
 et_status et_graph_reset(et_engine engine) {

@@ -464,7 +464,8 @@ export interface CreateChainOptions extends ArtifactOptions {
 
 export interface TelemetryFrameBase {
   readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'noteTimbre' | 'noteChordKey' | 'oscilloscope' | 'pitch' |
-    'rhythmAnalyzer' | 'spectrum' | 'spectrumHq' | 'spectrogram' | 'spectrogramHq' | 'stereo' | 'tonalBalance';
+    'rhythmAnalyzer' | 'spectrum' | 'spectrumHq' | 'spectrogram' | 'spectrogramHq' | 'stereo' | 'tonalBalance' |
+    'sfz-script-message' | 'sfz-keyswitches';
   readonly effectType: EffectType;
   readonly effectId: string | null;
   readonly effectIndex: number;
@@ -766,7 +767,21 @@ export interface TonalBalanceEQTelemetryFrame extends TelemetryFrameBase {
   readonly responseDb: Float32Array;
 }
 
+export interface SfzScriptMessageTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'sfz-script-message';
+  readonly text: string;
+  readonly suppressed: number;
+}
+
+export interface SfzKeyswitchTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'sfz-keyswitches';
+  /** Accepted keyswitch per MIDI channel, with -1 for an unset channel. */
+  readonly keys: readonly number[];
+}
+
 export type TelemetryFrame =
+  | SfzKeyswitchTelemetryFrame
+  | SfzScriptMessageTelemetryFrame
   | AnalogMeterTelemetryFrame
   | LevelTelemetryFrame
   | OscilloscopeTelemetryFrame

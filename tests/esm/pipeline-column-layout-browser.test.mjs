@@ -6,9 +6,10 @@ import { chromium } from 'playwright';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../../css/effetune-theme.css') +
   read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '');
-const managerSource = read('../../js/ui/pipeline/pipeline-column-manager.js')
+const managerSource = read('../../js/settings-storage.js').replace(/^export /gm, '') +
+  read('../../js/ui/pipeline/pipeline-column-manager.js').replace(/^import .*;\r?\n/gm, '')
   .replace('export class PipelineColumnManager', 'class PipelineColumnManager');
-const collapseSource = read('../../js/ui/plugin-list/collapse-manager.js')
+const collapseSource = read('../../js/ui/plugin-list/collapse-manager.js').replace(/^import .*;\r?\n/gm, '')
   .replace('export class CollapseManager', 'class CollapseManager');
 const appHtml = read('../../effetune.html');
 const pipelineHeader = appHtml.slice(appHtml.indexOf('<div class="pipeline-header">'),

@@ -220,6 +220,7 @@ class AssetVolumePlugin extends VolumePlugin {
     this.assetOperationObserver = null;
     this.assetTargetResolverAssignments = 0;
     this.replays = [];
+    this.replayPosted = Promise.withResolvers();
     this.transportAcknowledgements = [];
     this.droppedAssetTargets = [];
     this.useReplayEpoch = options.useReplayEpoch === true;
@@ -338,6 +339,7 @@ class AssetVolumePlugin extends VolumePlugin {
     for (const descriptor of (options.assets || this.assets).values()) {
       this._postAsset(workletNode, descriptor, replayEpoch);
     }
+    this.replayPosted.resolve();
   }
 }
 
@@ -3116,7 +3118,7 @@ test('AudioManager replays pipeline B assets after its DBT config and waits for 
 
     const enabling = manager.enableParallelPipelines('A');
     const auxiliary = createdWorklets[0];
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
 
     const messageTypes = auxiliary.port.messages.map(entry => entry.message.type);
     const assetIndex = messageTypes.lastIndexOf('setPluginAsset');
@@ -3268,7 +3270,7 @@ test('AudioManager waits for a late pipeline A descriptor and its ACTIVE state',
     assert.equal(manager._parallelActive, false);
 
     pluginA.completeAsset();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginA.replayPosted.promise;
     assert.equal(pluginA.replays.length, 1);
     assert.equal(main.port.messages.filter(entry =>
       entry.message.type === 'setPluginAsset' && entry.message.pluginId === pluginA.id
@@ -3306,7 +3308,7 @@ test('AudioManager routes a late pipeline B descriptor only to B and replays its
     const auxiliary = createdWorklets[0];
     for (let index = 0; index < 4; index++) await Promise.resolve();
     pluginB.completeAsset();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
 
     assert.equal(main.port.messages.some(entry =>
       entry.message.type === 'setPluginAsset' && entry.message.pluginId === pluginB.id
@@ -3376,7 +3378,7 @@ test('AudioManager waits for signed replacement descriptors in both DBT pipeline
     assert.equal(pluginB.replays.length, 0);
 
     pluginB.completeAsset();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
     assert.equal(pluginA.replays.length, 1);
     assert.equal(pluginB.replays.length, 1);
     assert.equal(manager._parallelActive, false);
@@ -3495,7 +3497,7 @@ test('AudioManager settles a signed replacement on the primary before freezing D
         operationRevision: plugin.assetDescriptor.operationRevision
       }
     }, main);
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await plugin.replayPosted.promise;
     assert.equal(createdWorklets.length, 1);
     const replay = main.port.messages.filter(entry =>
       entry.message.type === 'setPluginAsset' && entry.message.replayEpoch !== undefined).at(-1).message;
@@ -3541,7 +3543,7 @@ test('AudioManager starts DBT from pipeline B without waiting for pipeline A ass
     const enabling = manager.enableParallelPipelines('A');
     assert.equal(createdWorklets.length, 1);
     const auxiliary = createdWorklets[0];
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginA.replayPosted.promise;
     const replayA = main.port.messages.filter(entry =>
       entry.message.type === 'setPluginAsset').at(-1)?.message;
     assert.ok(replayA);
@@ -3630,7 +3632,7 @@ test('AudioManager commits an inactive DBT pipeline format before freezing its a
     assert.equal(manager._parallelActive, false);
 
     pluginB.completeAsset();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
     auxiliary.port.onmessage({
       data: {
         type: 'assetState', pluginId: pluginB.id, slot: 0, state: 3,
@@ -3663,7 +3665,7 @@ test('AudioManager rejects late pre-replay ACTIVE and binds replay failure to th
 
     const enabling = manager.enableParallelPipelines('A');
     const auxiliary = createdWorklets[0];
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
     const replayA = main.port.messages.filter(entry =>
       entry.message.type === 'setPluginAsset').at(-1).message;
     const replayB = auxiliary.port.messages.filter(entry =>
@@ -3721,7 +3723,7 @@ test('AudioManager publishes DBT only after both comparison assets are ACTIVE', 
 
     const enabling = manager.enableParallelPipelines('A');
     const auxiliary = createdWorklets[0];
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pluginB.replayPosted.promise;
     manager.handleWorkletMessage({
       data: {
         type: 'assetState', pluginId: pluginA.id, slot: 0, state: 3,
@@ -3760,7 +3762,7 @@ test('AudioManager invalidates a settled DBT once before changed comparison data
       manager.dispatchEvent = (type, data) => invalidations.push({ type, data });
 
       const enabling = manager.enableParallelPipelines('A');
-      for (let index = 0; index < 4; index++) await Promise.resolve();
+      await pluginA.replayPosted.promise;
       manager.handleWorkletMessage({
         data: {
           type: 'assetState', pluginId: pluginA.id, slot: 0, state: 3,
@@ -3904,7 +3906,7 @@ test('AudioManager shares snapshot invalidation teardown with the activating cal
 
     releaseRestoration(true);
     assert.equal(await activating, false);
-    for (let index = 0; index < 6; index++) await Promise.resolve();
+    await pluginA.replayPosted.promise;
     assert.equal(createdWorklets.length, 2);
     const auxiliary = createdWorklets[1];
     const replayA = main.port.messages.filter(entry =>
@@ -4011,7 +4013,7 @@ test('AudioManager waits for a pre-ID direct pipeline load before freezing and a
     pendingPlugin.assetId = 'direct-ir';
     pendingPlugin.assetSignature = 'direct-ir|lt128|48000|2';
     pendingPlugin.completeAsset();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    await pendingPlugin.replayPosted.promise;
 
     const auxiliary = createdWorklets[0];
     assert.ok(auxiliary);

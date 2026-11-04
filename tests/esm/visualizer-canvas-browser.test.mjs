@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { chromium } from 'playwright';
@@ -148,7 +148,7 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
     try {
         const page = await browser.newPage();
         for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-counter',
-            'visualizer-playback-control', 'visualizer-seek-bar', 'visualizer-renderer']) {
+            'visualizer-playback-control', 'visualizer-seek-bar', 'visualizer-midi-mixer', 'visualizer-midi-event-list', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
@@ -655,7 +655,7 @@ test('Spectrum gradient directions follow frequency and level after rotating the
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {
-            const sources = { subscribeItem: () => () => {} }, results = [];
+            const sources = { subscribeItem: () => () => {}, getFrame: () => null }, results = [];
             for (const orientation of ['horizontal', 'vertical']) for (const dm of ['bar', 'line']) {
                 const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
                 const item = createItem('spectrum', 'spectrum');
@@ -811,7 +811,7 @@ test('Radial Spectrogram gradients preserve history opacity and annotations whil
             item.params.showAxes = item.params.showAxisNumbers = true;
             item.effects = [normalizeEffect({ type: 'opacity' })];
             item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
-            const display = createAnalyzerDisplay(item, canvas, { subscribeItem: () => () => {} }), plugin = display.plugin;
+            const display = createAnalyzerDisplay(item, canvas, { subscribeItem: () => () => {}, getFrame: () => null }), plugin = display.plugin;
             plugin.dspSpectrogramActive = true;
             plugin.spectrogramIntensityBuffer.fill(128);
             plugin.spectrogramColumnPeriod = .01; plugin.spectrogramColumnCount = 1024;
@@ -1297,6 +1297,85 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
     }
 });
 
+test('MIDI channel palettes color native Notes and Guitar canvases and keep the chosen audio fallback', async () => {
+    const installed = chromium.executablePath();
+    const systemChrome = process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : null;
+    const browser = await chromium.launch({ headless: true,
+        ...(!existsSync(installed) && systemChrome && existsSync(systemChrome) ? { executablePath: systemChrome } : {}) });
+    try {
+        const page = await browser.newPage();
+        await page.addScriptTag({ content: `class PluginBase {
+            parseFiniteNumber(value, min, max, fallback) {
+                return Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Number(value))) : fallback;
+            }
+        }
+        window.ThemePalette = { get: () => 'rgb(24,24,24)' };` });
+        await page.addScriptTag({ content: frequencyAxisScript });
+        await page.addScriptTag({ content: read('../../plugins/analyzer/note_spectrogram.js') });
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-text', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        const results = await page.evaluate(() => ['notes', 'guitar'].map(type => {
+            const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
+            const item = createItem(type, type);
+            Object.assign(item.params, { vl: false, kb: true, showAxes: false, showAxisNumbers: false });
+            item.palette.mode = 'channel-colors'; item.palette.color = '#123456';
+            let subscriber;
+            let snapshot = { sourceKind: 'midi', source: {}, position: 1, speed: 1,
+                notes: [{ pitch: 60, channel: 0, velocity: 127, start: .5 },
+                    { pitch: 64, channel: 1, velocity: 127, start: .5 }], history: [], chord: null };
+            const sources = { subscribeItem(_id, handler) { subscriber = handler; return () => {}; }, getFrame: () => snapshot };
+            const display = createAnalyzerDisplay(item, canvas, sources), plugin = display.plugin;
+            const count = rgb => {
+                const pixels = canvas.getContext('2d').getImageData(0, 0, 800, 400).data;
+                let count = 0;
+                for (let i = 0; i < pixels.length; i += 4)
+                    if (pixels[i + 3] > 220 && rgb.every((value, c) => Math.abs(pixels[i + c] - value) <= 2)) count++;
+                return count;
+            };
+            display.draw(item, 1, 800);
+            const colors = [count(midiChannelRgb(0)), count(midiChannelRgb(1))];
+            item.params.preferMidi = false; display.update(item, 1, 800); display.draw(item, 1, 800);
+            const off = count([18, 52, 86]);
+            item.params.preferMidi = true; display.update(item, 1, 800);
+            snapshot = { ...snapshot, position: .1, notes: [] }; display.draw(item, .1, 800);
+            const cleared = type !== 'notes' || plugin.midiChannelHistory.every(channel => channel === 0);
+            snapshot = { ...snapshot, source: {}, position: 1,
+                notes: [{ pitch: 60, channel: 15, velocity: 127, start: .5 }] };
+            display.draw(item, 1, 800);
+            const replaced = count(midiChannelRgb(15));
+            snapshot = null; display.draw(item, 1.1, 800);
+            if (type === 'notes') {
+                const payload = new DataView(new ArrayBuffer(9192));
+                payload.setFloat32(0, 48000, true); payload.setFloat32(4, 1.1, true);
+                payload.setUint16(8, 440, true); payload.setUint16(10, 21, true);
+                payload.setFloat32(12, .01, true); payload.setUint32(16, 1, true);
+                payload.setUint32(20, 5, true); payload.setUint32(24, 1, true);
+                for (let pitch = 0; pitch < 440; pitch++) {
+                    payload.setFloat32(32 + pitch * 4, pitch === 197 ? 1 : 0, true);
+                    payload.setFloat32(32 + 440 * 4 + pitch * 4, pitch === 197 ? -12 : -240, true);
+                }
+                subscriber({ frameType: 24, formatVersion: 6, payload }, {});
+                display.draw(item, 1.1, 800);
+            } else {
+                plugin.voices = [{ pitch: 60, target: 60, confidence: 1, level: 1, size: 1, volume: -12 }];
+                plugin.frameTime = performance.now(); plugin.frameArrived = true;
+                display.draw(item, 1.1, 800);
+            }
+            const fallback = count([18, 52, 86]), stale = count(midiChannelRgb(15));
+            display.dispose();
+            return { type, colors, off, cleared, replaced, fallback, stale };
+        }));
+        for (const result of results) {
+            assert.ok(result.colors.every(count => count > 10), JSON.stringify(result));
+            assert.ok(result.off > 10, JSON.stringify(result));
+            assert.equal(result.cleared, true);
+            assert.ok(result.replaced > 10, JSON.stringify(result));
+            assert.ok(result.fallback > 0, JSON.stringify(result));
+            assert.equal(result.stale, 0, JSON.stringify(result));
+        }
+    } finally { await browser.close(); }
+});
+
 test('Notes move the keyboard to the opposite side without reversing its keys', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -1316,7 +1395,7 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
         for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
-            const sources = { subscribeItem: () => () => {} };
+            const sources = { subscribeItem: () => () => {}, getFrame: () => null };
             return ['Horizontal', 'Vertical'].map(layout => {
                 const canvas = document.createElement('canvas');
                 canvas.width = 800; canvas.height = 400;
@@ -1433,6 +1512,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             const stage = document.createElement('canvas'); stage.width = 800; stage.height = 400;
             const item = createItem('level-meter', 'meter');
             item.channel = 'L';
+            item.params.dr = -96;
             item.params.showLevelValues = item.params.showAxes = item.params.showAxisNumbers = true;
             item.rect = { x: .02, y: .3, w: .05, h: .2 };
             // Graph Scale 1.6 on the 800 px stage keeps one graph pixel per canvas pixel.

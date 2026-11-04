@@ -470,6 +470,7 @@ export class LibraryManagerV2 {
       : { ...(options && typeof options === 'object' ? options : {}) };
     request.languageHints = this.#getMetadataRepairHints();
     request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
+    request.includeMidi = this.windowRef?.appConfig?.libraryIncludeMidi === true;
     return this.#invokeService(this.folderService, 'addFolder', 'folderService', [request]);
   }
 
@@ -479,7 +480,11 @@ export class LibraryManagerV2 {
 
   requestFolderAccess(folderId, options = {}) {
     return this.#invokeService(this.folderService, 'requestFolderAccess', 'folderService', [
-      folderId, { ...options, includeVideo: this.windowRef?.appConfig?.libraryIncludeVideo === true }
+      folderId, {
+        ...options,
+        includeVideo: this.windowRef?.appConfig?.libraryIncludeVideo === true,
+        includeMidi: this.windowRef?.appConfig?.libraryIncludeMidi === true
+      }
     ]);
   }
 
@@ -489,6 +494,7 @@ export class LibraryManagerV2 {
       : { ...(options && typeof options === 'object' ? options : {}) };
     request.languageHints = this.#getMetadataRepairHints();
     request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
+    request.includeMidi = this.windowRef?.appConfig?.libraryIncludeMidi === true;
     return this.#invokeService(this.scanService, 'scanFolders', 'scanService', [request]);
   }
 

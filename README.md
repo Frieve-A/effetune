@@ -322,6 +322,17 @@ Before sharing a backup, review the selection: it can contain preset names and c
 
 Open **Settings > Config...** to choose **Language**, set **Startup view:** (`Effect Pipeline (Default)`, `Music Library`, or `Visualizer`), configure **Effect Pipeline at startup:**, and select a **Theme** (`Graphite`, `Paper`, `Midnight`, `Ember`, or `Mint`). When **Startup view:** is set to **Music Library**, you can also choose which library category opens first. In the desktop app, you can also select **Browser** as the startup view.
 
+To keep separate desktop settings, add a settings name when launching EffeTune. For example, on Windows:
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+Each name starts with default settings and restores its own audio devices, effect pipeline, and display and startup settings on later launches. Put names containing spaces in quotes, such as `--settings-name="Living room"`. Omit the option to use your usual settings. Measurements, saved presets, and music, IR, and instrument libraries use the same storage regardless of the settings name. Close the app using measurement data before opening that data in another EffeTune instance.
+
+Different settings names can run at the same time. **Startup > Allow multiple instances** also allows several windows using the same settings name; it is off by default. After changing it, close all EffeTune windows and restart the app. Windows using the same settings name share saved settings.
+
 For **Effect Pipeline columns**, choose **Manual** to adjust the column count with the +/− buttons, or **Automatic** (default) to fit the columns alongside the effect list within the window width. Automatic mode adjusts the column count when you resize the window.
 
 The Microsoft Store edition receives updates through Microsoft Store. In **Settings > Config...**, use **Open Microsoft Store updates** to check for updates and **Open Windows startup settings** to choose whether EffeTune starts automatically. This edition stores its settings and Browser sign-ins separately from other desktop editions.
@@ -510,7 +521,8 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Spatial Mapper | Separates direct, diffuse, and residual sound for flexible multichannel routing | [Details](docs/plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Controls stereo width from polarity-swapped stereo through mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
-| Others    | SFZ Note Player | Plays an imported SFZ instrument from detected notes | [Details](docs/plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Note Player | Plays detected notes with SF2/SF3 SoundFonts and SFZ instruments | [Details](docs/plugins/others.md#sfz-note-player) |
+| Others    | SoundFont Player | Plays MIDI with SF2/SF3 SoundFonts or SFZ instruments, with 16 independent SF2/SF3 channels | [Details](docs/plugins/others.md#soundfont-player) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |
 
 ## Technical Information

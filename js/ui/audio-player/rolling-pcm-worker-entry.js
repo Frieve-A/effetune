@@ -5,6 +5,10 @@ import {
   BufferSource,
   Input
 } from 'mediabunny';
+import { probeDsdSource } from '../../audio/dsd/dsd-parser.js';
+import { createDsdDecoder } from '../../audio/dsd/dsd-decoder.js';
+import { createDsdSpeedDecoder } from '../../audio/dsd/dsd-speed-decoder.js';
+import { openDsdWorkerReader } from './dsd-range-channel.js';
 import {
   createRollingPcmEnvelope,
   FixedPlanarSlabAssembler,
@@ -76,6 +80,10 @@ async function openSource(message) {
   if (message.decoderProfile !== undefined || message.resamplerProfile !== undefined ||
       message.outputSampleRate !== undefined) {
     openPcm16WaveSource(message);
+    return;
+  }
+  if (message.sourceKind === 'dsd-range') {
+    await openDsdSource(message);
     return;
   }
   let source;
@@ -168,6 +176,10 @@ async function fill(message) {
   if (!state || state.ended) return;
   if (state.fragmentSource) {
     await fillPcm16Wave(state, message);
+    return;
+  }
+  if (state.dsdDecoder) {
+    await fillDsd(state, message);
     return;
   }
   if (!Number.isSafeInteger(message.targetFrame) || message.targetFrame < state.sentFrame ||
@@ -273,7 +285,7 @@ async function seek(message) {
   state.ended = message.frame === state.totalFrames;
   state.assembler.reset(message.frame);
   await state.iterator?.return?.();
-  state.iterator = state.sink.samples(
+  if (!state.dsdDecoder) state.iterator = state.sink.samples(
     message.frame / state.sampleRate,
     state.durationSec
   )[Symbol.asyncIterator]();
@@ -504,6 +516,8 @@ async function dispose(message, notify) {
     }
     state.recycledPlanes.length = 0;
     state.fragmentSource = null;
+    state.dsdDecoder?.dispose();
+    state.dsdReader?.dispose();
   }
   if (notify && validateRollingPcmEnvelope(message)) {
     post(createRollingPcmEnvelope(RollingPcmEvent.DISPOSED, idsFrom(message)));
@@ -572,4 +586,62 @@ function codedError(code) {
 
 function errorCode(error) {
   return typeof error?.code === 'string' ? error.code : 'decode-failed';
+}
+
+async function openDsdSource(message) {
+  const reader = openDsdWorkerReader(message.source, message.sourceSize);
+  try {
+    const metadata = await probeDsdSource(reader);
+    if (!metadata) throw codedError('DSD_CORRUPT');
+    const base = await createDsdDecoder(reader, { metadata, outputSampleRate: message.dsdOutputRate });
+    const decoder = await createDsdSpeedDecoder(base, { speed: message.playbackSpeed,
+      preservePitch: message.preservePitch });
+    const ids = idsFrom(message);
+    const recycledPlanes = [];
+    owner = {
+      ids, dsdReader: reader, dsdDecoder: decoder, recycledPlanes,
+      freePoolPerSizeClass: message.freePoolPerSizeClass,
+      assembler: new FixedPlanarSlabAssembler({ channelCount: decoder.channelCount,
+        slabFrames: message.slabFrames, acquirePlane: () => recycledPlanes.pop() ?? null }),
+      sampleRate: decoder.sampleRate, channelCount: decoder.channelCount,
+      totalFrames: decoder.totalFrames, durationSec: decoder.durationSec,
+      decodedFrame: 0, sentFrame: 0, ended: false, disposed: false,
+      pendingGeneration: null, nextSlabId: 1, outstandingSlabId: null,
+      outstandingFragment: null, slabCreditWaiter: null
+    };
+    post(createRollingPcmEnvelope(RollingPcmEvent.READY, ids, {
+      sampleRate: decoder.sampleRate, channelCount: decoder.channelCount,
+      totalFrames: decoder.totalFrames, durationSec: decoder.durationSec,
+      sourceSampleRate: metadata.sampleRate, sourceTotalFrames: metadata.sampleCount,
+      sourceByteLength: reader.size, bitsPerSample: 1, dsd: true,
+      playbackSpeed: message.playbackSpeed, preservePitch: message.preservePitch,
+      workerCompressedBytes: decoder.residentByteLength,
+      containerMimeType: metadata.format === 'dsf' ? 'audio/x-dsf' : 'audio/x-dff',
+      codec: 'dsd', decoderConfigCodec: 'dsd', decoderConfigVerified: true
+    }));
+  } catch (error) { reader.dispose(); throw error; }
+}
+
+async function fillDsd(state, message) {
+  if (!Number.isSafeInteger(message.targetFrame) || message.targetFrame < 0 ||
+      message.targetFrame > state.totalFrames) throw codedError('fill-target-invalid');
+  // FILL is a minimum coverage request. Complete a fixed slab before replying,
+  // just like the sample iterator path; flushing every moving target creates
+  // progressively smaller slabs as accepting each slab requests more coverage.
+  while (state.sentFrame < message.targetFrame && state.decodedFrame < state.totalFrames) {
+    const count = Math.min(65536, state.totalFrames - state.decodedFrame,
+      state.assembler.slabFrames - state.assembler.frameCount);
+    const planes = await state.dsdDecoder.readFrames(state.decodedFrame, count);
+    if (!currentOwner(message) || state.disposed) return;
+    if (!await state.assembler.appendWithBackpressure(planes, 0, count, slab => emitSlab(state, slab))) return;
+    state.decodedFrame += count;
+  }
+  if (state.decodedFrame === state.totalFrames &&
+      !await state.assembler.flushWithBackpressure(slab => emitSlab(state, slab))) return;
+  if (state.sentFrame === state.totalFrames) {
+    state.ended = true;
+    post(createRollingPcmEnvelope(RollingPcmEvent.SEGMENT_END, state.ids, { totalFrames: state.totalFrames }));
+  } else post(createRollingPcmEnvelope(RollingPcmEvent.QUEUE_STATE, state.ids, {
+    decodedFrame: state.decodedFrame, sentFrame: state.sentFrame, ended: false
+  }));
 }

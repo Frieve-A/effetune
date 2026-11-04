@@ -1,5 +1,5 @@
 const DEFAULT_FRESH_RENDER_TIMEOUT_MS = 1500;
-const PLAYER_ACTIVATION_BACKENDS = Object.freeze(['buffer-source', 'html-media', 'rolling-pcm']);
+const PLAYER_ACTIVATION_BACKENDS = Object.freeze(['buffer-source', 'html-media', 'rolling-pcm', 'midi']);
 
 function createActivationError(code, message) {
     const error = new Error(message);

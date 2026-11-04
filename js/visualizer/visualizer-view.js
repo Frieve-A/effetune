@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../settings-storage.js';
 import { createDefaultLayout, normalizeLayout, layoutsEqual, encodeLayoutShare, decodeLayoutShare, layoutShareParam } from './visualizer-model.js';
 import { createShareUrl } from '../utils/pipeline-state-codec.js';
 import { copyTextToClipboard, readTextFromClipboard } from '../utils/clipboard-utils.js';
@@ -10,6 +11,7 @@ import { hasPlaybackRegionDescriptor } from '../ui/audio-player/playback-region.
 import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
 import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
+import { getMidiLyricsData } from '../midi/lyrics-timeline.js';
 
 // Undo, Redo, and Delete stay available on range, color, select, and button controls.
 const NON_TEXT_INPUT_TYPES = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
@@ -24,11 +26,14 @@ export class VisualizerView {
         this.layout = createDefaultLayout();
         this.hasLyrics = false;
         this.store = new VisualizerPresetStore({ onError: () => this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.') });
-        this.sources = new VisualizerSources(uiManager.audioManager);
+        this.sources = new VisualizerSources(uiManager.audioManager,
+            () => uiManager.audioManager.powerPolicyController?.player
+                ? uiManager.audioManager.powerPolicyController.player.contextManager?.getMidiPresentation?.() ?? null
+                : uiManager.audioManager.getLiveMidiPresentation?.() ?? null);
         this.video = new SynchronizedVideo();
         this.currentPresetName = '';
-        this.quality = localStorage.getItem('effetune_visualizer_quality') || 'auto';
-        this.hdr = localStorage.getItem('effetune_visualizer_hdr') === 'true';
+        this.quality = getSettingsStorage().getItem('effetune_visualizer_quality') || 'auto';
+        this.hdr = getSettingsStorage().getItem('effetune_visualizer_hdr') === 'true';
         this.historyDepth = 0;
         this.history = new VisualizerHistory();
         this.root = document.createElement('section');
@@ -94,7 +99,7 @@ export class VisualizerView {
             const option = document.createElement('option'); option.value = value; quality.appendChild(option);
         }
         quality.value = this.quality;
-        quality.addEventListener('change', () => { this.quality = quality.value; localStorage.setItem('effetune_visualizer_quality', quality.value); });
+        quality.addEventListener('change', () => { this.quality = quality.value; getSettingsStorage().setItem('effetune_visualizer_quality', quality.value); });
         this.updateUITexts();
         document.addEventListener('visibilitychange', () => { if (document.hidden) this.flush(); this.updateVisibility(); });
         window.electronAPI?.onWindowVisibilityChanged?.(() => this.updateVisibility());
@@ -387,16 +392,21 @@ export class VisualizerView {
         if (!metadata) return null;
         const information = snapshot.liveInputActive ? snapshot.liveInputInformation
             : getTrackInformation(snapshot.currentTrack, metadata);
-        return { ...metadata, 'track-info': formatTrackInformation(information,
+        return { ...metadata, artworkPending: snapshot.isTrackPresentationPending === true, 'track-info': formatTrackInformation(information,
             (key, fallback) => this.t(key, fallback), snapshot.liveInputActive ? 'AirPlay' : '') };
     }
     lyrics() {
         const player = this.uiManager.audioPlayer;
-        if (!this.hasLyrics || !player?.ui?.container || !player.trackLyrics) return null;
+        if (!this.hasLyrics || !player?.ui?.container) return null;
         const snapshot = player.stateManager.getStateSnapshot();
         if (!snapshot.currentTrack) return null;
-        const data = player.trackLyrics.get(snapshot.currentTrack);
+        const midi = this.sources.getMidiPresentation();
+        const midiData = midi?.timeline ? getMidiLyricsData(midi.timeline) : null;
+        if (midiData) return { data: midiData, midiTimeline: midi.timeline, time: midi.position,
+            duration: midi.timeline.duration, isStopped: snapshot.isStopped };
+        const data = player.trackLyrics?.get(snapshot.currentTrack);
         if (!data) return null;
+        if (midi?.timeline) return { data, time: midi.position, duration: midi.timeline.duration, isStopped: snapshot.isStopped };
         const position = snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
         return { data, time: this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed),
             duration: snapshot.currentTrackDuration, isStopped: snapshot.isStopped };

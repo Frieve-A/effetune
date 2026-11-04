@@ -2,20 +2,20 @@ import { openAssetLibraryBrowser, translateLibraryMessage } from '../ui/asset-li
 import { enumerateSfzDirectory, listSfzFolderFiles } from './service.js';
 
 const messages = {
-  title: 'SFZ Library',
-  'aria.dialog': 'SFZ library',
-  'aria.search': 'Search SFZ instruments',
-  'aria.sort': 'Sort SFZ instruments',
-  empty: 'No matching SFZ instruments.',
+  title: 'SoundFont Library',
+  'aria.dialog': 'SoundFont library',
+  'aria.search': 'Search SoundFont instruments',
+  'aria.sort': 'Sort SoundFont instruments',
+  empty: 'No matching SoundFont instruments.',
   'confirm.delete': 'Delete “{name}” from the library? This cannot be undone.',
-  'confirm.deleteSelected': 'Delete {count} selected SFZ instruments from the library? This cannot be undone.',
-  'status.inUse': 'This SFZ is in use by an effect pipeline and cannot be deleted.',
-  'status.deleted': 'SFZ deleted.',
-  'status.deleteFailed': 'The SFZ could not be deleted.',
-  'status.deletingSelected': 'Deleting {count} selected SFZ instruments…',
-  'error.load': 'The SFZ could not be loaded. Check its sample files or choose another instrument.',
-  'error.delete': 'The SFZ could not be deleted. Please try again.',
-  'error.fileTooLarge': 'This SFZ exceeds the size limit. Increase SFZ size limit in Config → General, or choose a smaller SFZ.',
+  'confirm.deleteSelected': 'Delete {count} selected SoundFont instruments from the library? This cannot be undone.',
+  'status.inUse': 'This SoundFont is in use by an effect pipeline and cannot be deleted.',
+  'status.deleted': 'SoundFont deleted.',
+  'status.deleteFailed': 'The SoundFont could not be deleted.',
+  'status.deletingSelected': 'Deleting {count} selected SoundFont instruments…',
+  'error.load': 'The SoundFont could not be loaded. Check its sample files or choose another instrument.',
+  'error.delete': 'The SoundFont could not be deleted. Please try again.',
+  'error.fileTooLarge': 'This SoundFont exceeds the size limit. Increase SoundFont size limit in Config → General, or choose a smaller SoundFont.',
   'badge.sizeUnknown': 'size unknown',
   'badge.files': 'Files: {count}',
   'badge.regions': 'Regions: {count}',
@@ -36,12 +36,13 @@ function formatBadge(entry) {
       : entry.size >= 1024 ? `${(entry.size / 1024).toFixed(1)} KiB` : `${entry.size} B`
     : translate('badge.sizeUnknown');
   return [size,
+    ['sf2', 'sf3'].includes(entry.format) && entry.format.toUpperCase(),
     entry.fileCount !== undefined && translate('badge.files', '', { count: entry.fileCount }),
     entry.regionCount !== undefined && translate('badge.regions', '', { count: entry.regionCount })
   ].filter(Boolean).join(' · ');
 }
 
-export function openSfzLibraryBrowser({ service, decode, ...options } = {}) {
+export function openSfzLibraryBrowser({ service, decode, prepareStreamedBank, prepareSoundFontBank, ...options } = {}) {
   if (!service) throw new TypeError('SFZ library service is required.');
   const metadata = new Map();
   let metadataWork = Promise.resolve();
@@ -57,7 +58,7 @@ export function openSfzLibraryBrowser({ service, decode, ...options } = {}) {
       onProgress({ totalCount: paths.length, completedCount: result.imported.length + result.failedCount,
         importedCount: result.imported.length, failedCount: result.failedCount, currentFiles: [path] });
       try {
-        const entry = await service.importFolderFiles(files, path, { decode });
+        const entry = await service.importFolderFiles(files, path, { decode, prepareStreamedBank, prepareSoundFontBank, isCurrent });
         metadata.delete(entry.id);
         result.imported.push(entry);
       } catch (error) {
@@ -121,7 +122,7 @@ export function openSfzLibraryBrowser({ service, decode, ...options } = {}) {
         badge.textContent = translate('badge.unavailable');
       });
     },
-    accept: '.sfz,.wav,.wave,.aif,.aiff,.flac,.mp3,.ogg,.m4a,.inc,.xml',
+    accept: '.sf2,.sf3,.sfz,.wav,.wave,.aif,.aiff,.flac,.mp3,.ogg,.m4a,.inc,.xml',
     folderAccept: '',
     folderFallback: true,
     kind: 'SFZ',

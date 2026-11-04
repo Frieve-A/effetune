@@ -1,3 +1,4 @@
+import { getSettingsStorage } from '../../settings-storage.js';
 /**
  * PipelineColumnManager - Manages column layout for the pipeline
  * Handles column count, distribution of plugins, and responsive adjustments
@@ -16,7 +17,7 @@ export class PipelineColumnManager {
         this.currentColumns = 1;
         
         // Initialize with saved column count
-        const savedColumns = localStorage.getItem('pipelineColumns');
+        const savedColumns = getSettingsStorage().getItem('pipelineColumns');
         if (savedColumns) {
             this.currentColumns = parseInt(savedColumns);
         }
@@ -169,7 +170,7 @@ export class PipelineColumnManager {
         // Save column count to localStorage for persistence
         if (!window.uiManager?.layoutMode?.isMobile && !this.isAutomatic()) {
             this.currentColumns = columns;
-            localStorage.setItem('pipelineColumns', columns);
+            getSettingsStorage().setItem('pipelineColumns', columns);
         }
         this.updateColumnButtonStates(columns);
     }

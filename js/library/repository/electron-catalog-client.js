@@ -135,7 +135,8 @@ export class ElectronCatalogClient {
     const scanRequest = {
       folderIds: [result.folder.id],
       scanReason: 'automatic',
-      includeVideo: options?.includeVideo === true
+      includeVideo: options?.includeVideo === true,
+      includeMidi: options?.includeMidi === true
     };
     if (options?.languageHints) scanRequest.languageHints = options.languageHints;
     const scan = await this.scanFolders(scanRequest);

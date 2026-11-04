@@ -53,7 +53,7 @@ struct AutomationEffectDescriptor {
 };
 
 // clang-format off
-inline constexpr std::array<AutomationParameterDescriptor, 1035> kAutomationParameters{{
+inline constexpr std::array<AutomationParameterDescriptor, 1036> kAutomationParameters{{
   AutomationParameterDescriptor{"gap", "gap", 0u, "gap", "", "", 0u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 500.0f, 0.01f, 1.0f, 1.0f, 0u, "Gap", "Gap", "ms", 0u, 0u, 0u},
   AutomationParameterDescriptor{"learn", "learn", 0u, "learn", "", "", 1u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 0.1f, 0.001f, 0.02f, 0.02f, 0u, "Learn", "Learn", "", 0u, 0u, 0u},
   AutomationParameterDescriptor{"weightDecay", "weightDecay", 0u, "weightDecay", "", "", 2u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 60.0f, 0.1f, 0.0f, 0.0f, 0u, "Weight Decay", "Weight Decay", "s", 0u, 0u, 0u},
@@ -910,6 +910,7 @@ inline constexpr std::array<AutomationParameterDescriptor, 1035> kAutomationPara
   AutomationParameterDescriptor{"nh", "noteHoldMs", 0u, "nh", "", "", 15u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 100.0f, 1.0f, 50.0f, 50.0f, 0u, "Note Hold Ms", "Note Hold Ms", "", 0u, 296u, 0u},
   AutomationParameterDescriptor{"ss", "sampleShift", 0u, "ss", "", "", 16u, AutomationParameterKind::Int, AutomationEligibility::Stepped, AutomationNormalization::Integer, AutomationValueTransform::Identity, 1.0f, -6.0f, 6.0f, 1.0f, 0.0f, 0.0f, 12u, "Sample Shift", "Sample Shift", "", 0u, 296u, 0u},
   AutomationParameterDescriptor{"rj", "rmsJitterNanoseconds", 0u, "rj", "", "", 0u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Logarithmic, AutomationValueTransform::DecibelsFromReference, 0.001f, 0.001f, 10000000.0f, 0.001f, 100.0f, 100.0f, 0u, "Rms Jitter Nanoseconds", "Rms Jitter Nanoseconds", "ns", 0u, 296u, 0u},
+  AutomationParameterDescriptor{"og", "outputGain", 0u, "og", "", "", 2u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, -60.0f, 12.0f, 0.1f, 0.0f, 0.0f, 0u, "Output Gain", "Output Gain", "", 0u, 296u, 0u},
   AutomationParameterDescriptor{"dr", "directness", 0u, "dr", "", "", 2u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 100.0f, 1.0f, 50.0f, 50.0f, 0u, "Directness", "Directness", "%", 0u, 296u, 0u},
   AutomationParameterDescriptor{"sp", "separation", 0u, "sp", "", "", 3u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 100.0f, 1.0f, 50.0f, 50.0f, 0u, "Separation", "Separation", "%", 0u, 296u, 0u},
   AutomationParameterDescriptor{"de", "diffuseExtraction", 0u, "de", "", "", 4u, AutomationParameterKind::Float, AutomationEligibility::Continuous, AutomationNormalization::Linear, AutomationValueTransform::Identity, 1.0f, 0.0f, 100.0f, 1.0f, 50.0f, 50.0f, 0u, "Diffuse Extraction", "Diffuse Extraction", "%", 0u, 296u, 0u},
@@ -1479,7 +1480,7 @@ inline constexpr std::array<std::string_view, 385> kAutomationEnumValues{{
   "Ultra"
 }};
 
-inline constexpr std::array<AutomationEffectDescriptor, 112> kAutomationEffects{{
+inline constexpr std::array<AutomationEffectDescriptor, 113> kAutomationEffects{{
   AutomationEffectDescriptor{"AdaptivePredictionEffectPlugin", 0u, 9u},
   AutomationEffectDescriptor{"AMRadioSimulatorPlugin", 9u, 21u},
   AutomationEffectDescriptor{"AnalogMeterPlugin", 30u, 0u},
@@ -1571,27 +1572,28 @@ inline constexpr std::array<AutomationEffectDescriptor, 112> kAutomationEffects{
   AutomationEffectDescriptor{"SaturationPlugin", 837u, 4u},
   AutomationEffectDescriptor{"SFZNotePlayerPlugin", 841u, 14u},
   AutomationEffectDescriptor{"SimpleJitterPlugin", 855u, 1u},
-  AutomationEffectDescriptor{"SpatialMapperPlugin", 856u, 5u},
-  AutomationEffectDescriptor{"SpectrogramPlugin", 861u, 0u},
-  AutomationEffectDescriptor{"SpectrumAnalyzerPlugin", 861u, 0u},
-  AutomationEffectDescriptor{"StereoBalancePlugin", 861u, 1u},
-  AutomationEffectDescriptor{"StereoBlendPlugin", 862u, 1u},
-  AutomationEffectDescriptor{"StereoMeterPlugin", 863u, 0u},
-  AutomationEffectDescriptor{"SubSynthPlugin", 863u, 8u},
-  AutomationEffectDescriptor{"SWRadioSimulatorPlugin", 871u, 24u},
-  AutomationEffectDescriptor{"TapeArtifactsPlugin", 895u, 8u},
-  AutomationEffectDescriptor{"TiltEQPlugin", 903u, 2u},
-  AutomationEffectDescriptor{"TimeAlignmentPlugin", 905u, 1u},
-  AutomationEffectDescriptor{"TonalBalanceEQPlugin", 906u, 35u},
-  AutomationEffectDescriptor{"ToneControlPlugin", 941u, 3u},
-  AutomationEffectDescriptor{"TransientShaperPlugin", 944u, 7u},
-  AutomationEffectDescriptor{"TremoloPlugin", 951u, 7u},
-  AutomationEffectDescriptor{"TubeSimulatorPlugin", 958u, 24u},
-  AutomationEffectDescriptor{"TVAudioSimulatorPlugin", 982u, 14u},
-  AutomationEffectDescriptor{"VinylArtifactsPlugin", 996u, 12u},
-  AutomationEffectDescriptor{"VinylSimulatorPlugin", 1008u, 19u},
-  AutomationEffectDescriptor{"VolumePlugin", 1027u, 1u},
-  AutomationEffectDescriptor{"WowFlutterPlugin", 1028u, 7u}
+  AutomationEffectDescriptor{"SoundFontPlayerPlugin", 856u, 1u},
+  AutomationEffectDescriptor{"SpatialMapperPlugin", 857u, 5u},
+  AutomationEffectDescriptor{"SpectrogramPlugin", 862u, 0u},
+  AutomationEffectDescriptor{"SpectrumAnalyzerPlugin", 862u, 0u},
+  AutomationEffectDescriptor{"StereoBalancePlugin", 862u, 1u},
+  AutomationEffectDescriptor{"StereoBlendPlugin", 863u, 1u},
+  AutomationEffectDescriptor{"StereoMeterPlugin", 864u, 0u},
+  AutomationEffectDescriptor{"SubSynthPlugin", 864u, 8u},
+  AutomationEffectDescriptor{"SWRadioSimulatorPlugin", 872u, 24u},
+  AutomationEffectDescriptor{"TapeArtifactsPlugin", 896u, 8u},
+  AutomationEffectDescriptor{"TiltEQPlugin", 904u, 2u},
+  AutomationEffectDescriptor{"TimeAlignmentPlugin", 906u, 1u},
+  AutomationEffectDescriptor{"TonalBalanceEQPlugin", 907u, 35u},
+  AutomationEffectDescriptor{"ToneControlPlugin", 942u, 3u},
+  AutomationEffectDescriptor{"TransientShaperPlugin", 945u, 7u},
+  AutomationEffectDescriptor{"TremoloPlugin", 952u, 7u},
+  AutomationEffectDescriptor{"TubeSimulatorPlugin", 959u, 24u},
+  AutomationEffectDescriptor{"TVAudioSimulatorPlugin", 983u, 14u},
+  AutomationEffectDescriptor{"VinylArtifactsPlugin", 997u, 12u},
+  AutomationEffectDescriptor{"VinylSimulatorPlugin", 1009u, 19u},
+  AutomationEffectDescriptor{"VolumePlugin", 1028u, 1u},
+  AutomationEffectDescriptor{"WowFlutterPlugin", 1029u, 7u}
 }};
 // clang-format on
 

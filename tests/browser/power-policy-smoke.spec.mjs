@@ -157,6 +157,23 @@ export async function runPowerPolicyBrowserSmoke({ browser, baseURL }) {
   let activatedPage = null;
 
   try {
+    const midiAvailability = await page.evaluate(() => window.__powerPolicySmoke.runMidiAvailabilityScenario());
+    assert.equal(midiAvailability.monitoring.contextState, 'running');
+    assert.ok(midiAvailability.monitoring.songAdvance > 0);
+    assert.equal(midiAvailability.monitoring.eligible, true);
+    assert.equal(midiAvailability.monitoring.midiPending, false);
+    assert.ok(midiAvailability.monitoring.counters.monitoringQuanta > 0);
+    assert.equal(midiAvailability.monitoring.counters.fullProcessQuanta, 0);
+    assert.equal(midiAvailability.driverPending, true);
+    assert.equal(midiAvailability.driverState, 'active');
+    assert.equal(midiAvailability.readyEligible, false);
+    assert.ok(midiAvailability.beforePeak < 1e-7, 'Late loading must not replay the old held note or controller callback');
+    assert.ok(midiAvailability.afterPeak > .001, 'The actual future MIDI note must sound after Monitoring promotion');
+    assert.equal(midiAvailability.generationStable, true);
+    assert.equal(midiAvailability.anchorStable, true);
+    assert.equal(midiAvailability.failures, 0);
+    assert.equal(midiAvailability.ended, 0);
+    assert.equal(midiAvailability.contextState, 'running');
     for (const [mode, deadlineMs] of Object.entries(POLICY_DEADLINES_MS)) {
       for (const playerState of ['paused', 'stopped']) {
         const label = `${mode}/${playerState}`;

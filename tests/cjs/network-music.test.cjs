@@ -8,9 +8,10 @@ const path = require('node:path');
 const http = require('node:http');
 const { EventEmitter } = require('node:events');
 const { Readable, Writable } = require('node:stream');
-const { Discovery, CONTENT, PLAYLIST, parseXml, parseDidl, didl, didlItem, xml, service } = require('../../electron/network-music-upnp.cjs');
+const { Discovery, CONTENT, PLAYLIST, parseXml, parseDidl, didl, didlItem, xml, service, requestXml } = require('../../electron/network-music-upnp.cjs');
 const { MusicServer, byteRange, scpd } = require('../../electron/network-music-server.cjs');
-const { NetworkMusicHost, registerNetworkMusicIpc, supportsProtocol } = require('../../electron/network-music-host.cjs');
+const { VIEWS } = require('../../electron/network-music-content.cjs');
+const { NetworkMusicHost, registerNetworkMusicIpc, supportsProtocol, logNetworkMusicDiagnostic } = require('../../electron/network-music-host.cjs');
 const { LibraryCatalogHost } = require('../../electron/library-catalog-host.cjs');
 const fileAccess = require('../../electron/file-access.cjs');
 
@@ -32,6 +33,124 @@ function fixture(options = {}) {
   host.server.enabled = true; host.server.port = 4567;
   return { host, discovery, repository, runtime, getConfig: () => config };
 }
+
+test('library probe timeouts log concise device warnings while other failures retain error diagnostics', async t => {
+  const warnings = []; const errors = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  t.mock.method(console, 'error', (...args) => errors.push(args));
+  const timeout = Object.assign(new Error('Music device did not respond'), { code: 'ETIMEDOUT', upnpAction: 'Browse' });
+  const internal = new Error('Unexpected failure');
+  const { host, discovery } = fixture({ onDiagnostic: logNetworkMusicDiagnostic, invoke: async (endpoint, action) => {
+    if (action === 'Browse') throw timeout;
+    if (action === 'GetSortCapabilities') throw internal;
+    return { SearchCaps: 'dc:title' };
+  } });
+  t.after(() => host.dispose());
+  discovery.devices.set('library', device('library', 'ContentDirectory'));
+  await host.probeLibraries();
+  assert.deepEqual(warnings, [['Network music discovery: connection unavailable', { device: 'Same name', address: 'http://192.168.1.5/library', action: 'Browse', reason: 'ETIMEDOUT' }]]);
+  assert.deepEqual(errors, [['Network music diagnostic:', internal]]);
+  assert.equal(discovery.devices.get('library').searchSupported, true);
+  await host.probeLibraries();
+  assert.equal(warnings.length, 1);
+  logNetworkMusicDiagnostic(timeout);
+  assert.equal(errors[1][1], timeout, 'An operation timeout outside probing retains full diagnostics');
+});
+
+test('periodic discovery restores library capabilities after connection failures for discovered and manual devices', async t => {
+  for (const code of ['ETIMEDOUT', 'ECONNREFUSED']) for (const manual of [false, true]) await t.test(`${code}: ${manual ? 'manual address' : 'SSDP device'}`, async t => {
+    let now = Date.now(); let offline = true; let calls = 0;
+    t.mock.method(Date, 'now', () => now);
+    const location = 'http://192.168.1.5/device.xml';
+    const discovery = new Discovery({ fetchXml: async () => parseXml(`<root><device><UDN>library</UDN><friendlyName>Library</friendlyName><serviceList><service><serviceType>${CONTENT}</serviceType><controlURL>/library</controlURL></service></serviceList></device></root>`) });
+    const roots = didl(VIEWS.map(view => didlItem({ ...view, viewId: view.id, isContainer: true, catalogSearch: true })));
+    const { host } = fixture({ discovery, invoke: async (endpoint, action, args) => {
+      calls++;
+      if (offline) throw Object.assign(new Error('Connection unavailable'), { code });
+      if (action === 'GetSearchCapabilities') return { SearchCaps: 'dc:title' };
+      if (action === 'GetSortCapabilities') return { SortCaps: 'dc:title' };
+      if (args?.BrowseFlag === 'BrowseMetadata') return { Result: didl([didlItem({ id: 'track', title: 'Track', uri: 'http://192.168.1.5/track.mp3' })]) };
+      return { Result: roots, TotalMatches: VIEWS.length };
+    } });
+    t.after(() => host.dispose());
+    const library = device('library', 'ContentDirectory', { location, expires: now + 180000 });
+    discovery.devices.set(library.id, library);
+    if (manual) discovery.setManualLocations([location]);
+    const probes = []; const probe = host.probeLibraries.bind(host);
+    t.mock.method(host, 'probeLibraries', () => { const pending = probe(); probes.push(pending); return pending; });
+    await host.probeLibraries();
+    assert.equal(library.libraryProbed, false);
+    assert.equal(host.probing.size, 0);
+    assert.equal((await host.getState()).libraries[0].searchSupported, false);
+    offline = false;
+    await discovery.search(); await Promise.all(probes);
+    assert.equal(calls, 3, 'Advertisements and searches do not cause immediate retry storms');
+    assert.equal((await host.browse({ serverId: 'library' })).items.length, VIEWS.length, 'Plain browsing remains usable before the capability retry');
+    assert.equal((await host.resolveTrack({ serverId: 'library', trackId: 'track' })).uri, 'http://192.168.1.5/track.mp3');
+    now += 30000;
+    await discovery.search(); await Promise.all(probes);
+    assert.equal(library.libraryProbed, true);
+    const restored = (await host.getState()).libraries[0];
+    assert.equal(restored.searchSupported, true);
+    assert.equal(restored.catalogSearch, true);
+    assert.deepEqual(restored.sortCaps, ['dc:title']);
+    assert.deepEqual(restored.browseViews.map(view => view.id), VIEWS.map(view => view.id));
+    await host.browse({ serverId: 'library', query: 'Track', sortCriteria: '+dc:title' });
+    const completedCalls = calls;
+    now += 30000;
+    await discovery.search(); await Promise.all(probes);
+    assert.equal(calls, completedCalls, 'Successful capability checks stay cached');
+  });
+});
+
+test('library retries preserve known capabilities and do not retry unsupported actions indefinitely', async t => {
+  let now = Date.now(); let phase = 0; let calls = 0;
+  t.mock.method(Date, 'now', () => now);
+  const { host, discovery } = fixture({ invoke: async (endpoint, action) => {
+    calls++;
+    if (action === 'Browse') {
+      if (phase === 0) throw Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' });
+      return { Result: didl([]) };
+    }
+    if (phase === 1) throw Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' });
+    if (phase === 2) throw Object.assign(new Error('Unsupported action'), { upnpCode: '401' });
+    return { SearchCaps: 'dc:title', SortCaps: 'dc:title' };
+  } });
+  t.after(() => host.dispose());
+  const library = device('library', 'ContentDirectory'); discovery.devices.set(library.id, library);
+  await host.probeLibraries();
+  phase = 1; now += 30000;
+  await host.probeLibraries();
+  assert.equal(library.searchSupported, true);
+  assert.deepEqual(library.sortCaps, ['dc:title']);
+  assert.equal(library.libraryProbed, false);
+  phase = 2; now += 30000;
+  await host.probeLibraries();
+  assert.equal(library.libraryProbed, true);
+  now += 30000;
+  await host.probeLibraries();
+  assert.equal(calls, 9);
+});
+
+test('discovery connection refusal logs the destination without a stack and preserves internal errors', async t => {
+  const warnings = []; const errors = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  t.mock.method(console, 'error', (...args) => errors.push(args));
+  const refusal = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+  t.mock.method(http, 'request', () => {
+    const req = new EventEmitter();
+    req.end = () => queueMicrotask(() => req.emit('error', refusal));
+    return req;
+  });
+  await assert.rejects(requestXml('http://192.168.10.7:12685/device.xml'), error => error === refusal);
+  const { host, discovery } = fixture({ onDiagnostic: logNetworkMusicDiagnostic });
+  t.after(() => host.dispose());
+  discovery.emit('diagnostic', refusal);
+  assert.deepEqual(warnings, [['Network music discovery: connection unavailable', { address: '192.168.10.7:12685', reason: 'ECONNREFUSED' }]]);
+  const internal = new Error('Unexpected failure');
+  discovery.emit('diagnostic', internal);
+  assert.deepEqual(errors, [['Network music diagnostic:', internal]]);
+});
 
 test('XML and DIDL preserve escaped metadata and reject external entity definitions', () => {
   const title = 'A & <B> "title"';
@@ -329,6 +448,30 @@ test('shared media handler supports GET HEAD Range and revokes existing URLs wit
   assert.notEqual(server.resource('private-track-id', '192.168.1.9').uri, resource.uri);
 });
 
+test('shared DSD media identifies DSF and DFF while serving byte ranges', async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-network-dsd-')));
+  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  for (const [extension, mimeType] of [['dsf', 'audio/x-dsf'], ['dff', 'audio/x-dff']]) {
+    const file = path.join(directory, `song.${extension}`);
+    await fs.writeFile(file, '0123456789');
+    const server = new MusicServer({
+      id: 'uuid:library',
+      name: 'Library',
+      discovery: new FakeDiscovery(),
+      browse: async () => ({ items: [], total: 0 }),
+      resolveSource: async () => ({ path: file })
+    });
+    server.enabled = true;
+    server.port = 1234;
+    const mediaPath = new URL(server.resource('track-id', '192.168.1.9').uri).pathname;
+    const response = await responseFor(server, mediaPath, { headers: { range: 'bytes=2-5' } });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers['Content-Type'], mimeType);
+    assert.equal(response.headers['Accept-Ranges'], 'bytes');
+    assert.equal(response.body, '2345');
+  }
+});
+
 test('ContentDirectory SOAP browse publishes escaped playable metadata and rejects unsupported sorting', async () => {
   const server = new MusicServer({ id: 'uuid:library', name: 'Library', discovery: new FakeDiscovery(), browse: async request => {
     assert.equal(request.address, '192.168.1.9'); assert.equal(request.start, 3); assert.equal(request.count, 10);
@@ -550,6 +693,9 @@ test('network IPC rejects non-main frames and returns safe errors', async () => 
   const failure = await handlers.get('network-music:Browse')({ sender: webContents, senderFrame: mainFrame });
   assert.equal(failure.networkMusicError.code, 'networkMusicUnavailable');
   assert.ok(!failure.networkMusicError.message.includes('secret'));
+  host.browse = async () => { throw Object.assign(new Error('private endpoint'), { code: 'ETIMEDOUT' }); };
+  const timeout = await handlers.get('network-music:Browse')({ sender: webContents, senderFrame: mainFrame });
+  assert.equal(timeout.networkMusicError.message, 'The music device did not respond. Check that it is on and connected to the same network, then try again.');
   dispose(); assert.equal(handlers.size, 0);
 });
 

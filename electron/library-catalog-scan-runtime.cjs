@@ -14,9 +14,12 @@ const {
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 
 const AUDIO_EXTENSIONS = new Set([
+  '.dsf', '.dff',
+  '.mid', '.midi', '.kar', '.musicxml', '.xml', '.mxl',
   '.3gp', '.aac', '.flac', '.m4a', '.m4v', '.mkv', '.mov', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.m4v', '.mov', '.mkv', '.3gp']);
+const MIDI_EXTENSIONS = new Set(['.mid', '.midi', '.kar', '.musicxml', '.xml', '.mxl']);
 const PLAYLIST_EXTENSIONS = new Set(['.m3u', '.m3u8', '.pls', '.xspf']);
 const CUE_EXTENSION = '.cue';
 const PLAYLIST_IMPORT_GRANT_TTL_MS = 10 * 60 * 1000;
@@ -128,7 +131,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
   }
 
   async addFolder(request = {}) {
-    assertAllowedFields(request, ['languageHints', 'includeVideo'], 'invalidFolderRequest');
+    assertAllowedFields(request, ['languageHints', 'includeVideo', 'includeMidi'], 'invalidFolderRequest');
     this.assertOpen();
     const languageHints = normalizeLanguageHints(request.languageHints);
     const selected = await this.pickDirectory();
@@ -164,13 +167,14 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       folderIds: [folder.id],
       scanReason: 'automatic',
       languageHints,
-      includeVideo: request.includeVideo === true
+      includeVideo: request.includeVideo === true,
+      includeMidi: request.includeMidi === true
     });
     return { canceled: false, folder: publicFolder(folder), existing: false, scan };
   }
 
   async requestFolderAccess(request) {
-    assertAllowedFields(request, ['folderId', 'includeVideo'], 'invalidFolderRequest');
+    assertAllowedFields(request, ['folderId', 'includeVideo', 'includeMidi'], 'invalidFolderRequest');
     this.assertOpen();
     const folderId = requireBoundedString(request.folderId, 'folderId', 512);
     const folder = await this.requireFolder(folderId);
@@ -205,7 +209,10 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     await this.host.upsertFolders([availableFolder]);
     this.issueGrant(availableFolder, canonicalRoot, { catalogReady: !rootChanged });
     const scan = rootChanged
-      ? await this.scanFolders({ folderIds: [folderId], scanReason: 'automatic', includeVideo: request.includeVideo === true })
+      ? await this.scanFolders({
+          folderIds: [folderId], scanReason: 'automatic',
+          includeVideo: request.includeVideo === true, includeMidi: request.includeMidi === true
+        })
       : null;
     return {
       canceled: false,
@@ -254,7 +261,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     request = normalizeScanRequest(request);
     assertAllowedFields(
       request,
-      ['folderIds', 'scanId', 'resume', 'scanReason', 'languageHints', 'includeVideo'],
+      ['folderIds', 'scanId', 'resume', 'scanReason', 'languageHints', 'includeVideo', 'includeMidi'],
       'invalidScanRequest'
     );
     this.assertOpen();
@@ -293,6 +300,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       scanReason: normalizeScanReason(request.scanReason),
       languageHints: normalizeLanguageHints(request.languageHints),
       includeVideo: request.includeVideo === true,
+      includeMidi: request.includeMidi === true,
       signal: controller.signal
     });
     return { accepted: true, scanId, folderIds: [...record.folderIds], resume };
@@ -318,6 +326,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       repository: this.host,
       filesystem: this.createFilesystemAdapter({
         includeVideo: options.includeVideo,
+        includeMidi: options.includeMidi,
         onPlaylistFile: candidate => collectors.get(candidate.folderId)?.add(candidate)
       }),
       metadataParser,
@@ -562,7 +571,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     if (!claimedBeforeDispatch?.claim) return { kind: 'placeholder' };
     let extracted;
     try {
-      extracted = await this.artworkWorkerPool.extract({ filePath });
+      extracted = /\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(track.relativePath)
+        ? null : await this.artworkWorkerPool.extract({ filePath });
     } catch (error) {
       await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'extract-failed' });
       return { kind: 'placeholder', errorCode: sanitizeArtworkErrorCode(error) };
@@ -581,7 +591,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       });
     } else {
       await this.host.scheduleArtworkStagingGc({ claim: claimedBeforeDispatch.claim, reason: 'missing' });
-      externalCover = track.sourceKind === 'cue-track'
+      externalCover = track.sourceKind === 'cue-track' || /\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(track.relativePath)
         ? await this.readCueCover(track, grant)
         : null;
       if (!externalCover) return { kind: 'placeholder' };
@@ -648,7 +658,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
 
   async readCueCover(track, grant) {
     try {
-      const cueDirectory = path.posix.dirname(track.cueRelativePath || '');
+      const cueDirectory = path.posix.dirname(track.cueRelativePath || track.relativePath);
       const directoryRelativePath = cueDirectory === '.' ? '' : cueDirectory;
       const directoryPath = await this.resolveGrantedPath(grant, directoryRelativePath, {
         allowRoot: true,
@@ -659,6 +669,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       if (!fileName) return null;
       const relativePath = path.posix.join(directoryRelativePath, fileName);
       const filePath = await this.resolveGrantedPath(grant, relativePath, { allowRoot: false });
+      if (!sameFilesystemPath(path.dirname(filePath), directoryPath)) return null;
       const handle = await this.filesystem.open(filePath, 'r');
       try {
         const before = artworkFileStat(await handle.stat());
@@ -870,18 +881,18 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
   }
 
-  createFilesystemAdapter({ onPlaylistFile = () => {}, includeVideo = false } = {}) {
+  createFilesystemAdapter({ onPlaylistFile = () => {}, includeVideo = false, includeMidi = false } = {}) {
     if (typeof onPlaylistFile !== 'function') {
       throw createRuntimeError('invalidScanAdapter', 'Playlist file observer is invalid');
     }
     return {
-      enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile, includeVideo }),
+      enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile, includeVideo, includeMidi }),
       statFile: input => this.statFile(input),
       readSmallFile: input => this.readSmallFile(input)
     };
   }
 
-  async *enumerateDirectory({ root, relativeDirectory = '', signal, onPlaylistFile = () => {}, includeVideo = false } = {}) {
+  async *enumerateDirectory({ root, relativeDirectory = '', signal, onPlaylistFile = () => {}, includeVideo = false, includeMidi = false } = {}) {
     throwIfAborted(signal);
     const grant = this.grantForRoot(root);
     const directoryPath = await this.resolveGrantedPath(grant, relativeDirectory, { allowRoot: true, directory: true });
@@ -900,7 +911,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
           } else if (stats.isDirectory()) {
             yield { kind: 'directory', name: entry.name, relativePath };
           } else if (stats.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) &&
-              (includeVideo === true || !VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+              (includeVideo === true || !VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) &&
+              (includeMidi === true || !MIDI_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
             yield { kind: 'file', name: entry.name, relativePath, path: candidate };
           } else if (stats.isFile() && path.extname(entry.name).toLowerCase() === CUE_EXTENSION) {
             yield { kind: 'cue', name: entry.name, relativePath, path: candidate };

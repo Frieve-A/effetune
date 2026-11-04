@@ -52,9 +52,9 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 112);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 94);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1035);
+  assert.equal(entries.length, 113);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 95);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1036);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,7 +86,7 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    '59abd5715de8ae37c7649871995d512b9a98f9fa5238334f695710e09b19cc51'
+    '722b549d5e57f009884ae71d42eb104f61c57b8aefe4cd32a8e07eacdfd718f2'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
@@ -139,7 +139,10 @@ test('production schemas expose the audited automation population', async () => 
     },
     reconfiguresTemporalState: {
       PitchShifterPlugin: ['windowSize', 'crossfadeTime'],
-      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity', 'detection']
+      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity', 'detection', 'preset']
+    },
+    appInstrumentControls: {
+      SoundFontPlayerPlugin: ['midiChannel', 'maxVoices', 'sampleQuality']
     },
     resetsLearningState: {
       AdaptivePredictionEffectPlugin: ['resetToken']

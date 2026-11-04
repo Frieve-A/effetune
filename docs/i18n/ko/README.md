@@ -317,6 +317,17 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 
 **설정 > 구성...**을 열면 **언어**를 선택하고, **시작 시 표시:**(`Effect Pipeline (기본값)`, `음악 라이브러리`, `Visualizer`)와 **시작 시 효과 파이프라인:**을 설정하고, **테마**(`Graphite`, `Paper`, `Midnight`, `Ember`, `Mint`)를 고를 수 있습니다. **시작 시 표시:**를 **음악 라이브러리**로 설정하면 처음 열릴 라이브러리 카테고리도 선택할 수 있습니다. 데스크톱 앱에서는 시작 시 표시할 화면으로 **Browser**도 선택할 수 있습니다.
 
+데스크톱 앱의 설정을 따로 저장하려면 EffeTune을 실행할 때 설정 이름을 지정하세요. Windows에서는 다음과 같이 실행할 수 있습니다.
+
+```text
+EffeTune.exe --settings-name=Headphones
+EffeTune.exe --settings-name=Speakers
+```
+
+새 설정 이름은 기본 설정으로 시작하며, 다음부터 같은 이름으로 실행하면 해당 이름의 오디오 장치, 이펙트 파이프라인, 표시 및 시작 설정이 복원됩니다. 공백이 있는 이름은 `--settings-name="Living room"`처럼 따옴표로 묶으세요. 이 옵션을 생략하면 기존 설정을 사용합니다. 측정 결과, 저장한 프리셋, 음악·IR·악기 라이브러리는 설정 이름과 관계없이 같은 저장 위치를 사용합니다. 다른 EffeTune에서 측정 결과를 열기 전에 해당 결과를 사용하던 앱을 종료하세요.
+
+서로 다른 설정 이름의 EffeTune은 동시에 실행할 수 있습니다. **시작 > 여러 인스턴스 실행 허용**을 켜면 같은 설정 이름으로도 여러 창을 실행할 수 있습니다. 기본값은 꺼짐입니다. 변경 후에는 모든 EffeTune 창을 닫고 앱을 다시 실행하세요. 같은 설정 이름으로 실행한 창은 저장된 설정을 공유합니다.
+
 **이펙트 파이프라인 열 수**에서 **수동**을 선택하면 +/− 버튼으로 열 수를 조절할 수 있습니다. **자동**(기본값)을 선택하면 이펙트 목록과 열이 창 너비 안에 들어가도록 열 수가 정해지며, 창 크기를 바꿀 때마다 자동으로 조절됩니다.
 
 Microsoft Store 버전은 Microsoft Store를 통해 업데이트됩니다. **설정 > 구성...**에서 **Microsoft Store 업데이트 열기**로 업데이트를 확인하고, **Windows 시작 앱 설정 열기**로 EffeTune의 자동 실행 여부를 설정할 수 있습니다. 이 버전의 설정과 Browser 로그인 정보는 다른 데스크톱 버전과 별도로 저장됩니다.
@@ -509,7 +520,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial | Spatial Mapper | Direct, Diffuse, Residual 소리를 분리해 유연하게 멀티채널로 라우팅 | [세부 정보](plugins/spatial.md#spatial-mapper) |
 | Spatial | Stereo Blend | 극성이 바뀐 스테레오에서 모노를 거쳐 확장 스테레오까지 스테레오 폭 제어 | [세부 정보](plugins/spatial.md#stereo-blend) |
 | Others | Oscillator | 스피커나 헤드폰 확인용 테스트 톤/노이즈 제너레이터 | [세부 정보](plugins/others.md#oscillator) |
-| Others | SFZ Note Player | 감지한 음을 가져온 SFZ 악기로 재생 | [세부 정보](plugins/others.md#sfz-note-player) |
+| Others | SoundFont Note Player | 감지한 음을 SF2/SF3 SoundFont와 SFZ 악기로 재생 | [세부 정보](plugins/others.md#sfz-note-player) |
+| Others | SoundFont Player | SF2/SF3 SoundFont나 SFZ 악기로 MIDI 재생, SF2/SF3는 16개 채널에 독립적인 음색 지원 | [세부 정보](plugins/others.md#soundfont-player) |
 | Control | Section | 여러 이펙트를 그룹화해 섹션 전체를 바이패스하거나 복원 | [세부 정보](plugins/control.md) |
 
 ## 기술 정보

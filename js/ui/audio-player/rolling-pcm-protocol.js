@@ -24,7 +24,7 @@ const envelopeFields = new Set([
 const payloadFields = new Map([
   [RollingPcmCommand.OPEN, new Set([
     'sourceKind', 'source', 'slabFrames', 'freePoolPerSizeClass', 'outputSampleRate',
-    'decoderProfile', 'resamplerProfile'
+    'decoderProfile', 'resamplerProfile', 'sourceSize', 'dsdOutputRate', 'playbackSpeed', 'preservePitch'
   ])],
   [RollingPcmCommand.FILL, new Set(['targetFrame'])],
   [RollingPcmCommand.SEEK, new Set(['frame'])],
@@ -36,7 +36,7 @@ const payloadFields = new Map([
       'codec', 'decoderConfigCodec', 'decoderConfigVerified', 'sourceSampleRate',
       'outputSampleRate', 'sourceTotalFrames', 'sourceByteLength', 'dataOffset',
       'dataByteLength', 'bitsPerSample', 'blockAlign', 'decoderProfile',
-      'resamplerProfile', 'workerCompressedBytes'
+      'resamplerProfile', 'workerCompressedBytes', 'dsd', 'playbackSpeed', 'preservePitch'
     ])],
   [RollingPcmEvent.SLAB,
     new Set(['slabId', 'startFrame', 'frameCount', 'channelCount', 'planes'])],

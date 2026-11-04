@@ -32,7 +32,7 @@ const catalogRequests = [
 ];
 const controlRequests = [
   ['addFolder', [], {}],
-  ['requestFolderAccess', ['folder-1', { includeVideo: true }], { folderId: 'folder-1', includeVideo: true }],
+  ['requestFolderAccess', ['folder-1', { includeVideo: true, includeMidi: true }], { folderId: 'folder-1', includeVideo: true, includeMidi: true }],
   ['scanFolders', [{ folderIds: ['folder-1'], scanReason: 'manual' }]],
   ['cancelScan', ['scan-1'], { scanId: 'scan-1' }],
   ['removeFolder', ['folder-1'], { folderId: 'folder-1' }],
@@ -95,8 +95,8 @@ test('catalog preload requests reach their registered main-process handlers with
     assert.deepEqual(await api[method](...args), { method, request });
     assert.deepEqual(calls.at(-1), [method, request]);
   }
-  await api.requestFolderAccess('folder-2', { includeVideo: 'true', path: '/untrusted' });
-  assert.deepEqual(calls.at(-1), ['requestFolderAccess', { folderId: 'folder-2', includeVideo: false }]);
+  await api.requestFolderAccess('folder-2', { includeVideo: 'true', includeMidi: 'true', path: '/untrusted' });
+  assert.deepEqual(calls.at(-1), ['requestFolderAccess', { folderId: 'folder-2', includeVideo: false, includeMidi: false }]);
 });
 
 test('every catalog and control handler rejects foreign senders before accessing the host', t => {

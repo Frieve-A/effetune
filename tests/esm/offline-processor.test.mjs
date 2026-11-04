@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs/promises';
 
 import { AudioEncoder } from '../../js/audio/audio-encoder.js';
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import { decodeDspPipelineDescriptor } from '../../js/audio/dsp-pipeline-descriptor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
+import { compileAcceptanceInstrument, createAcceptanceCostWorkerPool } from '../helpers/sfz-native-acceptance.mjs';
 
 function deferred() {
   let resolve;
@@ -2482,5 +2486,174 @@ test('offline cancellation and render errors destroy active WASM instances and e
 
     assert.equal(calls.filter(call => call[0] === 'dspDestroyInstance').length, 2);
     assert.equal(calls.filter(call => call[0] === 'dspClose').length, 2);
+  });
+});
+
+
+test('streamed offline export preloads before activation and resumes the same graph block', async () => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls);
+    const instantiate = runtime.dependencies.instantiateDsp;
+    let resident = false, pending = null, commits = 0, attempts = 0, closes = 0;
+    const generation = { low: 7, high: 2 };
+    runtime.dependencies.instantiateDsp = async payload => {
+      const binding = await instantiate(payload);
+      binding.hasOfflineGraph = binding.hasSfzSampleStreaming = () => true;
+      binding.configureSfzSampleStream = () => { calls.push(['streamConfigure']); return 0; };
+      binding.publishSfzSamplePage = () => { resident = true; return 0; };
+      const assetState = binding.instanceAssetState;
+      binding.instanceAssetState = (...args) => {
+        assert.equal(resident, true, 'activation must wait for resident pages');
+        return assetState(...args);
+      };
+      binding.graphConfigureOffline = () => { calls.push(['graphConfigure']); return 0; };
+      binding.graphPrepareOffline = () => generation;
+      binding.takeSfzSampleRequests = () => [{ generation: 1, sample: 0, pageIndex: 2 }];
+      binding.graphProcessOffline = (channels, frames, time, token) => {
+        attempts++;
+        assert.equal(token, generation);
+        const combined = binding.getArenaViews().combined;
+        if (!pending) {
+          pending = { channels, frames, time, input: combined.slice(0, channels * frames) };
+          combined.fill(999);
+          return 1;
+        }
+        assert.deepEqual({ channels, frames, time }, {
+          channels: pending.channels, frames: pending.frames, time: pending.time
+        });
+        assert.equal(combined[0], -88, 'host must not recopy the input on retry');
+        combined.set(pending.input.map(value => value * 2));
+        pending = null;
+        commits++;
+        return 0;
+      };
+      return binding;
+    };
+    const { processor, file } = createHarness(calls, {
+      audioBuffer: createGeneratedAudioBuffer(2, 259), offlineProcessorOptions: runtime.dependencies
+    });
+    const plugin = createGainPlugin(calls, { id: 'streamed' });
+    plugin.offlineDspAssetRequired = true;
+    plugin.getWasmAssets = () => new Map([[0, {
+      payload: new Uint8Array(16), footprintBytes: 16, processingChannels: 2,
+      async sampleProviderFactory({ onProvider, publish }) {
+        const provider = {
+          async requestPages(requests) {
+            assert.equal(requests[0].pageIndex, 2);
+            runtime.bindings[0].getArenaViews().combined.fill(-88);
+            await Promise.resolve();
+          },
+          close() { closes++; }
+        };
+        onProvider(provider);
+        assert.ok(calls.some(call => call[0] === 'streamConfigure'));
+        assert.equal(calls.some(call => call[0] === 'dspAssetState'), false);
+        assert.equal(await publish({}), true);
+        return provider;
+      }
+    }]]);
+    const result = await processor.processAudioFile(file, [plugin]);
+    assert.equal(commits, 3);
+    assert.equal(attempts, 6);
+    assert.equal(closes, 1);
+    assert.equal(calls.filter(call => call[0] === 'graphConfigure').length, 1);
+    assert.equal(calls.some(call => call[0] === 'dspPipelineProcess'), false);
+    assert.equal(calls.some(call => call[0] === 'executeProcessor'), false);
+    assert.equal(result.encodedBuffer.getChannelData(1)[258], Math.fround(Math.fround(3.58) * 2));
+  });
+});
+
+test('cancel while a sample provider opens closes it before the factory resolves', async () => {
+  const opened = deferred(), released = deferred();
+  const workers = createAcceptanceCostWorkerPool();
+  const bytes = await fs.readFile(new URL('../../plugins/dsp/effetune-dsp.wasm', import.meta.url));
+  const meta = JSON.parse(await fs.readFile(new URL('../../plugins/dsp/effetune-dsp.meta.json', import.meta.url)));
+  const asset = await compileAcceptanceInstrument('<region> sample=tone.wav key=60', {
+    stream: true, samples: new Map([['tone.wav', { frames: 4096, channels: 1, sampleRate: 48000,
+      revision: 'a'.repeat(64) }]])
+  });
+  let closes = 0, destroyed = 0;
+  let factoryReturned = false;
+  asset.sampleProviderFactory = async ({ onProvider }) => {
+    const provider = { close() { closes++; released.resolve(); } };
+    onProvider(provider); opened.resolve();
+    await released.promise;
+    factoryReturned = true;
+    return provider;
+  };
+  class SoundFontPlayerPlugin {
+    constructor() { this.id = 1; this.enabled = true; this.channel = 'A'; }
+    getParameters() { return { enabled: true, channel: 'A', inputBus: 0, outputBus: 0,
+      mc: 0, pl: 64, og: 0 }; }
+    getWasmAssets() { return new Map([[0, asset]]); }
+  }
+  const processor = new OfflineProcessor({}, {}, {
+    getModuleInfo: async () => ({ bytes, meta, paramPackers: DSP_PARAM_PACKERS }),
+    async instantiateDsp(...args) {
+      const binding = await instantiateDsp(...args), destroy = binding.destroyInstance.bind(binding);
+      binding.destroyInstance = id => { destroyed++; return destroy(id); };
+      return binding;
+    }, warning: message => assert.fail(message)
+  });
+  let guard;
+  try {
+    await withGlobals({ Worker: workers.Worker, window: { audioPreferences: { useWasmDsp: true } } }, async () => {
+      const staging = processor.createOfflineDspSession([new SoundFontPlayerPlugin()], 48000, 2);
+      await Promise.race([opened.promise, staging.then(() => assert.fail('Provider must open before staging completes')),
+        new Promise((_, reject) => { guard = setTimeout(() => reject(new Error('Sample provider did not open')), 10000); })]);
+      clearTimeout(guard);
+      const session = processor.offlineDspSession;
+      assert.equal(factoryReturned, false);
+      processor.cancelProcessing();
+      assert.equal(closes, 1);
+      assert.equal(factoryReturned, false, 'cancellation closes the provider before its factory resumes');
+      assert.equal(await staging, null);
+      assert.equal(destroyed, 1);
+      assert.equal(session.closed, true);
+    });
+  } finally {
+    clearTimeout(guard);
+    processor.cancelProcessing();
+    await workers.close();
+  }
+});
+
+test('terminal offline graph failure flushes script diagnostics before plain export failure and cleanup', async t => {
+  await withOfflineGlobals({ window: {} }, async ({ calls }) => {
+    const runtime = createFakeDspRuntime(calls), instantiate = runtime.dependencies.instantiateDsp;
+    let terminal = false, read = false;
+    const text = new TextEncoder().encode('script fault at private pc=9');
+    const packet = new Uint8Array((24 + text.length + 3) & ~3), view = new DataView(packet.buffer);
+    view.setUint16(0, 33, true); view.setUint16(2, 1, true);
+    view.setUint16(12, 8 + text.length, true); view.setUint16(20, text.length, true); packet.set(text, 24);
+    t.mock.method(console, 'debug', (...args) => calls.push(['scriptDiagnostic', ...args]));
+    runtime.dependencies.instantiateDsp = async payload => {
+      const binding = await instantiate(payload);
+      binding.hasOfflineGraph = () => true;
+      binding.graphConfigureOffline = () => 0;
+      binding.graphPrepareOffline = () => ({ low: 1, high: 0 });
+      binding.graphProcessOffline = () => { terminal = true; return -2; };
+      binding.instanceMidiState = () => terminal ? 8 : 0;
+      binding.telemetryRead = target => {
+        if (read) return 0;
+        read = true; target.set(packet); return packet.length;
+      };
+      return binding;
+    };
+    const { processor, file } = createHarness(calls, { audioBuffer: createGeneratedAudioBuffer(2, 259),
+      offlineProcessorOptions: runtime.dependencies });
+    const plugin = createGainPlugin(calls, { id: 'terminal' });
+    plugin.offlineDspAssetRequired = true;
+    plugin.getWasmAssets = () => new Map([[0, { payload: new Uint8Array(16), footprintBytes: 16, processingChannels: 2 }]]);
+    await assert.rejects(processor.processAudioFile(file, [plugin]), error => {
+      assert.equal(error.userMessageKey, 'sfzNotePlayer.error.playback');
+      assert.doesNotMatch(error.message, /pc=|script fault|-2/);
+      return true;
+    });
+    const diagnostic = calls.findIndex(call => call[0] === 'scriptDiagnostic');
+    assert.ok(diagnostic >= 0);
+    assert.ok(diagnostic < calls.findIndex(call => call[0] === 'dspClose'));
+    assert.equal(calls.filter(call => call[0] === 'dspClose').length, 1);
+    assert.equal(calls.some(call => call[0] === 'encodeAudio'), false);
   });
 });

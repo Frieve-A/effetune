@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -32,8 +33,18 @@ class RollingPcmCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.sequence = 0;
+    this.delayedQuanta = 0;
+    this.port.onmessage = ({ data }) => {
+      this.delayedQuanta = data.quanta;
+      this.delayMs = data.delayMs;
+    };
   }
   process(inputs, outputs) {
+    if (this.delayedQuanta > 0) {
+      this.delayedQuanta--;
+      const until = Date.now() + this.delayMs;
+      while (Date.now() < until) { /* controlled render clock lag */ }
+    }
     const input = inputs[0] || [];
     const output = outputs[0] || [];
     for (let channel = 0; channel < output.length; channel++) {
@@ -264,6 +275,404 @@ async function startWorkerServer() {
     })
   };
 }
+
+async function exerciseDsdLongSource(baseURL) {
+        const { RollingPcmTransport } = await import(new URL('js/ui/audio-player/rolling-pcm-transport.js', baseURL));
+        const { openDsdRangeSource } = await import(new URL('js/ui/audio-player/dsd-source.js', baseURL));
+        const { createDsfFixture } = await import(new URL('tests/helpers/dsd-fixture.mjs', baseURL));
+        const sampleRate = 11289600;
+        const header = createDsfFixture({ sampleRate, sampleCount: sampleRate * 3600, virtual: true });
+        const size = Number(new DataView(header.buffer).getBigUint64(12, true));
+        let bytesRead = 0;
+        let maxRead = 0;
+        let liveReaders = 0;
+        const file = { size, slice(offset, end) { return { async arrayBuffer() {
+          const bytes = new Uint8Array(end - offset).fill(0x69);
+          if (offset < header.length) bytes.set(header.subarray(offset, Math.min(end, header.length)));
+          bytesRead += bytes.length;
+          maxRead = Math.max(maxRead, bytes.length);
+          return bytes.buffer;
+        } }; } };
+        const snapshot = { dsd: true, byteLength: size, canonicalIdentity: {}, async createRangeReader() {
+          const reader = await openDsdRangeSource({ file });
+          liveReaders++;
+          const dispose = reader.dispose;
+          let closed = false;
+          reader.dispose = async () => { if (!closed) { closed = true; liveReaders--; await dispose(); } };
+          return reader;
+        } };
+        const context = new AudioContext({ sampleRate: 48000 });
+        const transport = new RollingPcmTransport(context);
+        try {
+          const began = performance.now();
+          const metadata = await transport.prepare(snapshot);
+          const prepareMs = performance.now() - began;
+          const initial = transport.getDiagnosticSnapshot();
+          if (!transport.promoteReservation()) throw new Error('DSD reservation promotion failed');
+          transport.connect(context.destination);
+          await context.resume();
+          transport.activate();
+          transport.pause();
+          await transport.seek(1800 * 48000 + 17, { resume: false });
+          const position = transport.getPositionFrame();
+          await transport.dispose();
+          return { metadata, prepareMs, initial, position, bytesRead, maxRead, liveReaders,
+            final: transport.getDiagnosticSnapshot() };
+        } finally { await transport.dispose(); await context.close(); }
+}
+
+test('DSD Worker streams long DSD256 sources with bounded reads and releases seek generations',
+  { timeout: 120000 }, async () => {
+    const fixtureServer = await startWorkerServer();
+    let browser;
+    try {
+      browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      await page.goto(fixtureServer.baseURL);
+      const result = await page.evaluate(exerciseDsdLongSource, fixtureServer.baseURL + '/');
+      assert.equal(result.metadata.sourceSampleRate, 11289600);
+      assert.equal(result.metadata.sampleRate, 48000);
+      assert.equal(result.metadata.totalFrames, 3600 * 48000);
+      assert.equal(result.position, 1800 * 48000 + 17);
+      assert.equal(result.liveReaders, 0);
+      assert.ok(result.maxRead <= 1024 * 1024);
+      assert.ok(result.bytesRead < 128 * 1024 * 1024);
+      assertTransportResourcesReleased(result.final, 'DSD Stop');
+    } finally { await browser?.close(); await fixtureServer.close(); }
+  });
+
+test('Electron DSD Worker streams and seeks from local modules without a server',
+  { timeout: 120000 }, async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'effetune-dsd-electron-')));
+    let runtime;
+    try {
+      const html = path.join(root, 'index.html');
+      await writeFile(html, '<!doctype html><title>DSD Worker</title>');
+      runtime = await startElectronPage(pathToFileURL(html).href);
+      const result = await runtime.page.evaluate(exerciseDsdLongSource, pathToFileURL(repoRoot + path.sep).href);
+      assert.equal(result.metadata.sourceSampleRate, 11289600);
+      assert.equal(result.metadata.sampleRate, 48000);
+      assert.equal(result.position, 1800 * 48000 + 17);
+      assert.equal(result.liveReaders, 0);
+      assert.ok(result.maxRead <= 1024 * 1024);
+      assert.ok(result.bytesRead < 128 * 1024 * 1024);
+      assertTransportResourcesReleased(result.final, 'Electron DSD Stop');
+    } finally {
+      await runtime?.close();
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+test('Electron DSD manual start and moving refills preserve the waveform with an active audio clock',
+  { timeout: 120000 }, async t => {
+    const fixtureServer = await startWorkerServer();
+    let runtime;
+    try {
+      runtime = await startElectronPage(fixtureServer.baseURL);
+      const result = await runtime.page.evaluate(async () => {
+        const [{ RollingPcmTransport }, { createDsdDecoder }, fixture] = await Promise.all([
+          import('/js/ui/audio-player/rolling-pcm-transport.js'),
+          import('/js/audio/dsd/dsd-decoder.js'),
+          import('/tests/helpers/dsd-fixture.mjs')
+        ]);
+        const sampleRate = 96000;
+        const sourceSampleRate = 2822400;
+        const duration = 24.25;
+        const sampleCount = sourceSampleRate * duration;
+        const signals = [
+          time => 0.05 + 0.22 * Math.sin(2 * Math.PI * 997 * time) +
+            0.1 * Math.sin(2 * Math.PI * 2143 * time),
+          time => -0.08 + 0.18 * Math.sin(2 * Math.PI * 613 * time) +
+            0.07 * Math.sin(2 * Math.PI * 2011 * time)
+        ];
+        const channels = signals.map(signal => {
+          const period = fixture.encodeDsdSignal(sourceSampleRate, sourceSampleRate, signal);
+          const bytes = new Uint8Array(sampleCount / 8);
+          for (let offset = 0; offset < bytes.length; offset += period.length) {
+            bytes.set(period.subarray(0, Math.min(period.length, bytes.length - offset)), offset);
+          }
+          return bytes;
+        });
+        const bytes = fixture.createDsfFixture({ sampleRate: sourceSampleRate, sampleCount, channels });
+        const referenceDecoder = await createDsdDecoder(fixture.createDsdReader(bytes), {
+          outputSampleRate: sampleRate
+        });
+        const totalFrames = referenceDecoder.totalFrames;
+        const expected = channels.map(() => new Float32Array(totalFrames));
+        try {
+          for (let first = 0; first < totalFrames; first += 65536) {
+            const planes = await referenceDecoder.readFrames(first, Math.min(65536, totalFrames - first));
+            planes.forEach((plane, channel) => expected[channel].set(plane, first));
+          }
+        } finally { referenceDecoder.dispose(); }
+        const context = new AudioContext({ sampleRate, sinkId: { type: 'none' } });
+        const failures = [];
+        const slabFrames = [];
+        const transport = new RollingPcmTransport(context, {
+          onFailure: failure => failures.push(failure.reason)
+        });
+        let capture;
+        let clockSource;
+        let clockGain;
+        let timeout;
+        try {
+          if (context.sinkId?.type !== 'none') throw new Error('Silent capture sink is unavailable');
+          const snapshot = { dsd: true, byteLength: bytes.length, playbackSpeed: 1,
+            preservePitch: true, canonicalIdentity: {}, async createRangeReader() {
+              return { ...fixture.createDsdReader(bytes), async dispose() {} };
+            } };
+          await transport.prepare(snapshot);
+          if (!transport.promoteReservation()) throw new Error('DSD reservation promotion failed');
+          // Observe the normal producer contract without changing its scheduling.
+          const acceptSlab = transport.acceptSlab.bind(transport);
+          transport.acceptSlab = message => {
+            slabFrames.push(message.frameCount);
+            acceptSlab(message);
+          };
+          slabFrames.push(...transport.queue.map(record => record.frameCount));
+          await context.audioWorklet.addModule('/tests/rolling-pcm-capture-worklet.js');
+          capture = new AudioWorkletNode(context, 'rolling-pcm-capture', {
+            numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+            channelCount: 2, channelCountMode: 'explicit'
+          });
+          const actual = channels.map(() => new Float32Array(totalFrames));
+          const coverage = new Uint8Array(totalFrames);
+          const clockGaps = [];
+          let previousBlock = null;
+          let captureOrigin = null;
+          let startFrame = null;
+          let complete;
+          const captured = new Promise(resolve => { complete = resolve; });
+          capture.port.onmessage = ({ data }) => {
+            if (startFrame === null) return;
+            const block = { frame: data.frame, sequence: data.sequence, length: data.planes[0].length };
+            captureOrigin ??= block;
+            if (previousBlock && (block.frame !== previousBlock.frame + previousBlock.length ||
+                block.sequence !== previousBlock.sequence + 1)) {
+              clockGaps.push({ previous: previousBlock, current: block });
+            }
+            previousBlock = block;
+            // Anchor once to the scheduled context frame, then count rendered
+            // blocks. Electron can repeat a currentFrame label for one quantum
+            // while the worklet sequence and PCM both advance normally.
+            const relative = captureOrigin.frame - startFrame +
+              (data.sequence - captureOrigin.sequence) * block.length;
+            const first = Math.max(0, relative);
+            const end = Math.min(totalFrames, relative + data.planes[0].length);
+            for (let frame = first; frame < end; frame++) {
+              coverage[frame]++;
+              for (let channel = 0; channel < 2; channel++) {
+                actual[channel][frame] = data.planes[channel][frame - relative];
+              }
+            }
+            if (relative + data.planes[0].length >= totalFrames) complete();
+          };
+          transport.connect(capture);
+          capture.connect(context.destination);
+          clockSource = context.createConstantSource();
+          clockGain = context.createGain();
+          clockGain.gain.value = 0;
+          clockSource.connect(clockGain).connect(context.destination);
+          clockSource.start();
+          await context.resume();
+          const createSource = context.createBufferSource.bind(context);
+          context.createBufferSource = () => {
+            const source = createSource();
+            context.createBufferSource = createSource;
+            // Model first-node preparation while an already-running render
+            // clock advances; later slabs must retain this node's actual anchor.
+            const until = performance.now() + 8;
+            while (performance.now() < until) { /* controlled preparation delay */ }
+            return source;
+          };
+          transport.activate();
+          startFrame = Math.round(transport.anchorContextTime * sampleRate);
+          await Promise.race([captured, new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('DSD waveform capture timed out')), 45000);
+          })]);
+          let maxSampleError = 0;
+          let maxAdjacentDeltaError = 0;
+          let missingFrames = 0;
+          let duplicateFrames = 0;
+          const missingIntervals = [];
+          for (let frame = 0; frame < coverage.length;) {
+            if (coverage[frame] !== 0) { frame++; continue; }
+            const first = frame;
+            while (frame < coverage.length && coverage[frame] === 0) frame++;
+            missingIntervals.push([first, frame]);
+          }
+          for (const count of coverage) {
+            if (count === 0) missingFrames++;
+            else if (count !== 1) duplicateFrames++;
+          }
+          for (let channel = 0; channel < 2; channel++) {
+            for (let frame = 0; frame < totalFrames; frame++) {
+              maxSampleError = Math.max(maxSampleError,
+                Math.abs(actual[channel][frame] - expected[channel][frame]));
+              if (frame > 0) maxAdjacentDeltaError = Math.max(maxAdjacentDeltaError,
+                Math.abs((actual[channel][frame] - actual[channel][frame - 1]) -
+                  (expected[channel][frame] - expected[channel][frame - 1])));
+            }
+          }
+          return { totalFrames, maxSampleError, maxAdjacentDeltaError, missingFrames, duplicateFrames,
+            missingIntervals, clockGaps, startFrame, captureOrigin,
+            failures, slabFrames, expectedSlabFrames: transport.profile.slabFrames,
+            diagnostics: transport.getDiagnosticSnapshot() };
+        } finally {
+          clearTimeout(timeout);
+          if (capture) { capture.port.onmessage = null; capture.disconnect(); }
+          clockSource?.stop();
+          clockSource?.disconnect();
+          clockGain?.disconnect();
+          await transport.dispose();
+          await context.close();
+        }
+      });
+      t.diagnostic(JSON.stringify({ totalFrames: result.totalFrames, slabCount: result.slabFrames.length,
+        maxSampleError: result.maxSampleError, maxAdjacentDeltaError: result.maxAdjacentDeltaError,
+        missingIntervals: result.missingIntervals, duplicateFrames: result.duplicateFrames,
+        clockGaps: result.clockGaps }));
+      assert.deepEqual(result.failures, []);
+      assert.equal(result.diagnostics.underruns, 0);
+      assert.equal(result.missingFrames, 0);
+      assert.equal(result.duplicateFrames, 0);
+      assert.ok(result.maxSampleError <= 8 * (2 ** -23), `sample error ${result.maxSampleError}`);
+      assert.ok(result.maxAdjacentDeltaError <= 8 * (2 ** -23),
+        `adjacent delta error ${result.maxAdjacentDeltaError}`);
+      assert.equal(result.slabFrames.length, Math.ceil(result.totalFrames / result.expectedSlabFrames));
+      for (const [index, frames] of result.slabFrames.entries()) {
+        assert.equal(frames, Math.min(result.expectedSlabFrames,
+          result.totalFrames - index * result.expectedSlabFrames));
+      }
+    } finally {
+      await runtime?.close();
+      await fixtureServer.close();
+    }
+  });
+
+test('Electron rolling seeks fade opposite sample levels with the shared playback gate',
+  { timeout: 90000 }, async t => {
+    const fixtureServer = await startWorkerServer();
+    let runtime;
+    try {
+      runtime = await startElectronPage(fixtureServer.baseURL);
+      const results = await runtime.page.evaluate(async () => {
+        const [{ RollingPcmTransport }, { AudioContextManager }, fixture] = await Promise.all([
+          import('/js/ui/audio-player/rolling-pcm-transport.js'),
+          import('/js/ui/audio-player/audio-context-manager.js'),
+          import('/tests/helpers/dsd-fixture.mjs')
+        ]);
+        const sampleRate = 96000;
+        const sourceRate = 2822400;
+        const channel = new Uint8Array(sourceRate);
+        channel.fill(0x77, 0, sourceRate / 2);
+        channel.fill(0x11, sourceRate / 2);
+        const bytes = fixture.createDsfFixture({ sampleRate: sourceRate,
+          sampleCount: sourceRate * 8, channels: [channel, channel] });
+        const results = [];
+        for (const faded of [false, true]) {
+          const context = new AudioContext({ sampleRate, sinkId: { type: 'none' } });
+          const failures = [];
+          const transport = new RollingPcmTransport(context, { onFailure: failure => failures.push(failure.reason) });
+          let capture;
+          let timeout;
+          try {
+            await transport.prepare({ dsd: true, byteLength: bytes.length, canonicalIdentity: {},
+              async createRangeReader() { return { ...fixture.createDsdReader(bytes), async dispose() {} }; } });
+            transport.promoteReservation();
+            await context.audioWorklet.addModule('/tests/rolling-pcm-capture-worklet.js');
+            capture = new AudioWorkletNode(context, 'rolling-pcm-capture', {
+              numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+              channelCount: 2, channelCountMode: 'explicit'
+            });
+            const gate = context.createGain();
+            transport.connect(gate);
+            gate.connect(capture);
+            capture.connect(context.destination);
+            let count = 0;
+            let started = false;
+            let previous = 0;
+            let maxStep = 0;
+            const steps = [];
+            let last = 0;
+            let waiter;
+            capture.port.onmessage = ({ data }) => {
+              for (const value of data.planes[0]) {
+                if (!started && value > 0.49) started = true;
+                if (!started) continue;
+                if (count > sampleRate * 0.05) {
+                  const step = Math.abs(value - previous);
+                  maxStep = Math.max(maxStep, step);
+                  if (step > 0.01 && steps.length < 8) steps.push({ count, previous, value });
+                }
+                previous = value;
+                last = value;
+                count++;
+              }
+              if (waiter && count >= waiter.target) { const done = waiter.resolve; waiter = null; done(); }
+            };
+            const waitForFrames = target => count >= target ? Promise.resolve()
+              : new Promise(resolve => { waiter = { target, resolve }; });
+            const exercise = async () => {
+              await context.resume();
+              transport.activate({ when: context.currentTime + 0.1 });
+              await waitForFrames(sampleRate * 0.1);
+              const before = last;
+              if (faded) {
+                // A rendering quantum can observe a retiring source before its
+                // stop takes effect. The shared gate must stay silent meanwhile.
+                for (const scheduled of transport.scheduled) {
+                  const stop = scheduled.source.stop.bind(scheduled.source);
+                  scheduled.source.stop = () => stop(context.currentTime + 128 / sampleRate);
+                }
+                const state = { isPlaying: true, playbackMode: 'rollingPcm' };
+                const manager = Object.assign(Object.create(AudioContextManager.prototype), {
+                  audioPlayer: { audioContext: context }, rollingTransport: transport,
+                  rollingSeekRequestToken: 0, pauseRequestToken: 0,
+                  privatePipelineSourceGates: new WeakMap([[transport.sourceNode, gate]]),
+                  getCurrentState: () => state, getUseInputWithPlayer: () => true,
+                  clearNextTrackBuffer: async () => {}, hasPendingRollingCleanup: () => false,
+                  updateState: updates => Object.assign(state, updates),
+                  rearmPreparedAutomaticMove() {}, convergePlaybackSpeedBackend() {}
+                });
+                const fadeOut = manager.fadeOutPlaybackSource.bind(manager);
+                manager.fadeOutPlaybackSource = source => {
+                  const fading = fadeOut(source);
+                  // Rendering work can delay the ramp beyond its wall timer.
+                  if (fading) capture.port.postMessage({ quanta: 6, delayMs: 5 });
+                  return fading;
+                };
+                await manager.seekRollingPcm(5);
+              } else await transport.seek(5 * sampleRate, { resume: true });
+              const adoptedFrame = transport.positionFrame;
+              await waitForFrames(count + sampleRate * 0.1);
+              return { faded, before, after: last, maxStep, adoptedFrame, failures, steps };
+            };
+            results.push(await Promise.race([exercise(), new Promise((_, reject) => {
+              timeout = setTimeout(() => reject(new Error('Seek waveform capture timed out')), 15000);
+            })]));
+          } finally {
+            clearTimeout(timeout);
+            if (capture) { capture.port.onmessage = null; capture.disconnect(); }
+            await transport.dispose();
+            await context.close();
+          }
+        }
+        return results;
+      });
+      t.diagnostic(JSON.stringify(results));
+      const [direct, faded] = results;
+      for (const result of results) {
+        assert.deepEqual(result.failures, []);
+        assert.equal(result.adoptedFrame, 480000);
+        assert.ok(Math.abs(result.before - 0.5) < 0.0001);
+        assert.ok(Math.abs(result.after + 0.5) < 0.0001);
+      }
+      assert.ok(direct.maxStep >= 0.49, 'the hard switch control exposes a full-level discontinuity');
+      assert.ok(faded.maxStep < 0.05, `shared fade maximum sample step ${faded.maxStep}`);
+      assert.ok(faded.maxStep < direct.maxStep / 10);
+    } finally { await runtime?.close(); await fixtureServer.close(); }
+  });
 
 async function startElectronPage(baseURL) {
   const tempRoot = await realpath(await mkdtemp(path.join(

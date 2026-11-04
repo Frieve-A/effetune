@@ -4,6 +4,10 @@
 // See docs/plugin-development.md for plugin development guidelines.
 
 // __ETDSP_BINDING_INJECT_START__
+const MIDI_EVENT_BYTES = 24;
+const SFZ_STREAM_REQUEST_CAPACITY = 4096;
+const SFZ_STREAM_REQUEST_BYTES = 24;
+const SFZ_STREAM_PCM_BYTES = 4096 * 2 * 4;
 const REQUIRED_FUNCTION_EXPORTS = [
     'malloc',
     'free',
@@ -28,6 +32,8 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_set_tap',
     'et_instance_set_analysis_source',
     'et_instance_set_seed',
+    'et_instance_set_midi_channel_mix',
+    'et_instance_stream_readiness',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
     'et_instance_asset_begin',
@@ -172,6 +178,15 @@ function createDspImports({
 
     return {
         wasi_snapshot_preview1: {
+            clock_time_get(clockId, _precision, resultPtr) {
+                // NKSP profiling uses system_clock; musical clocks remain render-frame based.
+                if (clockId !== 0) return 28;
+                const memory = getMemory();
+                if (!memory?.buffer || !Number.isInteger(resultPtr) || resultPtr < 0 ||
+                    resultPtr > memory.buffer.byteLength - 8) return 21;
+                new DataView(memory.buffer).setBigUint64(resultPtr, BigInt(Date.now()) * 1000000n, true);
+                return WASI_ERRNO_SUCCESS;
+            },
             proc_exit(code) {
                 throw new DspBindingError(`WASM requested proc_exit(${code})`);
             },
@@ -215,10 +230,50 @@ class DspEngineBinding {
         this._telemetryStagingPtr = 0;
         this._telemetryDroppedPtr = 0;
         this._telemetryCapacity = 0;
+        this._midiEventsPtr = 0;
+        this._midiTransportPtr = 0;
+        this._midiTransportPoints = null;
+        this._midiTransportInstances = new Set();
+        this._sfzStreamPtr = 0;
 
         this._validateExports();
         this.memory = this.exports.memory;
         this._refreshViews(true);
+    }
+
+    estimateSfzEffectPreparation(control, context, formatTag = 1, payloadBytes = control.byteLength) {
+        if (this.engine || this.prepared) throw new DspBindingError('SFZ cost queries require a separate CONTROL binding');
+        const estimate = this.exports.et_sample_player_preparation_bytes;
+        if (typeof estimate !== 'function') throw new DspBindingError('The current DSP module cannot size instrument effects');
+        const playerKind = context.playerKind === undefined ? 0 : context.playerKind;
+        if (playerKind !== 0 && playerKind !== 1) throw new DspBindingError('Invalid instrument player kind');
+        const bytes = toUint8View(control, 'Sample player preparation metadata');
+        if (!bytes.byteLength || bytes.byteLength > 0xfffffff0 || !Number.isInteger(payloadBytes) ||
+            payloadBytes < bytes.byteLength || payloadBytes > 0xffffffff) throw new DspBindingError('Invalid sample player preparation metadata');
+        const wasPreparing = this._preparing;
+        this._preparing = true;
+        let pointer = 0;
+        try {
+            const resultOffset = Math.ceil(bytes.byteLength / 8) * 8;
+            pointer = this.exports.malloc(resultOffset + 8) >>> 0;
+            this._refreshViews();
+            if (!pointer) throw new DspBindingError('Unable to allocate SFZ cost-query storage');
+            this._assertRange(pointer, resultOffset + 8, 'Sample player preparation metadata');
+            new Uint8Array(this.memory.buffer, pointer, bytes.byteLength).set(bytes);
+            const resultPointer = pointer + resultOffset;
+            const status = estimate(pointer, bytes.byteLength, payloadBytes, formatTag,
+                context.sampleRate, context.processingChannels, context.maxFrames, context.minimumPhysicalBpm, resultPointer, playerKind);
+            this._refreshViews();
+            if (status !== 0) throw new DspBindingError('Instrument processing preparation geometry is invalid');
+            const result = new DataView(this.memory.buffer, resultPointer, 8);
+            const additionalBytes = result.getUint32(0, true) + result.getUint32(4, true) * 0x100000000;
+            if (!Number.isSafeInteger(additionalBytes)) throw new DspBindingError('Instrument preparation memory exceeds the supported range');
+            return additionalBytes;
+        } finally {
+            if (pointer) this.exports.free(pointer);
+            this._refreshViews();
+            this._preparing = wasPreparing;
+        }
     }
 
     _validateExports() {
@@ -446,6 +501,14 @@ class DspEngineBinding {
 
     destroyEngine() {
         if (!this.engine) return;
+        if (this._midiTransportPtr) this.exports.free(this._midiTransportPtr);
+        this._midiTransportPtr = 0;
+        this._midiTransportPoints = null;
+        this._midiTransportInstances.clear();
+        if (this._midiEventsPtr) this.exports.free(this._midiEventsPtr);
+        this._midiEventsPtr = 0;
+        if (this._sfzStreamPtr) this.exports.free(this._sfzStreamPtr);
+        this._sfzStreamPtr = 0;
         const engine = this.engine;
         this.engine = 0;
         this.prepared = false;
@@ -476,6 +539,12 @@ class DspEngineBinding {
             );
             this._refreshViews();
             if (status === ET_OK) {
+                if (this.exports.et_instance_set_midi_events && !this._midiEventsPtr) {
+                    this._midiEventsPtr = this.exports.malloc(4096 * MIDI_EVENT_BYTES) >>> 0;
+                    this._refreshViews();
+                    if (!this._midiEventsPtr) throw new DspBindingError('MIDI event storage could not be prepared');
+                    this._assertRange(this._midiEventsPtr, 4096 * MIDI_EVENT_BYTES, 'MIDI event storage');
+                }
                 this.prepared = true;
                 this._maxChannels = maxChannels;
                 this._maxFrames = maxFrames;
@@ -514,6 +583,18 @@ class DspEngineBinding {
         let instanceId = 0;
         try {
             instanceId = this.exports.et_instance_create(this.engine, namePtr) >>> 0;
+            if (instanceId && typeName === 'SoundFontPlayerPlugin') {
+                this._midiTransportInstances.add(instanceId);
+                if (this._midiTransportPoints && this.exports.et_instance_set_midi_transport_map) {
+                    const result = this.exports.et_instance_set_midi_transport_map(this.engine, instanceId,
+                        this._midiTransportPtr, this._midiTransportPoints.length);
+                    if (result !== ET_OK) {
+                        this._midiTransportInstances.delete(instanceId);
+                        this.exports.et_instance_destroy(this.engine, instanceId);
+                        instanceId = 0;
+                    }
+                }
+            }
         } finally {
             // Kernel prepare may grow memory at this control-rate lifecycle boundary.
             this._refreshViews();
@@ -525,6 +606,7 @@ class DspEngineBinding {
 
     destroyInstance(instanceId) {
         if (!this.engine || !instanceId) return;
+        this._midiTransportInstances.delete(instanceId);
         this.exports.et_instance_destroy(this.engine, instanceId);
     }
 
@@ -561,6 +643,287 @@ class DspEngineBinding {
             seedLow >>> 0,
             seedHigh >>> 0
         );
+    }
+
+    instanceSetMidiEvents(instanceId, events, generation, flags = 0, count = events.length) {
+        if (!this.engine || !this.prepared || !this._midiEventsPtr ||
+            !this.exports.et_instance_set_midi_events) return ET_ERR_STATE;
+        const ptr = this._writeMidiEvents(events, count);
+        return this.exports.et_instance_set_midi_events(this.engine, instanceId, ptr, count,
+            generation >>> 0, flags >>> 0);
+    }
+
+    _writeMidiEvents(events, count, capacity = 4096, maxOffsetFrames = this._maxFrames) {
+        if (!Number.isInteger(count) || count < 0 || count > events.length || count > capacity) throw new DspBindingError('MIDI event block exceeds its prepared capacity');
+        this._refreshViews();
+        const ptr = this._midiEventsPtr;
+        for (let index = 0; index < count; index++) {
+            const event = events[index];
+            const offset = event.offsetFrames ?? 0;
+            const renderFrame = event.renderFrame ?? 0;
+            const reattackMarker = event.status === 0 && (event.flags === 4 || event.flags === 16 || event.flags === 32 || event.flags === 128) &&
+                event.data1 === 0 && (event.data2 ?? 0) === 0 && (event.noteId ?? 0) === 0;
+            const systemReset = event.status === 0 && event.flags === 8192 && [1, 2, 3].includes(event.noteId) &&
+                event.data1 === 0 && (event.data2 ?? 0) === 0 && renderFrame === 0;
+            const drumMode = event.status === 0 && event.flags === 16384 && event.data1 >= 0 && event.data1 < 16 &&
+                event.data2 >= 0 && event.data2 <= 3 && (event.noteId ?? 0) === 0 && renderFrame === 0;
+            if (!Number.isInteger(offset) || offset < 0 || offset >= maxOffsetFrames ||
+                !Number.isSafeInteger(renderFrame) || renderFrame < 0 ||
+                (!reattackMarker && !systemReset && !drumMode && (!Number.isInteger(event.status) || event.status < 0x80 || event.status > 0xef)) ||
+                !Number.isInteger(event.data1) || event.data1 < 0 || event.data1 > 127 ||
+                !Number.isInteger(event.data2 ?? 0) || (event.data2 ?? 0) < 0 || (event.data2 ?? 0) > 127) {
+                throw new DspBindingError('MIDI event is outside the prepared event contract');
+            }
+            const address = ptr + index * MIDI_EVENT_BYTES;
+            this.dataView.setUint32(address, offset, true);
+            this.dataView.setUint32(address + 4,
+                event.status | event.data1 << 8 | (event.data2 ?? 0) << 16, true);
+            this.dataView.setUint32(address + 8, event.noteId >>> 0, true);
+            this.dataView.setUint32(address + 12, event.flags >>> 0, true);
+            this.dataView.setUint32(address + 16, renderFrame >>> 0, true);
+            this.dataView.setUint32(address + 20, Math.floor(renderFrame / 0x100000000), true);
+        }
+        return ptr;
+    }
+
+    // Control-only: retain one upload for future instances and let each native
+    // instrument own its immutable copy. Render calls update only the mapping.
+    prepareMidiTransport(points = []) {
+        if (!this.engine || !this.exports.et_instance_set_midi_transport_map) return;
+        if (this._midiTransportPoints === points) return;
+        if (points.length > 250002) throw new DspBindingError('MIDI musical map exceeds its prepared capacity');
+        const preparing = this._preparing;
+        this._preparing = true;
+        let ptr = 0;
+        try {
+            if (points.length) {
+                ptr = this.exports.malloc(points.length * 40) >>> 0;
+                this._refreshViews();
+                if (!ptr) throw new DspBindingError('MIDI musical map storage could not be prepared');
+                this._assertRange(ptr, points.length * 40, 'MIDI musical map');
+                for (let index = 0; index < points.length; index++) {
+                    const point = points[index], address = ptr + index * 40;
+                    this.dataView.setFloat64(address, point.seconds, true);
+                    this.dataView.setFloat64(address + 8, point.ppq, true);
+                    this.dataView.setFloat64(address + 16, point.barStartPpq, true);
+                    this.dataView.setFloat64(address + 24, point.bpm, true);
+                    this.dataView.setUint32(address + 32, point.numerator, true);
+                    this.dataView.setUint32(address + 36, point.denominator, true);
+                }
+            }
+            for (const id of this._midiTransportInstances) {
+                if (this.exports.et_instance_set_midi_transport_map(this.engine, id, ptr, points.length) !== ET_OK) {
+                    throw new DspBindingError('MIDI musical map could not be installed');
+                }
+            }
+            if (this._midiTransportPtr) this.exports.free(this._midiTransportPtr);
+            this._midiTransportPtr = ptr;
+            this._midiTransportPoints = points;
+            ptr = 0;
+        } finally {
+            if (ptr) this.exports.free(ptr);
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    instanceSetMidiTransport(instanceId, frame, seconds, speed, duration, flags = 0) {
+        if (!this.engine || !this.exports.et_instance_set_midi_transport) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(frame) || frame < 0 || !Number.isFinite(seconds) || seconds < 0 ||
+            !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(duration) || duration < 0 ||
+            !Number.isInteger(flags) || flags < 0 || flags > 7) {
+            throw new DspBindingError('Invalid MIDI musical transport mapping');
+        }
+        return this.exports.et_instance_set_midi_transport(this.engine, instanceId, frame >>> 0,
+            Math.floor(frame / 0x100000000), seconds, speed, duration, flags);
+    }
+
+    instanceSetMidiClock(instanceId, frame, generation, flags = 0) {
+        if (!this.engine || !this.exports.et_instance_set_midi_clock) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(frame) || frame < 0) throw new DspBindingError('Invalid MIDI render clock');
+        return this.exports.et_instance_set_midi_clock(this.engine, instanceId, frame >>> 0,
+            Math.floor(frame / 0x100000000), generation >>> 0, flags >>> 0);
+    }
+
+    hasSfzSampleStreaming() {
+        return typeof this.exports.et_sfz_stream_capability === 'function' &&
+            this.exports.et_sfz_stream_capability() === 1 &&
+            ['et_instance_stream_configure', 'et_instance_stream_take_requests', 'et_instance_stream_publish', 'et_instance_stream_prefetch']
+                .every(name => typeof this.exports[name] === 'function');
+    }
+
+    configureSfzSampleStream(instanceId, generation) {
+        if (!this.engine || !this.prepared || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(generation) || generation < 1) throw new DspBindingError('Invalid sample cache generation');
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            const bytes = SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES + 4 + SFZ_STREAM_PCM_BYTES;
+            if (!this._sfzStreamPtr) this._sfzStreamPtr = this.exports.malloc(bytes) >>> 0;
+            this._refreshViews();
+            if (!this._sfzStreamPtr) throw new DspBindingError('Sample stream storage could not be prepared');
+            this._assertRange(this._sfzStreamPtr, bytes, 'Sample stream storage');
+            return this.exports.et_instance_stream_configure(this.engine, instanceId,
+                generation >>> 0, Math.floor(generation / 0x100000000));
+        } finally { this._refreshViews(); this._preparing = preparing; }
+    }
+
+    // Control operations between render calls. The native cache and staging
+    // buffers are allocated by configure, never by a sample request or publish.
+    prefetchSfzSampleStream(instanceId, events, generation, windowFrames, flags = 0, count = events.length) {
+        if (!this.engine || !this.prepared || !this._midiEventsPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isInteger(generation) || generation < 0 || generation > 0xffffffff ||
+            !Number.isInteger(windowFrames) || windowFrames < 1 || windowFrames > this._sampleRate * 2 ||
+            ![0, 1, 2, 4, 5, 6, 13].includes(flags) || (flags === 2 || flags === 6) && count !== 0) throw new DspBindingError('Invalid sample prefetch window');
+        const ptr = this._writeMidiEvents(events, count, 256, windowFrames);
+        return this.exports.et_instance_stream_prefetch(this.engine, instanceId, ptr, count, generation, windowFrames, flags);
+    }
+
+    // CONTROL-only snapshot. Reuse the configured request scratch between
+    // operations; no audio-block allocation or cache traversal is introduced.
+    instanceStreamReadiness(instanceId) {
+        if (!this.engine || !this._sfzStreamPtr) return null;
+        const status = this.exports.et_instance_stream_readiness(this.engine, instanceId, this._sfzStreamPtr);
+        this._refreshViews();
+        if (status !== ET_OK) throw new DspBindingError('Sample readiness could not be observed');
+        const pointer = this._sfzStreamPtr;
+        const value = { generation: this.dataView.getUint32(pointer, true),
+            scope: this.dataView.getUint32(pointer + 4, true),
+            admittedFrames: this.dataView.getUint32(pointer + 8, true),
+            readyAheadFrames: this.dataView.getUint32(pointer + 12, true),
+            plannedPages: this.dataView.getUint32(pointer + 16, true),
+            pendingPages: this.dataView.getUint32(pointer + 20, true) };
+        if (value.scope > 3 || value.readyAheadFrames > value.admittedFrames || value.pendingPages > value.plannedPages)
+            throw new DspBindingError('Invalid sample readiness snapshot');
+        return value;
+    }
+
+    takeSfzSampleRequests(instanceId) {
+        if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) throw new DspBindingError('Sample streaming is unavailable');
+        this._refreshViews();
+        const countPtr = this._sfzStreamPtr + SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES;
+        this.dataView.setUint32(countPtr, 0, true);
+        const status = this.exports.et_instance_stream_take_requests(this.engine, instanceId,
+            this._sfzStreamPtr, SFZ_STREAM_REQUEST_CAPACITY, countPtr);
+        if (status !== ET_OK) throw new DspBindingError(`Sample requests failed: ${status}`);
+        const count = this.dataView.getUint32(countPtr, true);
+        if (count > SFZ_STREAM_REQUEST_CAPACITY) throw new DspBindingError('Invalid sample request count');
+        const requests = [];
+        for (let index = 0; index < count; index++) {
+            const ptr = this._sfzStreamPtr + index * SFZ_STREAM_REQUEST_BYTES;
+            const generation = this.dataView.getUint32(ptr, true) + this.dataView.getUint32(ptr + 4, true) * 0x100000000;
+            const pageIndex = this.dataView.getUint32(ptr + 8, true) + this.dataView.getUint32(ptr + 12, true) * 0x100000000;
+            if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isSafeInteger(pageIndex) || this.dataView.getUint32(ptr + 20, true)) {
+                throw new DspBindingError('Invalid sample request');
+            }
+            requests.push({ generation, pageIndex, sample: this.dataView.getUint32(ptr + 16, true) });
+        }
+        return requests;
+    }
+
+    publishSfzSamplePage(instanceId, { generation, sample, pageIndex, pcm, frames, channels, resident = false }) {
+        if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
+        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 10000 ||
+            !Number.isSafeInteger(pageIndex) || pageIndex < 0 || !Number.isInteger(frames) || frames < 1 || frames > 4096 ||
+            (channels !== 1 && channels !== 2) || !(pcm instanceof Float32Array) || pcm.length !== frames * channels) {
+            throw new DspBindingError('Invalid sample page');
+        }
+        this._refreshViews();
+        const ptr = this._sfzStreamPtr + SFZ_STREAM_REQUEST_CAPACITY * SFZ_STREAM_REQUEST_BYTES + 4;
+        this.u8.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), ptr);
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_instance_stream_publish(this.engine, instanceId, generation >>> 0,
+                Math.floor(generation / 0x100000000), sample, pageIndex >>> 0, Math.floor(pageIndex / 0x100000000),
+                ptr, frames, channels, resident ? 1 : 0);
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    instanceMidiState(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_state) return 0;
+        return this.exports.et_instance_midi_state(this.engine, instanceId) >>> 0;
+    }
+
+    instanceMidiClock(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_clock_low ||
+            !this.exports.et_instance_midi_clock_high || !this.exports.et_instance_midi_generation) {
+            throw new DspBindingError('MIDI checkpoint clock is unavailable');
+        }
+        const low = this.exports.et_instance_midi_clock_low(this.engine, instanceId) >>> 0;
+        const high = this.exports.et_instance_midi_clock_high(this.engine, instanceId) >>> 0;
+        const frame = high * 0x100000000 + low;
+        if (!Number.isSafeInteger(frame)) throw new DspBindingError('MIDI checkpoint clock is invalid');
+        return { frame, generation: this.exports.et_instance_midi_generation(this.engine, instanceId) >>> 0 };
+    }
+
+    _withMidiCheckpointBuffer(size, action) {
+        if (!Number.isInteger(size) || size < 1 || size > 32 * 1024 * 1024) {
+            throw new DspBindingError('MIDI checkpoint size is invalid');
+        }
+        const preparing = this._preparing;
+        let ptr = 0;
+        this._preparing = true;
+        try {
+            ptr = this.exports.malloc(size) >>> 0;
+            this._refreshViews();
+            if (!ptr) throw new DspBindingError('MIDI checkpoint storage is unavailable');
+            this._assertRange(ptr, size, 'MIDI checkpoint storage');
+            this._preparing = preparing;
+            const result = action(ptr);
+            this._refreshViews();
+            return result;
+        } finally {
+            this._preparing = preparing;
+            if (ptr) this.exports.free(ptr);
+        }
+    }
+
+    instanceWriteMidiCheckpoint(instanceId) {
+        if (!this.engine || !this.exports.et_instance_midi_checkpoint_size ||
+            !this.exports.et_instance_write_midi_checkpoint) throw new DspBindingError('MIDI checkpoint capture is unavailable');
+        const size = this.exports.et_instance_midi_checkpoint_size(this.engine, instanceId) >>> 0;
+        return this._withMidiCheckpointBuffer(size, ptr => {
+            if (this.exports.et_instance_write_midi_checkpoint(this.engine, instanceId, ptr, size) !== 0) {
+                throw new DspBindingError('MIDI checkpoint capture failed');
+            }
+            return new Uint8Array(this.memory.buffer, ptr, size).slice();
+        });
+    }
+
+    instanceReadMidiCheckpoint(instanceId, checkpoint) {
+        if (!this.engine || !this.exports.et_instance_read_midi_checkpoint) {
+            throw new DspBindingError('MIDI checkpoint restore is unavailable');
+        }
+        const bytes = toUint8View(checkpoint, 'MIDI checkpoint');
+        return this._withMidiCheckpointBuffer(bytes.byteLength, ptr => {
+            new Uint8Array(this.memory.buffer, ptr, bytes.byteLength).set(bytes);
+            return this.exports.et_instance_read_midi_checkpoint(this.engine, instanceId, ptr, bytes.byteLength);
+        });
+    }
+
+    instanceSetMidiChannelMix(instanceId, channel, action) {
+        if (!this.engine || !this.exports.et_instance_set_midi_channel_mix) return ET_ERR_STATE;
+        if (!Number.isInteger(channel) || channel < 0 || channel > 15 ||
+            !Number.isInteger(action) || action < 0 || action > 3)
+            throw new DspBindingError('Invalid MIDI channel mix');
+        return this.exports.et_instance_set_midi_channel_mix(this.engine, instanceId, channel, action);
+    }
+
+    instanceSetMidiMetering(instanceId, enabled) {
+        if (!this.engine || typeof this.exports.et_instance_set_midi_metering !== 'function') return ET_ERR_STATE;
+        if (!Number.isInteger(instanceId) || instanceId < 1 || typeof enabled !== 'boolean')
+            throw new DspBindingError('Invalid MIDI metering request');
+        return this.exports.et_instance_set_midi_metering(this.engine, instanceId, enabled ? 1 : 0);
+    }
+
+    instanceSetMidiGain(instanceId, gain) {
+        if (!this.engine || !this.exports.et_instance_set_midi_gain) return ET_ERR_STATE;
+        if (!Number.isFinite(gain) || gain < 0 || gain > 1) throw new DspBindingError('Invalid MIDI song gain');
+        return this.exports.et_instance_set_midi_gain(this.engine, instanceId, gain);
     }
 
     instanceSetParams(instanceId, packed, paramsHash, offsetFrames = 0) {
@@ -633,12 +996,16 @@ class DspEngineBinding {
         inputCount = 0,
         processingChannels = 1,
         byteSize,
-        footprintBytes = byteSize
+        footprintBytes = byteSize,
+        preparationContext = null
     }) {
         if (!this.engine || !this.prepared) return 0;
         this._preparing = true;
         try {
-            const ptr = this.exports.et_instance_asset_begin(
+            const begin = preparationContext ? this.exports.et_instance_asset_begin_ptr
+                : this.exports.et_instance_asset_begin;
+            if (typeof begin !== 'function') throw new DspBindingError('The current DSP module cannot prepare this instrument context');
+            const args = [
                 this.engine,
                 instanceId,
                 slot >>> 0,
@@ -652,7 +1019,9 @@ class DspEngineBinding {
                 processingChannels >>> 0,
                 footprintBytes >>> 0,
                 byteSize >>> 0
-            ) >>> 0;
+            ];
+            if (preparationContext) args.push(preparationContext.minimumPhysicalBpm);
+            const ptr = begin(...args) >>> 0;
             this._refreshViews();
             if (ptr) this._assertRange(ptr, byteSize, 'Asset staging buffer');
             return ptr;
@@ -663,13 +1032,17 @@ class DspEngineBinding {
 
     instanceAssetCommit(instanceId, slot, byteSize, formatTag) {
         if (!this.engine || !this.prepared) return ET_ERR_STATE;
-        return this.exports.et_instance_asset_commit(
-            this.engine,
-            instanceId,
-            slot >>> 0,
-            byteSize >>> 0,
-            formatTag >>> 0
-        );
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            // CONTROL staging prepares the flat SFZ program/VM before render-time exchange.
+            return this.exports.et_instance_asset_commit(
+                this.engine, instanceId, slot >>> 0, byteSize >>> 0, formatTag >>> 0
+            );
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
     }
 
     instanceAssetAbort(instanceId, slot) {
@@ -960,7 +1333,40 @@ class DspEngineBinding {
         );
     }
 
-    graphConfigure(descriptor) {
+    hasOfflineGraph() {
+        return this.graphSupported && ['et_graph_configure_offline', 'et_graph_prepare_offline',
+            'et_graph_process_offline'].every(name => typeof this.exports[name] === 'function');
+    }
+
+    graphPrepareOffline() {
+        if (!this.engine || !this.prepared || !this.hasOfflineGraph()) return null;
+        this._preparing = true;
+        try {
+            const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
+            const status = this.exports.et_graph_prepare_offline(this.engine, ptr, ptr + 4);
+            this._refreshViews();
+            if (status !== 0) throw new DspBindingError(`Offline graph preparation failed: ${status}`);
+            const words = new Uint32Array(this._memoryBuffer, ptr, 2);
+            return { low: words[0], high: words[1] };
+        } finally {
+            this._preparing = false;
+            this.getArenaViews();
+        }
+    }
+
+    graphProcessOffline(channelCount, frameCount, timeSeconds, generation) {
+        if (!this.engine || !this.hasOfflineGraph() || !generation) return ET_ERR_STATE;
+        this._refreshViews();
+        return this.exports.et_graph_process_offline(this.engine, channelCount >>> 0,
+            frameCount >>> 0, timeSeconds, generation.low >>> 0, generation.high >>> 0);
+    }
+
+    graphConfigureOffline(descriptor) {
+        if (!this.hasOfflineGraph()) return ET_ERR_STATE;
+        return this.graphConfigure(descriptor, true);
+    }
+
+    graphConfigure(descriptor, offline = false) {
         if (!this.engine || !this.prepared || !this.graphSupported) return ET_ERR_STATE;
         const bytes = toUint8View(descriptor, 'Graph descriptor');
         if (bytes.byteLength === 0) return ET_ERR_STATE;
@@ -972,7 +1378,8 @@ class DspEngineBinding {
             if (!ptr) return ET_ERR_STATE;
             this._assertRange(ptr, bytes.byteLength, 'Graph descriptor');
             this.u8.set(bytes, ptr);
-            return this.exports.et_graph_configure(this.engine, ptr, bytes.byteLength);
+            const configure = offline ? this.exports.et_graph_configure_offline : this.exports.et_graph_configure;
+            return configure(this.engine, ptr, bytes.byteLength);
         } finally {
             if (ptr) this.exports.free(ptr);
             this._refreshViews();
@@ -1117,6 +1524,591 @@ async function instantiateDspBinding(moduleOrBytes, {
     return binding;
 }
 // __ETDSP_BINDING_INJECT_END__
+
+// __ETMIDI_SCHEDULER_INJECT_START__
+// This dependency-free scheduler is also injected into the standalone audio worklet.
+const MIDI_EVENT_CAPACITY = 4096;
+const MIDI_SYSTEM_RESET = 8192;
+const MIDI_DRUM_MODE = 16384;
+const MIDI_RESTORE_SLICE = 256;
+
+// Merge the parser's two ordered maps once, outside audio processing. A meter
+// origin stays fixed through tempo changes; native code derives each bar from it.
+function midiTransportPoints(timeline) {
+    if (!timeline?.tempoMap?.length || !timeline?.timeSignatures?.length) return [];
+    const points = [];
+    let tempoIndex = 0, meterIndex = 0, tempo, meter;
+    while (tempoIndex < timeline.tempoMap.length || meterIndex < timeline.timeSignatures.length) {
+        const seconds = Math.min(timeline.tempoMap[tempoIndex]?.seconds ?? Infinity,
+            timeline.timeSignatures[meterIndex]?.seconds ?? Infinity);
+        while (timeline.tempoMap[tempoIndex]?.seconds === seconds) tempo = timeline.tempoMap[tempoIndex++];
+        while (timeline.timeSignatures[meterIndex]?.seconds === seconds) meter = timeline.timeSignatures[meterIndex++];
+        const bpm = 60000000 / tempo.microsecondsPerQuarter;
+        points.push({ seconds, ppq: tempo.quarter + (seconds - tempo.seconds) * bpm / 60,
+            barStartPpq: meter.quarter, bpm, numerator: meter.numerator, denominator: meter.denominator });
+    }
+    return points;
+}
+
+function midiMinimumPhysicalBpm(timeline) {
+    const points = midiTransportPoints(timeline);
+    return points.length ? points.reduce((minimum, point) => Math.min(minimum, point.bpm), Infinity) * .25 : 0;
+}
+
+function validateMidiSchedule(timeline, sampleRate, maximumSpeed = 4, maximumFrames = 128) {
+    const window = maximumFrames / sampleRate * maximumSpeed;
+    let first = 0;
+    for (let index = 0; index < timeline.events.length; index++) {
+        while (timeline.events[index].seconds - timeline.events[first].seconds >= window) first++;
+        if (index - first + 1 > MIDI_EVENT_CAPACITY - 49) {
+            const error = new Error('This MIDI file has too many simultaneous events to play.');
+            error.code = 'midi-too-dense';
+            throw error;
+        }
+    }
+}
+
+class MidiFrameScheduler {
+    constructor(sampleRate) {
+        this.sampleRate = sampleRate;
+        this.instances = new Map();
+        this.stagedInstances = new Map();
+        this.timeline = null;
+        this.generation = 0;
+        this.playing = false;
+        this.position = 0;
+        this.anchorFrame = 0;
+        this.speed = 1;
+        this.gain = 1;
+    }
+
+    configure({ timeline = this.timeline, position = 0, anchorFrame = 0, speed = 1,
+        gain = 1, playing = false, generation, preserveRelease = false, preparing = false, mode = 'reset' }) {
+        if (!Number.isInteger(generation) || generation < this.generation) return false;
+        if (!Number.isFinite(position) || !Number.isFinite(anchorFrame) ||
+            !Number.isFinite(speed) || speed <= 0 || !Number.isFinite(gain)) return false;
+        if (this.timeline !== timeline) this.transportPoints = midiTransportPoints(timeline);
+        this.timeline = timeline;
+        this.position = position;
+        this.anchorFrame = anchorFrame;
+        this.speed = speed;
+        this.gain = gain;
+        this.playing = playing;
+        this.preparing = preparing;
+        this.preparedNotified = false;
+        this.generation = generation;
+        this.endNotified = false;
+        this.resetFlags = preserveRelease ? 9 : 1;
+        this.mode = mode;
+        this.input = null;
+        this.pauseRequest = null;
+        for (const state of this.instances.values()) {
+            state.generation = -1;
+            state.inputFrozen = state.inputResume = false;
+            state.inputHydration = 0;
+            // A newly ready paused bank has no restored timeline history.
+            state.liveJoin = mode === 'live' || mode === 'resume' && (state.forceReset || state.restoring);
+            state.joinInitialized = false;
+            state.joinReset = mode === 'live' || mode === 'resume' && state.liveJoin;
+        }
+        return true;
+    }
+
+    configureInput({ generation, enabled, anchorFrame = 0 }) {
+        if (!this.configure({ timeline: null, generation, anchorFrame, playing: enabled,
+            preserveRelease: true, mode: 'input' })) return false;
+        this.input = { enabled, targets: new Map(), events: [], serial: 0, hydrationSerial: 0 };
+        return true;
+    }
+
+    hydrateInput(key, token, events, activation) {
+        if (!this.input || !Array.isArray(events) || events.length > MIDI_EVENT_CAPACITY * 2) return false;
+        const state = this.instances.get(key);
+        if (state?.inputHydration && activation !== state.inputHydration) return false;
+        this.input.targets.set(key, { token, events, revision: (this.input.targets.get(key)?.revision ?? 0) + 1 });
+        if (state) state.inputHydration = 0;
+        return true;
+    }
+
+    enqueueInput(events) {
+        if (!this.input?.enabled || !Array.isArray(events) ||
+            this.input.events.length + events.length > MIDI_EVENT_CAPACITY) return false;
+        for (const event of events) {
+            if (!Number.isSafeInteger(event.frame) || event.frame < 0 || !Array.isArray(event.targets)) return false;
+            this.input.events.push({ ...event, serial: ++this.input.serial });
+        }
+        return true;
+    }
+
+    processInputInstance(binding, key, frame, frames, delay, enabled, ready) {
+        const state = this.instances.get(key), input = this.input;
+        if (!state || state.failed) return true;
+        if (input.enabled && state.inputHydration) return false;
+        if (state.inputFrozen && !state.inputResume) return false;
+        const snapshot = input.targets.get(key);
+        if (state.generation !== this.generation || state.forceReset || state.liveJoin) {
+            if (input.enabled && (!enabled || !snapshot || snapshot.token !== state.token)) return false;
+            state.batchCount = 0;
+            this.send(binding, state, this.resetFlags);
+            state.generation = this.generation;
+            state.enabled = enabled;
+            state.forceReset = state.liveJoin = state.restoring = false;
+            state.paused = false;
+            state.inputFrozen = state.inputResume = false;
+            state.draining = !input.enabled;
+            state.inputCursor = 0;
+            state.inputOrigin = frame;
+            state.clockFrame = 0;
+            state.inputRevision = snapshot?.revision;
+            if (input.enabled) {
+                binding.instanceSetMidiGain(state.instanceId, 1);
+                for (const event of snapshot.events) {
+                    this.append(state, event.status, event.data1, event.data2, 0, event.noteId ?? 0, event.flags ?? 0);
+                    if (state.batchCount === MIDI_EVENT_CAPACITY) { this.send(binding, state, 512); state.batchCount = 0; }
+                }
+                if (state.batchCount) this.send(binding, state, 512);
+            }
+            state.batchCount = 0;
+        }
+        if (!input.enabled) {
+            this.clock(binding, state, state.clockFrame, 1);
+            state.clockFrame += frames;
+            return true;
+        }
+        if (!enabled) return false;
+        if (!ready) {
+            // A newly prepared target consumes current channel state without
+            // replaying cold NoteOns after prefix readiness. The draft cursor is
+            // still committed only after this actual native process callback.
+            state.batchCount = 0;
+            let systemReset = false;
+            for (const event of input.events) {
+                if (event.serial <= state.inputCursor) continue;
+                if (event.frame + delay >= frame + frames) break;
+                if (event.targets.some(target => target.id === key && target.token === state.token) &&
+                    ![0x80, 0x90].includes(event.status & 0xf0)) {
+                    this.append(state, event.status, event.data1, event.data2, 0,
+                        event.systemReset || 0, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0);
+                    systemReset ||= !!event.systemReset;
+                }
+                state.inputCursor = event.serial;
+            }
+            if (state.batchCount) this.send(binding, state, systemReset ? 0 : 512);
+            state.batchCount = 0;
+            this.clock(binding, state, state.clockFrame, 0);
+            return true;
+        }
+        this.pendingHistory(binding, state);
+        const clock = Math.max(state.clockFrame, frame - state.inputOrigin);
+        state.batchCount = 0;
+        if (state.inputResume) {
+            this.send(binding, state, 32);
+            this.clock(binding, state, clock, 0);
+            this.append(state, 0, 0, 0, 0, 0, 32, clock);
+            state.inputFrozen = state.inputResume = false;
+        } else this.clock(binding, state, clock, 1);
+        state.paused = false;
+        for (const event of input.events) {
+            if (event.serial <= state.inputCursor) continue;
+            const at = event.frame + delay;
+            if (at >= frame + frames) break;
+            if (event.targets.some(target => target.id === key && target.token === state.token))
+                this.append(state, event.status, event.data1, event.data2, Math.max(0, at - frame),
+                    event.systemReset || event.serial, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0);
+            state.inputCursor = event.serial;
+        }
+        this.send(binding, state);
+        state.clockFrame = clock + frames;
+        return true;
+    }
+
+    finishInputFrame(frame) {
+        if (!this.input) return;
+        this.input.events = this.input.events.filter(event => {
+            // Losing processing ownership retires pending actions, including
+            // future events. Rejoining receives current controls separately.
+            let retained = 0;
+            for (const target of event.targets) {
+                const state = this.instances.get(target.id);
+                if (state && !state.failed && state.enabled && state.token === target.token)
+                    event.targets[retained++] = target;
+            }
+            event.targets.length = retained;
+            return event.targets.length && (event.frame >= frame || event.targets.some(target =>
+                (this.instances.get(target.id).inputCursor ?? 0) < event.serial));
+        });
+    }
+
+    start(generation, anchorFrame) {
+        if (generation !== this.generation || !Number.isFinite(anchorFrame)) return false;
+        this.playing = true;
+        this.preparing = false;
+        this.anchorFrame = anchorFrame;
+        return true;
+    }
+
+    requestPause(generation, frame) {
+        if (!Number.isInteger(generation) || generation <= this.generation || !Number.isSafeInteger(frame) || frame < 0) return false;
+        this.pauseRequest = { frame, position: Math.min(this.currentPosition(frame), this.timeline?.duration ?? Infinity), generation };
+        if (!this.playing) { this.position = this.pauseRequest.position; this.anchorFrame = frame; this.playing = true; }
+        this.generation = generation;
+        this.mode = 'retime';
+        this.preparing = false;
+        this.preparedNotified = false;
+        return true;
+    }
+
+    finishPause(frame) {
+        if (!this.pauseRequest) return null;
+        if (frame < this.pauseRequest.frame) return null;
+        const request = this.pauseRequest;
+        for (const state of this.instances.values()) if (state.enabled && !state.paused) return null;
+        this.position = request.position;
+        this.playing = false;
+        this.preparing = false;
+        this.mode = 'pause';
+        this.pauseRequest = null;
+        return request;
+    }
+
+    setSpeed(speed, position, anchorFrame) {
+        if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(position) || !Number.isFinite(anchorFrame)) return false;
+        this.position = position;
+        this.anchorFrame = anchorFrame;
+        this.speed = speed;
+        for (const state of this.instances.values()) state.retime = true;
+        return true;
+    }
+
+    register(key, instanceId, token = 0, channel = 0) {
+        const previous = this.instances.get(key);
+        if (previous?.instanceId === instanceId) {
+            if (previous.token !== token || previous.channel !== channel) {
+                previous.token = token; previous.channel = channel; previous.generation = -1; previous.forceReset = true;
+                previous.failed = false;
+            }
+            return previous;
+        }
+        const state = { instanceId, token, channel, generation: -1, cursor: 0, restoring: true,
+            enabled: false, ended: false, target: 0, forceReset: true, clockFrame: 0, clockOrigin: null,
+            pool: Array.from({ length: MIDI_EVENT_CAPACITY }, () => ({ offsetFrames: 0,
+                status: 0, data1: 0, data2: 0, noteId: 0, flags: 0, renderFrame: 0 })), batchCount: 0 };
+        this.instances.set(key, state);
+        this.stagedInstances.set(key, { state, draft: { ...state }, pending: false });
+        return state;
+    }
+
+    // Delivery precedes rendering, but the public cursor describes completed audio.
+    stageInstance(binding, key, frame, frames, delay = 0, enabled = true, ready = true) {
+        const stage = this.stagedInstances.get(key);
+        if (!stage || stage.state !== this.instances.get(key)) return false;
+        Object.assign(stage.draft, stage.state);
+        this.instances.set(key, stage.draft);
+        try {
+            const prepared = this.processInstance(binding, key, frame, frames, delay, enabled, ready);
+            stage.generation = this.generation;
+            stage.pending = true;
+            return prepared;
+        } finally {
+            this.instances.set(key, stage.state);
+        }
+    }
+
+    commitInstances(binding) {
+        try {
+            for (const [key, stage] of this.stagedInstances) {
+                if (!stage.pending || stage.generation !== this.generation || this.instances.get(key) !== stage.state) continue;
+                const state = stage.draft;
+                if (state.enabled && !state.restoring && !state.liveJoin && !state.failed &&
+                    binding.instanceMidiClock) {
+                    const receipt = binding.instanceMidiClock(state.instanceId);
+                    if (receipt.generation !== this.generation || receipt.frame !== state.clockFrame)
+                        throw new Error('MIDI audio processing did not commit its scheduled frames');
+                }
+            }
+            for (const [key, stage] of this.stagedInstances)
+                if (stage.pending && stage.generation === this.generation && this.instances.get(key) === stage.state)
+                    Object.assign(stage.state, stage.draft);
+        } finally {
+            for (const stage of this.stagedInstances.values()) stage.pending = false;
+        }
+    }
+
+    currentPosition(frame, delay = 0) {
+        if (!this.playing || frame <= this.anchorFrame + delay) return this.position;
+        return this.position + (frame - this.anchorFrame - delay) / this.sampleRate * this.speed;
+    }
+
+    send(binding, state, flags = 0) {
+        if (binding.instanceSetMidiEvents(state.instanceId, state.pool, this.generation, flags, state.batchCount) !== 0) {
+            throw new Error('MIDI event delivery failed');
+        }
+    }
+
+    append(state, status, data1, data2, offsetFrames, noteId, flags = 0, renderFrame = 0) {
+        if (state.batchCount >= MIDI_EVENT_CAPACITY) throw new Error('MIDI event capacity exceeded');
+        const target = state.pool[state.batchCount++];
+        target.offsetFrames = offsetFrames;
+        target.status = status;
+        target.data1 = data1;
+        target.data2 = data2 ?? 0;
+        target.noteId = flags === MIDI_SYSTEM_RESET || (status & 0xf0) === 0x90 && data2 > 0 ? noteId : 0;
+        target.flags = flags;
+        target.renderFrame = renderFrame;
+    }
+
+    restoreInstanceState(key, { cursor, clockFrame }) {
+        const state = this.instances.get(key);
+        if (!state || !Number.isInteger(cursor) || cursor < 0 || cursor > (this.timeline?.events.length ?? 0) ||
+            !Number.isSafeInteger(clockFrame) || clockFrame < 0) return false;
+        state.cursor = cursor;
+        state.clockFrame = clockFrame;
+        state.forceReset = false;
+        state.enabled = true;
+        state.liveJoin = false;
+        state.restoring = false;
+        return true;
+    }
+
+    clock(binding, state, frame, flags) {
+        if (binding.instanceSetMidiTransport) {
+            const history = flags === 2;
+            if (binding.instanceSetMidiTransport(state.instanceId, history ? 0 : state.transportFrame ?? 0,
+                history ? 0 : state.transportSeconds ?? 0, this.speed, this.timeline?.duration ?? 0,
+                this.timeline && this.transportPoints?.length ? 3 : 0) !== 0) {
+                throw new Error('MIDI musical transport update failed');
+            }
+        }
+        if (!binding.instanceSetMidiClock) return;
+        if (binding.instanceSetMidiClock(state.instanceId, frame, this.generation, flags) !== 0) {
+            throw new Error('MIDI render clock update failed');
+        }
+    }
+
+    pendingHistory(binding, state) {
+        const flags = binding.instanceMidiState?.(state.instanceId) ?? 0;
+        if (flags & 8) {
+            const error = new Error('Instrument script execution failed');
+            error.code = 'instrument-script-failed';
+            throw error;
+        }
+        return (flags & 16) !== 0;
+    }
+
+    retireFailedInstance(key) {
+        const state = this.instances.get(key);
+        if (!state) return;
+        state.failed = true;
+        state.enabled = false;
+        state.ownershipActive = false;
+        state.restoring = false;
+        state.draining = false;
+        state.paused = true;
+        state.batchCount = 0;
+    }
+
+    joinLiveInstance(key, reset = false) {
+        const state = this.instances.get(key);
+        if (!state) return;
+        state.liveJoin = true;
+        state.joinInitialized = false;
+        state.joinReset = reset;
+        state.generation = -1;
+    }
+
+    prepareLiveJoin(binding, state, frame, frames, delay, ready) {
+        if (state.generation !== this.generation || !state.joinInitialized) {
+            this.send(binding, state, !state.joinInitialized && (state.joinReset || state.forceReset) ? this.resetFlags : 64);
+            state.generation = this.generation;
+            state.enabled = true;
+            state.forceReset = false;
+            if (!state.joinInitialized) {
+                state.cursor = 0;
+                state.clockFrame = 0;
+                state.clockOrigin = null;
+                state.paused = false;
+                state.ended = false;
+                state.activation = 0;
+                state.restoring = false;
+                state.joinInitialized = true;
+            }
+            this.clock(binding, state, state.clockFrame, 0);
+        }
+        const pauseFrame = this.pauseRequest ? this.pauseRequest.frame + delay : Infinity;
+        const targetFrame = pauseFrame < frame + frames ? pauseFrame : frame;
+        const target = this.currentPosition(targetFrame, delay);
+        const events = this.timeline?.events ?? [];
+        let visited = 0;
+        while (state.cursor < events.length && events[state.cursor].seconds < target && visited++ < MIDI_RESTORE_SLICE) {
+            const event = events[state.cursor++], kind = event.status & 0xf0;
+            // Availability is not seek history: hydrate channel transactions,
+            // never old notes, controller-triggered samples or script callbacks.
+            if (kind !== 0x80 && kind !== 0x90) this.append(state, event.status, event.data1, event.data2,
+                0, event.systemReset || 0, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0);
+        }
+        if (state.batchCount) this.send(binding, state, 512);
+        state.batchCount = 0;
+        if (state.cursor < events.length && events[state.cursor].seconds < target) return false;
+        if (pauseFrame < frame + frames) {
+            this.send(binding, state, 16);
+            state.paused = true;
+            state.liveJoin = false;
+            return true;
+        }
+        if (!ready) return false;
+        state.liveJoin = false;
+        state.transportFrame = state.clockFrame;
+        state.transportSeconds = target;
+        state.activation = 32;
+        return true;
+    }
+
+    processInstance(binding, key, frame, frames, delay = 0, enabled = true, ready = true) {
+        if (this.input) return this.processInputInstance(binding, key, frame, frames, delay, enabled, ready);
+        const state = this.instances.get(key);
+        if (!state) return false;
+        if (state.failed) return true;
+        this.pendingHistory(binding, state);
+        const timed = typeof binding.instanceSetMidiClock === 'function';
+        state.batchCount = 0;
+        if (state.liveJoin && !this.prepareLiveJoin(binding, state, frame, frames, delay, ready)) return false;
+        if (state.generation !== this.generation || state.enabled !== enabled) {
+            const mode = state.forceReset || state.enabled !== enabled ? 'reset' : this.mode;
+            this.send(binding, state, mode === 'pause' ? 16 : mode === 'resume' ? 32 : mode === 'retime' ? 64 :
+                mode === 'drain' ? 128 : this.resetFlags);
+            state.generation = this.generation;
+            state.enabled = enabled;
+            state.forceReset = false;
+            state.draining = mode === 'drain';
+            if (mode === 'reset') {
+                state.paused = false;
+                state.cursor = 0;
+                state.restoring = true;
+                state.ended = false;
+                state.historyAwait = false;
+                state.historyTargetRequested = false;
+                state.clockOrigin = null;
+                state.clockFrame = Math.round(this.position * this.sampleRate / this.speed);
+                state.transportFrame = 0;
+                state.transportSeconds = 0;
+            } else {
+                state.restoring = false;
+                state.needsReattack = false;
+                state.activation = mode === 'resume' ? 32 : 0;
+                if (mode === 'resume') state.paused = false;
+                state.clockOrigin = mode === 'resume' ? null : state.clockOrigin;
+                if (mode === 'resume') {
+                    state.transportFrame = state.clockFrame;
+                    state.transportSeconds = this.position;
+                }
+            }
+            state.target = this.currentPosition(frame, delay);
+        }
+        if (state.retime) {
+            this.send(binding, state, 64);
+            state.transportFrame = state.clockOrigin === null ? state.clockFrame : Math.max(state.clockFrame, frame + state.clockOrigin);
+            state.transportSeconds = this.currentPosition(frame, delay);
+            state.retime = false;
+        }
+        binding.instanceSetMidiGain(state.instanceId, this.gain);
+        if (!this.timeline || !enabled) { this.clock(binding, state, state.clockFrame, 0); return true; }
+        if (state.paused) { this.clock(binding, state, state.clockFrame, 0); return true; }
+        if (!this.playing && !this.preparing) {
+            if (state.draining && state.clockOrigin !== null) {
+                const base = Math.max(state.clockFrame, frame + state.clockOrigin);
+                this.clock(binding, state, base, 1);
+                state.clockFrame = base + frames;
+            } else this.clock(binding, state, state.clockFrame, 0);
+            return true;
+        }
+        const events = this.timeline.events;
+        if (state.restoring) {
+            if (state.historyAwait && this.pendingHistory(binding, state)) return false;
+            state.historyAwait = false;
+            state.target = this.currentPosition(frame, delay);
+            const seekFrame = Math.round(state.target * this.sampleRate / this.speed);
+            let visited = 0;
+            while (state.cursor < events.length && events[state.cursor].seconds < state.target &&
+                visited++ < MIDI_RESTORE_SLICE) {
+                const event = events[state.cursor++];
+                this.append(state, event.status, event.data1, event.data2, 0, event.systemReset || state.cursor,
+                    event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0, (event.systemReset || event.drumMode) ? 0 : Math.round(event.seconds * this.sampleRate / this.speed));
+            }
+            if (state.batchCount) {
+                this.send(binding, state, 2);
+                this.clock(binding, state, state.pool[state.batchCount - 1].renderFrame, 2);
+                state.historyAwait = true;
+            }
+            state.batchCount = 0;
+            if (state.historyAwait && this.pendingHistory(binding, state)) return false;
+            if (state.cursor < events.length && events[state.cursor].seconds < state.target) return false;
+            if (!state.historyTargetRequested) {
+                this.clock(binding, state, seekFrame, 2);
+                state.historyTargetRequested = true;
+                state.historyAwait = true;
+            }
+            if (this.pendingHistory(binding, state)) return false;
+            state.restoring = false;
+            state.needsReattack = state.cursor > 0;
+            state.activation = timed ? 4 : state.needsReattack ? 4 : 0;
+            state.clockFrame = seekFrame;
+            state.transportFrame = seekFrame;
+            state.transportSeconds = state.target;
+        }
+        if (!this.playing) { this.clock(binding, state, state.clockFrame, 0); return true; }
+        if (state.activation) {
+            const start = this.anchorFrame + delay;
+            this.clock(binding, state, state.clockFrame, 0);
+            if (start >= frame + frames) return true;
+            const activationFrame = start > frame ? start : frame;
+            if (this.position < this.timeline.duration) {
+                // Reserved internal marker: restore held voices exactly at this instance's origin.
+                this.append(state, 0, 0, 0, activationFrame - frame, 0, state.activation, state.clockFrame);
+            } else if (timed) this.append(state, 0, 0, 0, activationFrame - frame, 0, 128, state.clockFrame);
+            state.clockOrigin = state.clockFrame - activationFrame;
+            state.activation = 0;
+            state.needsReattack = false;
+        } else {
+            if (state.clockOrigin === null) state.clockOrigin = state.clockFrame - Math.max(frame, this.anchorFrame + delay);
+            const base = Math.max(state.clockFrame, frame + state.clockOrigin);
+            this.clock(binding, state, base, 1);
+        }
+        const pauseFrame = this.pauseRequest ? this.pauseRequest.frame + delay : Infinity;
+        const blockEnd = Math.min(frame + frames, pauseFrame);
+        while (state.cursor < events.length) {
+            const event = events[state.cursor];
+            const eventFrame = this.anchorFrame + Math.round((event.seconds - this.position) *
+                this.sampleRate / this.speed) + delay;
+            if (eventFrame >= blockEnd) break;
+            state.cursor++;
+            this.append(state, event.status, event.data1, event.data2, eventFrame > frame ? eventFrame - frame : 0,
+                event.systemReset || state.cursor, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0,
+                (event.systemReset || event.drumMode) ? 0 : Math.max(state.clockFrame, eventFrame + state.clockOrigin));
+        }
+        const endFrame = this.anchorFrame + Math.round((this.timeline.duration - this.position) *
+            this.sampleRate / this.speed) + delay;
+        if (!state.ended && endFrame < blockEnd) {
+            const offset = endFrame > frame ? endFrame - frame : 0;
+            if (timed) this.append(state, 0, 0, 0, offset, 0, 128,
+                Math.max(state.clockFrame, endFrame + state.clockOrigin));
+            else for (let channel = 0; channel < 16; channel++) {
+                this.append(state, 0xb0 | channel, 64, 0, offset, 0);
+                this.append(state, 0xb0 | channel, 66, 0, offset, 0);
+                this.append(state, 0xb0 | channel, 123, 0, offset, 0);
+            }
+            state.ended = true;
+        }
+        if (pauseFrame < frame + frames) {
+            const frozenClock = Math.max(state.clockFrame, pauseFrame + state.clockOrigin);
+            this.append(state, 0, 0, 0, Math.max(0, pauseFrame - frame), 0, 16, frozenClock);
+            state.paused = true;
+        }
+        if (state.batchCount) this.send(binding, state);
+        if (state.clockOrigin !== null) state.clockFrame = Math.max(state.clockFrame, blockEnd + state.clockOrigin);
+        return true;
+    }
+}
+// __ETMIDI_SCHEDULER_INJECT_END__
 
 const JS_FALLBACK_SAMPLE_CHANNEL_BUDGET = 96000;
 
@@ -1446,6 +2438,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                 ({ a1: 0, a2: 0, a3: 0, scale: 0, ic1eq: 0, ic2eq: 0 })) } };
         this.FADE_DURATION = 0.010; // 10ms output gate ramp around discontinuous pipeline changes
         this.currentFrame = 0;
+        this.telemetryContextFrameOffset = globalThis.currentFrame;
+        this.midiScheduler = new MidiFrameScheduler(globalThis.sampleRate);
+        this.sfzNoEvents = [];
+        this.sfzResumeMarker = [{ offsetFrames: 0, status: 0, data1: 0, data2: 0, flags: 32, noteId: 0, renderFrame: 0 }];
         // Output gate. A new worklet starts settling at gain 0 so the first
         // block ramps in only after the compensation lines are primed.
         // assetHolds: inserted instances whose pending asset keeps settling.
@@ -1479,6 +2475,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.wasmKernels = new Map();
         this.wasmInstances = new Map();
         this.visualizerInstances = new Map();
+        this.soundFontMidiMeteringEntries = new Set();
         this.visualizerSources = [];
         this.streamBoundaries = [];
         this.visualizerTapNeedsPump = false;
@@ -1660,6 +2657,141 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     handlePortMessage(data) {
+        if (data.type === 'soundFontMidiMetering') { this.setSoundFontMidiMetering(data); return; }
+        if (data.type === 'soundFontMixerAction') { this.applySoundFontMixerAction(data); return; }
+        if (data.type === 'sfzGetPreparationContext') {
+            const plugin = this.plugins.find(item => item.id === data.pluginId);
+            const selection = plugin && workletRoutingSelection(plugin.channel, this.outputChannelCount);
+            const rate = this.dspSampleRate || globalThis.sampleRate;
+            this.port.postMessage({ type: 'sfzPreparationContext', requestId: data.requestId,
+                ok: !!selection && rate > 0, ...(selection && { context: { sampleRate: rate,
+                    processingChannels: selection.requiredChannels, maxFrames: this.maxFrameCount,
+                    minimumPhysicalBpm: midiMinimumPhysicalBpm(this.midiScheduler?.timeline) } }) });
+            return;
+        }
+        if (data.type === 'sfzAttachSupplyPort') {
+            const stream = this.wasmInstances.get(data.pluginId)?.sfzSampleStream, port = data.port;
+            if (!port) return;
+            if (!stream || stream.generation !== data.generation || stream.operationRevision !== data.operationRevision ||
+                stream.replayEpoch !== data.replayEpoch || stream.supplyPort) {
+                port.postMessage({ type: 'sfzStreamStop' }); port.close(); return;
+            }
+            stream.supplyPort = port;
+            port.onmessage = ({ data: message }) => {
+                if (message?.pluginId !== data.pluginId || message.generation !== stream.generation ||
+                    message.operationRevision !== stream.operationRevision || message.replayEpoch !== stream.replayEpoch ||
+                    !['sfzPublishPage', 'sfzPollPages', 'sfzStreamFailed'].includes(message.type)) return;
+                this.handleSfzSampleStreamControl(message, port);
+            };
+            port.start?.();
+            return;
+        }
+        if (data.type === 'sfzPublishPage' || data.type === 'sfzPollPages' || data.type === 'sfzStreamFailed') {
+            this.handleSfzSampleStreamControl(data); return;
+        }
+        if (data.type === 'sfzCaptureCheckpoints') { this.captureSfzRuntimeCheckpoints(data); return; }
+        if (data.type === 'sfzStartRuntime') { this.startSfzRuntime(data); return; }
+        if (data.type === 'sfzResumeRuntime') { this.requestSfzRuntimeResume(true); return; }
+        if (data.type === 'midiPause') {
+            const frame = this.currentFrame;
+            const anchor = Number.isSafeInteger(data.delayFrames) ? frame + data.delayFrames : data.anchorFrame;
+            if (!this.midiScheduler || anchor < frame ||
+                !this.midiScheduler.requestPause(data.generation, anchor)) {
+                this.port.postMessage({ type: 'midiCheckpointError', generation: data.generation });
+            } else {
+                this.midiCapturePending = true;
+                this._invalidatePowerSkipForMutation();
+            }
+            return;
+        }
+        if (data.type === 'midiCaptureCheckpoint') {
+            if (data.generation !== this.midiScheduler?.generation || this.midiScheduler.playing ||
+                this.midiScheduler.mode !== 'pause') return;
+            try {
+                const checkpoints = [];
+                for (const [pluginId, state] of this.midiScheduler.instances) {
+                    if (!state.enabled || !state.paused) continue;
+                    const plugin = this.plugins.find(item => item.id === pluginId);
+                    if (!plugin) throw new Error('MIDI instrument was removed');
+                    const record = this.captureSfzRuntimeCheckpoint(plugin, this.wasmInstances.get(pluginId));
+                    if (record.generation !== this.midiScheduler.generation || record.token !== state.token ||
+                        record.instanceId !== state.instanceId || record.clockFrame !== state.clockFrame) {
+                        throw new Error('MIDI checkpoint cursor and instrument clock changed');
+                    }
+                    checkpoints.push({ ...record, cursor: state.cursor });
+                }
+                this.port.postMessage({ type: 'midiCheckpoints', generation: data.generation,
+                    position: this.midiScheduler.position, checkpoints }, checkpoints.map(item => item.bytes.buffer));
+            } catch (error) {
+                console.error('MIDI checkpoint capture failed:', error);
+                this.port.postMessage({ type: 'midiCheckpointError', generation: data.generation });
+            }
+            this.midiCapturePending = false;
+            return;
+        }
+        if (data.type === 'midiInputConfigure') {
+            if (!data.enabled && !this.midiScheduler.input) return;
+            if (this.midiScheduler.configureInput(data)) {
+                this.dspBinding?.prepareMidiTransport?.([]);
+                this._invalidatePowerSkipForMutation();
+            }
+            return;
+        }
+        if (data.type === 'midiInputState') {
+            if (data.generation === this.midiScheduler.generation)
+                this.midiScheduler.hydrateInput(data.pluginId, data.token, data.events, data.activation);
+            return;
+        }
+        if (data.type === 'midiInputEvents') {
+            const accepted = data.generation === this.midiScheduler.generation &&
+                Array.isArray(data.events) &&
+                this.midiScheduler.enqueueInput(data.events.map(event => ({ ...event,
+                    frame: this.currentFrame + Math.max(0, event.frame - (globalThis.currentFrame ?? this.currentFrame)) })));
+            if (accepted) this._invalidatePowerSkipForMutation();
+            if (accepted) {
+                this.midiInputAcks ??= [];
+                this.midiInputAcks.push({ generation: data.generation, requestId: data.requestId,
+                    serial: this.midiScheduler.input.serial });
+            } else this.port.postMessage({ type: 'midiInputAccepted', generation: data.generation,
+                requestId: data.requestId, accepted: false });
+            return;
+        }
+        if (data.type === 'midiTransport') {
+            if (!this.midiScheduler) this.midiScheduler = new MidiFrameScheduler(globalThis.sampleRate);
+            if (this.midiScheduler.configure({ ...data, anchorFrame: Number.isSafeInteger(data.delayFrames)
+                ? this.currentFrame + data.delayFrames : data.anchorFrame })) {
+                if (data.mode !== 'pause') this.midiCapturePending = false;
+                try {
+                    const previousMemory = this.dspBinding?.memory?.buffer;
+                    this.dspBinding?.prepareMidiTransport?.(this.midiScheduler.transportPoints);
+                    if (this.dspBinding?.memory?.buffer !== previousMemory) this.adoptDspArena();
+                    if (data.mode === 'resume' && data.checkpoints) this.restoreMidiCheckpoints(data.checkpoints);
+                } catch (error) {
+                    console.error('MIDI transport preparation failed:', error);
+                    this.midiScheduler.playing = false;
+                    this.midiScheduler.preparing = false;
+                    this.port.postMessage({ type: 'midiTransportError', generation: data.generation,
+                        detail: 'Instrument transport could not be prepared' });
+                    return;
+                }
+                this._invalidatePowerSkipForMutation();
+            }
+            return;
+        }
+        if (data.type === 'midiStart') {
+            if (this.midiScheduler?.start(data.generation, Number.isSafeInteger(data.delayFrames)
+                ? this.currentFrame + data.delayFrames : data.anchorFrame)) this._invalidatePowerSkipForMutation();
+            return;
+        }
+        if (data.type === 'midiSpeed') {
+            if (this.midiScheduler) this.midiScheduler.setSpeed(data.speed,
+                this.midiScheduler.currentPosition(this.currentFrame), this.currentFrame);
+            return;
+        }
+        if (data.type === 'midiGain') {
+            if (this.midiScheduler && Number.isFinite(data.gain)) this.midiScheduler.gain = data.gain;
+            return;
+        }
         if (MUTATION_MESSAGE_TYPES.has(data.type)) this.handleMutation(data);
         else this.applyPortMessage(data);
     }
@@ -2013,6 +3145,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     _invalidatePowerSkipForMutation() {
+        this.cancelSfzPowerCheckpoint();
         const power = this.powerPolicy;
         if (!power?.enabled) return;
         power.state = 'active';
@@ -2114,6 +3247,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         const wasmInstance = this.wasmInstances.get(pluginId);
         if (!wasmInstance) return true;
         if (!this.dspBinding) return false;
+        if (['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(wasmInstance.type)) {
+            if ((this.dspBinding.instanceAssetState(wasmInstance.id, 0) & 255) === 3) return !!wasmInstance.sfzRuntimeFrozen;
+        }
         return this.dspBinding.resetInstance(wasmInstance.id) === 0;
     }
 
@@ -2296,6 +3432,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.pluginContexts.clear();
             for (const plugin of this.plugins) this.prepareSpectrumAnalyzerContext(plugin);
             this.currentFrame = 0;
+            this.telemetryContextFrameOffset = globalThis.currentFrame;
             this.clearAudioProcessingOverload();
             this.audioLevelMonitoring.lastInputActiveTime = 0;
             this.audioLevelMonitoring.lastOutputActiveTime = 0;
@@ -2330,6 +3467,19 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     _prepareAutomaticMonitoringState() {
+        const sfz = this.powerPolicy.temporalCapabilities.some(entry =>
+            ['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(this.wasmInstances.get(entry.pluginId)?.type));
+        if (sfz && this.sfzPowerCheckpoint?.status !== 'ready') {
+            if (!this.sfzPowerCheckpoint) {
+                const power = this.powerPolicy;
+                const proof = { workletGraphGeneration: power.workletGraphGeneration, topologyRevision: power.topologyRevision,
+                    commandId: power.commandId, skipEpoch: power.skipEpoch, activityEpoch: this.sfzPowerActivityEpoch ?? 0,
+                    runtimeRevision: this.sfzRuntimeRevision ?? 0, midiGeneration: this.midiScheduler.generation };
+                this.sfzPowerCheckpoint = { status: 'requested', proof };
+                this.port.postMessage({ type: 'sfzCheckpointNeeded', proof });
+            }
+            return 'pending';
+        }
         for (const entry of this.powerPolicy.temporalCapabilities) {
             if (entry.capability === 'stateless') continue;
             if (entry.capability !== 'reset-on-resume' ||
@@ -2429,6 +3579,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const power = this.powerPolicy;
         const enabled = data?.enabled === true;
         if (!enabled) {
+            this.cancelSfzPowerCheckpoint();
             power.enabled = false;
             power.state = 'active';
             power.processingDirective = 'full-process';
@@ -2443,6 +3594,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const powerIdentityCurrent =
             data.workletGraphGeneration === power.workletGraphGeneration &&
             data.topologyRevision === power.topologyRevision;
+        if (!powerIdentityCurrent) this.cancelSfzPowerCheckpoint();
         const previousDirective = power.processingDirective;
         const previousHostSkipActive = power.commandId !== null && (
             previousDirective === 'force-monitoring' ||
@@ -2725,6 +3877,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
         if (commandAccepted) {
+            if (directive === 'full-process') this.requestSfzRuntimeResume();
             if (skipOwnershipDirective) power.lastAcceptedSkipEpoch = data.skipEpoch;
             power.commandId = data.commandId;
             power.skipEpoch = skipOwnershipDirective ? data.skipEpoch : null;
@@ -2844,6 +3997,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 : 'temporal-preparation-runtime-failed'
         };
         if (preparation.success) {
+            this.requestSfzRuntimeResume();
             power.state = 'active';
             power.processingDirective = 'full-process';
             power.activeFullProcessSettled = false;
@@ -2909,6 +4063,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
 
             const capabilities = binding.getCapabilities();
+            binding.prepareMidiTransport(this.midiScheduler?.transportPoints);
             this.dspBinding = binding;
             this.dspLive = true;
             if (this.dspTelemetryRateHz !== null) {
@@ -2938,6 +4093,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.port.postMessage({
                 type: 'dspReady',
                 abiVersion: capabilities.abiVersion,
+                sfzSampleStreaming: binding.hasSfzSampleStreaming?.() === true,
                 kernels: capabilities.kernels.map(kernel => ({
                     name: kernel.name,
                     hash: kernel.hash >>> 0,
@@ -3047,8 +4203,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspDeferredAssetStages.clear();
         this.dspLive = false;
         this.dspPipelineReady = false;
+        for (const [pluginId, entry] of this.wasmInstances) this.stopSfzSampleStream(pluginId, entry);
         this.wasmInstances.clear();
         this.visualizerInstances.clear();
+        this.soundFontMidiMeteringEntries.clear();
         this.dspPendingInstanceDestroy = [];
         this.dspEngineNeedsCleanup = true;
         this.installBufferPool(this.createLegacyBufferPool());
@@ -3099,7 +4257,8 @@ class PluginProcessor extends AudioWorkletProcessor {
     destroyAllDspInstances() {
         this.dspPipelineReady = false;
         if (this.dspBinding) {
-            for (const entry of this.wasmInstances.values()) {
+            for (const [pluginId, entry] of this.wasmInstances) {
+                this.stopSfzSampleStream(pluginId, entry);
                 this.dspBinding.destroyInstance(entry.id);
             }
             for (const entry of this.visualizerInstances.values()) {
@@ -3108,6 +4267,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         this.wasmInstances.clear();
         this.visualizerInstances.clear();
+        this.soundFontMidiMeteringEntries.clear();
     }
 
     reconcileVisualizerInstances() {
@@ -3172,10 +4332,17 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     destroyDspInstance(pluginId) {
+        if (['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(this.wasmInstances.get(pluginId)?.type)) {
+            this.sfzRuntimeRevision = (this.sfzRuntimeRevision ?? 0) + 1;
+        }
+        this.midiScheduler?.instances.delete(pluginId);
+        this.midiScheduler?.stagedInstances.delete(pluginId);
         this.dspPipelineReady = false;
         const entry = this.wasmInstances.get(pluginId);
         if (!entry) return;
+        this.stopSfzSampleStream(pluginId, entry);
         if (this.dspBinding) this.dspBinding.destroyInstance(entry.id);
+        this.soundFontMidiMeteringEntries.delete(entry);
         this.wasmInstances.delete(pluginId);
     }
 
@@ -3189,6 +4356,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         } else if (plugin.type === 'AdaptivePredictionEffectPlugin') {
             type = 'adaptivePredictionFault';
             causes = ['none', 'numericalFailure'];
+        } else if (plugin.type === 'SoundFontPlayerPlugin' || plugin.type === 'SFZNotePlayerPlugin') {
+            type = 'sfzSampleAvailability';
+            causes = ['available', 'sampleUnavailable'];
         } else {
             return;
         }
@@ -3368,6 +4538,19 @@ class PluginProcessor extends AudioWorkletProcessor {
             entry.ready = false;
         }
         if (!wasReady && entry.ready) this.restageDspAssets(plugin.id);
+        if (['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.type) && !entry.sfzIdentityPosted) {
+            entry.sfzIdentityPosted = true;
+            this.port.postMessage({ type: 'sfzRuntimeIdentity', pluginId: plugin.id, instanceId: entry.id,
+                instanceEpoch: entry.instanceEpoch ?? 0,
+                token: this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0 });
+        }
+        if (plugin.type === 'SoundFontPlayerPlugin' && entry.ready) {
+            const previous = this.midiScheduler.instances.get(plugin.id);
+            if (!previous || previous.instanceId !== entry.id) {
+                this.dspBinding.instanceSetSeed?.(entry.id, 0x4d494449, 1);
+                this.midiScheduler.register(plugin.id, entry.id);
+            }
+        }
     }
 
     normalizeAssetOperationRevision(value) {
@@ -3525,7 +4708,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     dspAssetFootprintBytes(excludedPluginId = null, excludedSlot = null, sfzOnly = null) {
         let total = 0;
         const included = pluginId => sfzOnly === null ||
-            (this.plugins.find(plugin => plugin.id === pluginId)?.type === 'SFZNotePlayerPlugin') === sfzOnly;
+            (['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(this.plugins.find(plugin => plugin.id === pluginId)?.type)) === sfzOnly;
         for (const [pluginId, slots] of this.dspAssetCache) {
             if (!included(pluginId)) continue;
             for (const [slot, asset] of slots) {
@@ -3585,7 +4768,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             );
             return;
         }
-        const sfz = this.plugins.find(plugin => plugin.id === pluginId)?.type === 'SFZNotePlayerPlugin';
+        const sfz = ['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(this.plugins.find(plugin => plugin.id === pluginId)?.type);
         const aggregateFootprint = this.dspAssetFootprintBytes(pluginId, slot, sfz) + footprintBytes;
         const aggregateBudget = sfz ? ET_DSP_SFZ_ASSET_AGGREGATE_BUDGET_BYTES :
             ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES;
@@ -3608,6 +4791,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 pathCount,
                 inputCount: data.inputCount >>> 0,
                 processingChannels,
+                ...(data.preparationContext && { preparationContext: data.preparationContext }),
                 footprintBytes
             },
             formatTag: data.formatTag >>> 0,
@@ -3758,6 +4942,25 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.refreshDspPipelineForLatencyChange();
             return false;
         }
+        if (slot === 0) {
+            this.stopSfzSampleStream(pluginId, entry);
+            const header = cached.payload.byteLength >= 96
+                ? new DataView(cached.payload.buffer, cached.payload.byteOffset + 32, 64) : null;
+            const version = header?.getUint32(4, true);
+            if (header?.getUint32(0, true) === 0x53465a && (version === 8 || version === 9 || version === 10) && (header.getUint32(60, true) & (version === 10 ? 2 : 1))) {
+                const generation = this.sfzSampleStreamGeneration = (this.sfzSampleStreamGeneration || 0) + 1;
+                const configured = this.dspBinding.configureSfzSampleStream?.(entry.id, generation);
+                if (this.dspBinding.memory?.buffer !== previousMemory) this.adoptDspArena();
+                if (configured !== 0) {
+                    this.dspBinding.instanceAssetAbort(entry.id, slot);
+                    this.rejectDspAssetCandidate(pluginId, slot, 'capacity', cached.operationRevision,
+                        previousDescriptor, replayFailure, true, cached.replayEpoch);
+                    return false;
+                }
+                entry.sfzSampleStream = { generation, operationRevision: cached.operationRevision, replayEpoch: cached.replayEpoch };
+                this.port.postMessage({ type: 'sfzStreamReady', pluginId, ...entry.sfzSampleStream });
+            }
+        }
         this.postAssetState(pluginId, slot,
             this.dspBinding.instanceAssetState(entry.id, slot), cached.operationRevision, true,
             cached.replayEpoch);
@@ -3789,9 +4992,219 @@ class PluginProcessor extends AudioWorkletProcessor {
         slots?.delete(slot);
         if (slots?.size === 0) this.dspAssetCache.delete(pluginId);
         const entry = this.wasmInstances.get(pluginId);
+        if (slot === 0) this.stopSfzSampleStream(pluginId, entry);
         if (entry && this.dspBinding) this.dspBinding.instanceAssetAbort(entry.id, slot);
         this.postAssetState(pluginId, slot, 0, operationRevision, false, replayEpoch);
         this.refreshDspPipelineForLatencyChange();
+    }
+
+    stopSfzSampleStream(pluginId, entry) {
+        if (!entry?.sfzSampleStream) return;
+        entry.sfzSampleStream.supplyPort?.postMessage({ type: 'sfzStreamStop' });
+        entry.sfzSampleStream.supplyPort?.close();
+        this.port.postMessage({ type: 'sfzStreamStop', pluginId, generation: entry.sfzSampleStream.generation });
+        entry.sfzSampleStream = null;
+    }
+
+    reportSfzScriptFailure(pluginId, entry, assetState) {
+        const plugin = this.plugins.find(item => item.id === pluginId);
+        if (!entry || (plugin?.type !== 'SoundFontPlayerPlugin' && plugin?.type !== 'SFZNotePlayerPlugin') ||
+            (assetState & 255) !== 4 || !(this.dspBinding.instanceMidiState?.(entry.id) & 8)) return false;
+        const cached = this.dspAssetCache.get(pluginId)?.get(0);
+        if (!cached) return false;
+        const scheduler = this.midiScheduler;
+        const state = scheduler?.instances.get(pluginId);
+        const wasPlaying = plugin.type === 'SoundFontPlayerPlugin' &&
+            (state?.enabled === true || state?.failed === true) && (scheduler.playing || scheduler.preparing);
+        if (plugin.type === 'SoundFontPlayerPlugin') {
+            plugin.runtimeAssetErrorRevision = cached.operationRevision;
+            scheduler?.retireFailedInstance(pluginId);
+        }
+        const changed = this.postAssetState(pluginId, 0, assetState,
+            cached.operationRevision, false, cached.replayEpoch);
+        this.stopSfzSampleStream(pluginId, entry);
+        // Terminal diagnostics must reach Console even while UI telemetry is idle.
+        if (changed) {
+            this.pumpDspTelemetry(0, true);
+            // Only the owner knows whether another current worklet is healthy.
+            // Retire this instrument while leaving the common song clock alone.
+            if (wasPlaying) this.port.postMessage({ type: 'midiTransportError', generation: scheduler.generation,
+                detail: 'Instrument playback stopped', pluginId,
+                operationRevision: cached.operationRevision, replayEpoch: cached.replayEpoch ?? null });
+        }
+        return changed;
+    }
+
+    isSfzInstrumentJoinReady(plugin, entry) {
+        const stream = entry.sfzSampleStream;
+        if (!stream) return true;
+        const forecast = stream.forecast, snapshot = stream.readiness;
+        if (forecast?.pressure && forecast.generation === this.midiScheduler?.generation &&
+            forecast.timeline === this.midiScheduler?.timeline && forecast.speed === this.midiScheduler?.speed &&
+            forecast.channel === (plugin.parameters?.mc ?? 0)) return true;
+        if (!forecast?.ready || !snapshot || snapshot.pendingPages || snapshot.generation !== forecast.nativeGeneration ||
+            forecast.channel !== (plugin.parameters?.mc ?? 0)) return false;
+        if (plugin.type === 'SFZNotePlayerPlugin') return forecast.freeze === entry.sfzRuntimeFrozen;
+        return forecast.generation === this.midiScheduler?.generation && forecast.timeline === this.midiScheduler?.timeline &&
+            forecast.speed === this.midiScheduler?.speed && (snapshot.scope !== 1 || snapshot.readyAheadFrames > 0);
+    }
+
+    // CONTROL owns exact native admission. Event offsets use the same processed
+    // output sample axis as delivery; neither horizon nor refill follows wall time.
+    advanceSfzSampleForecast(pluginId, entry) {
+        const plugin = this.plugins.find(item => item.id === pluginId), scheduler = this.midiScheduler;
+        if (!plugin || plugin.enabled === false || this.masterBypass || !entry.sfzSampleStream ||
+            !['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.type)) return;
+        const note = plugin.type === 'SFZNotePlayerPlugin', input = scheduler?.input?.enabled === true;
+        const known = !note && !input && !!scheduler?.timeline && !!scheduler.generation && (scheduler.preparing || scheduler.playing);
+        const nativeClock = this.dspBinding.instanceMidiClock(entry.id);
+        const nativeGeneration = nativeClock.generation, generation = scheduler?.generation ?? 0;
+        const timeline = scheduler?.timeline ?? null, speed = scheduler?.speed ?? 1;
+        const stream = entry.sfzSampleStream, rate = this.dspSampleRate || globalThis.sampleRate, frame = this.currentFrame;
+        const scope = known ? 1 : 2;
+        const snapshot = stream.readiness = this.dspBinding.instanceStreamReadiness(entry.id);
+        let forecast = stream.forecast;
+        const goal = stream.forecastGoal, channel = plugin.parameters?.mc ?? 0;
+        const changedGoal = !goal || goal.generation !== generation || goal.nativeGeneration !== nativeGeneration ||
+            goal.timeline !== timeline || goal.scope !== scope || goal.speed !== speed ||
+            goal.channel !== channel || note && goal.freeze !== entry.sfzRuntimeFrozen;
+        if (changedGoal) {
+            stream.forecastGoal = { generation, nativeGeneration, timeline, scope, speed, channel, freeze: entry.sfzRuntimeFrozen };
+            stream.limited = false;
+        }
+        const changed = changedGoal || !forecast || forecast.ready && snapshot.scope !== forecast.nativeScope;
+        const refill = forecast?.ready && (forecast.nativeScope === 1
+            ? snapshot.readyAheadFrames <= Math.ceil(rate * .5) : !!(this.dspBinding.instanceMidiState(entry.id) & 7) && frame >= forecast.refreshFrame);
+        if (changed || refill || forecast?.pressure && frame >= forecast.retryFrame) {
+            const delay = this.dspLatencyPlan?.tapPositions?.[pluginId]?.input ?? 0;
+            const position = known ? scheduler.currentPosition(frame, delay) : 0;
+            const state = scheduler?.instances.get(pluginId);
+            forecast = stream.forecast = { generation, nativeGeneration, timeline, speed, scope,
+                channel: plugin.parameters?.mc ?? 0, freeze: entry.sfzRuntimeFrozen,
+                position, frame, delay, initialCursor: known && state?.enabled ? state.cursor : 0,
+                cursor: known && state?.enabled ? state.cursor : 0, windowIndex: 0,
+                windowFrames: Math.ceil(rate * 1.5), horizon: position + 1.5 * speed,
+                reset: true, scanned: !known, ready: false, pressure: false,
+                events: Array.from({ length: 256 }, () => ({ offsetFrames: 0, status: 0, data1: 0, data2: 0,
+                    noteId: 0, flags: 0, renderFrame: 0 })) };
+        }
+        if (forecast.ready || forecast.pressure) return;
+        const pressure = () => {
+            const windows = [Math.ceil(rate * 1.5), Math.ceil(rate), Math.ceil(rate * .25)];
+            if (++forecast.windowIndex < windows.length) {
+                forecast.windowFrames = windows[forecast.windowIndex];
+                forecast.horizon = forecast.position + forecast.windowFrames / rate * speed;
+                forecast.cursor = forecast.initialCursor; forecast.reset = true; forecast.scanned = !known;
+            } else {
+                stream.limited = true;
+                forecast.pressure = true; forecast.retryFrame = frame + Math.ceil(rate * .5);
+            }
+        };
+        const stale = result => {
+            if (result !== -2) return false;
+            stream.readiness = this.dspBinding.instanceStreamReadiness(entry.id);
+            if (stream.readiness.scope !== 0 && this.dspBinding.instanceMidiClock(entry.id).generation === nativeGeneration) return false;
+            stream.forecast = null;
+            return true;
+        };
+        const commit = () => {
+            const result = this.dspBinding.prefetchSfzSampleStream(entry.id, forecast.events, nativeGeneration, forecast.windowFrames, 6, 0);
+            if (result === -3) { pressure(); return; }
+            if (result === 1 || stale(result)) return;
+            if (result !== 0) throw new Error('Sample forecast could not be committed');
+            stream.readiness = this.dspBinding.instanceStreamReadiness(entry.id);
+            forecast.nativeScope = stream.readiness.scope;
+            forecast.ready = forecast.nativeScope !== 0 && stream.readiness.pendingPages === 0 &&
+                (forecast.nativeScope !== 1 || stream.readiness.readyAheadFrames > 0);
+            // Expired coverage can discard a candidate without changing its goal's admission result.
+            if (forecast.windowIndex > 0) stream.limited = true;
+            else if (forecast.ready) stream.limited = false;
+            forecast.refreshFrame = frame + Math.ceil(rate * .5);
+            if (!forecast.ready) stream.forecast = null;
+        };
+        if (forecast.scanned && !forecast.reset) { commit(); return; }
+        const events = known ? timeline.events : this.sfzNoEvents;
+        let count = 0, cursor = forecast.cursor, visited = 0;
+        while (cursor < events.length && events[cursor].seconds < forecast.horizon && visited++ < 256) {
+            const event = events[cursor++];
+            if (event.seconds < forecast.position && [0x80, 0x90].includes(event.status & 0xf0)) continue;
+            const target = forecast.events[count];
+            target.status = event.status; target.data1 = event.data1; target.data2 = event.data2 ?? 0;
+            target.flags = event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0; target.noteId = event.systemReset || 0;
+            target.offsetFrames = known ? Math.max(0, scheduler.playing
+                ? scheduler.anchorFrame + Math.round((event.seconds - scheduler.position) * rate / speed) + forecast.delay - forecast.frame
+                : Math.round((event.seconds - forecast.position) * rate / speed)) : 0;
+            if (target.offsetFrames >= forecast.windowFrames) { cursor--; forecast.scanned = true; break; }
+            count++;
+        }
+        const flags = forecast.reset ? scope === 2 ? 13 : 5 : 4;
+        const result = this.dspBinding.prefetchSfzSampleStream(entry.id, forecast.events, nativeGeneration, forecast.windowFrames, flags, count);
+        if (result === -3) { pressure(); return; }
+        if (stale(result)) return;
+        if (result !== 0) throw new Error('Sample forecast could not be admitted');
+        forecast.cursor = cursor; forecast.reset = false;
+        forecast.scanned ||= !known || cursor === events.length || events[cursor].seconds >= forecast.horizon;
+        if (forecast.scanned) commit();
+    }
+
+    handleSfzSampleStreamControl(data, replyPort = this.port) {
+        const entry = this.wasmInstances.get(data.pluginId), stream = entry?.sfzSampleStream;
+        const current = stream && stream.generation === data.generation &&
+            (!replyPort || replyPort === this.port || stream.supplyPort === replyPort);
+        if (current && data.type === 'sfzPollPages') {
+            stream.pollPending = false;
+            stream.nextPollFrame = this.currentFrame +
+                Math.ceil((this.dspSampleRate || globalThis.sampleRate) * .01);
+        }
+        if (data.type === 'sfzStreamFailed') {
+            if (current) this.clearPluginAsset({ pluginId: data.pluginId, slot: 0,
+                operationRevision: stream.operationRevision,
+                ...(stream.replayEpoch !== null && stream.replayEpoch !== undefined && { replayEpoch: stream.replayEpoch }) });
+            return;
+        }
+        let ok = false, requests = [];
+        try {
+            if (current && this.dspLive && this.dspBinding) {
+                const assetState = this.dspBinding.instanceAssetState(entry.id, 0);
+                if ((assetState & 255) === 4 && (this.dspBinding.instanceMidiState?.(entry.id) & 8)) {
+                    this.reportSfzScriptFailure(data.pluginId, entry, assetState);
+                } else if (data.type === 'sfzPublishPage') {
+                    const previousMemory = this.dspBinding.memory?.buffer;
+                    ok = data.operationRevision === stream.operationRevision && data.replayEpoch === stream.replayEpoch &&
+                        data.page?.generation === stream.generation && this.dspBinding.publishSfzSamplePage(entry.id, data.page) === 0;
+                    if (this.dspBinding.memory?.buffer !== previousMemory) this.adoptDspArena();
+                } else {
+                    requests = this.dspBinding.takeSfzSampleRequests(entry.id);
+                    // The host polls again only after acknowledging every page
+                    // returned by its previous poll. Drain before advancing or
+                    // committing a forecast, so a chunk is consumed exactly once.
+                    if (!requests.length) {
+                        this.advanceSfzSampleForecast(data.pluginId, entry);
+                        requests = this.dspBinding.takeSfzSampleRequests(entry.id);
+                    }
+                    ok = true;
+                }
+            }
+        } catch (error) { console.error('SFZ sample control failed:', error); }
+        if (current && this.dspBinding && this.currentFrame >= (stream.nextStatusFrame ?? 0)) {
+            const readiness = stream.readiness = this.dspBinding.instanceStreamReadiness(entry.id);
+            stream.nextStatusFrame = this.currentFrame + Math.ceil((this.dspSampleRate || globalThis.sampleRate) / 30);
+            this.port.postMessage({ type: 'sfzStreamReadiness', pluginId: data.pluginId,
+                generation: stream.generation, operationRevision: stream.operationRevision, replayEpoch: stream.replayEpoch,
+                readiness, limited: stream.limited === true });
+        }
+        replyPort.postMessage({ type: data.type === 'sfzPublishPage' ? 'sfzStreamPagesPublished' : 'sfzStreamRequests',
+            requestId: data.requestId, ok, ...(data.type === 'sfzPollPages' && { requests }) });
+    }
+
+    notifySfzSampleStreamPolls(frame) {
+        if (!this.dspLive) return;
+        for (const [pluginId, entry] of this.wasmInstances) {
+            const stream = entry.sfzSampleStream;
+            if (!stream || stream.pollPending || frame < (stream.nextPollFrame ?? 0)) continue;
+            stream.pollPending = true;
+            (stream.supplyPort || this.port).postMessage({ type: 'sfzStreamPollNeeded', pluginId, generation: stream.generation });
+        }
     }
 
     isDspAssetWakeEligible(pluginId) {
@@ -3817,6 +5230,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const wakeEligible = this.isDspAssetWakeEligible(pluginId);
                 for (const [slot, cached] of slots) {
                     const state = this.dspBinding.instanceAssetState(entry.id, slot);
+                    if (slot === 0 && this.reportSfzScriptFailure(pluginId, entry, state)) changed = true;
                     if (this.postAssetState(
                         pluginId,
                         slot,
@@ -4469,7 +5883,7 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     applyOutputDelay(output, channelCount, frameCount) {
         if (!this.visualizerForceDryOutput) {
-            this.captureVisualizerTap(output, channelCount, frameCount, this.currentFrame - frameCount);
+            this.captureVisualizerTap(output, channelCount, frameCount, this.currentFrame);
         }
         if (!this.outputDelayLine || this.outputDelaySamples === 0) return;
         const channels = output.length < channelCount ? output.length : channelCount;
@@ -4634,7 +6048,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspPipelineReady = false;
         const entry = this.wasmInstances.get(plugin.id);
         if (entry) {
+            this.stopSfzSampleStream(plugin.id, entry);
             entry.ready = false;
+            this.soundFontMidiMeteringEntries.delete(entry);
             this.wasmInstances.delete(plugin.id);
             this.dspPendingInstanceDestroy.push(entry.id);
         }
@@ -4652,7 +6068,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                 if (candidate.type !== plugin.type) continue;
                 const candidateEntry = this.wasmInstances.get(candidate.id);
                 if (candidateEntry) {
+                    this.stopSfzSampleStream(candidate.id, candidateEntry);
                     candidateEntry.ready = false;
+                    this.soundFontMidiMeteringEntries.delete(candidateEntry);
                     this.wasmInstances.delete(candidate.id);
                     this.dspPendingInstanceDestroy.push(candidateEntry.id);
                 }
@@ -4668,7 +6086,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.visualizerTapNeedsPump = false;
         if (!this.dspLive || (!finalBoundary && (this.dspPacketPool.length === 0 ||
             (this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled &&
-                this.visualizerInstances.size === 0)))) return;
+                this.visualizerInstances.size === 0 && this.soundFontMidiMeteringEntries.size === 0)))) return;
         const pooled = this.dspPacketPool.length !== 0;
         const packetView = pooled ? this.dspPacketPool.pop() : this.dspBoundaryPacket;
         try {
@@ -4679,7 +6097,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.port.postMessage({
                     type: 'dspTelemetry',
                     endFrame: globalThis.currentFrame + blockSize,
-                    contextFrameOffset: globalThis.currentFrame + blockSize - this.currentFrame,
+                    contextFrameOffset: this.telemetryContextFrameOffset,
                     packet,
                     bytes,
                     ...(pooled ? {} : { recycle: false }),
@@ -5266,7 +6684,9 @@ class PluginProcessor extends AudioWorkletProcessor {
     _publishPowerObservation(inputActive, outputActive, eventReason = null) {
         const power = this.powerPolicy;
         const edgeChanged = power.lastReportedInputActive !== inputActive ||
-            power.lastReportedOutputActive !== outputActive;
+            power.lastReportedOutputActive !== outputActive || power.lastReportedMidiPending !== this.midiPendingDemand ||
+            power.lastReportedSfzPending !== this.sfzPendingDemand ||
+            power.lastReportedSfzRuntimeRevision !== (this.sfzRuntimeRevision ?? 0);
         const observationRequestId = power.pendingObservationRequestId;
         const heartbeatDue = this.currentFrame - power.lastHeartbeatFrame >= globalThis.sampleRate;
         if (!edgeChanged && observationRequestId === null && !heartbeatDue && !eventReason) return;
@@ -5282,6 +6702,10 @@ class PluginProcessor extends AudioWorkletProcessor {
             processingDirective: power.processingDirective,
             inputActive,
             outputActive,
+            midiPending: this.midiPendingDemand === true,
+            midiGeneration: this.midiScheduler?.generation ?? 0,
+            sfzPending: this.sfzPendingDemand === true,
+            sfzRuntimeRevision: this.sfzRuntimeRevision ?? 0,
             inputPower: power.inputPowerEwma,
             outputPower: power.outputPowerEwma,
             workletGraphGeneration: power.workletGraphGeneration,
@@ -5297,6 +6721,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         });
         power.lastReportedInputActive = inputActive;
         power.lastReportedOutputActive = outputActive;
+        power.lastReportedMidiPending = this.midiPendingDemand;
+        power.lastReportedSfzPending = this.sfzPendingDemand;
+        power.lastReportedSfzRuntimeRevision = this.sfzRuntimeRevision ?? 0;
         power.pendingObservationRequestId = null;
         if (heartbeatDue) power.lastHeartbeatFrame = this.currentFrame;
     }
@@ -5308,6 +6735,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         eventReason = null,
         fullDspRenderCompleted = true
     ) {
+        this.updateMidiPendingDemand();
         const power = this.powerPolicy;
         const alpha = 1 - Math.exp(-blockSize / (globalThis.sampleRate * 2));
         const inputFinite = Number.isFinite(inputPower);
@@ -5324,6 +6752,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         const outputActive = !outputFinite || power.outputPowerEwma > power.silenceThresholdPower;
 
         if (inputActive || outputActive) {
+            this.sfzPowerActivityEpoch = (this.sfzPowerActivityEpoch ?? 0) + 1;
+            this.cancelSfzPowerCheckpoint();
             power.silentSinceFrame = null;
             power.monitoringPreparationPending = false;
         } else if (power.silentSinceFrame === null) {
@@ -5343,6 +6773,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                 processingDirective: power.processingDirective,
                 inputActive,
                 outputActive,
+                midiPending: this.midiPendingDemand === true,
+                midiGeneration: this.midiScheduler?.generation ?? 0,
+                sfzPending: this.sfzPendingDemand === true,
+                sfzRuntimeRevision: this.sfzRuntimeRevision ?? 0,
                 workletGraphGeneration: power.workletGraphGeneration,
                 topologyRevision: power.topologyRevision,
                 renderSequence: power.renderSequence,
@@ -5351,7 +6785,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             power.pendingFirstRenderCommandId = null;
         }
 
-        if (fullDspRenderCompleted && power.arm.state === 'armed' &&
+        if (fullDspRenderCompleted && !this.midiPendingDemand && !this.sfzPendingDemand && power.arm.state === 'armed' &&
             power.processingDirective === 'allow-automatic') {
             power.inputSilentFrames = inputActive ? 0 : power.inputSilentFrames + blockSize;
             power.outputSilentFrames = outputActive ? 0 : power.outputSilentFrames + blockSize;
@@ -5366,7 +6800,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                     } catch (_) {
                         prepared = false;
                     }
-                    if (prepared) {
+                    if (prepared === 'pending') {
+                        eventReason = 'sfz-checkpoint-pending';
+                    } else if (prepared) {
                         // The next full-process quantum recreates and warms any
                         // reset JS/WASM state before monitoring can begin.
                         power.monitoringPreparationPending = true;
@@ -5414,8 +6850,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         else if (runtime === 'js') power.counters.fullJsProcessQuanta++;
         if (forceDryOutput) {
             this._copyPowerInput(input, output);
-            this.captureVisualizerTap(output, this.outputChannelCount, blockSize,
-                this.currentFrame - blockSize);
+            this.captureVisualizerTap(output, this.outputChannelCount, blockSize, this.currentFrame);
         }
         const outputPower = this._measurePowerWithDcBlock(
             output,
@@ -5539,9 +6974,20 @@ class PluginProcessor extends AudioWorkletProcessor {
         const blockSize = inputBlockSize || outputBlockSize || ET_DSP_DEFAULT_MAX_FRAMES;
         const startedAt = this.audioProcessingClockNow();
         const blockStart = this.currentFrame;
+        // Every packet from this quantum uses the same native-to-context time origin,
+        // including EOF packets drained before or after the transport commit.
+        this.telemetryContextFrameOffset = globalThis.currentFrame - blockStart;
         this.lastBlockPowerSkipped = false;
         if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize);
+        if (inputBlockSize || outputBlockSize) this.processMidiTransport(blockStart, blockSize);
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
+        const completedFrames = outputBlockSize || inputBlockSize || 0;
+        if (completedFrames && this.commitMidiTransport(blockStart + completedFrames) !== false)
+            this.currentFrame = blockStart + completedFrames;
+        this.sfzProcessEndFrame = this.currentFrame;
+        this.notifySfzSampleStreamPolls(this.sfzProcessEndFrame);
+        const paused = this.midiScheduler?.finishPause(this.currentFrame);
+        if (paused) this.port.postMessage({ type: 'midiPauseReady', generation: paused.generation, position: paused.position });
         if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize, true);
         if (!this.lastBlockPowerSkipped && this.hasExecutionLatencyDrift()) {
             this.refreshDspPipelineForLatencyChange();
@@ -5551,6 +6997,474 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (this.visualizerTapNeedsPump) this.pumpDspTelemetry(blockSize);
         this.finishPipelineCpuMeasurement(startedAt, blockSize);
         return keepAlive;
+    }
+
+    _normalizedMidiChannel(value) {
+        return Number.isFinite(value) ? Math.round(Math.min(16, Math.max(0, value))) : 0;
+    }
+
+    observeMidiOwnership(plugin, entry, assetState, enabled) {
+        const scheduler = this.midiScheduler;
+        const previous = scheduler.instances.get(plugin.id);
+        const channel = this._normalizedMidiChannel(plugin.parameters?.mc);
+        const token = this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0;
+        const active = enabled && (assetState & 255) === 3;
+        const wasActive = previous?.ownershipActive === true;
+        const changed = previous && (previous.instanceId !== entry.id || previous.token !== token || previous.channel !== channel);
+        const resetJoin = !changed && previous?.clockOrigin !== null && previous?.clockOrigin !== undefined;
+        const state = scheduler.register(plugin.id, entry.id, token, channel);
+        const restored = entry.sfzRuntimeFrozen && !entry.sfzRuntimeFrozen.fresh;
+        state.ownershipActive = active && (!changed && wasActive || restored || this.isSfzInstrumentJoinReady(plugin, entry));
+        if (changed) state.clockOrigin = null;
+        if (!active) {
+            state.enabled = false;
+            state.paused = true;
+            state.restoring = false;
+            state.forceReset = true;
+            state.liveJoin = false;
+        } else if (state.ownershipActive && (scheduler.playing && (!wasActive || changed) || scheduler.mode === 'resume' && state.forceReset)) {
+            scheduler.joinLiveInstance(plugin.id, resetJoin);
+            if (scheduler.input?.enabled) {
+                state.inputHydration = ++scheduler.input.hydrationSerial;
+                this.port.postMessage({ type: 'midiInputStateRequested', generation: scheduler.generation,
+                    pluginId: plugin.id, token, activation: state.inputHydration });
+            }
+        }
+        // An internal replay may temporarily lose READY while the same enabled
+        // input target still owns pending events. Native delivery uses active.
+        if (scheduler.input) state.enabled = enabled;
+        return active;
+    }
+
+    restoreMidiCheckpoints(checkpoints) {
+        for (const checkpoint of checkpoints) {
+            const plugin = this.plugins.find(item => item.id === checkpoint.pluginId);
+            const entry = this.wasmInstances.get(checkpoint.pluginId);
+            if (!plugin || !entry) continue;
+            const token = this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0;
+            this.restoreSfzRuntimeCheckpoint(checkpoint, entry);
+            this.midiScheduler.register(plugin.id, entry.id, token, checkpoint.channel);
+            const clockFrame = Math.round(checkpoint.clockFrame * globalThis.sampleRate / checkpoint.sampleRate);
+            if (!this.midiScheduler.restoreInstanceState(plugin.id, { cursor: checkpoint.cursor, clockFrame })) {
+                throw new Error('Invalid MIDI checkpoint clock');
+            }
+        }
+    }
+
+    setSoundFontMidiMetering(data) {
+        const entry = this.wasmInstances.get(data.pluginId);
+        if (entry?.type !== 'SoundFontPlayerPlugin' || entry.instanceEpoch !== data.instanceEpoch ||
+            typeof data.enabled !== 'boolean') return;
+        if (this.dspBinding?.instanceSetMidiMetering?.(entry.id, data.enabled) !== 0) return;
+        if (data.enabled) this.soundFontMidiMeteringEntries.add(entry);
+        else this.soundFontMidiMeteringEntries.delete(entry);
+    }
+
+    applySoundFontMixerAction(data) {
+        const reply = { type: 'soundFontMixerActionApplied', requestId: data.requestId, ok: false };
+        try {
+            const plugin = this.plugins.find(item => item.id === data.pluginId);
+            const entry = this.wasmInstances.get(data.pluginId);
+            const asset = this.dspAssetCache.get(data.pluginId)?.get(0);
+            const action = data.action;
+            if (plugin?.type !== 'SoundFontPlayerPlugin' || !entry || !asset ||
+                asset.operationRevision !== data.token || (asset.replayEpoch ?? null) !== (data.replayEpoch ?? null) ||
+                (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3 ||
+                !Number.isInteger(action?.channel) || action.channel < 0 || action.channel > 15) {
+                throw new Error('SoundFont mixer target is not ready');
+            }
+            const channel = action.channel;
+            let status;
+            if (action.type === 'mute' || action.type === 'solo') {
+                if (typeof action.value !== 'boolean') throw new Error('Invalid channel mix action');
+                const code = (action.type === 'solo' ? 2 : 0) + (action.value ? 1 : 0);
+                status = this.dspBinding.instanceSetMidiChannelMix(entry.id, channel, code);
+            } else {
+                const event = (status, data1, data2 = 0) => ({ offsetFrames: 0, status: status | channel, data1, data2 });
+                let events;
+                if (action.type === 'program' && Number.isInteger(action.bank) &&
+                    Number.isInteger(action.program) && action.program >= 0 && action.program < 128 &&
+                    (channel === 9 ? action.bank === 128 : action.bank >= 0 && action.bank < 128)) {
+                    events = [event(0xb0, 0, channel === 9 ? 0 : action.bank), event(0xb0, 32, 0),
+                        event(0xc0, action.program)];
+                } else if (action.type === 'control' && [7, 10, 11, 91, 93].includes(action.controller) &&
+                    Number.isInteger(action.value) && action.value >= 0 && action.value < 128) {
+                    events = [event(0xb0, action.controller, action.value)];
+                } else throw new Error('Invalid SoundFont channel control');
+                const clock = this.dspBinding.instanceMidiClock(entry.id);
+                status = this.dspBinding.instanceSetMidiEvents(entry.id, events, clock.generation, 4096);
+            }
+            if (status !== 0) throw new Error(`SoundFont channel control was rejected: ${status}`);
+            const state = this.midiScheduler?.instances.get(plugin.id);
+            // The existing paused checkpoint must contain the edited controllers.
+            if (state?.enabled && state.paused && action.type !== 'mute' && action.type !== 'solo') {
+                const record = this.captureSfzRuntimeCheckpoint(plugin, entry);
+                reply.checkpoints = [{ ...record, cursor: state.cursor }];
+            }
+            this._invalidatePowerSkipForMutation();
+            reply.ok = true;
+        } catch (error) { console.warn('SoundFont mixer action failed:', error); }
+        this.port.postMessage(reply, reply.checkpoints?.map(item => item.bytes.buffer) ?? []);
+    }
+
+    captureSfzRuntimeCheckpoint(plugin, entry, { pause = false } = {}) {
+        if (!this.dspBinding?.instanceMidiClock || !entry || !plugin ||
+            (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3) {
+            throw new Error('SFZ instrument is not ready for a checkpoint');
+        }
+        const completedFrame = this.sfzProcessEndFrame ?? this.currentFrame;
+        const frozen = entry.sfzRuntimeFrozen;
+        if (plugin.type === 'SFZNotePlayerPlugin' && frozen?.sameContext && !(frozen.nativeState & 6)) {
+            const clockFrame = frozen.clockFrame + Math.max(0, completedFrame - frozen.captureFrame);
+            if (this.dspBinding.instanceSetMidiClock(entry.id, clockFrame, frozen.generation, 0) !== 0) {
+                throw new Error('SFZ idle clock could not be preserved');
+            }
+            frozen.clockFrame = clockFrame;
+            frozen.captureFrame = completedFrame;
+        }
+        if (pause) {
+            const initial = this.dspBinding.instanceMidiClock(entry.id);
+            const generation = initial.generation || 1;
+            if (this.dspBinding.instanceSetMidiEvents(entry.id, [], generation, 16) !== 0) {
+                throw new Error('SFZ instrument could not freeze for a checkpoint');
+            }
+        }
+        const clock = this.dspBinding.instanceMidiClock(entry.id);
+        let bytes;
+        const previousMemory = this.bufferPool.combined?.buffer;
+        try { bytes = this.dspBinding.instanceWriteMidiCheckpoint(entry.id); }
+        catch (error) {
+            if (pause && plugin.type === 'SFZNotePlayerPlugin') {
+                entry.sfzRuntimeFrozen = { clockFrame: clock.frame, generation: clock.generation,
+                    captureFrame: completedFrame,
+                    nativeState: this.dspBinding.instanceMidiState(entry.id), sameContext: true, reason: 'cancelled' };
+                entry.sfzRuntimeResumeRequested = true;
+            }
+            throw error;
+        } finally {
+            if (this.dspBinding.memory?.buffer && this.dspBinding.memory.buffer !== previousMemory) this.adoptDspArena();
+        }
+        return { pluginId: plugin.id, type: plugin.type, instanceId: entry.id, instanceEpoch: entry.instanceEpoch ?? 0,
+            sf: plugin.parameters?.sf, channel: plugin.type === 'SoundFontPlayerPlugin' ?
+                this._normalizedMidiChannel(plugin.parameters?.mc) : 0,
+            token: this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0,
+            replayEpoch: this.dspAssetCache.get(plugin.id)?.get(0)?.replayEpoch,
+            graph: this.powerPolicy.workletGraphGeneration, sampleRate: globalThis.sampleRate,
+            captureFrame: completedFrame,
+            nativeState: this.dspBinding.instanceMidiState(entry.id), generation: clock.generation,
+            clockFrame: clock.frame, bytes };
+    }
+
+    restoreSfzRuntimeCheckpoint(record, entry) {
+        const plugin = this.plugins.find(item => item.id === record.pluginId);
+        const token = this.dspAssetCache.get(record.pluginId)?.get(0)?.operationRevision ?? 0;
+        const replay = this.dspAssetCache.get(record.pluginId)?.get(0)?.replayEpoch;
+        const channel = plugin?.type === 'SoundFontPlayerPlugin' ? this._normalizedMidiChannel(plugin.parameters?.mc) : 0;
+        if (!plugin || !entry || plugin.type !== record.type || plugin.parameters?.sf !== record.sf ||
+            channel !== record.channel || (record.plannedMigration !== true &&
+                (record.instanceId !== entry.id || (record.instanceEpoch ?? 0) !== (entry.instanceEpoch ?? 0) ||
+                    record.token !== token || record.replayEpoch !== replay || record.sampleRate !== globalThis.sampleRate)) ||
+            (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3) {
+            throw new Error('SFZ checkpoint instrument identity changed');
+        }
+        const previousMemory = this.bufferPool.combined?.buffer;
+        let status;
+        try { status = this.dspBinding.instanceReadMidiCheckpoint(entry.id, record.bytes); }
+        finally {
+            if (this.dspBinding.memory?.buffer && this.dspBinding.memory.buffer !== previousMemory) this.adoptDspArena();
+        }
+        if (status !== 0) throw new Error('SFZ checkpoint could not be restored');
+        return true;
+    }
+
+    captureSfzRuntimeCheckpoints(data) {
+        const power = this.powerPolicy;
+        const proof = data.proof;
+        const monitoring = data.reason === 'monitoring';
+        const current = !monitoring || (this.sfzPowerCheckpoint?.status === 'requested' && proof &&
+            proof.workletGraphGeneration === power.workletGraphGeneration && proof.topologyRevision === power.topologyRevision &&
+            proof.commandId === power.commandId && proof.skipEpoch === power.skipEpoch &&
+            proof.activityEpoch === (this.sfzPowerActivityEpoch ?? 0) && proof.runtimeRevision === (this.sfzRuntimeRevision ?? 0) &&
+            proof.midiGeneration === this.midiScheduler.generation && power.arm.state === 'armed');
+        if (!current) {
+            this.port.postMessage({ type: 'sfzCheckpoints', requestId: data.requestId, ok: false, checkpoints: [] });
+            return;
+        }
+        const checkpoints = [];
+        try {
+            let sectionEnabled = true;
+            for (const plugin of this.plugins) {
+                if (plugin.type === 'SectionPlugin') { sectionEnabled = plugin.enabled !== false; continue; }
+                if (!['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.type)) continue;
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!entry || (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3) continue;
+                const player = plugin.type === 'SoundFontPlayerPlugin' ? this.midiScheduler.instances.get(plugin.id) : null;
+                if (plugin.type === 'SoundFontPlayerPlugin' && this.midiScheduler.generation === 0) continue;
+                const nativeState = this.dspBinding.instanceMidiState(entry.id);
+                const running = plugin.enabled !== false && sectionEnabled && !this.masterBypass;
+                if (data.reason !== 'graph' && running && !player?.paused && (nativeState & 23)) {
+                    throw new Error('SFZ state is still active');
+                }
+                const record = this.captureSfzRuntimeCheckpoint(plugin, entry, { pause: !player?.paused });
+                if (player) record.cursor = player.cursor;
+                if (this.dspBinding.resetInstance(entry.id) !== 0) throw new Error('SFZ runtime reset failed');
+                this.restoreSfzRuntimeCheckpoint(record, entry);
+                entry.sfzRuntimeFrozen = { clockFrame: record.clockFrame, generation: record.generation,
+                    captureFrame: record.captureFrame, nativeState: record.nativeState, sameContext: true, reason: data.reason };
+                if (player && this.midiScheduler.input?.enabled) {
+                    player.inputFrozen = true;
+                    player.paused = true;
+                }
+                this.sfzResumeMarker ??= [{ offsetFrames: 0, status: 0, data1: 0, data2: 0, flags: 32, noteId: 0, renderFrame: 0 }];
+                checkpoints.push(record);
+            }
+            if (data.reason !== 'graph') this.sfzPowerCheckpoint = { status: 'ready', proof };
+            this.port.postMessage({ type: 'sfzCheckpoints', requestId: data.requestId, ok: true,
+                generation: this.midiScheduler.generation, position: this.midiScheduler.position, checkpoints },
+            checkpoints.map(record => record.bytes.buffer));
+        } catch (error) {
+            console.error('SFZ state preservation failed:', error);
+            this.requestSfzRuntimeResume();
+            this.port.postMessage({ type: 'sfzCheckpoints', requestId: data.requestId, ok: false, checkpoints: [] });
+        }
+    }
+
+    cancelSfzPowerCheckpoint() {
+        if (!this.sfzPowerCheckpoint) return;
+        this.sfzPowerCheckpoint = null;
+        this.requestSfzRuntimeResume();
+    }
+
+    requestSfzRuntimeResume(includeGraph = false) {
+        this.sfzPowerCheckpoint = null;
+        for (const [pluginId, entry] of this.wasmInstances) {
+            if (entry.sfzRuntimeFrozen && entry.type === 'SoundFontPlayerPlugin' && this.midiScheduler.input?.enabled) {
+                const state = this.midiScheduler.instances.get(pluginId);
+                if (state?.inputFrozen && state.generation === this.midiScheduler.generation &&
+                    (includeGraph || entry.sfzRuntimeFrozen.reason !== 'graph')) state.inputResume = true;
+            }
+            if (entry.sfzRuntimeFrozen && entry.type === 'SFZNotePlayerPlugin' &&
+                (includeGraph || entry.sfzRuntimeFrozen.reason !== 'graph')) entry.sfzRuntimeResumeRequested = true;
+        }
+    }
+
+    resumeSfzRuntimesForRender(frame) {
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') { sectionEnabled = plugin.enabled !== false; continue; }
+            if (!sectionEnabled || plugin.enabled === false || this.masterBypass) continue;
+            const entry = this.wasmInstances.get(plugin.id);
+            if (!entry) continue;
+            const frozen = entry.sfzRuntimeFrozen;
+            if (!frozen || !entry.sfzRuntimeResumeRequested || entry.type !== 'SFZNotePlayerPlugin') continue;
+            if (!this.isSfzInstrumentJoinReady(plugin, entry)) continue;
+            const elapsed = frozen.sameContext && !(frozen.nativeState & 6) ? Math.max(0, frame - frozen.captureFrame) : 0;
+            const clock = frozen.clockFrame + elapsed, generation = frozen.generation + 1;
+            if (frozen.fresh) {
+                if (this.dspBinding.instanceSetMidiClock(entry.id, clock, frozen.generation, 1) !== 0) {
+                    throw new Error('SFZ live clock could not start');
+                }
+                entry.sfzRuntimeFrozen = null;
+                entry.sfzRuntimeResumeRequested = false;
+                continue;
+            }
+            const marker = this.sfzResumeMarker[0];
+            marker.renderFrame = clock;
+            if (this.dspBinding.instanceSetMidiEvents(entry.id, this.sfzNoEvents, generation, 32) !== 0 ||
+                this.dspBinding.instanceSetMidiClock(entry.id, clock, generation, 0) !== 0 ||
+                this.dspBinding.instanceSetMidiEvents(entry.id, this.sfzResumeMarker, generation) !== 0) {
+                throw new Error('SFZ live clock could not resume');
+            }
+            entry.sfzRuntimeFrozen = null;
+            entry.sfzRuntimeResumeRequested = false;
+        }
+    }
+
+    startSfzRuntime(data) {
+        try {
+            const plugin = this.plugins.find(item => item.id === data.pluginId);
+            const entry = this.wasmInstances.get(data.pluginId);
+            const token = this.dspAssetCache.get(data.pluginId)?.get(0)?.operationRevision ?? 0;
+            if (!plugin || !entry || !['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(plugin.type) ||
+                data.token !== token || (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3) {
+                throw new Error('SFZ activation target changed');
+            }
+            this._invalidatePowerSkipForMutation();
+            let record = null;
+            if (data.checkpoint) {
+                this.restoreSfzRuntimeCheckpoint(data.checkpoint, entry);
+                record = this.captureSfzRuntimeCheckpoint(plugin, entry);
+                if (plugin.type === 'SoundFontPlayerPlugin') record.cursor = data.checkpoint.cursor;
+                entry.sfzRuntimeFrozen = { clockFrame: record.clockFrame, generation: record.generation,
+                    captureFrame: data.checkpoint.captureFrame, nativeState: record.nativeState,
+                    sameContext: data.checkpoint.sameContext !== false, reason: 'graph' };
+            }
+            if (plugin.type === 'SFZNotePlayerPlugin') {
+                const clock = this.dspBinding.instanceMidiClock(entry.id);
+                if (record) {
+                    entry.sfzRuntimeFrozen = { ...clock, clockFrame: clock.frame, captureFrame: data.checkpoint.captureFrame,
+                        nativeState: record.nativeState, sameContext: data.checkpoint.sameContext !== false,
+                        reason: 'graph' };
+                    entry.sfzRuntimeResumeRequested = data.deferStart !== true;
+                    this.sfzResumeMarker ??= [{ offsetFrames: 0, status: 0, data1: 0, data2: 0, flags: 32, noteId: 0, renderFrame: 0 }];
+                } else {
+                    const generation = clock.generation || 1;
+                    const deferStart = data.deferStart || Boolean(entry.sfzSampleStream);
+                    if (this.dspBinding.instanceSetMidiEvents(entry.id, this.sfzNoEvents, generation, 64) !== 0 ||
+                        this.dspBinding.instanceSetMidiClock(entry.id, clock.frame, generation, deferStart ? 0 : 1) !== 0) {
+                        throw new Error('SFZ live clock could not start');
+                    }
+                    entry.sfzRuntimeFrozen = deferStart ? { clockFrame: clock.frame, generation,
+                        captureFrame: this.sfzProcessEndFrame ?? this.currentFrame,
+                        nativeState: 0, sameContext: false, reason: 'graph', fresh: true } : null;
+                    entry.sfzRuntimeResumeRequested = Boolean(entry.sfzSampleStream) && !data.deferStart;
+                }
+            }
+            this.port.postMessage({ type: 'sfzRuntimeIdentity', pluginId: plugin.id, instanceId: entry.id,
+                instanceEpoch: entry.instanceEpoch ?? 0, token });
+            this.port.postMessage({ type: 'sfzRuntimeStarted', requestId: data.requestId, ok: true,
+                checkpoints: record ? [record] : [] }, record ? [record.bytes.buffer] : []);
+        } catch (error) {
+            console.error('SFZ runtime activation failed:', error);
+            this.port.postMessage({ type: 'sfzRuntimeStarted', requestId: data.requestId, ok: false, checkpoints: [] });
+        }
+    }
+
+    updateMidiPendingDemand() {
+        let pending = this.midiCapturePending === true || (this.midiScheduler?.input?.events.length ?? 0) > 0;
+        let notePending = false;
+        let sectionEnabled = true;
+        if (this.dspLive && this.midiScheduler && this.dspBinding?.instanceMidiState) {
+            for (const plugin of this.plugins) {
+                if (plugin.type === 'SectionPlugin') { sectionEnabled = plugin.enabled !== false; continue; }
+                if (!sectionEnabled || plugin.enabled === false || this.masterBypass) continue;
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!entry || (plugin.type !== 'SoundFontPlayerPlugin' && plugin.type !== 'SFZNotePlayerPlugin')) continue;
+                const phase = this.dspBinding.instanceAssetState?.(entry.id, 0) & 255;
+                if (phase === 2) {
+                    notePending = true;
+                    continue;
+                }
+                const native = this.dspBinding.instanceMidiState(entry.id);
+                if (plugin.type === 'SFZNotePlayerPlugin') {
+                    if (entry.sfzSampleStream && entry.sfzRuntimeFrozen && !this.isSfzInstrumentJoinReady(plugin, entry)) notePending = true;
+                    if (!entry.sfzRuntimeFrozen && (native & 23)) notePending = true;
+                } else {
+                    const state = this.midiScheduler.instances.get(plugin.id);
+                    if (entry.sfzSampleStream && !state?.ownershipActive && !this.isSfzInstrumentJoinReady(plugin, entry)) pending = true;
+                    if (!state?.enabled || state.instanceId !== entry.id) continue;
+                    const currentDriver = phase === 3 &&
+                        state.ownershipActive && !state.failed &&
+                        state.token === this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision;
+                    if (!state.paused && currentDriver && this.midiScheduler.playing &&
+                        !this.midiScheduler.endNotified && this.midiScheduler.timeline &&
+                        this.midiScheduler.currentPosition(this.sfzProcessEndFrame ?? this.currentFrame) <
+                            this.midiScheduler.timeline.duration) pending = true;
+                    if (this.midiScheduler.preparing && !this.isSfzInstrumentJoinReady(plugin, entry)) pending = true;
+                    if ((native & 16) || (!state.paused && (this.midiScheduler.playing || state.draining) && (native & 7))) pending = true;
+                }
+            }
+        }
+        this.midiPendingDemand = pending;
+        this.sfzPendingDemand = notePending;
+    }
+
+    processMidiTransport(frame, frames) {
+        const scheduler = this.midiScheduler;
+        if (!scheduler) return;
+        let sectionEnabled = true;
+        let maximumInputDelay = 0;
+        let prepared = true;
+        try {
+            for (const plugin of this.plugins) {
+                if (!this.dspLive || !this.dspBinding) break;
+                if (plugin.type === 'SectionPlugin') { sectionEnabled = plugin.enabled !== false; continue; }
+                if (plugin.type !== 'SoundFontPlayerPlugin') continue;
+                if (scheduler.generation === 0) continue;
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!entry) continue;
+                const assetState = this.dspBinding.instanceAssetState(entry.id, 0);
+                const enabled = plugin.enabled !== false && sectionEnabled && !this.masterBypass;
+                const token = this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision;
+                if (plugin.runtimeAssetErrorRevision > 0 && plugin.runtimeAssetErrorRevision === token) {
+                    scheduler.register(plugin.id, entry.id, token, this._normalizedMidiChannel(plugin.parameters?.mc));
+                    scheduler.retireFailedInstance(plugin.id);
+                    continue;
+                }
+                if ((assetState & 255) === 4 && (this.dspBinding.instanceMidiState?.(entry.id) & 8)) {
+                    this.reportSfzScriptFailure(plugin.id, entry, assetState);
+                    continue;
+                }
+                const active = this.observeMidiOwnership(plugin, entry, assetState, enabled);
+                if (!active) continue;
+                const delay = this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0;
+                if (delay > maximumInputDelay) maximumInputDelay = delay;
+                try {
+                    const state = scheduler.instances.get(plugin.id);
+                    const joinReady = state.ownershipActive || this.isSfzInstrumentJoinReady(plugin, entry);
+                    if (state.forceReset && !scheduler.input && !state.liveJoin)
+                        scheduler.joinLiveInstance(plugin.id, true);
+                    const joining = state.liveJoin && !joinReady;
+                    if (!scheduler.stageInstance(this.dspBinding, plugin.id, frame, frames, delay, active, joinReady) && !joining)
+                        prepared = false;
+                } catch (error) {
+                    if (error?.code !== 'instrument-script-failed') throw error;
+                    this.reportSfzScriptFailure(plugin.id, entry, this.dspBinding.instanceAssetState(entry.id, 0));
+                    prepared = false;
+                    continue;
+                }
+
+                if (scheduler.playing && !scheduler.instances.get(plugin.id)?.paused) entry.sfzRuntimeFrozen = null;
+            }
+        } catch (error) {
+            scheduler.playing = false;
+            const failedGeneration = scheduler.generation;
+            scheduler.generation++;
+            for (const state of scheduler.instances.values()) {
+                this.dspBinding.instanceSetMidiEvents(state.instanceId, [], scheduler.generation, 1);
+            }
+            this.port.postMessage({ type: 'midiTransportError', generation: failedGeneration,
+                detail: error?.message || String(error) });
+        }
+        this.midiBlockPrepared = prepared;
+        this.midiMaximumInputDelay = maximumInputDelay;
+    }
+
+    commitMidiTransport(frame) {
+        const scheduler = this.midiScheduler;
+        if (!scheduler) return true;
+        try { scheduler.commitInstances(this.dspBinding); }
+        catch (error) {
+            scheduler.playing = false;
+            this.port.postMessage({ type: 'midiTransportError', generation: scheduler.generation, detail: error.message });
+            return false;
+        }
+        if (scheduler.preparing && this.midiBlockPrepared && !scheduler.preparedNotified) {
+            scheduler.preparedNotified = true;
+            this.port.postMessage({ type: 'midiPrepared', generation: scheduler.generation });
+        }
+        const position = Math.min(scheduler.currentPosition(frame), scheduler.timeline?.duration ?? Infinity);
+        const reportFrames = Math.ceil(globalThis.sampleRate / 30);
+        if (scheduler.timeline && scheduler.playing && (this.midiPositionGeneration !== scheduler.generation ||
+            frame - (this.midiPositionReportFrame ?? -reportFrames) >= reportFrames)) {
+            this.midiPositionGeneration = scheduler.generation;
+            this.midiPositionReportFrame = frame;
+            this.port.postMessage({ type: 'midiPosition', generation: scheduler.generation, position, processedFrame: frame });
+        }
+        if (scheduler.playing && !scheduler.pauseRequest && scheduler.timeline && !scheduler.endNotified &&
+            scheduler.currentPosition(frame - (this.midiMaximumInputDelay ?? 0)) >= scheduler.timeline.duration) {
+            scheduler.endNotified = true;
+            this.port.postMessage({ type: 'midiEnded', generation: scheduler.generation });
+        }
+        scheduler.finishInputFrame(frame);
+        this.midiInputAcks = (this.midiInputAcks ?? []).filter(ack => {
+            const current = ack.generation === scheduler.generation;
+            if (current && scheduler.input?.events.some(event => event.serial <= ack.serial)) return true;
+            this.port.postMessage({ type: 'midiInputAccepted', generation: ack.generation,
+                requestId: ack.requestId, accepted: current });
+            return false;
+        });
+        return true;
     }
 
     // Output gate. closing: ramp to 0, then apply the queued mutations and
@@ -5711,7 +7625,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const power = this.powerPolicy;
                 const emptyBlockSize = output?.[0]?.length || ET_DSP_DEFAULT_MAX_FRAMES;
                 this._beginPowerRender();
-                this.currentFrame += emptyBlockSize;
                 const emptyInputReason = power.emptyInputActive ? null : 'empty-input';
                 power.emptyInputActive = true;
                 this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason, false);
@@ -5754,6 +7667,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             );
             const inputDetectorNonFinite = power.inputDetectorResult[2] === 1;
             if (inputDetectorNonFinite) powerInputPower = Number.POSITIVE_INFINITY;
+            if (inputDetectorNonFinite || power.inputDetectorResult[1] > power.silenceThresholdPower) {
+                this.cancelSfzPowerCheckpoint();
+            }
             const directive = power.processingDirective;
             if (power.state === 'monitoring' || directive === 'force-monitoring') {
                 const finiteGainWake = inputDetectorNonFinite ||
@@ -5766,7 +7682,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this._copyPowerInput(input, output);
                     power.counters.monitoringQuanta++;
                     power.skippedFrameCount += blockSize;
-                    this.currentFrame += blockSize;
                     this._finishPowerRender(
                         powerInputPower,
                         powerInputPower,
@@ -5782,7 +7697,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this._copyPowerInput(input, output);
                     power.counters.monitoringQuanta++;
                     power.skippedFrameCount += blockSize;
-                    this.currentFrame += blockSize;
                     this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
                     this.lastBlockPowerSkipped = true;
                     this.clearAudioProcessingOverload();
@@ -5815,7 +7729,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this._zeroPowerOutput(output);
                 power.counters.zeroOutputQuanta++;
                 power.skippedFrameCount += blockSize;
-                this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, 0, blockSize);
                 this.lastBlockPowerSkipped = true;
                 this.clearAudioProcessingOverload();
@@ -5825,13 +7738,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.captureVisualizerTap(output, outputChannelCount, blockSize, currentFrame);
                 power.counters.bypassQuanta++;
                 power.skippedFrameCount += blockSize;
-                this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
                 this.lastBlockPowerSkipped = true;
                 this.clearAudioProcessingOverload();
                 return true;
             }
         }
+
+        this.resumeSfzRuntimesForRender(currentFrame);
 
         // Evaluated after the power state machine so every full processing
         // path remains dry while master bypass is engaged, including the
@@ -5926,8 +7840,6 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
             this.captureVisualizerTap(output, outputChannelCount, blockSize, currentFrame);
 
-            // IMPORTANT: Still need to advance the frame counter even when bypassed/sleeping
-            this.currentFrame += blockSize;
             this.clearAudioProcessingOverload();
             return true; // Keep processor alive
         }
@@ -5937,9 +7849,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             ? this.audioProcessingClockNow()
             : null;
 
-        // --- 6. Update Processor State ---
-        // this.blockSize = blockSize; // Update instance property if it's used elsewhere
-        this.currentFrame += blockSize; // Advance frame counter
+        // Frame advancement is committed by process() after this block completes.
 
 
         // --- 7. Prepare Combined Multichannel Buffer (Optimized with Buffer Pool) ---

@@ -26,7 +26,7 @@ test('generated rolling PCM Worker matches its current source bundle', async () 
     minify: true,
     legalComments: 'none',
     banner: {
-      js: `/* EffeTune rolling PCM decoder; mediabunny ${mediabunnyVersion} (MPL-2.0) */`
+      js: `/* EffeTune rolling PCM decoder; mediabunny ${mediabunnyVersion} (MPL-2.0); FFmpeg-derived DST decoder (LGPL-2.1-or-later). See rolling-pcm-decoder-worker.NOTICE.txt. */`
     },
     write: false
   });

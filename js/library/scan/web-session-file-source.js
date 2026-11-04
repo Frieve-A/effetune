@@ -32,7 +32,7 @@ export class WebSessionFileSource {
     return { fileCount: this.files.size };
   }
 
-  createAdapter({ onPlaylistFile = () => {}, includeVideo = false } = {}) {
+  createAdapter({ onPlaylistFile = () => {}, includeVideo = false, includeMidi = false } = {}) {
     if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
     const source = this;
     return Object.freeze({
@@ -49,7 +49,7 @@ export class WebSessionFileSource {
         for (const name of [...node.files].sort(compareNames)) {
           throwIfAborted(signal);
           const relativePath = joinRelative(directory, name);
-          if (isSupportedLibraryPath(relativePath, includeVideo)) {
+          if (isSupportedLibraryPath(relativePath, includeVideo, includeMidi)) {
             yield { kind: 'file', name, relativePath, path: relativePath };
           } else if (isSupportedCuePath(relativePath)) {
             yield { kind: 'cue', name, relativePath, path: relativePath };

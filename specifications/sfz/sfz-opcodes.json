@@ -1,0 +1,1997 @@
+{
+  "schemaVersion": 1,
+  "inventoryDate": "2026-10-31",
+  "sources": [
+    {
+      "id": "sfzformat",
+      "url": "https://sfzformat.com/opcodes/",
+      "repository": "https://github.com/sfz/sfz.github.io",
+      "revision": "2f933f593895f92dcc2fc78a1ca4110158250272",
+      "input": "data/sfz/syntax.yml",
+      "license": "CC0-1.0",
+      "licenseUrl": "https://github.com/sfz/sfz.github.io/blob/2f933f593895f92dcc2fc78a1ca4110158250272/LICENSE"
+    },
+    {
+      "id": "sfizz",
+      "url": "https://sfz.tools/sfizz/development/status/opcodes/",
+      "engineRevision": "f5c6e29f23b8057867c08e88f5f6ac6738baa30b",
+      "tableSha256": "88711bc45af17827b3783db1f7b6aa93ee07fc98220e0eeab13d0b78bda6e24a",
+      "meaning": "Author-published support claims, not measured reference behavior; engine commit is a separate snapshot and table deployment revision is unknown."
+    },
+    {
+      "id": "linuxsampler",
+      "url": "https://linuxsampler.org/sfz/",
+      "tableSha256": "9003a99d7c685f470e11211ccf0b156a4f098793eabacd3da5fb25884bcfecfa",
+      "meaning": "Author-published support claims; this page warns it may lag implementation."
+    },
+    {
+      "id": "nksp-language",
+      "url": "https://doc.linuxsampler.org/Instrument_Scripts/NKSP_Language/",
+      "snapshotDate": "2026-10-31",
+      "sha256": "9c19ee2e5cc5c5d0bfa0d42a9f3f230d335841392e25f3bee1aefbb264cca936",
+      "meaning": "Frozen public document; source code or commercial reference binary is not redistributed."
+    },
+    {
+      "id": "nksp-reference",
+      "url": "https://doc.linuxsampler.org/Instrument_Scripts/NKSP_Language/Reference/",
+      "snapshotDate": "2026-10-31",
+      "sha256": "edff78e8fe6cd65eeed1f1168503a26bce467c32257d42760a8f72178e1f47e3",
+      "meaning": "Frozen public document; source code or commercial reference binary is not redistributed."
+    },
+    {
+      "id": "aria-author-extensions",
+      "url": "https://www.plogue.com/plgfrms/viewtopic.php?f=14&t=4389",
+      "snapshotDate": "2026-10-31",
+      "sha256": "63d91d65d13ff82fb99065de6ddb90d88e20a59a324813935f28b139b5c27ba9",
+      "meaning": "Frozen public document; source code or commercial reference binary is not redistributed."
+    },
+    {
+      "id": "sfz-version-definitions",
+      "url": "https://sfzformat.com/versions/",
+      "snapshotDate": "2026-10-31",
+      "sha256": "ea182f3add867ea374a46c26c16a191dca9e7150fdecb0b2d84d3b2be31e620a",
+      "meaning": "Frozen public document; source code or commercial reference binary is not redistributed."
+    }
+  ],
+  "limitations": [
+    "This inventory is an implementation backlog, not a completeness or world-leading compatibility claim.",
+    "ARIA/Cakewalk named extensions are inventoried from pinned SFZ Format metadata. Their closed-source reference versions and conflicting-profile behaviors remain unverified.",
+    "Unlisted/undocumented vendor extensions and public-script/codec/streaming behavioral coverage remain unresolved.",
+    "Pattern N/X/NN indices are retained as families. Numeric index domains and curve/step/smoothing interactions require individual semantic fixtures.",
+    "Aliases share a canonical name but count as spellings, not additional semantic coverage. Indexed second filters/sub-oscillators remain separate."
+  ],
+  "modulationCompiler": {
+    "status": "compiler metadata only; runtime coverage remains unimplemented",
+    "profile": "aria-linear-ramp-nearest-step-v1",
+    "bankVersion": 7,
+    "sectionVersion": 1,
+    "targets": "Existing sparse family IDs3..7 and10..25 only; other targets are explicit compiler gaps.",
+    "sources": "CC0..127; documented SFZ2 sources128..137. Source131..133 are mutable shared inputs,134 is physical-key gate. Source138 and above remain unavailable, including distinct ARIA/Cakewalk140+ profiles.",
+    "curves": "ARIA IDs0..3 select documented linear, bipolar, inverted and bipolar-inverted forms. IDs4..6 remain unverified. Custom IDs7..254 have default endpoints0/1 and linear interpolation between explicit v000..v127 points; built-ins cannot be replaced. Duplicate curve headers are rejected because public precedence is unspecified.",
+    "smoothingAndStep": "Next renderer contract uses a linear ramp over smoothcc milliseconds to the nearest target-unit step (ties toward positive infinity). This is an independently specified profile, not measured closed-reference parity; public docs do not define the kernel, rounding or order.",
+    "section": "8u32 header: magic0x31525453,version1,regionCount,routeCount,curveCount,directoryOffset,recordsOffset,curvesOffset. Offsets are section-relative words; directory is2u32 per region {firstRecord,count}; records are8words {targetU32,sourceU32,depthF32,curveU32,smoothMsF32,stepF32,flags0,reserved0}; custom curves are129words {idU32,128F32}.",
+    "gate": "Current bank-v6 h10/h11 stay zero. Parser retains unsupported route/header diagnostics. No native/WASM/live/offline support is claimed or enabled by this metadata.",
+    "fixtures": ["tests/esm/sfz-modulation.test.mjs"],
+    "sourcesPublic": [
+      "https://sfzformat.com/headers/curve/",
+      "https://sfzformat.com/modulations/curveccN/",
+      "https://sfzformat.com/modulations/smoothccN/",
+      "https://sfzformat.com/modulations/stepccN/",
+      "https://sfzformat.com/extensions/midi_ccs/"
+    ]
+  },
+  "coverageProfiles": {
+    "compiled": {
+      "parser": "implemented",
+      "native": "implemented, representative tests only",
+      "wasm": "unverified",
+      "live": "unverified",
+      "offline": "unverified",
+      "fixtures": [
+        "tests/esm/sfz-parser.test.mjs",
+        "dsp/plugins/others/soundfont_player/native_test.cpp"
+      ],
+      "evaluation": "Refer to shared native engine; note/CC/voice timing varies by opcode. Unverified combinations remain open."
+    },
+    "compiled-adjusted-times": {
+      "parser": "implemented with 0..100 second repair/warning",
+      "native": "implemented",
+      "wasm": "unverified",
+      "live": "unverified",
+      "offline": "unverified",
+      "fixtures": [
+        "tests/esm/sfz-parser.test.mjs"
+      ]
+    },
+    "informational": {
+      "parser": "preserved metadata",
+      "native": "not an audio function",
+      "wasm": "not applicable",
+      "live": "not displayed",
+      "offline": "not applicable"
+    },
+    "unimplemented": {
+      "parser": "preserved/diagnosed, not accepted as rendered semantics",
+      "native": "unimplemented",
+      "wasm": "unimplemented",
+      "live": "unimplemented",
+      "offline": "unimplemented"
+    },
+    "ampeg-eq-v5": {
+      "parser": "Implemented: amplitude envelope dynamic flag and seven additive CC targets, three parametric EQ bands with frequency/bandwidth/gain and additive CC targets; controllers0..127 only.",
+      "native": "Implemented; stagedEnvelopeTiming, envelopeControllers and equalizerResponse fixtures pass MSVC Release and GCC Debug. Representative timing, CC and frequency-response coverage, not every route interaction.",
+      "wasm": "Baseline and SIMD pass seven focused Player tests; existing Note Player passes all26 golden comparisons without golden changes.",
+      "live": "Actual complete10-region instrument passes baseline/SIMD worklet playback, including controller-dependent attack and active EQ. Representative selected notes only.",
+      "offline": "The same instrument passes baseline/SIMD offline rendering. v5 tail proof includes clamped positive delay/release CC extrema; unknown/unbounded configurations retain the explicit tail budget.",
+      "fixtures": [
+        "tests/esm/sfz-parser.test.mjs",
+        "dsp/plugins/others/soundfont_player/native_test.cpp",
+        "tests/esm/sfz-player-wasm.test.mjs",
+        "tests/esm/sfz-note-player-wasm.test.mjs"
+      ],
+      "remainingGap": "Nonlinear curves, extended controller sources, smoothing/step, velocity and flexible EG/LFO routes remain separate unimplemented requirements."
+    }
+  },
+  "headers": [
+    {
+      "name": "<region>",
+      "version": "SFZ v1",
+      "coverage": "compiled"
+    },
+    {
+      "name": "<group>",
+      "version": "SFZ v1",
+      "coverage": "compiled"
+    },
+    {
+      "name": "<control>",
+      "version": "SFZ v2",
+      "coverage": "compiled"
+    },
+    {
+      "name": "<global>",
+      "version": "SFZ v2",
+      "coverage": "compiled"
+    },
+    {
+      "name": "<curve>",
+      "version": "SFZ v2",
+      "coverage": "unimplemented"
+    },
+    {
+      "name": "<effect>",
+      "version": "SFZ v2",
+      "coverage": "unimplemented"
+    },
+    {
+      "name": "<master>",
+      "version": "ARIA",
+      "coverage": "compiled"
+    },
+    {
+      "name": "<midi>",
+      "version": "ARIA",
+      "coverage": "unimplemented"
+    },
+    {
+      "name": "<sample>",
+      "version": "SFZ v2",
+      "coverage": "unimplemented"
+    }
+  ],
+  "columns": [
+    "name",
+    "canonical",
+    "category",
+    "type",
+    "default",
+    "range",
+    "unit",
+    "version",
+    "modulator",
+    "scope",
+    "sfizz",
+    "linuxsampler",
+    "coverage"
+  ],
+  "details": {
+    "*_mod": {
+      "options": [
+        "add",
+        "mult"
+      ]
+    },
+    "amp_attack": {
+      "relation": "alias"
+    },
+    "amp_decay": {
+      "relation": "alias"
+    },
+    "amp_delay": {
+      "relation": "alias"
+    },
+    "amp_hold": {
+      "relation": "alias"
+    },
+    "amp_release": {
+      "relation": "alias"
+    },
+    "amp_sustain": {
+      "relation": "alias"
+    },
+    "amp_vel2attack": {
+      "relation": "alias"
+    },
+    "amp_vel2decay": {
+      "relation": "alias"
+    },
+    "amp_vel2delay": {
+      "relation": "alias"
+    },
+    "amp_vel2hold": {
+      "relation": "alias"
+    },
+    "amp_vel2release": {
+      "relation": "alias"
+    },
+    "amp_vel2sustain": {
+      "relation": "alias"
+    },
+    "amp_veltrack_ccN": {
+      "relation": "alias"
+    },
+    "ampeg_attack_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_decay_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_delay_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_hold_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_release_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_start_onccN": {
+      "relation": "alias"
+    },
+    "ampeg_sustain_onccN": {
+      "relation": "alias"
+    },
+    "amplfo_depth_onccN": {
+      "relation": "alias"
+    },
+    "amplitude_ccN": {
+      "relation": "alias"
+    },
+    "benddown": {
+      "relation": "alias"
+    },
+    "bendstep": {
+      "relation": "alias"
+    },
+    "bendup": {
+      "relation": "alias"
+    },
+    "bus": {
+      "options": [
+        "main",
+        "aux1",
+        "aux2",
+        "aux3",
+        "aux4",
+        "aux5",
+        "aux6",
+        "aux7",
+        "aux8",
+        "fx1",
+        "fx2",
+        "fx3",
+        "fx4",
+        "midi"
+      ]
+    },
+    "comp_stlink": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "cutoff2": {
+      "relation": "indexed-instance"
+    },
+    "cutoff2_random": {
+      "relation": "indexed-instance"
+    },
+    "cutoff_onccN": {
+      "relation": "alias"
+    },
+    "cutoff_random": {
+      "relation": "alias"
+    },
+    "delay_mode": {
+      "options": [
+        "detune",
+        "chorus",
+        "cross",
+        "flanger",
+        "lrc",
+        "mod",
+        "multimod",
+        "panning",
+        "ping",
+        "rlc",
+        "stereo",
+        "tlcr"
+      ]
+    },
+    "delay_onccN": {
+      "relation": "alias"
+    },
+    "direction": {
+      "options": [
+        "forward",
+        "reverse"
+      ],
+      "implementedOptions": [
+        "forward",
+        "reverse"
+      ]
+    },
+    "eqN_bw_onccX": {
+      "relation": "alias"
+    },
+    "eqN_freq_onccX": {
+      "relation": "alias"
+    },
+    "eqN_gain_onccX": {
+      "relation": "alias"
+    },
+    "eqN_type": {
+      "options": [
+        "peak",
+        "lshelf",
+        "hshelf"
+      ]
+    },
+    "fil2_gain": {
+      "relation": "indexed-instance"
+    },
+    "fil2_keycenter": {
+      "relation": "indexed-instance"
+    },
+    "fil2_keytrack": {
+      "relation": "indexed-instance"
+    },
+    "fil2_mode": {
+      "relation": "indexed-instance"
+    },
+    "fil2_type": {
+      "relation": "indexed-instance"
+    },
+    "fil2_veltrack": {
+      "relation": "indexed-instance"
+    },
+    "fil_attack": {
+      "relation": "alias"
+    },
+    "fil_decay": {
+      "relation": "alias"
+    },
+    "fil_delay": {
+      "relation": "alias"
+    },
+    "fil_depth": {
+      "relation": "alias"
+    },
+    "fil_hold": {
+      "relation": "alias"
+    },
+    "fil_release": {
+      "relation": "alias"
+    },
+    "fil_sustain": {
+      "relation": "alias"
+    },
+    "fil_type": {
+      "options": [
+        "lpf_1p",
+        "hpf_1p",
+        "lpf_2p",
+        "hpf_2p",
+        "bpf_2p",
+        "brf_2p",
+        "bpf_1p",
+        "brf_1p",
+        "apf_1p",
+        "lpf_2p_sv",
+        "hpf_2p_sv",
+        "bpf_2p_sv",
+        "brf_2p_sv",
+        "pkf_2p",
+        "lpf_4p",
+        "hpf_4p",
+        "lpf_6p",
+        "hpf_6p",
+        "comb",
+        "pink",
+        "lsh",
+        "hsh",
+        "peq"
+      ],
+      "implementedOptions": [
+        "lpf_1p",
+        "lpf_2p",
+        "hpf_1p",
+        "hpf_2p",
+        "bpf_2p",
+        "brf_2p"
+      ]
+    },
+    "fil_vel2attack": {
+      "relation": "alias"
+    },
+    "fil_vel2decay": {
+      "relation": "alias"
+    },
+    "fil_vel2delay": {
+      "relation": "alias"
+    },
+    "fil_vel2depth": {
+      "relation": "alias"
+    },
+    "fil_vel2hold": {
+      "relation": "alias"
+    },
+    "fil_vel2release": {
+      "relation": "alias"
+    },
+    "fil_vel2sustain": {
+      "relation": "alias"
+    },
+    "fileg_attackccN": {
+      "relation": "alias"
+    },
+    "fileg_decayccN": {
+      "relation": "alias"
+    },
+    "fileg_delayccN": {
+      "relation": "alias"
+    },
+    "fileg_depthccN": {
+      "relation": "alias"
+    },
+    "fileg_holdccN": {
+      "relation": "alias"
+    },
+    "fileg_releaseccN": {
+      "relation": "alias"
+    },
+    "fileg_startccN": {
+      "relation": "alias"
+    },
+    "fileg_sustainccN": {
+      "relation": "alias"
+    },
+    "fillfo_depth_onccN": {
+      "relation": "alias"
+    },
+    "filtype": {
+      "relation": "alias"
+    },
+    "gain_onccN": {
+      "relation": "alias"
+    },
+    "gain_random": {
+      "relation": "alias"
+    },
+    "gate_stlink": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "internal": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "lfoN_cutoff2": {
+      "relation": "alias"
+    },
+    "lfoN_offsetX": {
+      "relation": "indexed-instance"
+    },
+    "lfoN_ratioX": {
+      "relation": "indexed-instance"
+    },
+    "lfoN_resonance2": {
+      "relation": "alias"
+    },
+    "lfoN_scaleX": {
+      "relation": "indexed-instance"
+    },
+    "lfoN_waveX": {
+      "relation": "indexed-instance"
+    },
+    "loop_length_onccN": {
+      "relation": "alias"
+    },
+    "loop_mode": {
+      "options": [
+        "no_loop",
+        "one_shot",
+        "loop_continuous",
+        "loop_sustain"
+      ]
+    },
+    "loop_start_onccN": {
+      "relation": "alias"
+    },
+    "loop_type": {
+      "options": [
+        "forward",
+        "backward",
+        "alternate"
+      ]
+    },
+    "loopcount": {
+      "relation": "alias"
+    },
+    "loopend": {
+      "relation": "alias"
+    },
+    "loopmode": {
+      "relation": "alias"
+    },
+    "loopstart": {
+      "relation": "alias"
+    },
+    "looptune": {
+      "relation": "alias"
+    },
+    "looptype": {
+      "relation": "alias"
+    },
+    "noise_filter": {
+      "options": [
+        "on",
+        "off",
+        "lpf_1p",
+        "hpf_1p",
+        "bpf_1p",
+        "brf_1p",
+        "apf_1p",
+        "lpf_2p",
+        "hpf_2p",
+        "bpf_2p",
+        "brf_2p",
+        "pkf_2p",
+        "lpf_4p",
+        "hpf_4p",
+        "lpf_6p",
+        "hpf_6p",
+        "comb",
+        "pink"
+      ]
+    },
+    "noise_stereo": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "note_selfmask": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "off_curve": {
+      "options": [
+        "-2",
+        "-1",
+        "0",
+        "1",
+        "2",
+        "10"
+      ]
+    },
+    "off_mode": {
+      "options": [
+        "fast",
+        "normal",
+        "time"
+      ],
+      "implementedOptions": [
+        "fast",
+        "normal",
+        "time"
+      ]
+    },
+    "offby": {
+      "relation": "alias"
+    },
+    "offset_mode": {
+      "options": [
+        "samples",
+        "percent"
+      ]
+    },
+    "offset_onccN": {
+      "relation": "alias"
+    },
+    "oscillator": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "pan_ccN": {
+      "relation": "alias"
+    },
+    "pan_law": {
+      "options": [
+        "mma",
+        "balance"
+      ]
+    },
+    "phase": {
+      "options": [
+        "normal",
+        "invert"
+      ]
+    },
+    "pitch": {
+      "relation": "alias"
+    },
+    "pitch_attack": {
+      "relation": "alias"
+    },
+    "pitch_decay": {
+      "relation": "alias"
+    },
+    "pitch_delay": {
+      "relation": "alias"
+    },
+    "pitch_depth": {
+      "relation": "alias"
+    },
+    "pitch_hold": {
+      "relation": "alias"
+    },
+    "pitch_release": {
+      "relation": "alias"
+    },
+    "pitch_sustain": {
+      "relation": "alias"
+    },
+    "pitch_vel2attack": {
+      "relation": "alias"
+    },
+    "pitch_vel2decay": {
+      "relation": "alias"
+    },
+    "pitch_vel2delay": {
+      "relation": "alias"
+    },
+    "pitch_vel2depth": {
+      "relation": "alias"
+    },
+    "pitch_vel2hold": {
+      "relation": "alias"
+    },
+    "pitch_vel2release": {
+      "relation": "alias"
+    },
+    "pitch_vel2sustain": {
+      "relation": "alias"
+    },
+    "pitcheg_depthccN": {
+      "relation": "alias"
+    },
+    "pitchlfo_depth_onccN": {
+      "relation": "alias"
+    },
+    "polyphony_group": {
+      "relation": "alias"
+    },
+    "resonance2": {
+      "relation": "indexed-instance"
+    },
+    "resonance2_ccN": {
+      "relation": "indexed-instance"
+    },
+    "resonance_ccN": {
+      "relation": "alias"
+    },
+    "reverb_type": {
+      "options": [
+        "chamber",
+        "large_hall",
+        "large_room",
+        "mid_hall",
+        "mid_room",
+        "small_hall",
+        "small_room"
+      ]
+    },
+    "rt_dead": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "set_realccN": {
+      "relation": "alias"
+    },
+    "sostenuto_sw": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "start_hiccN": {
+      "relation": "alias"
+    },
+    "start_hihdccN": {
+      "relation": "alias"
+    },
+    "start_loccN": {
+      "relation": "alias"
+    },
+    "start_lohdccN": {
+      "relation": "alias"
+    },
+    "sustain_sw": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "sw_vel": {
+      "options": [
+        "current",
+        "previous"
+      ]
+    },
+    "trigger": {
+      "options": [
+        "attack",
+        "release",
+        "first",
+        "legato",
+        "release_key"
+      ],
+      "implementedOptions": [
+        "attack",
+        "release",
+        "release_key",
+        "first",
+        "legato"
+      ]
+    },
+    "tune_ccN": {
+      "relation": "alias"
+    },
+    "tune_curveccN": {
+      "relation": "alias"
+    },
+    "tune_keytrack": {
+      "relation": "alias"
+    },
+    "tune_onccN": {
+      "relation": "alias"
+    },
+    "tune_random": {
+      "relation": "alias"
+    },
+    "tune_smoothccN": {
+      "relation": "alias"
+    },
+    "tune_stepccN": {
+      "relation": "alias"
+    },
+    "tune_veltrack": {
+      "relation": "alias"
+    },
+    "type": {
+      "options": [
+        "apan",
+        "comp",
+        "delay",
+        "disto",
+        "eq",
+        "filter",
+        "fverb",
+        "gate",
+        "limiter",
+        "lofi",
+        "mverb",
+        "phaser",
+        "static",
+        "strings",
+        "tdfir",
+        "com.mda.Limiter",
+        "com.mda.Overdrive",
+        "com.mda.Leslie",
+        "com.mda.RingMod",
+        "com.mda.Delay",
+        "com.mda.Bandisto",
+        "com.mda.Ambience",
+        "com.mda.DubDelay",
+        "com.mda.Detune",
+        "com.mda.Dither",
+        "com.mda.Combo",
+        "com.mda.Degrade",
+        "com.mda.SubSynth",
+        "com.mda.RezFilter"
+      ]
+    },
+    "varNN_mod": {
+      "options": [
+        "mult",
+        "add"
+      ]
+    },
+    "volume_onccN": {
+      "relation": "alias"
+    },
+    "waveguide": {
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "xf_cccurve": {
+      "options": [
+        "gain",
+        "power"
+      ]
+    },
+    "xf_keycurve": {
+      "options": [
+        "gain",
+        "power"
+      ]
+    },
+    "xf_velcurve": {
+      "options": [
+        "gain",
+        "power"
+      ]
+    },
+    "ampeg_dynamic": {
+      "condition": "Integer0/1; seven envelope CC amount families in-100..100, ordinary MIDI controllers0..127. Effective times and levels clamp0..100. Unsupported modulation routes remain diagnosed and rejected.",
+      "evidence": "Parser/packed-v5 route IDs, flag preservation, constant coefficient identity and maximum tail contributions are covered by tests/esm/sfz-parser.test.mjs. Profile ampeg-eq-v5 records native, WASM, worklet and offline representative audio evidence.",
+      "remainingGap": "Curve/velocity/extended-source and flexible modulation routes remain in the finite comparison contract."
+    }
+  },
+  "comparisonContract": {
+    "id": "sfz-public-2026-10-31",
+    "baselineDate": "2026-10-31",
+    "scope": "Finite public SFZ v1/v2 and named major-extension comparison, frozen to the source artifacts in this inventory. Later sources are a deliberate new comparison revision, not a moving completion target.",
+    "opcodeSet": {
+      "table": "rows",
+      "spellings": 898,
+      "headers": 9,
+      "families": "An indexed family includes the index domains and modulation combinations documented by its pinned source. Unknown limits or semantics remain unresolved; they are not omitted."
+    },
+    "referenceProfiles": [
+      {
+        "id": "sfizz-1.2.3",
+        "engineRevision": "f5c6e29f23b8057867c08e88f5f6ac6738baa30b",
+        "source": "sfizz",
+        "role": "Open reference implementation; its unsupported public behaviors still remain in the comparison union."
+      },
+      {
+        "id": "aria-public-1081",
+        "source": "aria-author-extensions",
+        "documentDate": "2009-08-24",
+        "role": "Author-documented ARIA semantics including 1081 additions. No closed binary version has been measured.",
+        "conflicts": [
+          "curve type10 and shape rules",
+          "pan laws",
+          "DAHDSR zeroed decay/release",
+          "scope gain stages and bank defines"
+        ]
+      },
+      {
+        "id": "cakewalk-public-v2",
+        "source": "sfzformat",
+        "role": "The pinned database defines its SFZ v2 set from the Cakewalk Synthesizers reference; no uniquely normative v2 standard or tested proprietary binary is inferred.",
+        "unresolved": [
+          "Unpublished curve0/1 mathematics must not be fabricated or counted as reference-verified."
+        ]
+      },
+      {
+        "id": "linuxsampler-public",
+        "source": "linuxsampler",
+        "scriptSources": [
+          "nksp-language",
+          "nksp-reference"
+        ],
+        "role": "Frozen author support table and SFZ-applicable NKSP documentation. Engine/table version correspondence is unpublished; no binary measurement is inferred."
+      }
+    ],
+    "scriptLanguage": {
+      "name": "NKSP",
+      "referenceDocumentUpdated": "2026-02-18",
+      "attachment": "One script file per instrument, resolved inside the authorized instrument folder; defined at global scope. Additional script slots are not inferred from future-language notes.",
+      "callbacks": [
+        "init",
+        "note",
+        "release",
+        "controller",
+        "rpn",
+        "nrpn"
+      ],
+      "types": [
+        "integer scalar",
+        "real scalar",
+        "integer array",
+        "real array",
+        "string"
+      ],
+      "syntaxFamilies": [
+        "scoped/polyphonic/patch variables",
+        "if/select/while/user functions/synchronized blocks",
+        "arithmetic/boolean/comparison/string operators",
+        "units/conversion/finalness",
+        "conditional preprocessor"
+      ],
+      "referenceSymbols": {
+        "Core Language Functions": [
+          "abort()",
+          "acos()",
+          "abs()",
+          "array_equal()",
+          "asin()",
+          "atan()",
+          "callback_status()",
+          "ceil()",
+          "cos()",
+          "dec()",
+          "exit()",
+          "exp()",
+          "floor()",
+          "fork()",
+          "inc()",
+          "int()",
+          "int_to_real()",
+          "in_range()",
+          "log()",
+          "log10()",
+          "log2()",
+          "lsb()",
+          "max()",
+          "message()",
+          "min()",
+          "msb()",
+          "num_elements()",
+          "pow()",
+          "random()",
+          "real()",
+          "real_to_int()",
+          "round()",
+          "search()",
+          "sh_left()",
+          "sh_right()",
+          "sin()",
+          "sort()",
+          "sqrt()",
+          "stop_wait()",
+          "tan()",
+          "wait()"
+        ],
+        "Common Sampler Functions": [
+          "by_marks()",
+          "change_amp_lfo_depth()",
+          "change_amp_lfo_freq()",
+          "change_attack()",
+          "change_cutoff()",
+          "change_cutoff_attack()",
+          "change_cutoff_decay()",
+          "change_cutoff_lfo_depth()",
+          "change_cutoff_lfo_freq()",
+          "change_cutoff_release()",
+          "change_cutoff_sustain()",
+          "change_decay()",
+          "change_note()",
+          "change_pan()",
+          "change_pan_curve()",
+          "change_pan_time()",
+          "change_pitch_lfo_depth()",
+          "change_pitch_lfo_freq()",
+          "change_play_pos()",
+          "change_release()",
+          "change_reso()",
+          "change_sustain()",
+          "change_tune()",
+          "change_tune_curve()",
+          "change_tune_time()",
+          "change_velo()",
+          "change_vol()",
+          "change_vol_curve()",
+          "change_vol_time()",
+          "delete_event_mark()",
+          "event_status()",
+          "fade_in()",
+          "fade_out()",
+          "get_event_par()",
+          "ignore_controller()",
+          "ignore_event()",
+          "note_off()",
+          "play_note()",
+          "set_controller()",
+          "set_event_mark()",
+          "set_event_par()",
+          "set_nrpn()",
+          "set_rpn()"
+        ],
+        "Core Language Variables": [
+          "$CALLBACK_STATUS_QUEUE",
+          "$CALLBACK_STATUS_RUNNING",
+          "$CALLBACK_STATUS_TERMINATED",
+          "$KSP_TIMER",
+          "$NKSP_PERF_TIMER",
+          "%NKSP_CALLBACK_CHILD_ID[]",
+          "$NKSP_CALLBACK_PARENT_ID",
+          "$NKSP_REAL_TIMER",
+          "$NI_CALLBACK_ID",
+          "$NI_CALLBACK_TYPE",
+          "$NI_CB_TYPE_INIT",
+          "$NI_CB_TYPE_NOTE",
+          "$NI_CB_TYPE_RELEASE",
+          "$NI_CB_TYPE_CONTROLLER",
+          "$NI_CB_TYPE_RPN",
+          "$NI_CB_TYPE_NRPN",
+          "$NI_MATH_E",
+          "$NI_MATH_PI",
+          "$NKSP_IGNORE_WAIT"
+        ],
+        "Common Sampler Variables": [
+          "%ALL_EVENTS",
+          "$CC_NUM",
+          "%CC[]",
+          "$EVENT_ID",
+          "$EVENT_NOTE",
+          "$EVENT_VELOCITY",
+          "$EVENT_STATUS_INACTIVE",
+          "$EVENT_STATUS_NOTE_QUEUE",
+          "$EVENT_PAR_NOTE",
+          "$EVENT_PAR_TUNE",
+          "$EVENT_PAR_VELOCITY",
+          "$EVENT_PAR_VOLUME",
+          "$EVENT_PAR_0 to $EVENT_PAR_3",
+          "%KEY_DOWN[]",
+          "$NKSP_EASE_IN_EASE_OUT",
+          "$NKSP_LINEAR",
+          "$RPN_ADDRESS",
+          "$RPN_VALUE",
+          "$VCC_MONO_AT",
+          "$VCC_PITCH_BEND",
+          "$MARK_1 to $MARK_28",
+          "$ENGINE_UPTIME"
+        ],
+        "Core Language Preprocessor Conditions": [
+          "NKSP_NO_MESSAGE"
+        ]
+      },
+      "formatApplicability": "GigaStudio-only dimension APIs are not SFZ behaviors. The complete core and common-sampler sections remain requirements.",
+      "status": "unimplemented",
+      "executionContract": "Compile off the audio thread; bounded VM stack/heap/callback/event/instruction budgets; sample-frame event scheduling and per-voice handles; serializable globals/coroutines/event IDs/RNG for history restore. No arbitrary filesystem/network/OS calls."
+    },
+    "completion": [
+      "No known unimplemented public behavior in this frozen union, including aliases, modulator families, scopes and meaningful interactions.",
+      "Every implemented row links parser/native/WASM/live/offline evidence; acceptance or strict rejection alone is not rendered semantic support.",
+      "Conflicting dialects use documented coherent profiles; unmeasured opaque proprietary behavior is reported precisely and never used as a verified-world-leading claim.",
+      "Realistic authorized instruments retain full assets or use bounded streaming; representative-sample substitution is not successful full-instrument rendering."
+    ],
+    "status": "incomplete"
+  },
+  "rows": [
+    ["#define","#define","Instrument Settings","string",null,[null,null],null,"SFZ v2",null,"control","supported","not-listed","unimplemented"],
+    ["#include","#include","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","supported","not-listed","unimplemented"],
+    ["*_mod","*_mod","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","not-listed","not-listed","unimplemented"],
+    ["amp_attack","ampeg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_decay","ampeg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_delay","ampeg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_hold","ampeg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_keycenter","amp_keycenter","Amplifier","integer",60,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["amp_keytrack","amp_keytrack","Amplifier","float",0,[-96,12],"dB","SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["amp_random","amp_random","Amplifier","float",0,[0,24],"dB","SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["amp_release","ampeg_release","Envelope Generators","float",0.001,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_sustain","ampeg_sustain","Envelope Generators","float",100,[0,100],"%","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["amp_vel2attack","ampeg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_vel2decay","ampeg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_vel2delay","ampeg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_vel2hold","ampeg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_vel2release","ampeg_vel2release","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_vel2sustain","ampeg_vel2sustain","Envelope Generators","float",0,[-100,100],"%","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["amp_velcurve_N","amp_velcurve_N","Amplifier","float","Standard curve (see <a href='/opcodes/amp_veltrack'>amp_veltrack</a>)",[0,1],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["amp_veltrack","amp_veltrack","Amplifier","float",100,[-100,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["amp_veltrack_ccN","amp_veltrack_onccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["amp_veltrack_curveccN","amp_veltrack_curveccN","Amplifier","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["amp_veltrack_onccN","amp_veltrack_onccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["amp_veltrack_random","amp_veltrack_random","Amplifier",null,null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_attack","ampeg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled-adjusted-times"],
+    ["ampeg_attack_curveccN","ampeg_attack_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_attack_onccN","ampeg_attackccN","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_attack_shape","ampeg_attack_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_attackccN","ampeg_attackccN","Envelope Generators","float",0,[-100,100],"seconds",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_decay","ampeg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled-adjusted-times"],
+    ["ampeg_decay_curveccN","ampeg_decay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_decay_onccN","ampeg_decayccN","Envelope Generators","float",0,[-100,100],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_decay_shape","ampeg_decay_shape","Envelope Generators","float",-10.3616,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_decay_zero","ampeg_decay_zero","Envelope Generators","integer",1,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_decayccN","ampeg_decayccN","Envelope Generators","float",0,[-100,100],null,null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_delay","ampeg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["ampeg_delay_curveccN","ampeg_delay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_delay_onccN","ampeg_delayccN","Envelope Generators","float",0,[-100,100],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_delayccN","ampeg_delayccN","Envelope Generators","float",0,[-100,100],null,null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_dynamic","ampeg_dynamic","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","ampeg-eq-v5"],
+    ["ampeg_hold","ampeg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled-adjusted-times"],
+    ["ampeg_hold_curveccN","ampeg_hold_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_hold_onccN","ampeg_holdccN","Envelope Generators","float",0,[-100,100],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_holdccN","ampeg_holdccN","Envelope Generators","float",0,[-100,100],null,null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_release","ampeg_release","Envelope Generators","float",0.001,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled-adjusted-times"],
+    ["ampeg_release_curveccN","ampeg_release_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_release_onccN","ampeg_releaseccN","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_release_shape","ampeg_release_shape","Envelope Generators","float",-10.3616,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_release_zero","ampeg_release_zero","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_releaseccN","ampeg_releaseccN","Envelope Generators","float",0,[-100,100],"seconds",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_start","ampeg_start","Envelope Generators","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["ampeg_start_curveccN","ampeg_start_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_start_onccN","ampeg_startccN","Envelope Generators","float",0,[-100,100],"%","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_startccN","ampeg_startccN","Envelope Generators","float",0,[-100,100],"%",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_sustain","ampeg_sustain","Envelope Generators","float",100,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["ampeg_sustain_curveccN","ampeg_sustain_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["ampeg_sustain_onccN","ampeg_sustainccN","Envelope Generators","float",0,[-100,100],"%","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_sustainccN","ampeg_sustainccN","Envelope Generators","float",0,[-100,100],"%",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["ampeg_vel2attack","ampeg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["ampeg_vel2decay","ampeg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["ampeg_vel2delay","ampeg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["ampeg_vel2hold","ampeg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["ampeg_vel2release","ampeg_vel2release","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["ampeg_vel2sustain","ampeg_vel2sustain","Envelope Generators","float",0,[-100,100],"%",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_delay","amplfo_delay","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["amplfo_depth","amplfo_depth","LFO","float",0,[-10,10],"dB","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["amplfo_depth_onccN","amplfo_depthccN","LFO","float",0,[-10,10],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_depthccN","amplfo_depthccN","LFO","float",0,[-10,10],"dB",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_depthchanaft","amplfo_depthchanaft","LFO","float",0,[-10,10],"dB",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_depthpolyaft","amplfo_depthpolyaft","LFO","float",0,[-10,10],"dB",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_fade","amplfo_fade","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["amplfo_freq","amplfo_freq","LFO","float",0,[0,20],"Hz","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["amplfo_freqccN","amplfo_freqccN","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_freqchanaft","amplfo_freqchanaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_freqpolyaft","amplfo_freqpolyaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplfo_wave","amplfo_wave","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["amplitude","amplitude","Amplifier","float",100,[0,100],"%","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplitude_ccN","amplitude_onccN","Amplifier","float",null,[-100,100],"%",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplitude_curveccN","amplitude_curveccN","Amplifier","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplitude_onccN","amplitude_onccN","Amplifier","float",null,[-100,100],"%",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["amplitude_smoothccN","amplitude_smoothccN","Amplifier",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_depth","apan_depth","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_depth_onccN","apan_depth_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["apan_dry","apan_dry","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_dry_onccN","apan_dry_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["apan_freq","apan_freq","Effects","float",null,[null,null],"Hz","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_freq_onccN","apan_freq_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["apan_phase","apan_phase","Effects","float",null,[0,180],"°","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_phase_onccN","apan_phase_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["apan_waveform","apan_waveform","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["apan_wet","apan_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["apan_wet_onccN","apan_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bend_down","bend_down","Pitch","integer",-200,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["bend_smooth","bend_smooth","Pitch","float",0,[0,null],"ms","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["bend_step","bend_step","Pitch","integer",1,[1,1200],"cents","SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["bend_stepdown","bend_stepdown","Pitch","integer",1,[1,1200],"cents","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bend_stepup","bend_stepup","Pitch","integer",1,[1,1200],"cents","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bend_up","bend_up","Pitch","integer",200,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["benddown","bend_down","Pitch","integer",-200,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["bendstep","bend_step","Pitch","integer",1,[1,1200],"cents","SFZ v1",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["bendup","bend_up","Pitch","integer",200,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["bitred","bitred","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["bitred_curveccN","bitred_curveccN","Effects","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bitred_onccN","bitred_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bitred_smoothccN","bitred_smoothccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bitred_stepccN","bitred_stepccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["bus","bus","Effects","string","main",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["bypass_onccN","bypass_onccN","Effects","float",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["comp_attack","comp_attack","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["comp_gain","comp_gain","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["comp_ratio","comp_ratio","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["comp_release","comp_release","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["comp_stlink","comp_stlink","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["comp_threshold","comp_threshold","Effects","float",null,[null,null],"dB","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["count","count","Sample Playback","integer",0,[0,4294967296],null,"SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["curve_index","curve_index","Curves","integer",null,[0,255],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff","cutoff","Filter","float","filter disabled",[0,"SampleRate / 2"],"Hz","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["cutoff2","cutoff2","Filter","float","filter disabled",[0,"SampleRate / 2"],"Hz","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff2_ccN","cutoff2_ccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff2_chanaft","cutoff2_chanaft","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff2_curveccN","cutoff2_curveccN","Filter","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff2_onccN","cutoff2_onccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff2_polyaft","cutoff2_polyaft","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff2_random","cutoff2_random","Filter","integer",0,[0,9600],"cents","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff2_smoothccN","cutoff2_smoothccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff2_stepccN","cutoff2_stepccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff_ccN","cutoff_ccN","Filter","integer",0,[-9600,9600],"cents",null,"midi_cc","global/master/group/region","supported","yes","compiled"],
+    ["cutoff_chanaft","cutoff_chanaft","Filter","integer",0,[-9600,9600],"cents",null,"midi_cc","global/master/group/region","supported","yes","unimplemented"],
+    ["cutoff_curveccN","cutoff_curveccN","Filter","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff_onccN","cutoff_ccN","Filter","integer",0,[-9600,9600],"cents","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["cutoff_polyaft","cutoff_polyaft","Filter","integer",0,[-9600,9600],"cents",null,"midi_cc","global/master/group/region","supported","no","unimplemented"],
+    ["cutoff_random","fil_random","Filter","integer",0,[0,9600],"cents","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["cutoff_smoothccN","cutoff_smoothccN","Filter","float",0,[0,null],"ms","SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["cutoff_stepccN","cutoff_stepccN","Filter","integer",0,[0,null],null,"SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["decim","decim","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["decim_curveccN","decim_curveccN","Effects","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["decim_onccN","decim_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["decim_smoothccN","decim_smoothccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["decim_stepccN","decim_stepccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["default_path","default_path","Instrument Settings","string",null,[null,null],null,"SFZ v2",null,"control","supported","not-listed","compiled"],
+    ["delay","delay","Sample Playback","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["delay_beats","delay_beats","Sample Playback","float",null,[null,null],"beats","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_beats_curveccN","delay_beats_curveccN","Sample Playback","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_beats_onccN","delay_beats_onccN","Sample Playback",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_beats_random","delay_beats_random","Sample Playback","float",null,[null,null],"beats","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_ccN","delay_ccN","Sample Playback","float",0,[-100,100],"seconds",null,"midi_cc","global/master/group/region","supported","yes","unimplemented"],
+    ["delay_curveccN","delay_curveccN","Sample Playback","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_cutoff","delay_cutoff","Effects","float",null,[null,null],"Hz","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_cutoff_onccN","delay_cutoff_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_damphi","delay_damphi","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_damphi_onccN","delay_damphi_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_damplo","delay_damplo","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_damplo_onccN","delay_damplo_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_dry","delay_dry","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_dry_onccN","delay_dry_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_feedback","delay_feedback","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_feedback_onccN","delay_feedback_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_filter","delay_filter","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_input","delay_input","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_input_onccN","delay_input_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_levelc","delay_levelc","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_levell","delay_levell","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_levelr","delay_levelr","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_lfofreq","delay_lfofreq","Effects","float",null,[null,null],"Hz","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_lfofreq_onccN","delay_lfofreq_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_moddepth","delay_moddepth","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_moddepth_onccN","delay_moddepth_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_mode","delay_mode","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_onccN","delay_ccN","Sample Playback","float",0,[-100,100],"seconds","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["delay_panc","delay_panc","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_panc_onccN","delay_panc_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_panl","delay_panl","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_panl_onccN","delay_panl_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_panr","delay_panr","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_panr_onccN","delay_panr_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_random","delay_random","Sample Playback","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["delay_resonance","delay_resonance","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_resonance_onccN","delay_resonance_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_samples","delay_samples","Sample Playback","integer",null,[null,null],"sample units","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_samples_onccN","delay_samples_onccN","Sample Playback","integer",null,[null,null],"sample units",null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_spread","delay_spread","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_spread_onccN","delay_spread_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_syncc_onccN","delay_syncc_onccN","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_syncl_onccN","delay_syncl_onccN","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_syncr_onccN","delay_syncr_onccN","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_time_tap","delay_time_tap","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timec","delay_timec","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timec_onccN","delay_timec_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timel","delay_timel","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timel_onccN","delay_timel_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timer","delay_timer","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_timer_onccN","delay_timer_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_wet","delay_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["delay_wet_onccN","delay_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["direction","direction","Sample Playback","string","forward",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["directtomain","directtomain","Effects","float",100,[0,100],"%","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["disto_depth","disto_depth","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_depth_onccN","disto_depth_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_dry","disto_dry","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_dry_onccN","disto_dry_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_stages","disto_stages","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_tone","disto_tone","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_tone_onccN","disto_tone_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_wet","disto_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["disto_wet_onccN","disto_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["dsp_order","dsp_order","Effects","integer",null,[0,14],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["effect1","effect1","Effects","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["effect2","effect2","Effects","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["effect3","effect3","Effects","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["effect4","effect4","Effects","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_ampeg","egN_ampeg","Envelope Generators",null,null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_amplitude","egN_amplitude","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_amplitude_onccX","egN_amplitude_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_bitred","egN_bitred","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_bitred_onccX","egN_bitred_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_curveX","egN_curveX","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_cutoff","egN_cutoff","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_cutoff2","egN_cutoff2","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_cutoff2_onccX","egN_cutoff2_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_cutoff_onccX","egN_cutoff_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_decim","egN_decim","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_decim_onccX","egN_decim_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_depth_lfoX","egN_depth_lfoX","Envelope Generators","float",100,[null,null],"%","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_depthadd_lfoX","egN_depthadd_lfoX","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_driveshape","egN_driveshape","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_driveshape_onccX","egN_driveshape_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_dynamic","egN_dynamic","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_eqXbw","egN_eqXbw","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_eqXbw_onccY","egN_eqXbw_onccY","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_eqXfreq","egN_eqXfreq","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_eqXfreq_onccY","egN_eqXfreq_onccY","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_eqXgain","egN_eqXgain","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_eqXgain_onccY","egN_eqXgain_onccY","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_filXgain","egN_filXgain","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["egN_filXgain_onccX","egN_filXgain_onccX","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["egN_freq_lfoX","egN_freq_lfoX","Envelope Generators","float",0,[null,null],"Hz","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_levelX","egN_levelX","Envelope Generators","float",0,[-1,1],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_levelX_onccY","egN_levelX_onccY","Envelope Generators","float",0,[-1,1],null,null,"midi_cc","global/master/group/region","unknown","not-listed","unimplemented"],
+    ["egN_loop","egN_loop","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_loop_count","egN_loop_count","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noiselevel","egN_noiselevel","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noiselevel_onccX","egN_noiselevel_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noisestep","egN_noisestep","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noisestep_onccX","egN_noisestep_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noisetone","egN_noisetone","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_noisetone_onccX","egN_noisetone_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_pan","egN_pan","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_pan_curve","egN_pan_curve","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_pan_curveccX","egN_pan_curveccX","Envelope Generators","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_pan_onccX","egN_pan_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_pitch","egN_pitch","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_pitch_onccX","egN_pitch_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_points","egN_points","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_position","egN_position","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["egN_position_onccX","egN_position_onccX","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["egN_rectify","egN_rectify","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_rectify_onccX","egN_rectify_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_resonance","egN_resonance","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_resonance2","egN_resonance2","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_resonance2_onccX","egN_resonance2_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_resonance_onccX","egN_resonance_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_ringmod","egN_ringmod","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_ringmod_onccX","egN_ringmod_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["egN_sample_dyn_paramX","egN_sample_dyn_paramX","Envelope Generators",null,null,[null,null],null,"ARIA",null,"global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["egN_sample_dyn_paramX_onccY","egN_sample_dyn_paramX_onccY","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["egN_shapeX","egN_shapeX","Envelope Generators","float",0,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_sustain","egN_sustain","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_timeX","egN_timeX","Envelope Generators","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_timeX_onccY","egN_timeX_onccY","Envelope Generators","float",null,[null,null],"seconds",null,"midi_cc","global/master/group/region","unknown","not-listed","unimplemented"],
+    ["egN_volume","egN_volume","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_volume_onccX","egN_volume_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_width","egN_width","Envelope Generators",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["egN_width_onccX","egN_width_onccX","Envelope Generators",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["end","end","Sample Playback","integer","unspecified",[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["eq1_bw","eq1_bw","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_bwccN","eq1_bwccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_freq","eq1_freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_freqccN","eq1_freqccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_gain","eq1_gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_gainccN","eq1_gainccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_vel2freq","eq1_vel2freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq1_vel2gain","eq1_vel2gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_bw","eq2_bw","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_bwccN","eq2_bwccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_freq","eq2_freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_freqccN","eq2_freqccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_gain","eq2_gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_gainccN","eq2_gainccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_vel2freq","eq2_vel2freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq2_vel2gain","eq2_vel2gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_bw","eq3_bw","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_bwccN","eq3_bwccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_freq","eq3_freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_freqccN","eq3_freqccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_gain","eq3_gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_gainccN","eq3_gainccN","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_vel2freq","eq3_vel2freq","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eq3_vel2gain","eq3_vel2gain","reference-only",null,null,[null,null],null,null,null,"unresolved","not-listed","yes","unimplemented"],
+    ["eqN_bw","eqN_bw","EQ","float",1,[0.001,4],"octaves","SFZ v1",null,"global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_bw_onccX","eqN_bwccX","EQ","float",0,[-4,4],"octaves","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_bwccX","eqN_bwccX","EQ","float",0,[-4,4],"octaves",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_dynamic","eqN_dynamic","EQ","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["eqN_freq","eqN_freq","EQ","float","eq1_freq=50<br>eq2_freq=500<br>eq3_freq=5000",[0,30000],"Hz","SFZ v1",null,"global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_freq_onccX","eqN_freqccX","EQ","float",0,[-30000,30000],"Hz","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_freqccX","eqN_freqccX","EQ","float",0,[-30000,30000],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_gain","eqN_gain","EQ","float",0,[-96,24],"dB","SFZ v1",null,"global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_gain_onccX","eqN_gainccX","EQ","float",0,[-96,24],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_gainccX","eqN_gainccX","EQ","float",0,[-96,24],"dB",null,"midi_cc","global/master/group/region","supported","not-listed","ampeg-eq-v5"],
+    ["eqN_mode","eqN_mode","EQ","string","hz",[null,null],null,"ARIA",null,"global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["eqN_type","eqN_type","EQ","string","peak",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["eqN_vel2freq","eqN_vel2freq","EQ","float",0,[-30000,30000],"Hz",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["eqN_vel2gain","eqN_vel2gain","EQ","float",0,[-96,24],"dB",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["eq_bw","eq_bw","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["eq_bw_onccN","eq_bw_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["eq_freq","eq_freq","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["eq_freq_onccN","eq_freq_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["eq_gain","eq_gain","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["eq_gain_onccN","eq_gain_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["eq_type","eq_type","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fil2_gain","fil2_gain","Filter","float",0,[null,null],"dB","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil2_gain_onccN","fil2_gain_onccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil2_keycenter","fil2_keycenter","Filter","integer",60,[0,127],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil2_keytrack","fil2_keytrack","Filter","integer",0,[0,1200],"cents","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil2_mode","fil2_mode","Filter","string","cents",[null,null],null,"ARIA",null,"global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil2_type","fil2_type","Filter","string","lpf_2p",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil2_veltrack","fil2_veltrack","Filter","integer",0,[-9600,9600],"cents","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil_attack","fileg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_decay","fileg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_delay","fileg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_depth","fileg_depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_gain","fil_gain","Filter","float",0,[null,null],"dB","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil_gain_onccN","fil_gain_onccN","Filter",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fil_hold","fileg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_keycenter","fil_keycenter","Filter","integer",60,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["fil_keytrack","fil_keytrack","Filter","integer",0,[0,1200],"cents","SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["fil_mode","fil_mode","Filter","string","cents",[null,null],null,"ARIA",null,"global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_random","fil_random","Filter","integer",0,[0,9600],"cents","SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["fil_release","fileg_release","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_sustain","fileg_sustain","Envelope Generators","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["fil_type","fil_type","Filter","string","lpf_2p",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fil_vel2attack","fileg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2decay","fileg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2delay","fileg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2depth","fileg_vel2depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2hold","fileg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2release","fileg_vel2release","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_vel2sustain","fileg_vel2sustain","Envelope Generators","float",0,[-100,100],"%","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["fil_veltrack","fil_veltrack","Filter","integer",0,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["fileg_attack","fileg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_attack_curveccN","fileg_attack_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_attack_onccN","fileg_attack_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_attack_shape","fileg_attack_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_attackccN","fileg_attack_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_decay","fileg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_decay_curveccN","fileg_decay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_decay_onccN","fileg_decay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_decay_shape","fileg_decay_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_decay_zero","fileg_decay_zero","Envelope Generators","integer",1,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_decayccN","fileg_decay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_delay","fileg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_delay_curveccN","fileg_delay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_delay_onccN","fileg_delay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_delayccN","fileg_delay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_depth","fileg_depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["fileg_depth_curveccN","fileg_depth_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_depth_onccN","fileg_depth_onccN","Envelope Generators","integer",0,[-12000,12000],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_depthccN","fileg_depth_onccN","Envelope Generators","integer",0,[-12000,12000],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_dynamic","fileg_dynamic","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_hold","fileg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_hold_curveccN","fileg_hold_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_hold_onccN","fileg_hold_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_holdccN","fileg_hold_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_release","fileg_release","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_release_curveccN","fileg_release_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_release_onccN","fileg_release_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_release_shape","fileg_release_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_release_zero","fileg_release_zero","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_releaseccN","fileg_release_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_start","fileg_start","Envelope Generators","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_start_curveccN","fileg_start_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_start_onccN","fileg_start_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_startccN","fileg_start_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_sustain","fileg_sustain","Envelope Generators","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fileg_sustain_curveccN","fileg_sustain_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["fileg_sustain_onccN","fileg_sustain_onccN","Envelope Generators","float",0,[-100,100],"%","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_sustainccN","fileg_sustain_onccN","Envelope Generators","float",0,[-100,100],"%","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2attack","fileg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2decay","fileg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2delay","fileg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2depth","fileg_vel2depth","Envelope Generators","integer",0,[-12000,12000],"cents",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2hold","fileg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2release","fileg_vel2release","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fileg_vel2sustain","fileg_vel2sustain","Envelope Generators","float",0,[-100,100],"%",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_delay","fillfo_delay","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fillfo_depth","fillfo_depth","LFO","float",0,[-1200,1200],"cents","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fillfo_depth_onccN","fillfo_depthccN","LFO","float",0,[-1200,1200],"cents","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_depthccN","fillfo_depthccN","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_depthchanaft","fillfo_depthchanaft","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_depthpolyaft","fillfo_depthpolyaft","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_fade","fillfo_fade","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fillfo_freq","fillfo_freq","LFO","float",0,[0,20],"Hz","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["fillfo_freqccN","fillfo_freqccN","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_freqchanaft","fillfo_freqchanaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_freqpolyaft","fillfo_freqpolyaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["fillfo_wave","fillfo_wave","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["filter_cutoff","filter_cutoff","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["filter_cutoff_onccN","filter_cutoff_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["filter_gain","filter_gain","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["filter_gain_onccN","filter_gain_onccN","reference-only",null,null,[null,null],null,null,null,"unresolved","unsupported","not-listed","unimplemented"],
+    ["filter_resonance","filter_resonance","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["filter_resonance_onccN","filter_resonance_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["filter_type","filter_type","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["filtype","fil_type","Filter","string","lpf_2p",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["fxNtomain","fxNtomain","Effects","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["fxNtomix","fxNtomix","Effects","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["gain","gain","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["gain_ccN","gain_ccN","Amplifier","float",0,[-144,48],"dB",null,"midi_cc","global/master/group/region","supported","no","compiled"],
+    ["gain_onccN","gain_ccN","Amplifier","float",0,[-144,48],"dB","SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","compiled"],
+    ["gain_random","amp_random","Amplifier","float",0,[0,24],"dB","SFZ v2",null,"global/master/group/region","unsupported","not-listed","compiled"],
+    ["gate_attack","gate_attack","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["gate_hold","gate_hold","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["gate_onccN","gate_onccN","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["gate_release","gate_release","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["gate_stlink","gate_stlink","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["gate_threshold","gate_threshold","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["global_amplitude","global_amplitude","Amplifier","float",100,[0,100],"%","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["global_label","global_label","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","unimplemented"],
+    ["global_tune","global_tune","Pitch","integer",0,[-9600,9600],"cents","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["global_volume","global_volume","Amplifier","float",0,[-144,6],"dB","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["group","group","Voice Lifecycle","integer",0,[-2147483648,2147483647],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["group_amplitude","group_amplitude","Amplifier","float",100,[0,100],"%","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["group_label","group_label","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","informational"],
+    ["group_tune","group_tune","Pitch","integer",0,[-9600,9600],"cents","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["group_volume","group_volume","Amplifier","float",0,[-144,6],"dB","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["hibend","hibend","MIDI Conditions","integer",8192,[-8192,8192],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["hibpm","hibpm","Internal Conditions","float",500,[0,500],"bpm","SFZ v1",null,"global/master/group/region","unknown","no","unimplemented"],
+    ["hiccN","hiccN","MIDI Conditions","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["hichan","hichan","MIDI Conditions","integer",16,[1,16],null,"SFZ v1",null,"global/master/group/region","unsupported","yes","compiled"],
+    ["hichanaft","hichanaft","Internal Conditions","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["hihdccN","hihdccN","MIDI Conditions","float",1,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["hikey","hikey","Key Mapping","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["hint_*","hint_*","Instrument Settings",null,null,[null,null],null,"ARIA",null,"control","not-listed","not-listed","unimplemented"],
+    ["hint_ram_based","hint_ram_based","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["hint_stealing","hint_stealing","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["hint_sustain_cancels_release","hint_sustain_cancels_release","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["hipolyaft","hipolyaft","Internal Conditions","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["hiprog","hiprog","MIDI Conditions","integer",127,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","compiled"],
+    ["hirand","hirand","Internal Conditions","float",1,[0,1],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["hitimer","hitimer","Internal Conditions","float",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["hivel","hivel","Key Mapping","integer",127,[1,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["image","image","Loading","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["internal","internal","Effects","string","off",[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["key","key","Key Mapping","integer",null,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["label_ccN","label_ccN","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","supported","not-listed","informational"],
+    ["label_keyN","label_keyN","Instrument Settings","string",null,[null,null],null,"sfizz",null,"control","supported","not-listed","informational"],
+    ["label_outputN","label_outputN","Instrument Settings","string",null,[null,null],null,"Calfbox",null,"control","unsupported","not-listed","unimplemented"],
+    ["lfoN_amplitude","lfoN_amplitude","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_amplitude_onccX","lfoN_amplitude_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_amplitude_smoothccX","lfoN_amplitude_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_amplitude_stepccX","lfoN_amplitude_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_bitred","lfoN_bitred","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_bitred_onccX","lfoN_bitred_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_bitred_smoothccX","lfoN_bitred_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_bitred_stepccX","lfoN_bitred_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_count","lfoN_count","LFO","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_cutoff","lfoN_cutoff","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff2","lfoN_cutoff","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff2_onccX","lfoN_cutoff2_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff2_smoothccX","lfoN_cutoff2_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff2_stepccX","lfoN_cutoff2_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff_onccX","lfoN_cutoff_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff_smoothccX","lfoN_cutoff_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_cutoff_stepccX","lfoN_cutoff_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_decim","lfoN_decim","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_decim_onccX","lfoN_decim_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_decim_smoothccX","lfoN_decim_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_decim_stepccX","lfoN_decim_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_delay","lfoN_delay","LFO","float",0,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_delay_onccX","lfoN_delay_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_depth_lfoX","lfoN_depth_lfoX","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_depthadd_lfoX","lfoN_depthadd_lfoX","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_drive","lfoN_drive","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_drive_onccX","lfoN_drive_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_drive_smoothccX","lfoN_drive_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_drive_stepccX","lfoN_drive_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_eqXbw","lfoN_eqXbw","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXbw_onccY","lfoN_eqXbw_onccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXbw_smoothccY","lfoN_eqXbw_smoothccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXbw_stepccY","lfoN_eqXbw_stepccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXfreq","lfoN_eqXfreq","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXfreq_onccY","lfoN_eqXfreq_onccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXfreq_smoothccY","lfoN_eqXfreq_smoothccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXfreq_stepccY","lfoN_eqXfreq_stepccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXgain","lfoN_eqXgain","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXgain_onccY","lfoN_eqXgain_onccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXgain_smoothccY","lfoN_eqXgain_smoothccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_eqXgain_stepccY","lfoN_eqXgain_stepccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_fade","lfoN_fade","LFO","float",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_fade_onccX","lfoN_fade_onccX","LFO","float",null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_filXgain","lfoN_filXgain","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_filXgain_onccY","lfoN_filXgain_onccY","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_filXgain_smoothccY","lfoN_filXgain_smoothccY","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_filXgain_stepccY","lfoN_filXgain_stepccY","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_freq","lfoN_freq","LFO","float",null,[null,null],"Hz","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_freq_lfoX","lfoN_freq_lfoX","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_freq_lfoX_onccY","lfoN_freq_lfoX_onccY","LFO",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_freq_onccX","lfoN_freq_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_freq_smoothccX","lfoN_freq_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_freq_stepccX","lfoN_freq_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_noiselevel","lfoN_noiselevel","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noiselevel_onccX","lfoN_noiselevel_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noiselevel_smoothccX","lfoN_noiselevel_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noiselevel_stepccX","lfoN_noiselevel_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisestep","lfoN_noisestep","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisestep_onccX","lfoN_noisestep_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisestep_smoothccX","lfoN_noisestep_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisestep_stepccX","lfoN_noisestep_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisetone","lfoN_noisetone","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisetone_onccX","lfoN_noisetone_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisetone_smoothccX","lfoN_noisetone_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_noisetone_stepccX","lfoN_noisetone_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_offset","lfoN_offset","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_offsetX","lfoN_offsetX","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pan","lfoN_pan","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pan_onccX","lfoN_pan_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pan_smoothccX","lfoN_pan_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pan_stepccX","lfoN_pan_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_phase","lfoN_phase","LFO","float",0,[0,1],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_phase_onccX","lfoN_phase_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pitch","lfoN_pitch","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pitch_curveccX","lfoN_pitch_curveccX","LFO","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pitch_onccX","lfoN_pitch_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pitch_smoothccX","lfoN_pitch_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_pitch_stepccX","lfoN_pitch_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_position","lfoN_position","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_position_onccX","lfoN_position_onccX","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_position_smoothccX","lfoN_position_smoothccX","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_position_stepccX","lfoN_position_stepccX","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["lfoN_ratio","lfoN_ratio","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_ratioX","lfoN_ratioX","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance","lfoN_resonance","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance2","lfoN_resonance","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance2_onccX","lfoN_resonance2_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance2_smoothccX","lfoN_resonance2_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance2_stepccX","lfoN_resonance2_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance_onccX","lfoN_resonance_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance_smoothccX","lfoN_resonance_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_resonance_stepccX","lfoN_resonance_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_sample_dyn_paramX","lfoN_sample_dyn_paramX","LFO",null,null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_sample_dyn_paramX_onccY","lfoN_sample_dyn_paramX_onccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_scale","lfoN_scale","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_scaleX","lfoN_scaleX","LFO","float",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_smooth","lfoN_smooth","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_smooth_onccX","lfoN_smooth_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_stepX","lfoN_stepX","LFO","float",null,[-100,100],"percent","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_stepX_onccY","lfoN_stepX_onccY","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_steps","lfoN_steps","LFO","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_volume","lfoN_volume","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_volume_onccX","lfoN_volume_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_volume_smoothccX","lfoN_volume_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_volume_stepccX","lfoN_volume_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_wave","lfoN_wave","LFO","integer",1,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_waveX","lfoN_waveX","LFO","integer",1,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_wave_onccX","lfoN_wave_onccX","LFO",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lfoN_width","lfoN_width","LFO",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_width_onccX","lfoN_width_onccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_width_smoothccX","lfoN_width_smoothccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["lfoN_width_stepccX","lfoN_width_stepccX","LFO",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["load_end","load_end","Loading","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["load_mode","load_mode","Loading","integer",null,[0,1],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["load_start","load_start","Loading","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lobend","lobend","MIDI Conditions","integer",-8192,[-8192,8192],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["lobpm","lobpm","Internal Conditions","float",0,[0,500],"bpm","SFZ v1",null,"global/master/group/region","unknown","no","unimplemented"],
+    ["loccN","loccN","MIDI Conditions","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["lochan","lochan","MIDI Conditions","integer",1,[1,16],null,"SFZ v1",null,"global/master/group/region","unsupported","yes","compiled"],
+    ["lochanaft","lochanaft","Internal Conditions","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["lohdccN","lohdccN","MIDI Conditions","float",0,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["lokey","lokey","Key Mapping","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["loop_count","loop_count","Sample Playback","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["loop_crossfade","loop_crossfade","Sample Playback","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["loop_end","loop_end","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["loop_end_offset","loop_end_offset","Instrument Settings","integer",0,[-1,0],null,"ARIA",null,"control","not-listed","not-listed","unimplemented"],
+    ["loop_length_onccN","loop_lengthccN","Sample Playback",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["loop_lengthccN","loop_lengthccN","Sample Playback",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["loop_mode","loop_mode","Sample Playback","string","<b>no_loop</b> for samples without a loop defined, <br><b>loop_continuous</b> for samples with defined loop(s).",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","partial","compiled"],
+    ["loop_start","loop_start","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["loop_start_onccN","loop_startccN","Sample Playback",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["loop_startccN","loop_startccN","Sample Playback",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["loop_tune","loop_tune","Sample Playback","float",0,[null,null],"cents","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["loop_type","loop_type","Sample Playback","string","forward",[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["loopcount","loop_count","Sample Playback","integer",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","compiled"],
+    ["loopend","loop_end","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["loopmode","loop_mode","Sample Playback","string","<b>no_loop</b> for samples without a loop defined, <br><b>loop_continuous</b> for samples with defined loop(s).",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["loopstart","loop_start","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["looptune","loop_tune","Sample Playback","float",0,[null,null],"cents","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["looptype","loop_type","Sample Playback","string","forward",[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lopolyaft","lopolyaft","Internal Conditions","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["loprog","loprog","MIDI Conditions","integer",0,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","compiled"],
+    ["lorand","lorand","Internal Conditions","float",0,[0,1],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["lotimer","lotimer","Internal Conditions","float",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["lovel","lovel","Key Mapping","integer",1,[1,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["master_amplitude","master_amplitude","Amplifier","float",100,[0,100],"%","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["master_label","master_label","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","unimplemented"],
+    ["master_tune","master_tune","Pitch","integer",0,[-9600,9600],"cents","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["master_volume","master_volume","Amplifier","float",0,[-144,6],"dB","ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["md5","md5","Sample Playback","string","null",[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_filter","noise_filter","Filter","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_level","noise_level","Filter","float",null,[-96,24],"dB","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_level_onccN","noise_level_onccN","Filter","float",null,[-96,24],"dB",null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_level_smoothccN","noise_level_smoothccN","Filter","float",0,[0,null],"ms",null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_step","noise_step","Filter","integer",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_step_onccN","noise_step_onccN","Filter","integer",null,[0,100],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_stereo","noise_stereo","Filter","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_tone","noise_tone","Filter","integer",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["noise_tone_onccN","noise_tone_onccN","Filter","integer",null,[0,100],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["note_offset","note_offset","Instrument Settings","integer",0,[-127,127],"semitones","SFZ v2",null,"control","supported","not-listed","unimplemented"],
+    ["note_polyphony","note_polyphony","Voice Lifecycle","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["note_selfmask","note_selfmask","Voice Lifecycle","string","on",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["octave_offset","octave_offset","Instrument Settings","integer",0,[-10,10],"octaves","SFZ v2",null,"control","supported","not-listed","unimplemented"],
+    ["off_by","off_by","Voice Lifecycle","integer",0,[-2147483648,2147483647],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["off_curve","off_curve","Voice Lifecycle","integer",10,[-2,10],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["off_mode","off_mode","Voice Lifecycle","string","fast",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["off_shape","off_shape","Voice Lifecycle","float",-10.3616,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["off_time","off_time","Voice Lifecycle","float",0.006,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["offby","off_by","Voice Lifecycle","integer",0,[-2147483648,2147483647],null,"SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["offset","offset","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["offset_ccN","offset_ccN","Sample Playback","integer",0,[0,4294967296],"sample units",null,"midi_cc","global/master/group/region","supported","no","unimplemented"],
+    ["offset_mode","offset_mode","Sample Playback","string","samples",[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["offset_onccN","offset_ccN","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["offset_random","offset_random","Sample Playback","integer",0,[0,4294967296],"sample units","SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["on_hiccN","on_hiccN","Triggers","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["on_hihdccN","on_hihdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["on_loccN","on_loccN","Triggers","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["on_lohdccN","on_lohdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator","oscillator","Wavetable Oscillator","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_detune","oscillator_detune","Wavetable Oscillator",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_detune_onccN","oscillator_detune_onccN","Wavetable Oscillator",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_mod_depth","oscillator_mod_depth","Wavetable Oscillator",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_mod_depth_onccN","oscillator_mod_depth_onccN","Wavetable Oscillator",null,null,[null,null],null,null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_mod_smoothccN","oscillator_mod_smoothccN","Wavetable Oscillator",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["oscillator_mode","oscillator_mode","Wavetable Oscillator","integer",0,[0,2],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_multi","oscillator_multi","Wavetable Oscillator","integer",1,[1,9],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_phase","oscillator_phase","Wavetable Oscillator","float",null,[-1,360],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_quality","oscillator_quality","Wavetable Oscillator","integer",null,[0,3],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["oscillator_table_size","oscillator_table_size","Wavetable Oscillator",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["output","output","Voice Lifecycle","integer",0,[0,1024],null,"SFZ v1",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["pan","pan","Amplifier","float",0,[-100,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pan_ccN","pan_onccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["pan_curveccN","pan_curveccN","Amplifier","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pan_keycenter","pan_keycenter","Amplifier","integer",60,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pan_keytrack","pan_keytrack","Amplifier","float",0,[-100,100],"%","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pan_law","pan_law","Amplifier","string",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pan_onccN","pan_onccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["pan_random","pan_random","Amplifier","float",0,[-100,100],"%","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pan_smoothccN","pan_smoothccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pan_stepccN","pan_stepccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pan_veltrack","pan_veltrack","Amplifier","float",0,[-100,100],"%","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["param_offset","param_offset","Effects","integer",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phase","phase","Amplifier","string","normal",[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_depth","phaser_depth","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_depth_onccN","phaser_depth_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_feedback","phaser_feedback","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_feedback_onccN","phaser_feedback_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_freq","phaser_freq","Effects","float",null,[null,null],"Hz","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_freq_onccN","phaser_freq_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_phase_onccN","phaser_phase_onccN","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_stages","phaser_stages","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_waveform","phaser_waveform","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_wet","phaser_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["phaser_wet_onccN","phaser_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitch","tune","Pitch","integer",0,[-100,100],"cents","ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["pitch_attack","pitcheg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_curveccN","pitch_curveccN","Pitch","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitch_decay","pitcheg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_delay","pitcheg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_depth","pitcheg_depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_hold","pitcheg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_keycenter","pitch_keycenter","Pitch","integer",60,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitch_keytrack","pitch_keytrack","Pitch","integer",100,[-1200,1200],"cents","SFZ v1",null,"global/master/group/region","supported","partial","compiled"],
+    ["pitch_onccN","pitch_onccN","Pitch",null,null,[-9600,9600],"cents","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["pitch_random","pitch_random","Pitch","integer",0,[0,9600],"cents","SFZ v1",null,"global/master/group/region","supported","no","compiled"],
+    ["pitch_release","pitcheg_release","Envelope Generators","float",0,[0,100],"seconds","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_smoothccN","pitch_smoothccN","Pitch","float",0,[0,null],"ms","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitch_stepccN","pitch_stepccN","Pitch",null,0,[0,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitch_sustain","pitcheg_sustain","Envelope Generators","float",0,[0,100],"%","SFZ v2",null,"global/master/group/region","not-listed","not-listed","compiled"],
+    ["pitch_vel2attack","pitcheg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2decay","pitcheg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2delay","pitcheg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2depth","pitcheg_vel2depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2hold","pitcheg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2release","pitcheg_vel2release","Envelope Generators","float",0,[-100,100],"seconds","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_vel2sustain","pitcheg_vel2sustain","Envelope Generators","float",0,[-100,100],"%","SFZ v2","velocity","global/master/group/region","not-listed","not-listed","unimplemented"],
+    ["pitch_veltrack","pitch_veltrack","Pitch","integer",0,[-9600,9600],"cents","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_attack","pitcheg_attack","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_attack_curveccN","pitcheg_attack_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_attack_onccN","pitcheg_attack_onccN","Envelope Generators",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_attack_shape","pitcheg_attack_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_decay","pitcheg_decay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_decay_curveccN","pitcheg_decay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_decay_onccN","pitcheg_decay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_decay_shape","pitcheg_decay_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_decay_zero","pitcheg_decay_zero","Envelope Generators","integer",1,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_delay","pitcheg_delay","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_delay_curveccN","pitcheg_delay_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_delay_onccN","pitcheg_delay_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_depth","pitcheg_depth","Envelope Generators","integer",0,[-12000,12000],"cents","SFZ v1",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["pitcheg_depth_curveccN","pitcheg_depth_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_depth_onccN","pitcheg_depth_onccN","Envelope Generators","integer",0,[-12000,12000],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_depthccN","pitcheg_depth_onccN","Envelope Generators","integer",0,[-12000,12000],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_dynamic","pitcheg_dynamic","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_hold","pitcheg_hold","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_hold_curveccN","pitcheg_hold_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_hold_onccN","pitcheg_hold_onccN","Envelope Generators","float",0,[-100,100],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_release","pitcheg_release","Envelope Generators","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_release_curveccN","pitcheg_release_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_release_onccN","pitcheg_release_onccN","Envelope Generators","float",0,[-100,100],"seconds","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_release_shape","pitcheg_release_shape","Envelope Generators","float",0,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_release_zero","pitcheg_release_zero","Envelope Generators","integer",0,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_start","pitcheg_start","Envelope Generators","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_start_curveccN","pitcheg_start_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_start_onccN","pitcheg_start_onccN","Envelope Generators","float",0,[-100,100],"%","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_sustain","pitcheg_sustain","Envelope Generators","float",0,[0,100],"%","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitcheg_sustain_curveccN","pitcheg_sustain_curveccN","Envelope Generators","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["pitcheg_sustain_onccN","pitcheg_sustain_onccN","Envelope Generators","float",0,[-100,100],"%","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2attack","pitcheg_vel2attack","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2decay","pitcheg_vel2decay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2delay","pitcheg_vel2delay","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2depth","pitcheg_vel2depth","Envelope Generators","integer",0,[-12000,12000],"cents",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2hold","pitcheg_vel2hold","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2release","pitcheg_vel2release","Envelope Generators","float",0,[-100,100],"seconds",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitcheg_vel2sustain","pitcheg_vel2sustain","Envelope Generators","float",0,[-100,100],"%",null,"velocity","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_delay","pitchlfo_delay","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitchlfo_depth","pitchlfo_depth","LFO","float",0,[-1200,1200],"cents","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitchlfo_depth_onccN","pitchlfo_depthccN","LFO","float",0,[-1200,1200],"cents","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_depthccN","pitchlfo_depthccN","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_depthchanaft","pitchlfo_depthchanaft","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_depthpolyaft","pitchlfo_depthpolyaft","LFO","float",0,[-1200,1200],"cents",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_fade","pitchlfo_fade","LFO","float",0,[0,100],"seconds","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitchlfo_freq","pitchlfo_freq","LFO","float",0,[0,20],"Hz","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["pitchlfo_freqccN","pitchlfo_freqccN","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_freqchanaft","pitchlfo_freqchanaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_freqpolyaft","pitchlfo_freqpolyaft","LFO","float",0,[-200,200],"Hz",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["pitchlfo_wave","pitchlfo_wave","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["polyphony","polyphony","Voice Lifecycle","integer",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["polyphony_group","group","Voice Lifecycle","integer",0,[-2147483648,2147483647],null,"ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["polyphony_stealing","polyphony_stealing","Voice Lifecycle","integer",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["position","position","Amplifier","float",0,[-100,100],"%","SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["position_curveccN","position_curveccN","Amplifier","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["position_keycenter","position_keycenter","Amplifier",null,null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["position_keytrack","position_keytrack","Amplifier",null,null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["position_onccN","position_onccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["position_random","position_random","Amplifier","float",0,[-100,100],"%","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["position_smoothccN","position_smoothccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["position_stepccN","position_stepccN","Amplifier",null,null,[null,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["position_veltrack","position_veltrack","Amplifier","integer",0,[-200,200],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["rectify","rectify","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["rectify_mode","rectify_mode","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["rectify_onccN","rectify_onccN","reference-only",null,null,[null,null],null,null,null,"unresolved","unsupported","not-listed","unimplemented"],
+    ["region_label","region_label","Instrument Settings","string",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","unimplemented"],
+    ["resonance","resonance","Filter","float",0,[0,40],"dB","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["resonance2","resonance2","Filter","float",0,[0,40],"dB","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["resonance2_ccN","resonance2_ccN","Filter","float",0,[-40,40],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["resonance2_curveccN","resonance2_curveccN","Filter","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance2_onccN","resonance2_onccN","Filter","float",0,[-40,40],"dB",null,"midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["resonance2_random","resonance2_random","Filter","float",0,[0,40],"dB","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance2_smoothccN","resonance2_smoothccN","Filter","float",0,[0,null],"ms",null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance2_stepccN","resonance2_stepccN","Filter","integer",0,[0,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance_ccN","resonance_onccN","Filter","float",0,[-40,40],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["resonance_curveccN","resonance_curveccN","Filter","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance_onccN","resonance_onccN","Filter","float",0,[-40,40],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["resonance_random","resonance_random","Filter","float",0,[0,40],"dB","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance_smoothccN","resonance_smoothccN","Filter","float",0,[0,null],"ms","SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["resonance_stepccN","resonance_stepccN","Filter","integer",0,[0,null],null,"SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_damp","reverb_damp","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_damp_onccN","reverb_damp_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_dry","reverb_dry","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_dry_onccN","reverb_dry_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_input","reverb_input","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_input_onccN","reverb_input_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_predelay","reverb_predelay","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_predelay_onccN","reverb_predelay_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_size","reverb_size","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_size_onccN","reverb_size_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_tone","reverb_tone","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_tone_onccN","reverb_tone_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverb_type","reverb_type","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_wet","reverb_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["reverb_wet_onccN","reverb_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverse_hiccN","reverse_hiccN","Sample Playback","integer",null,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["reverse_loccN","reverse_loccN","Sample Playback","integer",null,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["rt_dead","rt_dead","Voice Lifecycle","string","off",[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["rt_decay","rt_decay","Amplifier","float",0,[0,200],"dB","SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["rt_decayN","rt_decayN","Amplifier","float",0,[0,200],"dB","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["rt_decayN_time","rt_decayN_time","Amplifier","float",null,[null,null],"seconds","ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["sample","sample","Sample Playback","string",null,[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sample_dyn_paramN","sample_dyn_paramN","Sample Playback","float",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["sample_dyn_paramN_onccX","sample_dyn_paramN_onccX","Sample Playback","float",null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["sample_fadeout","sample_fadeout","Sample Playback","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["sample_quality","sample_quality","Loading","integer",null,[1,10],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["script","script","Real-Time Instrument Script","string",null,[null,null],null,"LinuxSampler",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["seq_length","seq_length","Internal Conditions","integer",1,[1,100],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["seq_position","seq_position","Internal Conditions","integer",1,[1,100],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["set_ccN","set_ccN","Instrument Settings","integer",null,[0,127],null,"SFZ v2",null,"control","supported","not-listed","compiled"],
+    ["set_hdccN","set_hdccN","Instrument Settings","float",null,[0,1],null,"ARIA",null,"control","supported","not-listed","unimplemented"],
+    ["set_realccN","set_hdccN","Instrument Settings","float",null,[0,1],null,"ARIA",null,"control","supported","not-listed","unimplemented"],
+    ["sostenuto_cc","sostenuto_cc","MIDI Conditions","integer",66,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["sostenuto_lo","sostenuto_lo","MIDI Conditions","float",0.5,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["sostenuto_sw","sostenuto_sw","MIDI Conditions","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["start_hiccN","on_hiccN","Triggers","integer",-1,[0,127],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["start_hihdccN","on_hihdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["start_loccN","on_loccN","Triggers","integer",-1,[0,127],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["start_lohdccN","on_lohdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["static_cyclic_level","static_cyclic_level","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_cyclic_time","static_cyclic_time","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_filter","static_filter","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_level","static_level","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_level_onccN","static_level_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_random_level","static_random_level","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_random_maxtime","static_random_maxtime","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_random_mintime","static_random_mintime","Effects","float",null,[null,null],"seconds","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_stereo","static_stereo","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["static_tone","static_tone","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["stop_beats","stop_beats","Sample Playback","float",null,[null,null],"beats","SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["stop_hiccN","stop_hiccN","Triggers","integer",-1,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["stop_hihdccN","stop_hihdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["stop_loccN","stop_loccN","Triggers","integer",-1,[0,127],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["stop_lohdccN","stop_lohdccN","Triggers","float",-1,[0,1],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["strings_number","strings_number","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["strings_wet","strings_wet","reference-only",null,null,[null,null],null,null,null,"unresolved","supported","not-listed","unimplemented"],
+    ["strings_wet_onccN","strings_wet_onccN","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["sustain_cc","sustain_cc","MIDI Conditions","integer",64,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["sustain_lo","sustain_lo","MIDI Conditions","float",0.5,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["sustain_sw","sustain_sw","MIDI Conditions","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["sw_default","sw_default","MIDI Conditions","integer",null,[0,127],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["sw_down","sw_down","MIDI Conditions","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_hikey","sw_hikey","MIDI Conditions","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_hilast","sw_hilast","MIDI Conditions","integer",null,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["sw_label","sw_label","MIDI Conditions","string",null,[null,null],null,"ARIA",null,"global/master/group/region","supported","not-listed","informational"],
+    ["sw_last","sw_last","MIDI Conditions","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_lokey","sw_lokey","MIDI Conditions","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_lolast","sw_lolast","MIDI Conditions","integer",null,[0,127],null,"ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["sw_note_offset","sw_note_offset","Instrument Settings","integer",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","unimplemented"],
+    ["sw_octave_offset","sw_octave_offset","Instrument Settings","integer",null,[null,null],null,"ARIA",null,"control","unsupported","not-listed","unimplemented"],
+    ["sw_previous","sw_previous","MIDI Conditions","integer",null,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_up","sw_up","MIDI Conditions","integer",-1,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["sw_vel","sw_vel","MIDI Conditions","string","current",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["sync_beats","sync_beats","Sample Playback","float",0,[0,32],"beats","SFZ v1",null,"global/master/group/region","unsupported","no","unimplemented"],
+    ["sync_offset","sync_offset","Sample Playback","float",0,[0,32],"beats","SFZ v1",null,"global/master/group/region","unsupported","no","unimplemented"],
+    ["tdfir_dry","tdfir_dry","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["tdfir_dry_onccN","tdfir_dry_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["tdfir_gain","tdfir_gain","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["tdfir_impulse","tdfir_impulse","Effects",null,null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["tdfir_wet","tdfir_wet","Effects","",null,[0,100],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["tdfir_wet_onccN","tdfir_wet_onccN","Effects",null,null,[null,null],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["transpose","transpose","Pitch","integer",0,[-127,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["trigger","trigger","Triggers","string","attack",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["tune","tune","Pitch","integer",0,[-100,100],"cents","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["tune_ccN","pitch_onccN","Pitch",null,null,[-9600,9600],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["tune_curveccN","pitch_curveccN","Pitch","integer",0,[0,255],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["tune_keytrack","pitch_keytrack","Pitch","integer",100,[-1200,1200],"cents","ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["tune_onccN","pitch_onccN","Pitch",null,null,[-9600,9600],"cents","ARIA","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["tune_random","pitch_random","Pitch","integer",0,[0,9600],"cents","ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["tune_smoothccN","pitch_smoothccN","Pitch","float",0,[0,null],"ms","ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["tune_stepccN","pitch_stepccN","Pitch",null,0,[0,null],null,"ARIA","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["tune_veltrack","pitch_veltrack","Pitch","integer",0,[-9600,9600],"cents","ARIA",null,"global/master/group/region","supported","not-listed","compiled"],
+    ["type","type","Effects","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","supported","not-listed","unimplemented"],
+    ["vNNN","vNNN","Curves","float",null,[-1,1],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["varNN_*","varNN_*","MIDI Conditions",null,null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["varNN_curveccX","varNN_curveccX","MIDI Conditions","integer",0,[0,255],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["varNN_mod","varNN_mod","MIDI Conditions","string",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["varNN_onccX","varNN_onccX","MIDI Conditions","float",null,[0,1],null,null,"midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["vendor_specific","vendor_specific","Effects","string",null,[null,null],null,"ARIA",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["volume","volume","Amplifier","float",0,[-144,6],"dB","SFZ v1",null,"global/master/group/region","supported","yes","compiled"],
+    ["volume_curveccN","volume_curveccN","Amplifier","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["volume_onccN","gain_ccN","Amplifier","float",0,[-144,48],"dB","SFZ v2","midi_cc","global/master/group/region","supported","not-listed","compiled"],
+    ["volume_smoothccN","volume_smoothccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["volume_stepccN","volume_stepccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["waveguide","waveguide","Sample Playback","string",null,[null,null],null,"SFZ v2",null,"global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["width","width","Amplifier","float",100,[-100,100],"%","SFZ v1",null,"global/master/group/region","supported","no","unimplemented"],
+    ["width_curveccN","width_curveccN","Amplifier","integer",0,[0,255],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["width_onccN","width_onccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","unsupported","not-listed","unimplemented"],
+    ["width_smoothccN","width_smoothccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["width_stepccN","width_stepccN","Amplifier",null,null,[null,null],null,"SFZ v2","midi_cc","global/master/group/region","supported","not-listed","unimplemented"],
+    ["xf_cccurve","xf_cccurve","Amplifier","string","power",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xf_keycurve","xf_keycurve","Amplifier","string","power",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xf_velcurve","xf_velcurve","Amplifier","string","power",[null,null],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_hiccN","xfin_hiccN","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_hikey","xfin_hikey","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_hivel","xfin_hivel","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_loccN","xfin_loccN","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_lokey","xfin_lokey","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfin_lovel","xfin_lovel","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_hiccN","xfout_hiccN","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_hikey","xfout_hikey","Amplifier","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_hivel","xfout_hivel","Amplifier","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_loccN","xfout_loccN","Amplifier","integer",0,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_lokey","xfout_lokey","Amplifier","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"],
+    ["xfout_lovel","xfout_lovel","Amplifier","integer",127,[0,127],null,"SFZ v1",null,"global/master/group/region","supported","yes","unimplemented"]
+  ]
+}

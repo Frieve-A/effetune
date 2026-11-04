@@ -203,7 +203,7 @@ Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano r
 
 ### Limites
 
-- La détection couvre 11 types d’accords et leurs renversements : majeur, mineur, diminué, augmenté, septième majeure, septième mineure, septième de dominante, septième diminuée, septième semi-diminuée, sus2 et sus4. Les noms de notes et d’accords utilisent # ou ♭ selon la tonalité estimée à partir des observations accumulées ; les dièses sont utilisés tant que cette estimation n’est pas disponible.
+- La détection couvre 11 types d’accords et leurs renversements : majeur, mineur, diminué, augmenté, septième majeure, septième mineure, septième de dominante, septième diminuée, septième semi-diminuée, sus2 et sus4. Les noms de notes et d’accords utilisent # ou ♭ selon la tonalité locale actuelle ; les dièses sont utilisés tant que cette estimation n’est pas disponible.
 - La validation sur des interprétations réelles de pop et de rock reste limitée ; utilisez ces estimations comme aide à l’écoute.
 
 ## Oscilloscope

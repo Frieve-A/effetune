@@ -200,6 +200,11 @@ export class PersistentIrPcmCache {
     this.backend = backend;
     this.maxBytes = options.maxBytes ?? DEFAULT_IR_PCM_CACHE_BYTES;
     if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 0) throw new TypeError('Invalid persistent PCM cache limit.');
+    this.indexWriteInterval = options.indexWriteInterval ?? 1;
+    if (!Number.isInteger(this.indexWriteInterval) || this.indexWriteInterval < 1 || this.indexWriteInterval > 128) {
+      throw new TypeError('Invalid persistent PCM index write interval.');
+    }
+    this.pendingIndexWrites = 0;
     this.diagnostic = options.onDiagnostic || (error => console.error('IR PCM cache diagnostic:', error));
     this.cryptoProvider = options.cryptoProvider || globalThis.crypto;
     this.clock = options.clock || (() => Date.now());
@@ -272,7 +277,7 @@ export class PersistentIrPcmCache {
         const decoded = decodePersistentIrPcm(bytes);
         if (decoded.sampleRate !== sampleRate) throw new Error('Persistent PCM cache rate does not match.');
         entry.lastAccess = this.#nextAccess();
-        await this.#writeIndexSafely();
+        await this.#writeIndexSafely(false);
         return decoded;
       } catch (error) {
         this.diagnostic(error);
@@ -301,7 +306,7 @@ export class PersistentIrPcmCache {
       this.index.entries[name] = { byteLength: bytes.byteLength, lastAccess: this.#nextAccess() };
       this.byteLength += bytes.byteLength;
       await this.#evictToLimit(name);
-      if (!await this.#writeIndexSafely()) return false;
+      if (!await this.#writeIndexSafely(false)) return false;
       return this.healthy && Boolean(this.index.entries[name]);
     });
   }
@@ -313,6 +318,12 @@ export class PersistentIrPcmCache {
       await this.#discardEntry(name);
       return true;
     });
+  }
+
+  // Sample-bank preparation checkpoints groups of small pages. Other callers
+  // retain immediate persistence; startup already removes unindexed orphan files.
+  flush() {
+    return this.#serialize(() => this.pendingIndexWrites ? this.#writeIndexSafely() : this.healthy);
   }
 
   deleteAll(irId) {
@@ -385,12 +396,14 @@ export class PersistentIrPcmCache {
     }
   }
 
-  async #writeIndexSafely() {
+  async #writeIndexSafely(force = true) {
     if (!this.healthy) return false;
+    if (!force && ++this.pendingIndexWrites < this.indexWriteInterval) return true;
     try {
       const bytes = textEncoder.encode(JSON.stringify(this.index));
       requireBoundedIrBytes(bytes, IR_LIBRARY_MAX_CACHE_INDEX_BYTES, 'Persistent PCM cache index');
       await this.backend.writeCacheAtomic(PCM_CACHE_INDEX_NAME, bytes);
+      this.pendingIndexWrites = 0;
       return true;
     } catch (error) {
       this.diagnostic(error);
@@ -401,6 +414,7 @@ export class PersistentIrPcmCache {
 
   async #disableAndReset() {
     this.healthy = false;
+    this.pendingIndexWrites = 0;
     const files = await this.backend.listCache().catch(() => []);
     for (const file of files) await this.backend.removeCache(file.name).catch(() => {});
     this.index = emptyPersistentIndex();

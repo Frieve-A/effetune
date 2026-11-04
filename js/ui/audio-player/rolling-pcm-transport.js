@@ -7,6 +7,8 @@ import {
   ROLLING_PCM_LIVE_MEMORY_CATEGORIES,
   ROLLING_PCM_PROTOCOL_VERSION
 } from './rolling-pcm-policy.js';
+import { DSD_RESIDENT_BYTE_CAP } from './dsd-source.js';
+import { createDsdRangeChannel } from './dsd-range-channel.js';
 import {
   createRollingPcmEnvelope,
   RollingPcmCommand,
@@ -25,6 +27,7 @@ import {
 
 const DEFAULT_WORKER_URL = new URL('../../vendor/rolling-pcm-decoder-worker.mjs', import.meta.url);
 const DISPOSE_TIMEOUT_MS = 1000;
+const IMMEDIATE_START_LEAD_SECONDS = 0.02;
 let transportSequence = 0;
 
 export class RollingPcmTransport {
@@ -91,10 +94,13 @@ export class RollingPcmTransport {
     this.pendingSeek = null;
     this.sourceSnapshot = null;
     this.decoderContract = null;
+    this.dsdRangeChannel = null;
+    this.dsdOpenController = null;
     this.decoderEnded = false;
     this.positionFrame = 0;
     this.anchorFrame = 0;
     this.anchorContextTime = 0;
+    this.needsStartAnchor = false;
     this.lastReceivedFrame = 0;
     this.lastSlabId = 0;
     this.lastFillTarget = 0;
@@ -138,7 +144,7 @@ export class RollingPcmTransport {
     if (this.disposed) throw new Error('Rolling PCM transport is disposed');
     if (this.prepared) return this.metadata;
     if (!Number.isSafeInteger(snapshot?.byteLength) || snapshot.byteLength < 0 ||
-        snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP) {
+        (!snapshot.dsd && snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP)) {
       throw codedError('compressed-source-budget');
     }
     const requestedDecoderContract = outputSampleRate !== null || decoderProfile !== null ||
@@ -158,11 +164,11 @@ export class RollingPcmTransport {
     // Only a canonical snapshot that keeps its own compressed bytes alive overlaps with the
     // candidate copy. A path-backed snapshot re-reads the file and transfers it to the worker,
     // so the peak is one copy and charging a second one would reject admissible tracks.
-    const canonicalCompressedBytes = hasResidentCanonicalSource(snapshot) ? snapshot.byteLength : 0;
+    const canonicalCompressedBytes = !snapshot.dsd && hasResidentCanonicalSource(snapshot) ? snapshot.byteLength : 0;
     if (!this.reservationLedger.reserve(this.reservationOwner, this.reservationRole, {
       canonicalIdentity: snapshot.canonicalIdentity ?? snapshot,
       canonicalCompressedBytes,
-      workerCompressedBytes: snapshot.byteLength,
+      workerCompressedBytes: snapshot.dsd ? DSD_RESIDENT_BYTE_CAP : snapshot.byteLength,
       pcmBytes: reservedPcmBytes,
       inFlightBytes: this.profile.slabFrames * this.channelCountHint *
         Float32Array.BYTES_PER_ELEMENT
@@ -172,7 +178,10 @@ export class RollingPcmTransport {
     this.reservationHeld = true;
     let source;
     try {
-      source = sourceOverride === null
+      if (snapshot.dsd) this.dsdOpenController = new AbortController();
+      source = snapshot.dsd
+        ? { kind: 'dsd-range', reader: await snapshot.createRangeReader(this.dsdOpenController.signal) }
+        : sourceOverride === null
         ? await acquireRollingCandidateSource(snapshot, this.sourceReacquirer)
         : takeRollingCandidateSourceOverride(snapshot, sourceOverride);
     } catch (error) {
@@ -180,6 +189,7 @@ export class RollingPcmTransport {
       throw error;
     }
     if (this.disposed || this.disposing) {
+      await source?.reader?.dispose();
       this.releaseReservation();
       throw codedError('transport-disposed');
     }
@@ -192,6 +202,7 @@ export class RollingPcmTransport {
       throw codedError('canonical-source-ineligible');
     }
     this.decoderContract = decoderContract;
+    if (source.kind === 'dsd-range') this.dsdRangeChannel = createDsdRangeChannel(source.reader);
     this.sourceSnapshot = snapshot;
     this.segmentId = String(segmentId || 'current');
     this.generation++;
@@ -218,13 +229,17 @@ export class RollingPcmTransport {
     const ready = this.waitFor(message => message.type === RollingPcmEvent.READY);
     const open = createRollingPcmEnvelope(RollingPcmCommand.OPEN, ids, {
       sourceKind: source.kind,
-      source: source.kind === 'blob' ? source.blob : source.bytes,
+      source: source.kind === 'dsd-range' ? this.dsdRangeChannel.port
+        : source.kind === 'blob' ? source.blob : source.bytes,
+      ...(snapshot.dsd ? { sourceSize: snapshot.byteLength, dsdOutputRate: this.audioContext.sampleRate,
+        playbackSpeed: snapshot.playbackSpeed ?? 1, preservePitch: snapshot.preservePitch !== false } : {}),
       slabFrames: this.profile.slabFrames,
       freePoolPerSizeClass: this.profile.freePoolPerSizeClass,
       ...(decoderContract ?? {})
     });
     try {
-      worker.postMessage(open, source.kind === 'bytes' ? [source.bytes] : []);
+      worker.postMessage(open, source.kind === 'dsd-range' ? [this.dsdRangeChannel.port]
+        : source.kind === 'bytes' ? [source.bytes] : []);
       if (source.reacquired === true &&
           !this.reservationLedger.transferSourceOwnership(
             this.reservationOwner,
@@ -243,7 +258,7 @@ export class RollingPcmTransport {
       await this.dispose();
       throw error;
     }
-    if (!isValidReadyMessage(readyMessage, decoderContract) ||
+    if (!isValidReadyMessage(readyMessage, decoderContract, snapshot.dsd === true) ||
         (decoderContract && readyMessage.sourceByteLength !== snapshot.byteLength)) {
       await this.dispose();
       throw codedError('metadata-invalid');
@@ -254,6 +269,8 @@ export class RollingPcmTransport {
       outputSampleRate: readyMessage.outputSampleRate ?? readyMessage.sampleRate,
       channelCount: readyMessage.channelCount,
       durationSec: readyMessage.durationSec,
+      ...(snapshot.dsd ? { playbackSpeed: readyMessage.playbackSpeed,
+        preservePitch: readyMessage.preservePitch } : {}),
       sourceTotalFrames: readyMessage.sourceTotalFrames ?? readyMessage.totalFrames,
       totalFrames: readyMessage.totalFrames,
       containerMimeType: readyMessage.containerMimeType,
@@ -288,7 +305,7 @@ export class RollingPcmTransport {
       ? startFrame
       : Number.isFinite(startTimeSec)
         ? Math.round(Math.max(0, Math.min(startTimeSec, this.metadata.durationSec)) *
-          this.metadata.sampleRate)
+          this.metadata.sampleRate / (this.metadata.playbackSpeed ?? 1))
         : 0;
     if (!Number.isSafeInteger(initialFrame) || initialFrame < 0 ||
         initialFrame > this.metadata.totalFrames) {
@@ -362,6 +379,7 @@ export class RollingPcmTransport {
     this.positionFrame = frame;
     this.anchorFrame = frame;
     this.anchorContextTime = when;
+    this.needsStartAnchor = when <= this.audioContext.currentTime;
     this.playing = true;
     this.endPublished = false;
     this.scheduleAvailable(!deferRefill);
@@ -389,7 +407,7 @@ export class RollingPcmTransport {
     await this.dispose();
   }
 
-  async seek(frame, { resume = this.playing, shouldResume = null } = {}) {
+  async seek(frame, { resume = this.playing, shouldResume = null, beforeAdoption = null } = {}) {
     if (!this.metadata || this.disposed || this.failed) return false;
     const target = Number.isFinite(frame)
       ? Math.max(0, Math.min(Math.round(frame), this.metadata.totalFrames))
@@ -419,6 +437,14 @@ export class RollingPcmTransport {
           candidate.failed || !candidate.prepared) {
         await candidate.dispose();
         return false;
+      }
+      if (typeof beforeAdoption === 'function') {
+        await beforeAdoption();
+        if (this.pendingSeek?.operationId !== operationId || this.disposed || this.failed ||
+            candidate.failed || !candidate.prepared) {
+          await candidate.dispose();
+          return false;
+        }
       }
       const resumeAfterAdoption = typeof shouldResume === 'function'
         ? shouldResume() === true
@@ -457,7 +483,8 @@ export class RollingPcmTransport {
   }
 
   get currentTime() {
-    return this.metadata ? this.getPositionFrame() / this.metadata.sampleRate : 0;
+    return this.metadata ? Math.min(this.metadata.durationSec,
+      this.getPositionFrame() / this.metadata.sampleRate * (this.metadata.playbackSpeed ?? 1)) : 0;
   }
 
   dispose() {
@@ -469,6 +496,8 @@ export class RollingPcmTransport {
 
   async performDispose() {
     this.disposing = true;
+    this.dsdOpenController?.abort();
+    this.dsdOpenController = null;
     this.seekSequence++;
     const pendingSeekCleanup = this.cancelPendingSeek();
     this.playing = false;
@@ -479,6 +508,8 @@ export class RollingPcmTransport {
     this.rejectWaiters(codedError('transport-disposed'));
     const worker = this.worker;
     this.worker = null;
+    const rangeCleanup = this.dsdRangeChannel?.dispose();
+    this.dsdRangeChannel = null;
     if (worker) {
       let disposedAck = null;
       try {
@@ -502,6 +533,7 @@ export class RollingPcmTransport {
       }
     }
     await pendingSeekCleanup;
+    await rangeCleanup;
     await this.waitForCleanupBarrier();
     this.disconnect();
     this.bus = null;
@@ -790,7 +822,7 @@ export class RollingPcmTransport {
         ? this.positionFrame - record.startFrame
         : 0;
       const audibleStartFrame = record.startFrame + offsetFrames;
-      const when = this.anchorContextTime +
+      let when = this.anchorContextTime +
         (audibleStartFrame - this.anchorFrame) / this.metadata.sampleRate;
       const liveContextTime = this.audioContext.currentTime;
       const hasContinuousCoverage = [...this.scheduled].some(scheduled => {
@@ -819,6 +851,16 @@ export class RollingPcmTransport {
         this.diagnostics.maxLiveSourceNodes = this.diagnostics.liveSourceNodes;
       }
       source.onended = () => this.handleSourceEnded(scheduled);
+      if (this.needsStartAnchor) {
+        // Resolve an immediate start only after preparing the first node. All
+        // slabs must share an anchor the render thread can still meet.
+        this.anchorContextTime = Math.ceil((this.audioContext.currentTime +
+          IMMEDIATE_START_LEAD_SECONDS) * this.metadata.sampleRate / 128) *
+          128 / this.metadata.sampleRate;
+        this.needsStartAnchor = false;
+        when = this.anchorContextTime +
+          (audibleStartFrame - this.anchorFrame) / this.metadata.sampleRate;
+      }
       source.start(when, offsetFrames / this.metadata.sampleRate);
     }
     if (requestAhead) this.requestAhead();
@@ -1061,6 +1103,11 @@ export class RollingPcmTransport {
     this.releaseQueuedBuffers();
     this.rejectWaiters(codedError('seek-generation-replaced'));
 
+    const oldRangeChannel = this.dsdRangeChannel;
+    this.dsdOpenController = candidate.dsdOpenController;
+    candidate.dsdOpenController = null;
+    this.dsdRangeChannel = candidate.dsdRangeChannel;
+    candidate.dsdRangeChannel = null;
     this.worker = candidate.worker;
     candidate.worker = null;
     this.worker.onmessage = event => this.handleWorkerMessage(event.data);
@@ -1118,8 +1165,8 @@ export class RollingPcmTransport {
       }
     };
     const retireOldWorker = () => this.trackCleanup(
-      disposeDetachedWorker(oldWorker, oldIds).finally(() => {
-        if (!this.disposed && !this.failed) {
+      Promise.all([disposeDetachedWorker(oldWorker, oldIds), oldRangeChannel?.dispose()]).finally(() => {
+        if (!this.disposed && !this.disposing && !this.failed) {
           this.diagnostics.liveWorkers = 1;
           this.diagnostics.liveHandlers = 2;
         }
@@ -1254,7 +1301,7 @@ async function acquireRollingCandidateSource(snapshot, sourceReacquirer) {
   return Object.freeze({ kind: 'bytes', bytes, reacquired: true });
 }
 
-function isValidReadyMessage(message, decoderContract = null) {
+function isValidReadyMessage(message, decoderContract = null, dsd = false) {
   if (!message || message.type !== RollingPcmEvent.READY ||
       !Number.isSafeInteger(message.sampleRate) || message.sampleRate <= 0 ||
       !Number.isSafeInteger(message.channelCount) || message.channelCount < 1 ||
@@ -1266,6 +1313,15 @@ function isValidReadyMessage(message, decoderContract = null) {
     return false;
   }
   if (message.codec !== null && typeof message.codec !== 'string') return false;
+  if (dsd) return message.dsd === true && message.codec === 'dsd' &&
+    message.bitsPerSample === 1 && [2822400, 5644800, 11289600].includes(message.sourceSampleRate) &&
+    Number.isSafeInteger(message.sourceTotalFrames) && message.sourceTotalFrames > 0 &&
+    Number.isSafeInteger(message.workerCompressedBytes) && message.workerCompressedBytes >= 0 &&
+    message.workerCompressedBytes <= DSD_RESIDENT_BYTE_CAP &&
+    Number.isFinite(message.playbackSpeed) && message.playbackSpeed >= 0.25 && message.playbackSpeed <= 4 &&
+    typeof message.preservePitch === 'boolean' &&
+    message.totalFrames === Math.ceil(Math.ceil(message.sourceTotalFrames / message.sourceSampleRate *
+      message.sampleRate) / message.playbackSpeed);
   const hasSourceOutputMetadata = message.sourceSampleRate !== undefined ||
     message.outputSampleRate !== undefined || message.sourceTotalFrames !== undefined ||
     message.sourceByteLength !== undefined || message.dataOffset !== undefined ||

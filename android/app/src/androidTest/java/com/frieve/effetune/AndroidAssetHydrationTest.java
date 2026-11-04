@@ -50,7 +50,7 @@ public final class AndroidAssetHydrationTest {
                 }
             } catch (AssertionError error) {
                 throw new AssertionError("Preview target=" + target + " actual=" + evaluate(scenario,
-                    "JSON.stringify({midi:window.__previewPlugin._previewMidi,velocity:window.__previewPlugin._previewVelocity,voices:window.__previewPlugin._activeVoices,ready:window.audioManager.hasNativePluginAsset(window.__previewPlugin,0)})"), error);
+                    "JSON.stringify({midi:window.__previewPlugin._previewMidi,velocity:window.__previewPlugin._previewVelocity,voices:window.__previewPlugin._activeVoices,ready:window.audioManager.hasNativePluginAsset(window.__previewPlugin,0),telemetry:window.dspTelemetryHub.stats,snapshot:window.audioManager.snapshot})"), error);
             } finally { touch(scenario, target, down, MotionEvent.ACTION_UP); }
             AndroidIntegrationRegressionTest.waitFor(scenario, "window.__previewPlugin._previewMidi===-1", 5000);
             AndroidIntegrationRegressionTest.waitFor(scenario, "window.__previewPlugin._activeVoices===0", 5000);

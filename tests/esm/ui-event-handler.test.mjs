@@ -658,13 +658,13 @@ test('initDragAndDrop handles browser and Electron files, presets, music, errors
       target: harness.pipeline,
       dataTransfer: createDataTransfer({
         types: ['Files'],
-        files: [createFile('movie.MP4'), createFile('note.txt'), {}]
+        files: [createFile('movie.MP4'), createFile('score.musicxml'), createFile('legacy.XML'), createFile('packed.mxl'), createFile('note.txt'), {}]
       })
     });
     assert.ok(harness.calls.some(call =>
       call[0] === 'createAudioPlayer' &&
-      call[1].length === 1 &&
-      call[1][0].name === 'movie.MP4'
+      call[1].length === 4 &&
+      call[1].map(file => file.name).join(',') === 'movie.MP4,score.musicxml,legacy.XML,packed.mxl'
     ));
 
     harness.documentRef.dispatch('drop', {

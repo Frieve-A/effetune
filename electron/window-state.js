@@ -9,6 +9,7 @@ const path = require('path');
 const { screen } = require('electron');
 const constants = require('./constants');
 const fileHandlers = require('./file-handlers');
+const { getSettingsPath } = require('./settings-profile.cjs');
 
 const DEFAULT_SIZE = Object.freeze({ width: 1440, height: 900 });
 const MIN_SIZE = Object.freeze({ width: 1024, height: 768 });
@@ -27,7 +28,7 @@ function finite(value) {
 }
 
 function stateFilePath() {
-  return path.join(fileHandlers.getUserDataPath(), 'window-state.json');
+  return path.join(getSettingsPath(fileHandlers.getUserDataPath()), 'window-state.json');
 }
 
 // Area (DIP²) where two rectangles overlap; 0 when they do not intersect.
@@ -172,7 +173,7 @@ function loadWindowState() {
 // (see restoreComplete) so the startup positioning cannot clobber the state.
 function writeWindowState(state) {
   constants.setWindowState(state);
-  const userDataPath = fileHandlers.getUserDataPath();
+  const userDataPath = getSettingsPath(fileHandlers.getUserDataPath());
   if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
   fs.writeFileSync(stateFilePath(), JSON.stringify(state, null, 2));
 }

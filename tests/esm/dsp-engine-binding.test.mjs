@@ -84,6 +84,10 @@ function createFakeInstance(options = {}) {
       calls.push(['instanceReset', ...args]);
       return 0;
     },
+    et_instance_set_midi_channel_mix() { return 0; },
+    et_instance_stream_readiness(_engine, _id, ptr) {
+      new Uint32Array(memory.buffer, ptr, 6).fill(0); return 0;
+    },
     et_instance_stream_boundary(...args) {
       calls.push(['instanceStreamBoundary', ...args]);
       return 0;
@@ -124,6 +128,7 @@ function createFakeInstance(options = {}) {
     et_instance_asset_commit(...args) {
       calls.push(['assetCommit', ...args]);
       if (options.growDuringAssetCommit) memory.grow(1);
+      if (options.assetCommitThrows) throw new Error('commit failed');
       return options.assetCommitStatus ?? 0;
     },
     et_instance_asset_abort(...args) {
@@ -197,6 +202,59 @@ function createFakeInstance(options = {}) {
   return { instance: { exports }, exports, memory, calls };
 }
 
+test('SFZ page transport preserves uint64 identities and allocates only at configuration', () => {
+  const fake = createFakeInstance({ memory: new WebAssembly.Memory({ initial: 8, maximum: 8 }) });
+  const exports = fake.instance.exports, generation = 2 ** 32 + 7, pageIndex = 2 ** 32 + 19;
+  let configured = false, published, forecast;
+  exports.et_instance_set_midi_events = () => 0;
+  exports.et_sfz_stream_capability = () => 1;
+  exports.et_instance_stream_configure = (engine, id, low, high) => {
+    assert.deepEqual([engine, id, low, high], [7, 11, 7, 1]); configured = true; return 0;
+  };
+  exports.et_instance_stream_take_requests = (engine, id, ptr, capacity, countPtr) => {
+    assert.equal(configured, true); assert.equal(capacity, 4096);
+    new Uint32Array(exports.memory.buffer, ptr, 6).set([7, 1, 19, 1, 3, 0]);
+    new DataView(exports.memory.buffer).setUint32(countPtr, 1, true); return 0;
+  };
+  exports.et_instance_stream_publish = (...args) => {
+    published = args; assert.deepEqual([...new Float32Array(exports.memory.buffer, args[7], 4)], [.25, -.25, .5, -.5]); return 0;
+  };
+  exports.et_instance_stream_prefetch = (...args) => {
+    forecast = args;
+    assert.deepEqual([...new Uint32Array(exports.memory.buffer, args[2], 6)], [0, 0x643c90, 0, 0, 7, 1]);
+    return 0;
+  };
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine(); binding.prepare(48000, 2, 128, 4096);
+  assert.equal(binding.hasSfzSampleStreaming(), true);
+  assert.equal(binding.configureSfzSampleStream(11, generation), 0);
+  const allocations = fake.calls.filter(call => call[0] === 'malloc').length;
+  assert.equal(binding.prefetchSfzSampleStream(11, [{ status: 0x90, data1: 60, data2: 100, renderFrame: 2 ** 32 + 7 }], 2, 12000, 1), 0);
+  assert.deepEqual([forecast[0], forecast[1], ...forecast.slice(3)], [7, 11, 1, 2, 12000, 1]);
+  exports.et_instance_stream_prefetch = (...args) => {
+    assert.deepEqual([...new Uint32Array(exports.memory.buffer, args[2], 2)], [48000, 0x643c90]);
+    assert.deepEqual(args.slice(3), [1, 0, 72000, 5]); return 0;
+  };
+  assert.equal(binding.prefetchSfzSampleStream(11, [{ status: 0x90, data1: 60, data2: 100, offsetFrames: 48000 }], 0, 72000, 5), 0);
+  assert.throws(() => binding.instanceSetMidiEvents(11, [{ status: 0x90, data1: 60, data2: 100, offsetFrames: 48000 }], 2), DspBindingError);
+  exports.et_instance_stream_readiness = (_engine, _id, ptr) => {
+    new Uint32Array(exports.memory.buffer, ptr, 6).set([0, 3, 72000, 0, 42, 4]); return 0;
+  };
+  assert.deepEqual(binding.instanceStreamReadiness(11), { generation: 0, scope: 3, admittedFrames: 72000,
+    readyAheadFrames: 0, plannedPages: 42, pendingPages: 4 });
+  assert.throws(() => binding.prefetchSfzSampleStream(11, new Array(257), 2, 12000), /capacity/);
+  assert.deepEqual(binding.takeSfzSampleRequests(11), [{ generation, pageIndex, sample: 3 }]);
+  assert.equal(binding.publishSfzSamplePage(11, { generation, pageIndex, sample: 3, frames: 2, channels: 2,
+    pcm: new Float32Array([.25, -.25, .5, -.5]), resident: true }), 0);
+  assert.deepEqual(published.slice(0, 7), [7, 11, 7, 1, 3, 19, 1]);
+  assert.deepEqual(published.slice(8), [2, 2, 1]);
+  assert.equal(fake.calls.filter(call => call[0] === 'malloc').length, allocations);
+  const ptr = binding._sfzStreamPtr;
+  binding.destroyEngine(); assert.ok(fake.calls.some(call => call[0] === 'free' && call[1] === ptr));
+  delete exports.et_sfz_stream_capability;
+  assert.equal(binding.hasSfzSampleStreaming(), false);
+});
+
 test('binding rejects missing ABI exports and invalid instances', () => {
   assert.throws(() => new DspEngineBinding(null), /exports are unavailable/);
   assert.throws(() => new DspEngineBinding({ exports: {} }), /Missing WASM export: memory/);
@@ -234,6 +292,60 @@ test('instance spans preserve planar channels and sample times without touching 
       assert.equal(audio[channel * 128 + frame], channel * 1000 + frame + (frame >= 18 ? 0.5 : 0));
     }
   }
+  binding.close();
+});
+
+test('timed MIDI events and clocks preserve frame values beyond32bits and expose fresh pending state', () => {
+  const fake = createFakeInstance({ memory: new WebAssembly.Memory({ initial: 8, maximum: 8 }) });
+  let packed;
+  let clock;
+  fake.exports.et_instance_set_midi_events = (_engine, _id, ptr, count) => {
+    packed = Array.from(new Uint32Array(fake.memory.buffer, ptr, count * 6));
+    return 0;
+  };
+  fake.exports.et_instance_set_midi_clock = (...args) => { clock = args; return 0; };
+  fake.exports.et_instance_midi_state = () => 6;
+  fake.exports.et_instance_midi_clock_low = () => 3;
+  fake.exports.et_instance_midi_clock_high = () => 2;
+  fake.exports.et_instance_midi_generation = () => 4;
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 65536);
+  assert.equal(binding.instanceSetMidiEvents(11, [{ offsetFrames: 7, status: 0x90, data1: 60, data2: 100,
+    noteId: 9, flags: 0, renderFrame: 0x200000003 }], 4), 0);
+  assert.deepEqual(packed, [7, 0x643c90, 9, 0, 3, 2]);
+  assert.equal(binding.instanceSetMidiClock(11, 0x200000003, 4, 1), 0);
+  assert.deepEqual(clock, [7, 11, 3, 2, 4, 1]);
+  assert.equal(binding.instanceMidiState(11), 6);
+  assert.deepEqual(binding.instanceMidiClock(11), { frame: 0x200000003, generation: 4 });
+  assert.throws(() => binding.instanceSetMidiClock(11, -1, 4), /render clock/);
+  assert.throws(() => binding.instanceSetMidiEvents(11, [{ offsetFrames: 0, status: 0x90,
+    data1: 60, data2: 100, renderFrame: Number.MAX_SAFE_INTEGER + 1 }], 4), /event contract/);
+  binding.close();
+});
+
+test('MIDI checkpoint control copies retain independent bytes and propagate stale restore failure', () => {
+  const fake = createFakeInstance({ memory: new WebAssembly.Memory({ initial: 8, maximum: 8 }) });
+  fake.exports.et_instance_midi_checkpoint_size = () => 4;
+  fake.exports.et_instance_write_midi_checkpoint = (_engine, _id, ptr) => {
+    new Uint8Array(fake.memory.buffer, ptr, 4).set([1, 2, 3, 4]); return 0;
+  };
+  let restored;
+  fake.exports.et_instance_read_midi_checkpoint = (_engine, _id, ptr, size) => {
+    restored = [...new Uint8Array(fake.memory.buffer, ptr, size)]; return -3;
+  };
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 65536);
+  const snapshot = binding.instanceWriteMidiCheckpoint(11);
+  assert.deepEqual([...snapshot], [1, 2, 3, 4]);
+  assert.equal(binding.instanceReadMidiCheckpoint(11, snapshot), -3);
+  assert.deepEqual(restored, [1, 2, 3, 4]);
+  assert.equal(fake.calls.filter(call => call[0] === 'free').length, 2);
+  fake.exports.et_instance_midi_checkpoint_size = () => 0;
+  assert.throws(() => binding.instanceWriteMidiCheckpoint(11), /checkpoint size/);
+  fake.exports.et_instance_midi_checkpoint_size = () => 32 * 1024 * 1024 + 1;
+  assert.throws(() => binding.instanceWriteMidiCheckpoint(11), /checkpoint size/);
   binding.close();
 });
 
@@ -498,7 +610,7 @@ test('binding distinguishes preparation growth from unexpected audio-time growth
   assert.equal(warnings.length, 1);
 });
 
-test('binding permits asset memory growth only during begin', () => {
+test('binding permits asset preparation memory growth during begin and CONTROL commit', () => {
   const beginGrowth = createFakeInstance({ growDuringAssetBegin: true });
   const beginBinding = new DspEngineBinding(beginGrowth.instance);
   beginBinding.createEngine();
@@ -522,8 +634,18 @@ test('binding permits asset memory growth only during begin', () => {
   assert.equal(commitBinding.instanceSetAsset(11, 0, payload, {
     headBlock: 128, rateDivider: 1
   }), 0);
-  assert.equal(commitBinding.checkMemoryBuffer(), true);
-  assert.equal(commitBinding.memoryGrowthViolation, true);
+  assert.equal(commitBinding.checkMemoryBuffer(), false);
+  assert.equal(commitBinding.memoryGrowthViolation, false);
+  assert.equal(commitBinding.getArenaViews().buffer, commitGrowth.memory.buffer);
+
+  const failed = createFakeInstance({ growDuringAssetCommit: true, assetCommitThrows: true });
+  const failedBinding = new DspEngineBinding(failed.instance);
+  failedBinding.createEngine(); failedBinding.prepare(48000, 2, 128, 64);
+  assert.throws(() => failedBinding.instanceAssetCommit(11, 0, 64, 1), /commit failed/);
+  assert.equal(failedBinding.getArenaViews().buffer, failed.memory.buffer);
+  assert.equal(failedBinding.memoryGrowthViolation, false);
+  failed.memory.grow(1);
+  assert.equal(failedBinding.checkMemoryBuffer(), true, 'the CONTROL guard is restored after a failed commit');
 });
 
 test('pipeline configuration after asset growth reuses scratch memory without growing the heap', () => {
@@ -631,6 +753,21 @@ test('WASI imports report debug writes and surface proc_exit without host depend
   assert.equal(memoryless.wasi_snapshot_preview1.fd_write(2, 0, 1, 0), 0);
 });
 
+test('WASI realtime profiling clock writes exact little-endian nanoseconds and rejects unsupported clocks or pointers', () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const clock = createDspImports({ getMemory: () => memory }).wasi_snapshot_preview1.clock_time_get;
+  const before = BigInt(Date.now()) * 1000000n;
+  assert.equal(clock(0, 1n, 8), 0);
+  const after = BigInt(Date.now()) * 1000000n;
+  const actual = new DataView(memory.buffer).getBigUint64(8, true);
+  assert.ok(actual >= before && actual <= after);
+  assert.equal(actual % 1000000n, 0n);
+  assert.equal(clock(1, 1n, 8), 28);
+  assert.equal(clock(0, 1n, memory.buffer.byteLength - 7), 21);
+  assert.equal(clock(0, 1n, -1), 21);
+  assert.equal(createDspImports().wasi_snapshot_preview1.clock_time_get(0, 1n, 0), 21);
+});
+
 test('instantiateDspBinding supplies imports and returns a validated binding', async () => {
   const fake = createFakeInstance();
   let receivedImports = null;
@@ -649,4 +786,37 @@ test('instantiateDspBinding supplies imports and returns a validated binding', a
     instantiateDspBinding(new ArrayBuffer(0), { webAssembly: null }),
     /WebAssembly\.instantiate is unavailable/
   );
+});
+
+
+test('offline Graph binding preserves 64-bit tokens, NEED_SAMPLE and grown preparation memory', () => {
+  const fake = createFakeInstance();
+  const exports = fake.instance.exports;
+  exports.et_graph_capabilities = () => 1;
+  for (const name of ['configure', 'latency', 'process', 'snapshot_size', 'snapshot_copy',
+    'read_diagnostic', 'set_instance_params', 'reset']) exports[`et_graph_${name}`] = () => 0;
+  exports.et_graph_configure_offline = (_engine, ptr, size) => {
+    assert.deepEqual([...new Uint8Array(exports.memory.buffer, ptr, size)], [1, 2, 3]);
+    exports.memory.grow(1);
+    return 0;
+  };
+  exports.et_graph_prepare_offline = (_engine, low, high) => {
+    exports.memory.grow(1);
+    new DataView(exports.memory.buffer).setUint32(low, 0xfedcba98, true);
+    new DataView(exports.memory.buffer).setUint32(high, 0x87654321, true);
+    return 0;
+  };
+  exports.et_graph_process_offline = (...args) => {
+    assert.deepEqual(args.slice(1), [2, 127, 0.25, 0xfedcba98, 0x87654321]);
+    return 1;
+  };
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine(); binding.prepare(48000, 2, 128, 64);
+  assert.equal(binding.hasOfflineGraph(), true);
+  assert.equal(binding.graphConfigureOffline(Uint8Array.of(1, 2, 3)), 0);
+  const generation = binding.graphPrepareOffline();
+  assert.deepEqual(generation, { low: 0xfedcba98, high: 0x87654321 });
+  assert.equal(binding.graphProcessOffline(2, 127, 0.25, generation), 1);
+  assert.equal(binding.getArenaViews().combined.buffer, exports.memory.buffer);
+  binding.close();
 });

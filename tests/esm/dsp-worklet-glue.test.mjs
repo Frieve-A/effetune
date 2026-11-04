@@ -13,10 +13,366 @@ import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { analyzeTemporalCapabilities } from '../../js/audio/power-topology.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { decodeTelemetryPacket } from '../../dsp/bindings/js/src/telemetry.js';
+import { parseSfz } from '../../js/sfz/parser.js';
+import { packSfzAsset } from '../../js/sfz/asset.js';
+import { materializeAcceptanceAsset } from '../helpers/sfz-native-acceptance.mjs';
+import { MidiFrameScheduler } from '../../js/midi/smf-scheduler.js';
+import { compileSfzScript } from '../../js/sfz/script-compiler.js';
+import { midiPlaybackMethods } from '../../js/ui/audio-player/midi-playback.js';
+import { audioManagerSfzRuntimeMethods } from '../../js/audio/audio-manager-sfz-runtime.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
 const DENORMAL_NOISE_AMPLITUDE = 1e-19;
+
+test('actual Player owner pauses a pending script, resumes a new generation and drains its callback after EOF', async t => {
+  const parsed = await parseSfz({ selectedPath: 'wait.sfz', readText: async () =>
+    '<region> sample=tone.wav key=60 amp_veltrack=0 ampeg_release=0.001', onDiagnostic: null });
+  const asset = packSfzAsset(parsed.regions, new Map([['tone.wav', { sampleRate: 48000,
+    channels: [new Float32Array(48000).fill(.25)] }]]), { script: compileSfzScript(`on note
+      ignore_event($EVENT_ID)
+      wait(200ms)
+      play_note(60, 127, -1, 100ms)
+    end on`) });
+  const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+  for (const variant of ['', '.simd']) await t.test(variant || 'baseline', async () => {
+    const binding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot,
+      `plugins/dsp/effetune-dsp${variant}.wasm`)));
+    const h = await createWorkletHarness({ binding }), p = h.processor;
+    const listeners = new Set(), context = { currentTime: 0, sampleRate: 48000 };
+    const node = { context, port: { addEventListener(_type, listener) { listeners.add(listener); },
+      removeEventListener(_type, listener) { listeners.delete(listener); }, start() {},
+      postMessage(message) { p.handlePortMessage(message); } } };
+    class SoundFontPlayerPlugin { constructor() { this.id = 7; this.sf = 'bank'; } getParameters() { return { mc: 0 }; } }
+    const plugin = new SoundFontPlayerPlugin();
+    const manager = Object.assign({}, audioManagerSfzRuntimeMethods, { workletNode: node, audioContext: context,
+      _audioGraphGeneration: 0, _getActiveDspWorklets: () => [node], _isActiveDspWorklet: target => target === node,
+      _wasmAssetMembershipByNode: new Map([[node, new Map([[7, plugin]])]]) });
+    const state = { isPlaying: true, playbackMode: 'midi', playbackSpeed: 1 };
+    let ended = 0;
+    const owner = Object.assign({}, midiPlaybackMethods, { audioManager: manager, audioPlayer: { audioContext: context },
+      midiTimeline: { duration: .1, events: [{ seconds: 0, status: 0x90, data1: 60, data2: 127 },
+        { seconds: .005, status: 0x80, data1: 60, data2: 0 }] }, midiHasInstruments: true,
+      playerVolume: 100, getCurrentState: () => state, updateState(patch) { Object.assign(state, patch); },
+      clearBufferMonitoring() {}, maintainSilentSource() {}, handleTrackEnded() { ended++; void this.stopMidi(); } });
+    const input = [new Float32Array(128), new Float32Array(128)], output = [new Float32Array(128), new Float32Array(128)];
+    let frame = 0;
+    const deliver = () => {
+      while (h.posts.length) {
+        const { message } = h.posts.shift(); manager._handleSfzRuntimeMessage(node, message);
+        for (const listener of listeners) listener({ data: message });
+      }
+    };
+    const render = (messages = true) => {
+      h.setContextFrame(frame); context.currentTime = frame / 48000;
+      p.process([input], [output], {}); frame += 128; context.currentTime = frame / 48000;
+      if (messages) deliver();
+      return output[0].some(value => Math.abs(value) > 1e-5);
+    };
+    try {
+      const parameters = { enabled: true, sf: 'bank', mc: 0, pl: 64, og: 0 };
+      await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SoundFontPlayerPlugin', parameters,
+        wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+      await h.send({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
+      const preparedAsset = await materializeAcceptanceAsset(binding, asset);
+      await h.send({ type: 'dspModule', module: {} });
+      await h.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...preparedAsset });
+      for (let block = 0; block < 4; block++) render();
+      owner.postMidiTransport(true, 0);
+      for (let block = 0; block < 14; block++) render();
+      p.updateMidiPendingDemand(); assert.equal(p.midiPendingDemand, true);
+      const paused = owner.pauseMidi();
+      for (let block = 0; block < 24; block++) render(false);
+      const frozen = binding.instanceMidiClock(p.wasmInstances.get(7).id);
+      for (let block = 0; block < 80; block++) assert.equal(render(false), false);
+      assert.equal(binding.instanceMidiClock(p.wasmInstances.get(7).id).frame, frozen.frame);
+      deliver(); await paused;
+      assert.equal(state.isPaused, true); assert.equal(owner.midiCheckpointAvailable, true);
+      assert.ok(owner.midiCheckpointPosition < .1, 'delayed main delivery keeps the worklet frozen song position');
+      const checkpointGeneration = owner.midiGeneration;
+      const ready = owner.prepareMidiTransport(owner.midiPosition);
+      for (let block = 0; owner.midiPreparation && block < 8; block++) {
+        await Promise.resolve();
+        render();
+      }
+      assert.equal(owner.midiPreparation, null);
+      assert.equal(await ready, true); owner.startPreparedMidiTransport();
+      assert.ok(owner.midiGeneration > checkpointGeneration);
+      let audible = false;
+      for (let block = 0; block < 100; block++) {
+        if (render()) {
+          if (!audible) {
+            const clock = binding.instanceMidiClock(p.wasmInstances.get(7).id).frame;
+            assert.ok(clock >= 9600 && clock <= 9856, 'the original 200ms deadline survives pause instead of restarting the wait');
+          }
+          audible = true; assert.equal(ended, 1, 'wait callback must remain alive after natural EOF');
+        }
+      }
+      assert.equal(audible, true); assert.equal(ended, 1);
+      owner.midiNaturalTail = false;
+      owner.postMidiTransport(true, 0);
+      for (let block = 0; block < 14; block++) render();
+      assert.ok(binding.instanceMidiState(p.wasmInstances.get(7).id) & 2, 'the next song has a fresh pending callback');
+      await owner.stopMidi();
+      for (let block = 0; block < 120; block++) assert.equal(render(), false, 'explicit Stop cancels the callback before its deadline');
+      assert.equal(binding.instanceMidiState(p.wasmInstances.get(7).id) & 23, 0, 'explicit Stop cancels future script work');
+    } finally { owner.midiCheckpointRequest?.finish(false); owner.midiPreparation?.finish(false); p.disableDspEngine(); }
+  });
+});
+
+test('actual SFZ Note checkpoint preserves pending init deadlines and completed globals through ordinary power reset', async t => {
+  const parsed = await parseSfz({ selectedPath: 'pending.sfz', readText: async () =>
+    '<region> sample=tone.wav key=60 amp_veltrack=0 ampeg_release=0.001', onDiagnostic: null });
+  const script = compileSfzScript(`on init
+    declare $started := 1
+    wait(20ms)
+    if ($started = 1)
+      play_note(60, 127, -1, 10ms)
+      $started := 2
+    end if
+  end on`);
+  const asset = packSfzAsset(parsed.regions, new Map([['tone.wav', { sampleRate: 48000,
+    channels: [new Float32Array(48000).fill(.25)] }]]), { script });
+  const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+  for (const variant of ['', '.simd']) await t.test(variant || 'baseline', async () => {
+    const binding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot,
+      `plugins/dsp/effetune-dsp${variant}.wasm`)));
+    const h = await createWorkletHarness({ binding }), p = h.processor;
+    const input = [new Float32Array(128), new Float32Array(128)];
+    const output = [new Float32Array(128), new Float32Array(128)];
+    let frame = 0;
+    const render = () => {
+      h.setContextFrame(frame); p.process([input], [output], {}); frame += 128;
+      return output[0].some(value => Math.abs(value) > 1e-5);
+    };
+    try {
+      const parameters = { enabled: true, sf: 'bank', og: 0, pl: 64 };
+      await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SFZNotePlayerPlugin',
+        parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+      await h.send({ type: 'dspEnableTypes', types: ['SFZNotePlayerPlugin'] });
+      const preparedAsset = await materializeAcceptanceAsset(binding, asset, { playerKind: 'SFZNotePlayerPlugin' });
+      await h.send({ type: 'dspModule', module: {} });
+      await h.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...preparedAsset });
+      for (let block = 0; block < 4; block++) assert.equal(render(), false, 'bank preparation must not run init');
+      const preparedMemory = binding.memory.buffer;
+      await h.send({ type: 'sfzStartRuntime', pluginId: 7, token: 0, requestId: 1 });
+      assert.equal(h.posts.findLast(post => post.message.type === 'sfzRuntimeStarted').message.ok, true);
+      assert.equal(binding.memory.buffer === preparedMemory, true, 'starting a prepared Note VM cannot grow realtime memory');
+      for (let block = 0; block < 4; block++) assert.equal(render(), false);
+      p.updateMidiPendingDemand();
+      assert.equal(p.sfzPendingDemand, true, 'the real native timer blocks power demotion without MIDI playing');
+      await h.send({ type: 'sfzCaptureCheckpoints', requestId: 2, reason: 'graph' });
+      const checkpoint = h.posts.findLast(post => post.message.type === 'sfzCheckpoints').message;
+      assert.equal(checkpoint.ok, true); assert.ok(checkpoint.checkpoints[0].nativeState & 2);
+      assert.equal(binding.memoryGrowthViolation, false, 'only the explicit control-stage allocation may grow memory');
+      const migratedBinding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot,
+        `plugins/dsp/effetune-dsp${variant}.wasm`)));
+      const migrated = await createWorkletHarness({ binding: migratedBinding, sampleRate: 96000 });
+      try {
+        await migrated.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SFZNotePlayerPlugin',
+          parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+        await migrated.send({ type: 'dspEnableTypes', types: ['SFZNotePlayerPlugin'] });
+        const migratedAsset = await materializeAcceptanceAsset(migratedBinding, asset,
+          { playerKind: 'SFZNotePlayerPlugin', sampleRate: 96000 });
+        await migrated.send({ type: 'dspModule', module: {} });
+        await migrated.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...migratedAsset });
+        const migratedId = migrated.processor.wasmInstances.get(7).id;
+        for (let block = 0; (migratedBinding.instanceAssetState(migratedId, 0) & 255) !== 3 && block < 32; block++) {
+          migrated.setContextFrame(block * 128); migrated.processor.process([input], [output], {});
+        }
+        assert.equal(migratedBinding.instanceAssetState(migratedId, 0) & 255, 3);
+        await migrated.send({ type: 'sfzStartRuntime', pluginId: 7, token: 0, requestId: 4, deferStart: true,
+          checkpoint: { ...checkpoint.checkpoints[0], plannedMigration: true, sameContext: false } });
+        const started = migrated.posts.findLast(post => post.message.type === 'sfzRuntimeStarted').message;
+        assert.equal(started.ok, true);
+        assert.equal(started.checkpoints[0].sampleRate, 96000);
+        assert.equal(started.checkpoints[0].clockFrame, checkpoint.checkpoints[0].clockFrame * 2);
+        const initialClock = migratedBinding.instanceMidiClock(migratedId).frame;
+        for (let block = 0; block < 4; block++) {
+          migrated.setContextFrame(block * 128);
+          migrated.processor.process([input], [output], {});
+          assert.ok(output[0].every(value => Math.abs(value) < 1e-5), 'deferred new graph cannot emit script audio');
+        }
+        assert.equal(migratedBinding.instanceMidiClock(migratedId).frame, initialClock);
+        await migrated.send({ type: 'sfzResumeRuntime' });
+        let migratedAudible = false;
+        for (let block = 4; block < 44; block++) {
+          migrated.setContextFrame(block * 128); migrated.processor.process([input], [output], {});
+          migratedAudible = output[0].some(value => Math.abs(value) > 1e-5) || migratedAudible;
+        }
+        assert.equal(migratedAudible, true, 'native rate-adapted pending timer survives the actual new-node restore handshake');
+      } finally { migrated.processor.disableDspEngine(); }
+      const clock = binding.instanceMidiClock(p.wasmInstances.get(7).id);
+      for (let block = 0; block < 4; block++) assert.equal(render(), false);
+      assert.equal(binding.instanceMidiClock(p.wasmInstances.get(7).id).frame, clock.frame, 'frozen render cannot spend a timer');
+      await h.send({ type: 'sfzResumeRuntime' });
+      let audible = false;
+      for (let block = 0; block < 40; block++) audible = render() || audible;
+      assert.equal(audible, true, 'restored init finishes and produces the intended note');
+      p.updateMidiPendingDemand(); assert.equal(p.sfzPendingDemand, false);
+      await h.send({ type: 'sfzCaptureCheckpoints', requestId: 3, reason: 'power' });
+      assert.equal(h.posts.findLast(post => post.message.type === 'sfzCheckpoints').message.ok, true);
+      await h.send({ type: 'sfzResumeRuntime' });
+      for (let block = 0; block < 32; block++) assert.equal(render(), false, 'ordinary canonical reset cannot rerun completed init');
+    } finally { p.disableDspEngine(); }
+  });
+});
+
+test('SFZ native pending demand includes live Note Player and excludes paused, disabled and removed ownership', async () => {
+  const h = await createWorkletHarness();
+  const p = h.processor;
+  p.dspLive = true;
+  p.plugins = [{ id: 1, type: 'SoundFontPlayerPlugin', enabled: true },
+    { id: 2, type: 'SFZNotePlayerPlugin', enabled: true }];
+  p.wasmInstances.set(1, { id: 11, type: 'SoundFontPlayerPlugin' });
+  p.wasmInstances.set(2, { id: 12, type: 'SFZNotePlayerPlugin' });
+  const player = p.midiScheduler.register(1, 11);
+  player.enabled = true;
+  player.paused = true;
+  p.dspBinding = { instanceMidiState: () => 2 };
+  p.updateMidiPendingDemand();
+  assert.equal(p.midiPendingDemand, false, 'a captured paused Player timer permits normal idle');
+  assert.equal(p.sfzPendingDemand, true, 'Note Player timers use their independent live clock');
+  p.wasmInstances.get(2).sfzRuntimeFrozen = true;
+  p.updateMidiPendingDemand();
+  assert.equal(p.sfzPendingDemand, false);
+  p.wasmInstances.delete(2);
+  p.updateMidiPendingDemand();
+  assert.equal(p.sfzPendingDemand, false);
+  player.paused = false;
+  player.draining = true;
+  p.updateMidiPendingDemand();
+  assert.equal(p.midiPendingDemand, true, 'natural EOF timers keep their current generation processing');
+  p.masterBypass = true;
+  p.updateMidiPendingDemand();
+  assert.equal(p.midiPendingDemand, false);
+});
+
+test('shared SFZ checkpoint helpers capture authoritative native clocks and validate the target before restoring', async () => {
+  const h = await createWorkletHarness();
+  const p = h.processor, events = [];
+  const plugin = { id: 7, type: 'SFZNotePlayerPlugin', parameters: { sf: 'bank' } };
+  const entry = { id: 11, type: plugin.type };
+  p.plugins = [plugin];
+  p.dspAssetCache.set(7, new Map([[0, { operationRevision: 5 }]]));
+  p.dspBinding = {
+    instanceAssetState: () => 3,
+    instanceMidiClock: () => ({ frame: 12345, generation: 3 }),
+    instanceSetMidiEvents(id, _messages, generation, flags) { events.push([id, generation, flags]); return 0; },
+    instanceMidiState: () => 2,
+    instanceWriteMidiCheckpoint: () => Uint8Array.of(1, 2, 3),
+    instanceReadMidiCheckpoint(id) { events.push(['read', id]); return 0; }
+  };
+  processBlock(p);
+  h.setContextFrame(9876);
+  const record = p.captureSfzRuntimeCheckpoint(plugin, entry, { pause: true });
+  assert.deepEqual(events, [[11, 3, 16]]);
+  assert.equal(record.clockFrame, 12345);
+  assert.equal(record.generation, 3);
+  assert.equal(record.captureFrame, 128);
+  assert.equal(record.type, 'SFZNotePlayerPlugin');
+  assert.equal(p.restoreSfzRuntimeCheckpoint(record, entry), true);
+  assert.throws(() => p.restoreSfzRuntimeCheckpoint(record, { ...entry, id: 22 }), /identity changed/);
+  assert.equal(p.restoreSfzRuntimeCheckpoint({ ...record, plannedMigration: true }, { ...entry, id: 22 }), true);
+  plugin.parameters.sf = 'new-bank';
+  assert.throws(() => p.restoreSfzRuntimeCheckpoint({ ...record, plannedMigration: true }, entry), /identity changed/);
+  plugin.type = entry.type = 'SoundFontPlayerPlugin';
+  plugin.parameters.mc = 1.2;
+  const playerRecord = p.captureSfzRuntimeCheckpoint(plugin, entry);
+  assert.equal(playerRecord.channel, 1, 'a new graph capture uses the effective parameter before scheduler registration');
+  assert.equal(p.restoreSfzRuntimeCheckpoint(playerRecord, entry), true);
+});
+
+test('automatic SFZ preservation runs in a control task, cancels stale input proof and ages only same-context idle frames', async () => {
+  const h = await createWorkletHarness(), p = h.processor;
+  const plugin = { id: 7, type: 'SFZNotePlayerPlugin', enabled: true, parameters: { sf: 'bank' } };
+  const entry = { id: 11, type: plugin.type };
+  p.plugins = [plugin]; p.wasmInstances.set(7, entry); p.dspLive = true;
+  p.dspAssetCache.set(7, new Map([[0, { operationRevision: 5 }]]));
+  let frame = 1000, generation = 3, value = 77, pending = 0, writes = 0, resets = 0;
+  let savedFrame, savedGeneration;
+  p.dspBinding = {
+    instanceAssetState: () => 3,
+    instanceMidiClock: () => ({ frame, generation }), instanceMidiState: () => pending,
+    instanceSetMidiEvents(_id, events, gen) { generation = gen; if (events.length) frame = events[0].renderFrame; return 0; },
+    instanceSetMidiClock(_id, target) { frame = target; return 0; },
+    instanceWriteMidiCheckpoint() { writes++; savedFrame = frame; savedGeneration = generation; return Uint8Array.of(value); },
+    resetInstance() { resets++; value = 0; return 0; },
+    instanceReadMidiCheckpoint(_id, bytes) { value = bytes[0]; frame = savedFrame; generation = savedGeneration; return 0; }
+  };
+  Object.assign(p.powerPolicy, { temporalCapabilities: [{ pluginId: 7, capability: 'reset-on-resume',
+    descriptor: { primitive: 'canonical-reset' } }], commandId: 9, skipEpoch: 4 });
+  p.powerPolicy.arm.state = 'armed';
+  p.sfzProcessEndFrame = 10000;
+  assert.equal(p._prepareAutomaticMonitoringState(), 'pending');
+  assert.equal(writes, 0, 'the render-thread preparation does not serialize checkpoint bytes');
+  let proof = h.posts.find(post => post.message.type === 'sfzCheckpointNeeded').message.proof;
+  p.sfzPowerActivityEpoch = 1;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 1, reason: 'monitoring', proof });
+  assert.equal(writes, 0, 'new input invalidates the pending snapshot proof');
+  p.cancelSfzPowerCheckpoint();
+  p._prepareAutomaticMonitoringState();
+  proof = h.posts.filter(post => post.message.type === 'sfzCheckpointNeeded').at(-1).message.proof;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 2, reason: 'monitoring', proof });
+  assert.equal(writes, 1); assert.equal(resets, 1); assert.equal(value, 77);
+  assert.equal(p._prepareAutomaticMonitoringState(), true);
+  assert.equal(resets, 1, 'power preparation preserves the restored VM rather than resetting it again');
+  p.cancelSfzPowerCheckpoint();
+  p.resumeSfzRuntimesForRender(12000);
+  assert.equal(frame, 3000); assert.equal(value, 77);
+  p.sfzProcessEndFrame = 20000;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 3, reason: 'power' });
+  p.requestSfzRuntimeResume();
+  p.resumeSfzRuntimesForRender(20000);
+  assert.equal(frame, 3000, 'a suspended context contributes no additional audio frames');
+  p.sfzProcessEndFrame = 30000;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 4, reason: 'power' });
+  p.sfzProcessEndFrame = 40000;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 5, reason: 'power' });
+  assert.equal(frame, 13000, 'a Monitoring-to-Suspended recapture retains the earlier same-context frame gap');
+  p.requestSfzRuntimeResume();
+  p.resumeSfzRuntimesForRender(40000);
+  assert.equal(frame, 13000);
+  pending = 2;
+  const before = writes;
+  await h.send({ type: 'sfzCaptureCheckpoints', requestId: 6, reason: 'power' });
+  assert.equal(writes, before, 'pending Note timers prevent power demotion');
+});
+
+test('the first live input block resumes a checkpointed Note Player before DSP note detection', async () => {
+  const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+  let paused = true, detected = 0;
+  const binding = createBinding({ capabilities: { abiVersion: 1, simd: false, kernels: [
+    { name: 'SFZNotePlayerPlugin', hash: packer.hash, byteCapacity: 0, kernelIndex: 0 }
+  ] }, instanceProcessImpl(_id, view, channels, frames) {
+    assert.equal(paused, false, 'the preserved VM must be running before the incoming note is processed');
+    if (view.subarray(0, frames).some(value => Math.abs(value) > .01)) detected++;
+    for (let index = 0; index < channels * frames; index++) view[index] = .125;
+  } });
+  binding.instanceMidiState = () => 0;
+  binding.instanceSetMidiClock = () => 0;
+  binding.instanceSetMidiEvents = (_id, events) => {
+    if (events.some(event => event.flags === 32)) paused = false;
+    return 0;
+  };
+  const h = await createWorkletHarness({ binding }), p = h.processor;
+  p.midiScheduler = new MidiFrameScheduler(48000);
+  const parameters = { enabled: true, sf: 'bank' };
+  await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SFZNotePlayerPlugin',
+    parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+  await h.send({ type: 'dspEnableTypes', types: ['SFZNotePlayerPlugin'] });
+  await h.send({ type: 'dspModule', module: {} });
+  p.wasmInstances.get(7).sfzRuntimeFrozen = { clockFrame: 1000, generation: 3,
+    captureFrame: 0, nativeState: 0, sameContext: true, reason: 'monitoring' };
+  p.sfzPowerCheckpoint = { status: 'ready' };
+  Object.assign(p.powerPolicy, { enabled: true, state: 'active', processingDirective: 'full-process',
+    silenceThresholdPower: 1e-8 });
+  const signal = Float32Array.from({ length: 128 }, (_, index) => index & 1 ? -.25 : .25);
+  const output = [new Float32Array(128), new Float32Array(128)];
+  p.process([[signal, signal]], [output], {});
+  assert.equal(detected, 1);
+  assert.ok(output[0].every(value => Math.abs(value - .125) < 1e-6));
+});
 
 async function flushAsyncWork() {
   for (let index = 0; index < 6; index++) await Promise.resolve();
@@ -99,6 +455,7 @@ function createBinding(options = {}) {
       calls.push(['prepare', ...args]);
       return options.prepareStatus ?? 0;
     },
+    prepareMidiTransport() {},
     getCapabilities() {
       calls.push(['getCapabilities']);
       return options.capabilities ?? {
@@ -7992,6 +8349,7 @@ test('finite Rhythm endpoints split real worklet audio exactly before EOF and th
     for (const scenario of [
       { samples: 11026, emptyPool: true }, { samples: 22051 }, { samples: 11900, late: true },
       { samples: 11026, gapless: true }, { samples: 11026, visualizer: true },
+      { samples: 11026, visualizer: true, dryOutput: true },
       { samples: 11026, delay: 441 }, { samples: 11026, injected: true }
     ]) {
       const { samples, delay = 0 } = scenario;
@@ -8005,6 +8363,10 @@ test('finite Rhythm endpoints split real worklet audio exactly before EOF and th
       const parameters = { enabled: true, mn: 40, mx: 240, ck: false, dm: 'drums' };
       const tapId = scenario.visualizer ? 0xf0000000 : 7;
       try {
+        if (scenario.dryOutput) {
+          h.processor.powerPolicy.enabled = true;
+          await h.send({ type: 'updatePlugins', plugins: [], masterBypass: true });
+        }
         if (scenario.visualizer) {
           await h.send({ type: 'setVisualizerSources', sources: [{ tapId, type: 'RhythmAnalyzerPlugin',
             paramsHash: packer.hash, params: packer.pack(parameters), channel: null, gain: 1 }] });
@@ -8080,16 +8442,17 @@ test('finite Rhythm endpoints split real worklet audio exactly before EOF and th
           AudioContextManager.prototype.handleTrackEnded.call(host);
           assert.equal(hostMessages.length, 1, 'late UI end does not introduce a second boundary');
         }
+        assert.ok(messages.every(message => message.contextFrameOffset === 0), label);
         const events = observations.flatMap(item => item.drumEvents.map(event => ({ ...event, generation: item.generation })));
         const firstGeneration = events[0]?.generation;
         const first = events.filter(event => event.generation === firstGeneration);
         assert.ok(first.some(event => event.lane === 0 && Math.abs(event.audioTimeSeconds - (.2 + delay / 44100)) < 1e-7), label);
-        assert.ok(first.some(event => event.lane === 2 && Math.abs(event.audioTimeSeconds - (samples === 22051 ? .45 : .2) - delay / 44100) < 1e-7), label);
+        assert.ok(first.some(event => event.lane === 1 && Math.abs(event.audioTimeSeconds - (samples === 22051 ? .45 : .2) - delay / 44100) < 1e-7), label);
         if (samples !== 22051) assert.deepEqual([...new Set(first.map(event => event.audioTimeSeconds.toFixed(5)))], [(0.2 + delay / 44100).toFixed(5)], label);
         if (scenario.gapless) {
           const next = events.filter(event => event.generation !== firstGeneration);
           assert.ok(next.some(event => event.lane === 0 && Math.abs(event.audioTimeSeconds - .2) < 1e-7), label);
-          assert.ok(next.some(event => event.lane === 2 && Math.abs(event.audioTimeSeconds - .2) < 1e-7), label);
+          assert.ok(next.some(event => event.lane === 1 && Math.abs(event.audioTimeSeconds - .2) < 1e-7), label);
         }
         if (scenario.emptyPool) {
           assert.ok(messages.some(message => message.recycle === false), label);
@@ -8319,4 +8682,202 @@ test('a stream boundary delivers Rhythm EOF and only resets the Note Spectrogram
   assert.deepEqual(resets, [1, 14, 15, 3, 9], 'the next reservation keeps the delayed resets of a reached boundary');
   at(6784);
   assert.deepEqual([...processor.streamBoundaries.map(boundary => boundary.frame)], [9000]);
+});
+
+
+test('MIDI song clock ends once without an SFZ instance or a live WASM engine and ignores stale transport', async () => {
+  const harness = await createWorkletHarness();
+  const { processor, send, posts } = harness;
+  await send({ type: 'midiTransport', timeline: { events: [], duration: .002 },
+    generation: 1, playing: true, anchorFrame: 0, position: 0, speed: 1, gain: 0 });
+  const input = [new Float32Array(128), new Float32Array(128)];
+  const output = [new Float32Array(128), new Float32Array(128)];
+  processor.process([input], [output], {});
+  harness.setContextFrame(128);
+  processor.process([input], [output], {});
+  assert.equal(posts.filter(post => post.message.type === 'midiEnded').length, 1);
+  assert.equal(posts.find(post => post.message.type === 'midiEnded').message.generation, 1);
+  await send({ type: 'midiTransport', generation: 2, playing: false, position: 0 });
+  await send({ type: 'midiTransport', generation: 1, playing: true, position: 0 });
+  assert.equal(processor.midiScheduler.generation, 2);
+  assert.equal(processor.midiScheduler.playing, false);
+});
+
+test('worklet MIDI dispatch broadcasts exact events to each SFZ position and resets both instances on Stop', async () => {
+  const calls = [];
+  const binding = createBinding();
+  binding.instanceSetMidiEvents = (id, events, generation, flags, count = events.length) => {
+    calls.push({ id, events: events.slice(0, count).map(event => ({ ...event })), generation, flags });
+    return 0;
+  };
+  binding.instanceSetMidiGain = () => 0;
+  const harness = await createWorkletHarness({ binding });
+  const { processor } = harness;
+  processor.dspLive = true;
+  processor.dspBinding = binding;
+  processor.plugins = [{ id: 1, type: 'SoundFontPlayerPlugin', enabled: true },
+    { id: 2, type: 'SoundFontPlayerPlugin', enabled: true }];
+  processor.wasmInstances.set(1, { id: 11, ready: true });
+  processor.wasmInstances.set(2, { id: 12, ready: true });
+  processor.midiScheduler.register(1, 11);
+  processor.midiScheduler.register(2, 12);
+  processor.dspLatencyPlan = { tapPositions: { 1: { input: 0 }, 2: { input: 5 } } };
+  await harness.send({ type: 'midiTransport', timeline: { duration: 1,
+    events: [{ seconds: 10 / 48000, status: 0x90, data1: 60, data2: 100 }] },
+  generation: 1, playing: true, anchorFrame: 1000, position: 0, speed: 1, gain: 1 });
+  processor.processMidiTransport(1000, 32);
+  assert.deepEqual(calls.flatMap(call => call.events.filter(event => event.status === 0x90)
+    .map(event => [call.id, event.offsetFrames])), [[11, 10], [12, 15]]);
+  await harness.send({ type: 'midiTransport', generation: 2, playing: false, position: 0 });
+  processor.processMidiTransport(1032, 32);
+  assert.deepEqual(calls.filter(call => call.flags === 1 && call.generation === 2).map(call => call.id), [11, 12]);
+});
+
+test('real worklet channel changes join future notes and gain updates preserve held notes', async t => {
+  const parsed = await parseSfz({ selectedPath: 'channels.sfz', readText: async () =>
+    '<region> sample=one.wav key=60 lochan=1 hichan=1 loop_mode=loop_continuous amp_veltrack=0 ' +
+    '<region> sample=two.wav key=61 lochan=2 hichan=2 loop_mode=loop_continuous amp_veltrack=0',
+  hasSample: () => true, onDiagnostic: null });
+  const asset = packSfzAsset(parsed.regions, new Map([['one.wav', {
+    sampleRate: 48000, channels: [new Float32Array(256).fill(.25)]
+  }], ['two.wav', { sampleRate: 48000, channels: [new Float32Array(256).fill(.5)] }]]));
+  const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+  const events = [{ seconds: 0, status: 0x90, data1: 60, data2: 127 },
+    { seconds: .01, status: 0x91, data1: 61, data2: 127 },
+    ...Array.from({ length: 600 }, (_, index) => ({ seconds: .02 + index / 10000,
+      status: 0xb1, data1: 1, data2: index % 128 })),
+    { seconds: .2, status: 0x91, data1: 61, data2: 127 }];
+  for (const variant of ['', '.simd']) await t.test(variant || 'baseline', async () => {
+    const binding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot,
+      `plugins/dsp/effetune-dsp${variant}.wasm`)));
+    const h = await createWorkletHarness({ binding });
+    const { processor } = h;
+    let frame = 0;
+    const input = [new Float32Array(128), new Float32Array(128)];
+    const output = [new Float32Array(128), new Float32Array(128)];
+    const render = () => {
+      h.setContextFrame(frame);
+      processor.process([input], [output], {});
+      frame += 128;
+      return output[0];
+    };
+    const update = async (mc, og = 0) => {
+      const parameters = { enabled: true, mc, og, pl: 64 };
+      await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SoundFontPlayerPlugin',
+        parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+    };
+    try {
+      await update(1);
+      await h.send({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
+      const preparedAsset = await materializeAcceptanceAsset(binding, asset);
+      await h.send({ type: 'dspModule', module: {} });
+      await h.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...preparedAsset });
+      for (let block = 0; block < 8; block++) render();
+      await h.send({ type: 'midiTransport', timeline: { duration: 10, events }, generation: 1,
+        position: 0, playing: true, anchorFrame: frame, speed: 1, gain: 1 });
+      for (let block = 0; block < 40; block++) render();
+      const oldLevel = Math.max(...output[0]);
+      assert.ok(oldLevel > .1);
+      await update(2);
+      for (let block = 0; block < 30; block++) render();
+      assert.ok(output[0].every(value => Math.abs(value) < 1e-7), 'neither held channel is reattacked');
+      assert.equal(processor.midiScheduler.playing, true);
+      const receipt = h.posts.findLast(post => post.message.type === 'midiPosition').message;
+      assert.equal(receipt.generation, 1);
+      assert.ok(receipt.position > .15 && receipt.position < .2);
+      for (let block = 0; block < 16; block++) render();
+      const selectedLevel = Math.max(...output[0]);
+      assert.ok(selectedLevel > oldLevel * 1.8, 'the future note uses the selected channel');
+      await update(2, -6);
+      for (let block = 0; block < 10; block++) render();
+      const gainRatio = Math.max(...output[0]) / selectedLevel;
+      assert.ok(gainRatio > .49 && gainRatio < .52, 'gain changes preserve the held note');
+      assert.equal(processor.midiScheduler.generation, 1);
+      await h.send({ type: 'midiTransport', generation: 2, position: .25, playing: false });
+      await update(1);
+      for (let block = 0; block < 20; block++) render();
+      assert.equal(processor.midiScheduler.playing, false, 'a paused channel change stays paused');
+      assert.ok(output[0].every(value => Math.abs(value) < 1e-7));
+    } finally { processor.disableDspEngine(); }
+  });
+});
+
+test('real worklet instrument activation keeps the song clock advancing through large controller histories', async t => {
+  const parsed = await parseSfz({ selectedPath: 'activation.sfz', readText: async () =>
+    '<region> sample=tone.wav key=60 loop_mode=loop_continuous amp_veltrack=0',
+  hasSample: () => true, onDiagnostic: null });
+  const asset = packSfzAsset(parsed.regions, new Map([['tone.wav', {
+    sampleRate: 48000, channels: [new Float32Array(256).fill(.25)]
+  }]]));
+  const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+  const timeline = { duration: 102, events: [
+    ...Array.from({ length: 100000 }, (_, index) => ({ seconds: index / 1000, status: 0xb0, data1: 1, data2: index % 128 })),
+    { seconds: 99.9995, status: 0x90, data1: 60, data2: 127 },
+    { seconds: 101.2, status: 0x90, data1: 60, data2: 127 },
+    { seconds: 101.4, status: 0x80, data1: 60, data2: 0 }
+  ] };
+  for (const variant of ['', '.simd']) await t.test(variant || 'baseline', async () => {
+    const binding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot,
+      `plugins/dsp/effetune-dsp${variant}.wasm`)));
+    const h = await createWorkletHarness({ binding });
+    const p = h.processor;
+    let frame = 0, generation = 0, revision = 0;
+    const input = [new Float32Array(128), new Float32Array(128)];
+    const output = [new Float32Array(128), new Float32Array(128)];
+    const render = () => {
+      h.setContextFrame(frame); p.process([input], [output], {}); frame += 128;
+      return Math.max(...output[0]);
+    };
+    const update = async ({ enabled = true, section = true, bypass = false, included = true, gain = 0 } = {}) => {
+      const parameters = { enabled, mc: 0, og: gain, pl: 64 };
+      await h.send({ type: 'updatePlugins', plugins: [
+        pluginConfig({ id: 6, type: 'SectionPlugin', enabled: section, parameters: { enabled: section } }),
+        ...(included ? [pluginConfig({ type: 'SoundFontPlayerPlugin', enabled, parameters,
+          wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })] : [])
+      ], masterBypass: bypass });
+    };
+    const preparedAsset = await materializeAcceptanceAsset(binding, asset);
+    const setBank = () => h.send({ type: 'setPluginAsset', pluginId: 7, slot: 0, ...preparedAsset,
+      operationRevision: ++revision, formatTag: 1 });
+    const configure = playing => h.send({ type: 'midiTransport',
+      timeline, generation: ++generation, playing, position: 100, anchorFrame: frame, speed: 1, gain: 1 });
+    try {
+      await update();
+      await h.send({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
+      await h.send({ type: 'dspModule', module: {} });
+      await setBank();
+      for (let block = 0; block < 8; block++) render();
+      for (const [name, inactive, activate] of [
+        ['enable', { enabled: false }, () => update()],
+        ['section', { section: false }, () => update()],
+        ['master', { bypass: true }, () => update()],
+        ['late bank', { clear: true }, () => setBank()],
+        ['new instance', { included: false }, async () => { await update(); await setBank(); }]
+      ]) {
+        await configure(false);
+        render();
+        if (inactive.clear) {
+          await update();
+          await h.send({ type: 'clearPluginAsset', pluginId: 7, slot: 0, operationRevision: ++revision });
+        } else await update(inactive);
+        const anchor = frame;
+        await configure(true);
+        render();
+        await activate();
+        let peak = 0;
+        for (let block = 1; block < Math.ceil(1.25 * 48000 / 128); block++) {
+          const blockPeak = render();
+          if (frame <= anchor + 1.2 * 48000) assert.ok(blockPeak < 1e-7, name + ': past note must stay silent');
+          else peak = Math.max(peak, blockPeak);
+        }
+        assert.ok(peak > .01, name + ': future note must sound once the instrument has joined');
+        const receipts = h.posts.map(post => post.message).filter(message =>
+          message.type === 'midiPosition' && message.generation === generation);
+        assert.ok(receipts.length > 1);
+        for (const receipt of receipts) assert.equal(receipt.position, 100 + (receipt.processedFrame - anchor) / 48000, name);
+        assert.ok(receipts.at(-1).position > 101.2, name);
+        assert.equal(p.midiScheduler.playing, true, name);
+      }
+    } finally { p.disableDspEngine(); }
+  });
 });

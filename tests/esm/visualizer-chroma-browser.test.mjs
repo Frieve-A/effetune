@@ -69,7 +69,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
         for (const file of ['../multires-spectrum', 'spectrum_analyzer', 'spectrogram', 'stereo_meter', 'note_spectrogram', 'chroma_spiral', 'level_meter']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-sources', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display', 'visualizer-renderer']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-midi', 'visualizer-sources', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const result = await page.evaluate(() => {

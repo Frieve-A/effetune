@@ -8,9 +8,34 @@ lang: en
 
 This document provides instructions for setting up the development environment, validating the web app, and building the EffeTune desktop application using Electron.
 
+## Temporary desktop FLAC decoder workaround
+
+For [Issue #72](https://github.com/Frieve-A/effetune/issues/72), desktop startup disables
+`SymphoniaAudioDecoding` and uses Chromium's FFmpeg fallback. Some 32-bit stereo
+FLAC frames need a 33-bit side channel; the affected Symphonia decoder truncates
+it and produces noise. This is temporary and does not change the browser version.
+
+When updating Electron or preparing a desktop release, check
+[Chromium issue 572363272](https://issues.chromium.org/issues/572363272),
+[the Chromium fix](https://chromium.googlesource.com/chromium/src/+/3d2d8d9b2e7f7fdf7179a452088bfd537d72ecb0),
+and [Symphonia #585](https://github.com/pdeljanov/Symphonia/issues/585).
+Electron 45.2.2 uses Chromium 156.0.8078.80, whose decoder source still has the
+affected 32-bit side-channel path. An upstream fix alone is not enough: verify
+that the Electron runtime being shipped contains it.
+
+Before removing the switch, decode Chromium's synthetic
+[`sine-s32-stereo.flac`](https://chromium.googlesource.com/chromium/src/+/main/media/test/data/sine-s32-stereo.flac)
+with and without the workaround and compare the PCM with a reference FFmpeg
+decode. Verify both `decodeAudioData` and normal desktop player playback without
+sending the test signal to speakers. The fixture generation commands are in
+Chromium's `media/test/data/README.md`. Once the default decoder passes, remove
+the workaround and its switch assertion, retain a PCM regression check, and
+update this section. Do not automatically retire the workaround based on a date
+or an unverified Chromium version cutoff.
+
 ## Android builds
 
-The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio; foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.6; the project pins Android Gradle Plugin 9.4.0, Oboe 1.10.0, and AndroidX WebKit 1.15.0.
+The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio; foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.8.2; the project pins Android Gradle Plugin 9.5.0, Oboe 1.11.0, and AndroidX WebKit 1.18.0.
 
 Android 10 (API 29) is the minimum, and API 37 is the target. Use an updated Android System WebView with `WEB_MESSAGE_LISTENER` support; an old system-image WebView is not sufficient even when native audio tests pass. The supported APK ABIs are `arm64-v8a` and `x86_64`.
 
@@ -431,6 +456,17 @@ To start the application in development mode:
 npm start
 ```
 
+On Windows x64, the renderer power helper requires Visual Studio 2022 C++ build
+tools with the x64 compiler. Build it before `npm start` from a checkout so
+continuous playback can manage renderer process throttling:
+
+```bash
+npm run build:renderer-power
+```
+
+The helper is written to `out/native/renderer-power/win32-x64/effetune-renderer-power.exe`.
+Windows `npm run pack:win` and `npm run dist` build and include it automatically.
+
 To debug the web version in a browser with no-cache dynamic loading for plugins:
 
 ```bash
@@ -556,6 +592,23 @@ To build the application, use the following npm commands:
 
 The Electron build scripts and GitHub Pages workflow run `npm run assets:web` automatically before packaging or deployment. This regenerates the browser metadata parser bundle, its third-party notice file, and `sw-precache.js`. If you add or remove web assets outside those flows, run `npm run assets:web` before committing.
 
+DSD/DST decoding uses the committed `js/audio/dsd/dsd-wasm.generated.js` module.
+Ordinary JavaScript builds need no additional toolchain. After changing its C
+sources or `scripts/build-dsd-wasm.mjs`, use Emscripten 6.0.13 (the same SDK as
+the DSP core), set `EMSDK` to its root or install it at `.emsdk`, and run
+`npm run build:dsd`. The dedicated freestanding build uses no C runtime or
+external imports and does not rebuild the DSP effect library. It targets
+WebAssembly SIMD128: independent PCM outputs use Float64 lanes, with the
+original per-sample summation order and no fast-math or fused operations.
+An exact fractional-position coefficient cache is limited to 1 MiB per decoder;
+filter coefficients, precision and PCM output format are unchanged. Rebuild twice
+and confirm the generated file is unchanged, then run
+`node --test tests/esm/dsd-*.test.mjs tests/esm/dst-decoder.test.mjs`.
+`npm run build:dsd -- --check` checks source freshness without the SDK; vendor
+builds also perform this check. Finally run `npm run assets:web` to update the
+Worker and PWA assets. The distributed C sources, build script and DST license
+notice allow rebuilding the module; see `js/audio/dsd/dst-decoder.NOTICE.txt`.
+
 Keep each vendored library's complete license and bundled dependency notices in
 `js/vendor/` beside its code. Update those notices when replacing a vendor file;
 a license name or upstream link alone does not replace a required license text.
@@ -614,7 +667,7 @@ succeeds. Ordinary CI, pull requests, forks, and Dependabot runs do not sign.
 Missing credentials, authentication failures, or signature verification failures
 fail the affected release job; it does not fall back to an unsigned release.
 
-The workflow downloads the official ECS 44.9.3+wvcus archive for the runner's
+The workflow downloads the official ECS 44.10.1+wvcus archive for the runner's
 architecture and verifies its pinned SHA-256. Linux packages that runtime as an
 AppImage, retaining the separate GPG signing and OpenHome provenance checks.
 
@@ -643,10 +696,10 @@ a GitHub Release.
 #### Local ECS packaging
 
 Use the opt-in ECS pack command to prepare a local Widevine-enabled build.
-Download the Windows x64 ZIP from the [pinned ECS release](https://github.com/castlabs/electron-releases/releases/tag/v44.9.3%2Bwvcus), then run:
+Download the Windows x64 ZIP from the [pinned ECS release](https://github.com/castlabs/electron-releases/releases/tag/v44.10.1%2Bwvcus), then run:
 
 ```powershell
-npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v44.9.3+wvcus-win32-x64.zip'
+npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v44.10.1+wvcus-win32-x64.zip'
 ```
 
 For an already prepared application snapshot with its own installed dependencies,
@@ -1277,6 +1330,11 @@ Do not edit a submission concurrently in Partner Center. If an upload/commit
 result is unknown or an unrelated draft exists, preserve it and investigate
 before resubmitting. The pinned Microsoft Store CLI uses the MSIX positional
 argument; submission metadata, commit and polling use Microsoft's submission API.
+The Linux submission job runs the CLI inside a private D-Bus session with a
+temporary, password-protected keyring. The wrapper stops its credential service
+and removes its private files on exit; the CLI's interactive reset command is
+not suitable for unattended cleanup. CLI failures report the failed stage without
+exposing credentials or upload URLs.
 
 The Store app uses its own `EffeTune Store` data directory and leaves existing
 NSIS/Portable data in place. It does not invoke the GitHub updater, legacy login

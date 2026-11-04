@@ -120,6 +120,21 @@ function transformBindingForWorklet(source) {
 }
 
 function refreshWorkletBinding(check) {
+  const schedulerSource = path.join(repoRoot, 'js', 'midi', 'smf-scheduler.js');
+  if (fs.existsSync(schedulerSource)) {
+    const original = normalized(fs.readFileSync(workletSource, 'utf8'));
+    const startMarker = '// __ETMIDI_SCHEDULER_INJECT_START__';
+    const endMarker = '// __ETMIDI_SCHEDULER_INJECT_END__';
+    const start = original.indexOf(startMarker);
+    const end = original.indexOf(endMarker);
+    if (start < 0 || end <= start) fail('audio-processor.js is missing MIDI scheduler injection markers');
+    const replacement = `${startMarker}\n${transformBindingForWorklet(fs.readFileSync(schedulerSource, 'utf8'))}\n${endMarker}`;
+    const next = original.slice(0, start) + replacement + original.slice(end + endMarker.length);
+    if (next !== original) {
+      if (check) fail('plugins/audio-processor.js contains a stale inlined MIDI scheduler');
+      fs.writeFileSync(workletSource, next, 'utf8');
+    }
+  }
   const hasBinding = fs.existsSync(bindingSource);
   const hasWorklet = fs.existsSync(workletSource);
   if (!hasBinding || !hasWorklet) {

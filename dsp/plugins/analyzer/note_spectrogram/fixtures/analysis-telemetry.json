@@ -16,8 +16,8 @@
   "probabilityTolerance": 0.0001,
   "inputSha256": "04257518c10bdf074d68337cdea19a675058b59d6f9ee9bd8ce041a18d11ff32",
   "harmnetWeightsSha256": "496e880d971887ab7abfbe5b8c6530b0b0fa47a6850cbc8ea3d1d6c218510706",
-  "timbreWeightsSha256": "cbcd35c885e90ea34f282aab79293d5f4872cbe8e87484bd1cf98c5148234718",
-  "nativeTelemetrySha256": "df182603704d5466ac7d18a8dcb57022403417bef75e5c707e1528591c68bf30",
+  "timbreWeightsSha256": "47810eaa0de1a457e6ebe9039d395d279a43323ea6c058a7ad26246f526b1e8c",
+  "nativeTelemetrySha256": "eb10a38488dc7bfa2bd22c2e0b2438818a311d1da70a62da1134b82c61e2089b",
   "nativeRecords": {
     "pitch": 62,
     "starts": 2,

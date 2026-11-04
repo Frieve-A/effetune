@@ -7,7 +7,6 @@ import {
   isNewerVersion,
   normalizeReleaseVersion,
   normalizeSemVer,
-  parseSemVer,
   selectLatestAppRelease
 } from '../../js/release-version.mjs';
 
@@ -56,18 +55,13 @@ test('the newest desktop release is selected from a feed shared with the DSP lib
   assert.equal(selectLatestAppRelease(null), null);
 });
 
-test('release metadata matches the package version and Version History shares major and minor versions', () => {
+test('release metadata and the latest Version History heading match the package version', () => {
   const packageJson = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const packageLock = JSON.parse(fs.readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
   const history = fs.readFileSync(new URL('../../docs/version-history.md', import.meta.url), 'utf8');
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[''].version, packageJson.version);
-  // Patch releases do not need a separate Version History entry.
   const historyVersionHeading = history.match(/^### Version ([^ (\r\n]+) \(/m);
   assert.ok(historyVersionHeading, 'Version History must contain a version heading');
-  const historyVersion = parseSemVer(historyVersionHeading[1]);
-  const appVersion = parseSemVer(packageJson.version);
-  assert.ok(historyVersion && appVersion, 'App and Version History versions must be valid');
-  assert.equal(historyVersion.major, appVersion.major);
-  assert.equal(historyVersion.minor, appVersion.minor);
+  assert.equal(historyVersionHeading[1], packageJson.version);
 });

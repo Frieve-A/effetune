@@ -1,9 +1,15 @@
+import { isScoreFile, isMusicXmlFile, parseScoreAsync, SCORE_MAX_BYTES } from '../midi/score-file.js';
+import { snapshotMidiPipeline, prepareOfflineMidiSession, prepareOfflineMidiPlayback, processOfflineMidiBlock, MIDI_MAX_TAIL_SECONDS } from './midi-offline.js';
 import { instantiateDsp, loadDspModule } from './dsp-wasm-loader.js';
 import { getDspRolloutConfig } from './dsp-rollout.js';
+import { buildOfflineGraphDescriptor } from './offline-graph-descriptor.js';
 import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
 import { getPluginExecutionUnsupportedReason } from './plugin-execution-capabilities.js';
 import { preflightOfflineOutput } from './audio-encoder.js';
 import { sfzAssetWarmupSamples } from '../sfz/asset.js';
+import { TelemetryHub } from './telemetry-hub.js';
+import { prepareSfzAssetForContext, sfzPluginPreparationContext, sfzPlayerKind } from '../sfz/preparation-context.js';
+import { SfzEffectCost } from '../sfz/effect-cost.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
 const OFFLINE_MAX_WASM_CHANNELS = 16;
@@ -56,15 +62,32 @@ export class OfflineProcessor {
         let requiredOfflineDspAssetPlugins = null;
         let processingError = null;
         let dspSession = null;
+        let midiSession = null;
+        let midiTimeline = null;
+        const midiInput = isScoreFile(file);
         try {
+            if (midiInput) pipeline = snapshotMidiPipeline(pipeline,
+                outputSettings?.sampleRate ?? this.contextManager.audioContext.sampleRate);
             const offlineDspAssetCandidates = this.captureOfflineDspAssetCandidates(pipeline);
             // Read file as ArrayBuffer and decode audio data
+            if (midiInput && file.size > SCORE_MAX_BYTES) {
+                const error = new Error('This score file is too large to render.');
+                error.code = isMusicXmlFile(file) ? 'musicxml-too-large' : 'midi-too-large';
+                throw error;
+            }
             const arrayBuffer = await file.arrayBuffer();
-            const audioBuffer = await this.contextManager.audioContext.decodeAudioData(arrayBuffer);
+            if (midiInput) midiTimeline = await parseScoreAsync(arrayBuffer, {
+                fileName: file.name, signal: this.encodingAbortController.signal
+            });
+            const midiSampleRate = outputSettings?.sampleRate ?? this.contextManager.audioContext.sampleRate;
+            const audioBuffer = midiTimeline ? { numberOfChannels: 2,
+                length: Math.max(1, Math.ceil(midiTimeline.duration * midiSampleRate)), sampleRate: midiSampleRate }
+                : await this.contextManager.audioContext.decodeAudioData(arrayBuffer);
 
             // Resolve required assets against the actual render width, while retaining
             // the section-aware plugin membership captured at render start.
-            const { numberOfChannels, length: totalSamples, sampleRate } = audioBuffer;
+            const { numberOfChannels, sampleRate } = audioBuffer;
+            let totalSamples = audioBuffer.length + (midiTimeline ? MIDI_MAX_TAIL_SECONDS * sampleRate : 0);
             const outputChannelCount = this.getOfflineOutputChannelCount(numberOfChannels);
             preflightOfflineOutput({
                 numberOfChannels: outputChannelCount,
@@ -87,6 +110,12 @@ export class OfflineProcessor {
                 plugin.constructor.name !== 'SectionPlugin' && plugin.enabled
             );
             
+            if (midiTimeline && !this.getSectionAwareActivePlugins(pipeline).some(
+                plugin => plugin.constructor.name === 'SoundFontPlayerPlugin' && plugin.sf)) {
+                const error = new Error('Add SFZ Player and choose an instrument from SFZ Library before rendering MIDI.');
+                error.userMessageKey = 'sfzPlayer.error.offlineInstrument';
+                throw error;
+            }
             if (!hasEnabledPlugins) {
                 this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, null);
                 let outputBuffer = audioBuffer;
@@ -105,30 +134,67 @@ export class OfflineProcessor {
 
             // Define the actual output channel count - may be higher than the file's channel count
             // Create offline context for final rendering
-            this.offlineContext = this.contextManager.createOfflineContext(
-                outputChannelCount,
-                totalSamples,
-                sampleRate
+            if (!midiTimeline) this.offlineContext = this.contextManager.createOfflineContext(
+                outputChannelCount, totalSamples, sampleRate
             );
             
             // Store reference to pipeline for processing
             this.pipeline = pipeline;
 
             // Create buffer for processed audio
-            const processedBuffer = this.offlineContext.createBuffer(outputChannelCount, totalSamples, sampleRate);
+            let processedBuffer = midiTimeline ? null :
+                this.offlineContext.createBuffer(outputChannelCount, totalSamples, sampleRate);
 
             dspSession = await this.createOfflineDspSession(
                 pipeline,
                 sampleRate,
                 outputChannelCount,
                 requiredOfflineDspAssetPlugins,
-                offlineDspAssetRequirements
+                offlineDspAssetRequirements,
+                { midiTimeline }
             );
             if (this.isCancelled) {
                 this.cleanupOfflineResources();
                 return null;
             }
             this.ensureRequiredOfflineDspAssetsReady(requiredOfflineDspAssetPlugins, dspSession);
+            if (midiTimeline) {
+                midiSession = prepareOfflineMidiSession(dspSession, midiTimeline,
+                    this.getSectionAwareActivePlugins(pipeline), sampleRate);
+                totalSamples = Math.max(1, Math.ceil((midiTimeline.duration + midiSession.tailSeconds) * sampleRate));
+                this.offlineContext = this.contextManager.createOfflineContext(outputChannelCount, totalSamples, sampleRate);
+                processedBuffer = this.offlineContext.createBuffer(outputChannelCount, totalSamples, sampleRate);
+            }
+
+            const configureGraph = () => this.prepareOfflineDspGraph(
+                dspSession, pipeline, outputChannelCount, sampleRate);
+            if (midiSession) {
+                let ready;
+                try {
+                    ready = await prepareOfflineMidiPlayback(midiSession, dspSession, {
+                        configureGraph,
+                        isCancelled: () => this.isCancelled || dspSession.closed,
+                        processPending: entry => {
+                            const silence = dspSession.binding.getArenaViews().scratch.allChannels
+                                .subarray(0, outputChannelCount * OFFLINE_BLOCK_SIZE);
+                            silence.fill(0);
+                            const status = dspSession.binding.instanceProcess(entry.instanceId,
+                                dspSession.binding.pointerForArenaView(silence), outputChannelCount,
+                                OFFLINE_BLOCK_SIZE, 0);
+                            if (status !== 0) throw this.requiredOfflineDspExecutionError(dspSession, entry.plugin);
+                        }
+                    });
+                } catch (error) {
+                    if (this.isCancelled || dspSession.closed) return null;
+                    this.flushOfflineDspDiagnostics(dspSession);
+                    this.warnOfflineDspOnce(dspSession, 'midi-prepare', `MIDI preparation failed: ${error.message}`);
+                    const failure = new Error('The instrument could not be prepared. Load it again or choose another instrument.');
+                    failure.userMessageKey = 'sfzNotePlayer.error.prepare';
+                    throw failure;
+                }
+                if (!ready) return null;
+                dspSession.arena = dspSession.binding.getArenaViews();
+            } else configureGraph();
 
             // Map to hold plugin-specific processing contexts
             const pluginContexts = new Map();
@@ -155,7 +221,8 @@ export class OfflineProcessor {
                 const inputBlock = new Float32Array(totalSize);
 
                 // Interleave channel data into a single block
-                const inputChannelsToCopy = numberOfChannels < outputChannelCount ? numberOfChannels : outputChannelCount;
+                const inputChannelsToCopy = midiTimeline ? 0 :
+                    numberOfChannels < outputChannelCount ? numberOfChannels : outputChannelCount;
                 for (let ch = 0; ch < inputChannelsToCopy; ch++) {
                     const channelData = audioBuffer.getChannelData(ch);
                     const channelOffset = ch * blockSize;
@@ -164,7 +231,11 @@ export class OfflineProcessor {
                     }
                 }
 
-                const finalBlock = this.tryProcessOfflineDspPipeline({
+                if (midiSession) processOfflineMidiBlock(midiSession, dspSession, offset, blockSize);
+                const finalBlock = (dspSession?.graphGeneration
+                    ? await this.processOfflineDspGraph({ session: dspSession, inputBlock,
+                        outputChannelCount, blockSize, offset, sampleRate })
+                    : this.tryProcessOfflineDspPipeline({
                     session: dspSession,
                     pipeline,
                     inputBlock,
@@ -172,7 +243,7 @@ export class OfflineProcessor {
                     outputChannelCount,
                     blockSize,
                     offset
-                }) || this.processOfflineHybridBlock({
+                })) || this.processOfflineHybridBlock({
                     session: dspSession,
                     pipeline,
                     inputBlock,
@@ -208,9 +279,19 @@ export class OfflineProcessor {
                 }
 
                 // Yield to UI updates between blocks
-                if (offset % (OFFLINE_BLOCK_SIZE * 8) === 0) {
+                if (offset % (OFFLINE_BLOCK_SIZE * (midiTimeline ? 256 : 8)) === 0) {
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
+            }
+
+            if (midiTimeline) {
+                // Drain the full proven bound/budget. Only the encoder, after rate
+                // conversion, can identify trailing frames its codec stores as zero.
+                this.cleanupOfflineResources();
+                const output = await this.encodeOutput(processedBuffer, outputSettings, progressCallback,
+                    { trimTrailingZerosAfterSeconds: midiTimeline.duration });
+                return output ? { ...output, tailLimitReached: midiSession.tailLimitReached,
+                    tailLimitSeconds: midiSession.tailLimitReached ? MIDI_MAX_TAIL_SECONDS : null } : null;
             }
 
             // Create source node for final offline rendering
@@ -236,6 +317,14 @@ export class OfflineProcessor {
             return await this.encodeOutput(renderedBuffer, outputSettings, progressCallback);
         } catch (error) {
             this.cleanupOfflineResources();
+            if (midiInput && error?.code?.startsWith('musicxml-')) {
+                error.userMessageKey = error.code === 'musicxml-unsupported' ? 'musicxml.error.unsupported'
+                    : error.code === 'musicxml-too-large' ? 'musicxml.error.tooLarge' : 'musicxml.error.corrupt';
+            }
+            if (midiInput && error?.code?.startsWith('midi-')) {
+                error.userMessageKey = error.code === 'midi-unsupported' ? 'midi.error.unsupported'
+                    : ['midi-too-large', 'midi-too-dense'].includes(error.code) ? 'midi.error.tooLarge' : 'midi.error.corrupt';
+            }
             processingError = error;
         } finally {
             this.destroyOfflineDspSession(dspSession);
@@ -248,7 +337,7 @@ export class OfflineProcessor {
         throw new Error(`File processing error: ${processingError.message}`);
     }
 
-    async encodeOutput(audioBuffer, outputSettings, progressCallback) {
+    async encodeOutput(audioBuffer, outputSettings, progressCallback, encodingOptions = {}) {
         if (this.isCancelled) return null;
         if (typeof this.audioEncoder.encode !== 'function') {
             const result = this.audioEncoder.encodeWAV(audioBuffer);
@@ -256,6 +345,7 @@ export class OfflineProcessor {
             return result;
         }
         const result = await this.audioEncoder.encode(audioBuffer, outputSettings, {
+            ...encodingOptions,
             signal: this.encodingAbortController?.signal,
             onProgress: ({ phase, progress }) => {
                 if (!progressCallback) return;
@@ -347,7 +437,8 @@ export class OfflineProcessor {
         sampleRate,
         outputChannelCount,
         requiredAssetPlugins = new Set(),
-        offlineDspAssetRequirements = new Map()
+        offlineDspAssetRequirements = new Map(),
+        { midiTimeline = null } = {}
     ) {
         if (outputChannelCount < 1 || outputChannelCount > OFFLINE_MAX_WASM_CHANNELS) return null;
 
@@ -363,6 +454,8 @@ export class OfflineProcessor {
             activePlugins,
             requiredAssetPlugins,
             sampleRate,
+            outputChannelCount,
+            midiTimeline,
             descriptorEligible: false,
             descriptorConfigured: false,
             descriptorBytes: null,
@@ -372,6 +465,7 @@ export class OfflineProcessor {
             warnings: new Set()
         };
 
+        this.offlineDspSession = session;
         try {
             const windowObject = globalThis.window;
             const preference = windowObject?.audioPreferences ||
@@ -387,6 +481,7 @@ export class OfflineProcessor {
                 moduleInfo = await this.dspDependencies.loadDspModule({ basePath });
             }
             if (!moduleInfo) return null;
+            session.moduleInfo = moduleInfo;
 
             const rollout = this.dspDependencies.getDspRolloutConfig({
                 meta: moduleInfo.meta,
@@ -495,7 +590,7 @@ export class OfflineProcessor {
                 session.entries.set(plugin, entry);
                 const parameters = this.getOfflinePluginParameters(session, plugin, sampleRate);
                 if (!this.updateOfflineDspParameters(session, entry, parameters)) continue;
-                if (!this.stageOfflineDspAssets(session, entry)) continue;
+                if (!await this.stageOfflineDspAssets(session, entry)) continue;
             }
 
             const liveEntryCount = [...session.entries.values()].filter(entry => !entry.disabled).length;
@@ -521,10 +616,26 @@ export class OfflineProcessor {
         }
     }
 
-    stageOfflineDspAssets(session, entry) {
-        const assets = entry.offlineState?.assets ?? entry.plugin.getWasmAssets?.();
+    async stageOfflineDspAssets(session, entry) {
+        let assets = entry.offlineState?.assets ?? entry.plugin.getWasmAssets?.();
         if (!(assets instanceof Map) || assets.size === 0) return true;
-        const sfz = entry.typeName === 'SFZNotePlayerPlugin';
+        const sfz = ['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(entry.typeName);
+        if (sfz) {
+            const context = sfzPluginPreparationContext(entry.plugin, { sampleRate: session.sampleRate,
+                outputChannelCount: session.outputChannelCount, maxFrames: OFFLINE_BLOCK_SIZE, timeline: session.midiTimeline,
+                playerKind: sfzPlayerKind(entry.typeName) });
+            const estimate = (payload, context, formatTag) => {
+                session.effectCost ??= new SfzEffectCost(session.moduleInfo.bytes ?? session.moduleInfo.module);
+                return session.effectCost.estimate(payload, context, formatTag);
+            };
+            const prepared = new Map();
+            for (const [slot, previous] of assets) {
+                const descriptor = await prepareSfzAssetForContext(previous, context, OFFLINE_DSP_SFZ_ASSET_BUDGET_BYTES, estimate);
+                prepared.set(slot, descriptor);
+            }
+            assets = prepared;
+            entry.offlineState = { ...entry.offlineState, assets };
+        }
         const budget = sfz ? OFFLINE_DSP_SFZ_ASSET_BUDGET_BYTES : OFFLINE_DSP_ASSET_BUDGET_BYTES;
         let entryFootprintBytes = 0;
         for (const asset of assets.values()) {
@@ -584,6 +695,40 @@ export class OfflineProcessor {
                 this.disableOfflineDspEntry(session, entry);
                 return false;
             }
+            if (typeof asset.sampleProviderFactory === 'function') {
+                try {
+                    if (!session.binding.hasSfzSampleStreaming?.() || !session.binding.hasOfflineGraph?.()) {
+                        throw new Error('Streamed offline rendering is unavailable in this DSP module');
+                    }
+                    const generation = 1; // Each export owns a fresh native instance and provider.
+                    if (session.binding.configureSfzSampleStream(entry.instanceId, generation) !== 0) {
+                        throw new Error('Sample stream configuration failed');
+                    }
+                    entry.sampleProvider = await asset.sampleProviderFactory({
+                        generation,
+                        publish: async page => {
+                            if (session.closed || this.isCancelled) return false;
+                            const status = session.binding.publishSfzSamplePage(entry.instanceId, page);
+                            session.arena = session.binding.getArenaViews();
+                            return status === 0;
+                        },
+                        onProvider: provider => {
+                            entry.sampleProvider = provider;
+                            if (session.closed || this.isCancelled) provider.close();
+                        }
+                    });
+                    if (session.closed || this.isCancelled) {
+                        entry.sampleProvider.close();
+                        return false;
+                    }
+                    session.arena = session.binding.getArenaViews();
+                } catch (error) {
+                    this.warnOfflineDspOnce(session, `stream:${entry.plugin.id}`, String(error));
+                    if (!session.closed) session.binding.instanceAssetAbort?.(entry.instanceId, slot);
+                    this.disableOfflineDspEntry(session, entry);
+                    return false;
+                }
+            }
             const processingChannelCount = asset.processingChannels ?? 1;
             const silence = session.arena.scratch.allChannels.subarray(
                 0,
@@ -626,6 +771,82 @@ export class OfflineProcessor {
         if (sfz) session.residentSfzAssetBytes = residentSfzBytes + entryFootprintBytes;
         entry.offlineAssetsReady = true;
         return true;
+    }
+
+    prepareOfflineDspGraph(session, pipeline, outputChannelCount, sampleRate) {
+        if (!session || session.closed) return;
+        const streamed = [...session.entries.values()].find(entry => entry.sampleProvider);
+        if (!session.descriptorEligible || !session.binding.hasOfflineGraph?.()) {
+            if (streamed) throw this.requiredOfflineDspExecutionError(session, streamed.plugin);
+            return;
+        }
+        const descriptor = buildOfflineGraphDescriptor(pipeline, outputChannelCount, {
+            getInstanceId: plugin => session.entries.get(plugin)?.instanceId,
+            getParameters: plugin => this.getOfflinePluginParameters(session, plugin, sampleRate)
+        });
+        const status = session.binding.graphConfigureOffline(descriptor);
+        session.arena = session.binding.getArenaViews();
+        if (status !== 0) {
+            if (streamed) throw this.requiredOfflineDspExecutionError(session, streamed.plugin);
+            this.warnOfflineDspOnce(session, 'graph-configure', `offline graph configuration failed: ${status}`);
+            return;
+        }
+        session.graphGeneration = session.binding.graphPrepareOffline();
+        if (!session.graphGeneration) throw new Error('Offline graph preparation failed');
+        session.arena = session.binding.getArenaViews();
+    }
+
+    async processOfflineDspGraph({ session, inputBlock, outputChannelCount, blockSize, offset, sampleRate }) {
+        session.arena.combined.subarray(0, inputBlock.length).set(inputBlock);
+        for (;;) {
+            if (this.isCancelled || session.closed) throw new Error('Offline rendering cancelled');
+            const status = session.binding.graphProcessOffline(outputChannelCount, blockSize,
+                offset / sampleRate, session.graphGeneration);
+            if (status === 0) {
+                session.arena = session.binding.getArenaViews();
+                return session.arena.combined.subarray(0, inputBlock.length);
+            }
+            if (status !== 1) {
+                this.flushOfflineDspDiagnostics(session);
+                this.warnOfflineDspOnce(session, 'graph-process', `graph processing failed with status ${status}`);
+                const failed = [...session.entries.values()].find(entry =>
+                    (session.binding.instanceMidiState?.(entry.instanceId) ?? 0) & 8);
+                if (failed) {
+                    const error = new Error('Instrument playback stopped. Load it again or choose another instrument.');
+                    error.userMessageKey = 'sfzNotePlayer.error.playback';
+                    throw error;
+                }
+                const required = session.requiredAssetPlugins?.values().next().value;
+                if (required) throw this.requiredOfflineDspExecutionError(session, required);
+                throw new Error('The audio could not be rendered. Try again.');
+            }
+            let requested = false;
+            for (const entry of session.entries.values()) {
+                if (!entry.sampleProvider) continue;
+                const requests = session.binding.takeSfzSampleRequests(entry.instanceId);
+                if (requests.length === 0) continue;
+                requested = true;
+                await entry.sampleProvider.requestPages(requests);
+                if (this.isCancelled || session.closed) throw new Error('Offline rendering cancelled');
+                session.arena = session.binding.getArenaViews();
+            }
+            if (!requested) throw new Error('Offline graph requested samples without a page request');
+            // Native Graph retains the input, node cursor, MIDI and transport for this block.
+        }
+    }
+
+    flushOfflineDspDiagnostics(session) {
+        if (typeof session.binding.telemetryRead !== 'function') return;
+        const packet = new Uint8Array(256 * 1024);
+        const hub = new TelemetryHub();
+        try {
+            let bytes;
+            while ((bytes = session.binding.telemetryRead(packet)) > 0) {
+                hub.handleMessage({ type: 'dspTelemetry', packet, bytes });
+            }
+        } catch (error) {
+            this.warnOfflineDspOnce(session, 'terminal-telemetry', `terminal diagnostics could not be read: ${error.message}`);
+        } finally { hub.clearVisualSyncQueue(); }
     }
 
     tryProcessOfflineDspPipeline({
@@ -1039,9 +1260,10 @@ export class OfflineProcessor {
     disableOfflineDspEntry(session, entry) {
         if (!entry || entry.disabled) return;
         entry.disabled = true;
+        entry.sampleProvider?.close();
         session.descriptorEligible = false;
         session.residentAssetBytes -= entry.residentAssetBytes;
-        if (entry.typeName === 'SFZNotePlayerPlugin') {
+        if (['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(entry.typeName)) {
             session.residentSfzAssetBytes = (session.residentSfzAssetBytes ?? 0) - entry.residentAssetBytes;
         }
         entry.residentAssetBytes = 0;
@@ -1059,9 +1281,12 @@ export class OfflineProcessor {
     destroyOfflineDspSession(session) {
         if (!session || session.closed) return;
         session.closed = true;
+        session.effectCost?.close();
+        if (this.offlineDspSession === session) this.offlineDspSession = null;
         for (const entry of session.entries.values()) {
             if (entry.disabled) continue;
             entry.disabled = true;
+            entry.sampleProvider?.close();
             try {
                 session.binding?.destroyInstance(entry.instanceId);
             } catch (error) {
@@ -1295,6 +1520,7 @@ export class OfflineProcessor {
      */
     cancelProcessing() {
         this.isCancelled = true;
+        this.destroyOfflineDspSession(this.offlineDspSession);
         this.encodingAbortController?.abort();
     }
     
