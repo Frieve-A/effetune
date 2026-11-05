@@ -44,7 +44,7 @@ wheel.packages = ["src/effetune"]
 repair-wheel-command = 'python "{project}/tools/repair-dsp-windows-wheel.py" "{wheel}" "{dest_dir}"'
 
 [tool.cibuildwheel.macos]
-environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
