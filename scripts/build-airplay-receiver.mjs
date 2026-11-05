@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { zstdDecompressSync } from 'node:zlib';
 
@@ -90,9 +91,20 @@ export function collectWindowsRuntime(toolchain, outputRoot) {
 
 export async function downloadLockedArchive(url, destination, sha256) {
   if (existsSync(destination) && digest(readFileSync(destination)) === sha256) return;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const maxAttempts = 3;
+  let bytes;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
+      bytes = Buffer.from(await response.arrayBuffer());
+      break;
+    } catch (error) {
+      if (error?.cause?.code !== 'UND_ERR_SOCKET' || attempt === maxAttempts) throw error;
+      console.warn(`Archive connection reset (${attempt}/${maxAttempts}): ${url}; retrying.`);
+      await delay(250 * attempt);
+    }
+  }
   if (digest(bytes) !== sha256) throw new Error(`Archive checksum mismatch: ${url}`);
   mkdirSync(dirname(destination), { recursive: true });
   writeFileSync(destination, bytes);

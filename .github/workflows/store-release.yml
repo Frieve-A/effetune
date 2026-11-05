@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: 22
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@781cadc9d347f025460d72480e777ef074cdbe98 # main
+        uses: microsoft/microsoft-store-apppublisher@cb963d5eea2b7644f6809c1b00349924f1d5ad42 # main
         with:
           version: v0.4.3
       - name: Install private credential service dependencies

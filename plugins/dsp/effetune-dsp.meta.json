@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:ee37dece397e03e997d711a17338eefff513aaf4664b0bf24c0572af760d8410",
+  "sourceDigest": "sha256:6f9d356a63409fcbd76ae80e9f69e2d5e89b8455a636dd4a412b332e92bf4644",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",

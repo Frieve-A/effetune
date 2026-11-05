@@ -93,7 +93,7 @@ list(
   "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/gsm_full_rate_simulator/codec.cpp")
 
 if(NOT EMSCRIPTEN)
-  # Golden parity requires separate multiply-add rounding in these kernels.
+  # Golden parity and its native tests require separate multiply-add rounding.
   set_property(
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/analog_meter/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/rhythm_analyzer/kernel.cpp"
@@ -109,10 +109,14 @@ if(NOT EMSCRIPTEN)
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/tape_artifacts/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/tv_audio_simulator/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_artifacts/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/vinyl_simulator/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/click_remover/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/clip_restorer/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/noise_reduction/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/resonator/adaptive_prediction_effect/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/saturation/tube_simulator/native_test.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/test/ar_interpolator_test.cpp"
     APPEND
     PROPERTY COMPILE_OPTIONS
              "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffp-contract=off>")
