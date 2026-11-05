@@ -37,6 +37,10 @@ for (const variant of ['baseline', 'simd']) test(`${variant} replacing an alread
       }
       return peak;
     };
+    // Establish this timeline's native prefix before replacing an audible bank.
+    const preparation = owner.prepareMidiTransport(0);
+    await h.waitFor(() => !owner.midiPreparation); assert.equal(await preparation, true);
+    await h.waitForJoinReady();
     const start = owner.playMidi(); await h.waitFor(() => playback.state.isPlaying); assert.equal(await start, true);
     assert.ok(await advance(.2) > .001);
     const id = h.processor.wasmInstances.get(7).id, generation = owner.midiGeneration;

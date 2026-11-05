@@ -27,6 +27,7 @@
 #include <vector>
 
 namespace sfz = effetune::plugins::others::sfz;
+constexpr auto noCurves = [](unsigned) { return false; };
 static void require(bool condition, const char *message) {
   if (!condition) {
     std::fprintf(stderr, "%s\n", message);
@@ -79,10 +80,9 @@ static void routingGraphs() {
 }
 static void planValidation() {
   sfz::EffectPlan plan;
-  const auto curve = [](unsigned) { return false; };
-  require(!plan.assign(kSfzEffectsFixture, 1, 3, 2, curve),
+  require(!plan.assign(kSfzEffectsFixture, 1, 3, 2, noCurves),
           "compiler output1 is rejected by actual stereo host");
-  require(plan.assign(kSfzEffectsFixture, 1, 3, 4, curve),
+  require(plan.assign(kSfzEffectsFixture, 1, 3, 4, noCurves),
           "current JS effects fixture validates against generated native schema");
   require(plan.nodeCount() == 2 && plan.region(0).output == 1 && plan.region(0).sends[0] == .5F,
           "native region output and send preserve packed intent");
@@ -91,40 +91,40 @@ static void planValidation() {
           "native type-local control identity matches compiler");
   require(plan.returns().directToMain == .5F && plan.returns().toMix[0] == .25F,
           "native global routing gains match compiler");
-  require(!plan.assign(kSfzEffectsFixture, 1, 2, 4, curve),
+  require(!plan.assign(kSfzEffectsFixture, 1, 2, 4, noCurves),
           "missing convolution sample is rejected before prepare");
-  require(plan.assign(kSfzEffectsFixture, 1, 4, 4, curve, false),
+  require(plan.assign(kSfzEffectsFixture, 1, 4, 4, noCurves, false),
           "resident IR directory resolves a stereo PCM slice");
   require(plan.impulseCount() == 1 && plan.impulse(0).sampleOffsetOrId == 2 &&
               plan.impulse(0).channels == 2 && plan.impulse(0).rate == 48000,
           "typed IR geometry retains source rate and layout");
-  require(!plan.assign(kSfzEffectsFixture, 1, 3, 4, curve, false),
+  require(!plan.assign(kSfzEffectsFixture, 1, 3, 4, noCurves, false),
           "resident IR slice cannot exceed the captured PCM pool");
   auto broken = kSfzEffectsFixture;
   broken[broken[20] + 1] = UINT32_MAX;
-  require(!plan.assign(broken, 1, UINT32_MAX, 4, curve, false),
+  require(!plan.assign(broken, 1, UINT32_MAX, 4, noCurves, false),
           "resident IR frame multiplication cannot wrap past pool validation");
   broken = kSfzEffectsFixture;
   broken[19] = 1;
-  require(!plan.assign(broken, 1, 3, 4, curve), "unknown FX wire flags rejected");
+  require(!plan.assign(broken, 1, 3, 4, noCurves), "unknown FX wire flags rejected");
   broken = kSfzEffectsFixture;
   broken[broken[7] + 2] = std::bit_cast<std::uint32_t>(101.0F);
-  require(!plan.assign(broken, 1, 3, 4, curve), "out-of-contract native effect parameter rejected");
+  require(!plan.assign(broken, 1, 3, 4, noCurves),
+          "out-of-contract native effect parameter rejected");
   broken = kSfzEffectsFixture;
   broken[broken[8] + 1] = 156;
-  require(!plan.assign(broken, 1, 3, 4, curve),
+  require(!plan.assign(broken, 1, 3, 4, noCurves),
           "out-of-contract global controller source rejected");
   auto invalidStatic = kSfzEffectsDispatchFixture;
   const auto staticNode = invalidStatic[6] + 11 * sfz::fxschema::kNodeWords;
   invalidStatic[invalidStatic[7] + invalidStatic[staticNode + 2] +
                 static_cast<unsigned>(sfz::fxschema::Parameter::static_random_maxtime)] = 0;
-  require(!plan.assign(invalidStatic, 0, 1, 2, curve),
+  require(!plan.assign(invalidStatic, 0, 1, 2, noCurves),
           "native static random time order matches compiler admission");
 }
 static void sharedControls() {
   sfz::EffectPlan plan;
-  require(plan.assign(kSfzEffectsFixture, 1, 3, 4, [](unsigned) { return false; }),
-          "global controls fixture");
+  require(plan.assign(kSfzEffectsFixture, 1, 3, 4, noCurves), "global controls fixture");
   sfz::EffectControls controls;
   require(controls.prepare(plan, 0), "global effect controls prepare route ramps");
   sfz::EffectDynamics effect;
@@ -446,7 +446,7 @@ static void noiseAndStrings() {
 }
 static void typedDispatch() {
   sfz::EffectPlan plan;
-  require(plan.assign(kSfzEffectsDispatchFixture, 0, 1, 2, [](unsigned) { return false; }),
+  require(plan.assign(kSfzEffectsDispatchFixture, 0, 1, 2, noCurves),
           "all typed FX dispatch comes from the JS compiler");
   const std::array<float, 2> impulse{.5F, -.25F};
   std::array<float, 156> sources{};
@@ -512,8 +512,7 @@ static void typedDispatch() {
               "silently dropped");
     }
   }
-  require(plan.assign(kSfzEffectsChorusFixture, 1, 0, 2, [](unsigned) { return false; }),
-          "v1 implicit chorus plan");
+  require(plan.assign(kSfzEffectsChorusFixture, 1, 0, 2, noCurves), "v1 implicit chorus plan");
   sfz::EffectNode chorus;
   require(chorus.prepare(plan, 0, {48000, 2, 128}, 1234, 1), "typed implicit chorus preparation");
   double energy = 0;
@@ -529,8 +528,7 @@ static void typedDispatch() {
 }
 static void effectRuntime() {
   sfz::EffectPlan plan;
-  require(plan.assign(kSfzEffectsRuntimeFixture, 2, 0, 4, [](unsigned) { return false; }),
-          "runtime compiler fixture");
+  require(plan.assign(kSfzEffectsRuntimeFixture, 2, 0, 4, noCurves), "runtime compiler fixture");
   sfz::EffectRuntime runtime;
   const auto noImpulse = [](sfz::EffectImpulseReference) { return sfz::EffectImpulse{}; };
   {
@@ -580,8 +578,7 @@ static void effectRuntime() {
     require(audio[128 + frame] == .25F && audio[192 + frame] == -.25F,
             "runtime auxiliary pair never folds to main");
   }
-  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, [](unsigned) { return false; }),
-          "sync runtime compiler fixture");
+  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, noCurves), "sync runtime compiler fixture");
   require(runtime.prepare(plan, {48000, 2, 64}, 2, noImpulse, 60, {1 << 20, 2}),
           "sync delay capacity follows admitted tempo");
   audio.fill(0);
@@ -611,8 +608,7 @@ static void effectRuntime() {
 
 static void speedSynchronizedDelay() {
   sfz::EffectPlan plan;
-  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, [](unsigned) { return false; }),
-          "speed delay fixture");
+  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, noCurves), "speed delay fixture");
   sfz::MidiTransportMap map;
   const et_midi_transport_point point{0, 0, 0, 120, 4, 4};
   require(map.assign(&point, 1) == ET_OK, "real transport point map");
@@ -707,8 +703,7 @@ static void preparationGeometry() {
           "FX standalone tempo is unioned once with the known physical envelope");
 
   sfz::EffectPlan allTypes;
-  require(allTypes.assign(kSfzEffectsDispatchFixture, 0, 1, 2, [](unsigned) { return false; }),
-          "all-type sizing plan");
+  require(allTypes.assign(kSfzEffectsDispatchFixture, 0, 1, 2, noCurves), "all-type sizing plan");
   for (const auto rate : {48000.0F, 96000.0F}) {
     std::array<float, 4> impulse{1, 0, 1, 0};
     const auto resolve = [&](sfz::EffectImpulseReference reference) {
@@ -731,8 +726,7 @@ static void preparationGeometry() {
   words[words.size() - 3] = 8193;
   words[words.size() - 1] = 44100;
   sfz::EffectPlan plan;
-  require(plan.assign(words, 1, 3, 4, [](unsigned) { return false; }),
-          "long convolution cost plan");
+  require(plan.assign(words, 1, 3, 4, noCurves), "long convolution cost plan");
   for (const auto rate : {48000.0F, 96000.0F}) {
     const effetune::PrepareInfo info{rate, 16, 128, 0};
     const auto frames = sfz::effectImpulseFrames(8193, 44100, rate);
@@ -769,7 +763,7 @@ static void preparationGeometry() {
             "not a sum");
   }
 
-  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, [](unsigned) { return false; }),
+  require(plan.assign(kSfzEffectsSyncFixture, 1, 0, 2, noCurves),
           "standalone synchronized-delay plan");
   sfz::EffectRuntime runtime;
   require(runtime.prepare(plan, {48000, 2, 64}, 2,
@@ -808,7 +802,7 @@ static void preparationGeometry() {
 
 static std::vector<std::uint32_t> activityFixture(sfz::fxschema::Type type, unsigned copies = 1) {
   sfz::EffectPlan authored;
-  require(authored.assign(kSfzEffectsDispatchFixture, 0, 1, 2, [](unsigned) { return false; }),
+  require(authored.assign(kSfzEffectsDispatchFixture, 0, 1, 2, noCurves),
           "authored activity fixture");
   unsigned selected = 0;
   while (authored.node(selected)[0] != static_cast<unsigned>(type))
@@ -851,8 +845,7 @@ static void committedActivity() {
     values[static_cast<unsigned>(P::delay_wet)] = std::bit_cast<std::uint32_t>(100.0F);
   }
   sfz::EffectPlan plan;
-  require(plan.assign(words, 0, 0, 2, [](unsigned) { return false; }),
-          "serial-delay activity plan");
+  require(plan.assign(words, 0, 0, 2, noCurves), "serial-delay activity plan");
   sfz::EffectRuntime runtime;
   const auto noImpulse = [](sfz::EffectImpulseReference) { return sfz::EffectImpulse{}; };
   require(runtime.prepare(plan, {1000, 2, 64}, 2, noImpulse, 0, {1 << 20, 8}) && !runtime.active(),
@@ -885,7 +878,7 @@ static void committedActivity() {
   require(echo && idle, "serial echo survives its combined gap and eventually idles");
 
   words = activityFixture(T::fverb);
-  require(plan.assign(words, 0, 0, 2, [](unsigned) { return false; }), "reverb activity plan");
+  require(plan.assign(words, 0, 0, 2, noCurves), "reverb activity plan");
   require(runtime.prepare(plan, {8000, 2, 64}, 2, noImpulse, 0, {1 << 20, 8}),
           "reverb activity preparation");
   sfz::EffectNode reference;
@@ -918,7 +911,7 @@ static void committedActivity() {
   }
   require(lateAudible && idle, "reverb remains active past1.2s and eventually reaches silence");
   words = activityFixture(T::staticNoise);
-  require(plan.assign(words, 0, 0, 2, [](unsigned) { return false; }) &&
+  require(plan.assign(words, 0, 0, 2, noCurves) &&
               runtime.prepare(plan, {8000, 2, 64}, 2, noImpulse, 0, {1 << 20, 8}),
           "source-generating activity plan");
   require(runtime.beginQuantum(64, cc) &&
@@ -957,8 +950,7 @@ static void rectifierAntialiasing() {
 }
 static void extensionEffects() {
   sfz::EffectPlan plan;
-  require(plan.assign(kSfzEffectsExtensionFixture, 0, 0, 2, [](unsigned) { return false; }),
-          "new effects compiler plan");
+  require(plan.assign(kSfzEffectsExtensionFixture, 0, 0, 2, noCurves), "new effects compiler plan");
   const auto processNode = [&](unsigned index, auto run) {
     sfz::EffectNode node;
     require(node.prepare(plan, index, {48000, 2, 128}, 1, 0), "new native effect preparation");

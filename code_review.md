@@ -45,7 +45,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 - Before every commit, run the owning audit and outdated checks for every dependency manifest, including `npm audit --audit-level=moderate` and `npm outdated` at the root, and inspect all open Dependabot alerts and pull requests, including GitHub Actions updates. Resolve every available update in the prospective commit or an earlier local commit. For dependency metadata changes, also run the CI-equivalent `npm ci --ignore-scripts`, `npm audit signatures`, and `npm run verify`; reject unresolved peer conflicts instead of forcing installation. Do not exempt routine or development-only updates from the commit gate.
 - For GitHub Actions graph changes, run the repository's workflow syntax and pinning checks and review both selected and skipped paths. Check `needs`, job-level `if`, reusable-workflow inputs, and the required gate together; a skipped prerequisite must not silently suppress a selected validation stage.
 - For every added or modified filesystem/path test, check whether the tested production path is canonicalized with `realpath`. Canonicalize a temporary root immediately after `mkdtemp`, derive expected paths from the same canonical root, and do not compare a raw `os.tmpdir()` path with a canonicalized production path. Prefer `await fs.realpath(await fs.mkdtemp(...))` when the temporary root enters production path checks. Avoid mocks that match filesystem calls using only `path.resolve()` or case-folded strings when production uses `realpath`; prefer a real file, including a sparse file for size-limit tests, or canonicalize both operands identically. This prevents macOS `/var` versus `/private/var` failures and Windows short-path mismatches that may not reproduce on the development machine.
-- If a C++ source or header under `dsp/` changed, format the changed files before rebuilding DSP artifacts. Then run the same non-vendor check as the DSP Core workflow with a clang-format version that accepts `.clang-format`:
+- If a C++ source or header under `dsp/` changed, identify the clang-format version used by the selected CI runner image and use that same version to format the changed files before rebuilding DSP artifacts. Then run the same non-vendor check as CI:
 
   ```bash
   find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
@@ -59,7 +59,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
     ForEach-Object { clang-format --dry-run --Werror $_.FullName }
   ```
 
-  Use the current Visual Studio LLVM `clang-format.exe` if the executable on `PATH` is too old. Treat an unsupported `.clang-format` option or other configuration error as a failed check. `npm run verify` does not run this C++ formatting check.
+  Check the workflow and runner-image tooling instead of assuming that `PATH` or Visual Studio LLVM matches CI. Accepting `.clang-format` does not guarantee identical formatting across versions; install the matching version locally when needed. Treat a version mismatch, unsupported option, or other configuration error as a failed check. `npm run verify` does not run this C++ formatting check.
 - For C++ changes, also run the CodeQL manual build in a Linux/GCC environment when available; an MSVC build does not cover GCC `-Werror` diagnostics:
 
   ```bash

@@ -244,6 +244,8 @@ for (const variant of ['baseline', 'simd']) {
       owner = playback.owner;
       const state = playback.state;
       owner.midiTimeline = { duration: 2, events: [event(0, 0x90, 60, 127), event(1.5, 0x80, 60)] };
+      const preparation = owner.prepareMidiTransport(0);
+      await h.waitFor(() => !owner.midiPreparation); assert.equal(await preparation, true);
       await h.waitForJoinReady();
       let playing = owner.playMidi();
       await h.waitFor(() => state.isPlaying); assert.equal(await playing, true);
@@ -345,8 +347,18 @@ for (const variant of ['baseline', 'simd']) {
     try {
       await h.initialize(MAIN, fixture.descriptor);
       fixture.blockLateReads();
-      await start(h, { duration: 5, events: [event(0, 0x90, 60, 127)] }, 1);
-      await h.waitFor(() => fixture.lateReadWaiting, { timeout: 5000 });
+      const timeline = { duration: 5, events: [event(0, 0x90, 60, 127)] };
+      await start(h, timeline, 1);
+      const id = h.processor.wasmInstances.get(7).id;
+      const demandQuanta = Math.ceil(timeline.duration * RATE / 128);
+      for (let block = 0; !fixture.lateReadWaiting; block++) {
+        assert.ok(block < demandQuanta, 'The active note must demand the authored late sample page');
+        h.render();
+        await Promise.resolve();
+        if (h.binding.instanceStreamReadiness(id).pendingPages)
+          await h.waitFor(() => fixture.lateReadWaiting || h.binding.instanceStreamReadiness(id).pendingPages === 0,
+            { timeout: 5000, renderQuanta: false });
+      }
       await h.send({ type: 'midiTransport', generation: 2, position: 0, playing: false });
       fixture.failLateRead();
       await h.waitFor(() => !h.manager._sfzSampleStreams?.get(h.node)?.has(7), { timeout: 5000 });

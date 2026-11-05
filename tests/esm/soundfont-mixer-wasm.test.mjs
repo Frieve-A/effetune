@@ -39,6 +39,10 @@ for (const variant of ['baseline', 'simd']) test(`${variant} mixer edits reach n
       }
       return peak;
     };
+    // Resident provider pages do not prepare the native prefix for this timeline.
+    const preparation = owner.prepareMidiTransport(0);
+    await h.waitFor(() => !owner.midiPreparation); assert.equal(await preparation, true);
+    await h.waitForJoinReady();
     const start = owner.playMidi(); await h.waitFor(() => playback.state.isPlaying); assert.equal(await start, true);
     assert.ok(await advance(.1) > .001);
     const pause = owner.pauseMidi(); await h.waitFor(() => playback.state.isPaused); await pause;

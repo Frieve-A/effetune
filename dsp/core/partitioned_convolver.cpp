@@ -1642,7 +1642,7 @@ private:
   ConvolverPreparationState state_ = ConvolverPreparationState::empty;
 };
 
-PartitionedConvolver::PartitionedConvolver() noexcept : impl_(new(std::nothrow) Impl()) {}
+PartitionedConvolver::PartitionedConvolver() noexcept : impl_(new (std::nothrow) Impl()) {}
 std::size_t PartitionedConvolver::minimumMemoryBytes() noexcept { return sizeof(Impl); }
 bool PartitionedConvolver::storageRequirements(const ConvolverConfig &config,
                                                ConvolverStorage &storage) noexcept {

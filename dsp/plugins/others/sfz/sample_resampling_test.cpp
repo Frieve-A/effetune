@@ -52,8 +52,8 @@ void geometryAndSelection(const SampleResamplingTables &tables) {
   static_assert(SampleResamplingTables::kPhases == 64u && SampleResamplingTables::kRows == 65u &&
                 SampleResamplingTables::kBandsPerOctave == 32u);
   CHECK(tables.kRadii == (std::array<std::uint32_t, 9>{31, 15, 4, 8, 12, 16, 20, 24, 28}));
-  CHECK(tables.kernel(tables.select(0u, 1)).taps == 64u);
-  CHECK(tables.kernel(tables.select(1u, 1)).taps == 32u);
+  CHECK(tables.kernel(0u).taps == 64u);
+  CHECK(tables.kernel(tables.kRows).taps == 32u);
   std::size_t coefficientWords = 0, prototypeWords = 0;
   const auto guard = std::exp2(1.0 / tables.kBandsPerOctave);
   for (auto profile = 0u; profile < tables.kRadii.size(); ++profile) {
@@ -81,6 +81,9 @@ void geometryAndSelection(const SampleResamplingTables &tables) {
       CHECK(tables.select(profile, step) == profile * tables.kRows);
     for (const auto step : {1.01, 1.5, 2.38, 4.0}) {
       const auto index = tables.select(profile, step);
+      CHECK(index != tables.kInvalid);
+      if (index == tables.kInvalid)
+        return;
       const auto &kernel = tables.kernel(index);
       CHECK(kernel.step >= step && kernel.step <= tables.maximumBankStep(step));
       CHECK(kernel.radius > tables.kRadii[profile]);
@@ -105,6 +108,9 @@ void normalizationAndResponse(const SampleResamplingTables &tables) {
   for (auto profile = 0u; profile < tables.kRadii.size(); ++profile)
     for (const auto step : {1.0, 1.5, 2.38, 4.0}) {
       const auto index = tables.select(profile, step);
+      CHECK(index != tables.kInvalid);
+      if (index == tables.kInvalid)
+        return;
       const auto &kernel = tables.kernel(index);
       for (const auto phase : {0u, 24u, 64u}) {
         const auto *values = tables.coefficients(index) + phase * kernel.taps;
@@ -132,8 +138,13 @@ void normalizationAndResponse(const SampleResamplingTables &tables) {
       }
     }
   for (const auto step : {1.0, 1.5, 2.38, 4.0}) {
-    const auto high = response(tables, tables.select(0u, step), 24u, .5 / step);
-    const auto balanced = response(tables, tables.select(1u, step), 24u, .5 / step);
+    const auto highIndex = tables.select(0u, step);
+    const auto balancedIndex = tables.select(1u, step);
+    CHECK(highIndex != tables.kInvalid && balancedIndex != tables.kInvalid);
+    if (highIndex == tables.kInvalid || balancedIndex == tables.kInvalid)
+      return;
+    const auto high = response(tables, highIndex, 24u, .5 / step);
+    const auto balanced = response(tables, balancedIndex, 24u, .5 / step);
     CHECK(high * 16 < balanced);
   }
 }

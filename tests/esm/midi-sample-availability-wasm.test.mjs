@@ -29,7 +29,14 @@ for (const variant of ['baseline', 'simd']) test(`${variant} delayed valid sampl
     });
     fixture.blockLateReads();
     await h.send({ type: 'midiStart', generation: 1, anchorFrame: h.processor.currentFrame });
-    await h.waitFor(() => fixture.lateReadWaiting, { timeout: 5000 });
+    // Advance virtual audio to page demand before timing the real worker read.
+    const demandQuanta = Math.ceil(timeline.events[1].seconds * h.context.sampleRate / 128);
+    for (let block = 0; h.binding.instanceStreamReadiness(id).pendingPages === 0; block++) {
+      assert.ok(block < demandQuanta, 'The active first note must demand its next sample window');
+      h.render();
+      await Promise.resolve();
+    }
+    await h.waitFor(() => fixture.lateReadWaiting, { timeout: 5000, renderQuanta: false });
     const before = h.processor.currentFrame;
     for (let block = 0; block < 600; block++) { h.render(); await Promise.resolve(); }
     assert.equal(h.processor.currentFrame, before + 600 * 128, 'A pending page does not stall or catch up source samples');
