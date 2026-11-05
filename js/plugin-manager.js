@@ -1,4 +1,5 @@
 import './ui/range-fill.js';
+import { PLUGIN_SUPPORT_SCRIPTS } from './plugin-support-scripts.js';
 
 export class PluginManager {
     constructor() {
@@ -73,17 +74,7 @@ export class PluginManager {
             const { categories, pluginDefinitions } = this.parsePluginsDefinition(pluginsText);
 
             // Collect all resource URLs
-            const jsUrls = [
-                'plugins/plugin-base.js',
-                'plugins/graph-point-interaction.js',
-                'plugins/frequency-axis.js',
-                'plugins/spectrum-overlay.js',
-                'plugins/frequency-preview.js',
-                'plugins/graph-readout.js',
-                'plugins/multires-spectrum.js',
-                'plugins/theme-palette.js',
-                'plugins/sfz-instrument.js'
-            ]
+            const jsUrls = PLUGIN_SUPPORT_SCRIPTS
                 .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
             const cssUrls = ['plugins/spectrum-overlay.css', 'plugins/graph-readout.css']
                 .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));

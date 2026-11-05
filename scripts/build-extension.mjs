@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import * as esbuild from 'esbuild';
+import { PLUGIN_SUPPORT_SCRIPTS } from '../js/plugin-support-scripts.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const zipModule = { exports: {} };
@@ -49,9 +50,7 @@ export async function buildExtension() {
     const pluginPaths = [...definitions.matchAll(/^([^#\[\s][^:\n]+):[^\n]*\|/gm)].map(match => `plugins/${match[1]}`);
     const scripts = new Set([
         'extension/service-worker.js', 'extension/offscreen.js', 'extension/session.js', 'extension/editor.js', 'extension/popup.js',
-        'plugins/plugin-base.js', 'plugins/graph-point-interaction.js', 'plugins/frequency-axis.js',
-        'plugins/spectrum-overlay.js', 'plugins/frequency-preview.js', 'plugins/graph-readout.js', 'plugins/theme-palette.js',
-        'plugins/multires-spectrum.js',
+        ...PLUGIN_SUPPORT_SCRIPTS,
         'plugins/audio-processor.js', ...pluginPaths.map(filename => `${filename}.js`)
     ]);
     const plugin = {

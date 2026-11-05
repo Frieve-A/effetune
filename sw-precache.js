@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.17.0-fa14339d789b0a37";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.17.0-a55461914e579fc0";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -260,6 +260,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/pipeline-analyzer/tsp.js",
   "./js/pipeline-analyzer/ui.js",
   "./js/plugin-manager.js",
+  "./js/plugin-support-scripts.js",
   "./js/preset-manager.js",
   "./js/release-version.mjs",
   "./js/remote/effect-describe.js",
