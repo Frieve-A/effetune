@@ -66,6 +66,16 @@ test('renderer power helper follows only the current main renderer and restores 
   await manager.refreshConfig();
   assert.equal(manager.status().applied, false);
   assert.equal(manager.status().processingActive, true);
+
+  mode = 'continuous';
+  await manager.refreshConfig();
+  assert.equal(manager.status().applied, true);
+  await manager.stop();
+  assert.equal(manager.status().applied, false);
+  assert.equal(manager.status().restored, true);
+  assert.equal(manager.status().processingActive, false);
+  await manager.refreshConfig();
+  assert.deepEqual(spawned, [41, 42, 42]);
   assert.deepEqual(diagnostics, []);
   await manager.dispose();
 });

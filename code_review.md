@@ -20,6 +20,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 
 - Confirm relevant tests were added or updated for behavior changes.
 - Confirm `npm run verify` or an appropriate narrower check was run.
+- When changed code or tests have OS-dependent paths or test selection, run the coverage-gated Node suite with the CI Node major on each available CI host OS. Native or browser integration checks do not establish that the Node coverage gate passes there.
 - Check that English documentation was updated first for user-facing features or plugin changes.
 - For localized documentation, check that GUI labels match the localized UI text and that prose reads naturally.
 

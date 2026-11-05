@@ -397,7 +397,7 @@ test('saveWindowState logs and recovers from filesystem failures', () => {
   });
 });
 
-test('mini mode saves mini bounds without changing normal window state', () => {
+test('normal and mini mode retain their latest bounds across a round trip', () => {
   let currentBounds = { x: 10, y: 20, width: 1400, height: 850 };
   const harness = createHarness({
     windowState: {
@@ -429,6 +429,19 @@ test('mini mode saves mini bounds without changing normal window state', () => {
   assert.deepEqual(harness.module.getMiniPlayerState(), {
     bounds: { x: 1500, y: 50, width: 420, height: 120 },
     alwaysOnTop: false
+  });
+
+  const movedMiniBounds = { x: 1200, y: 75, width: 440, height: 130 };
+  currentBounds = movedMiniBounds;
+  harness.module.exitMiniMode();
+  assert.equal(harness.module.isMiniMode(), false);
+
+  currentBounds = { x: 30, y: 40, width: 1350, height: 800 };
+  harness.module.saveWindowState();
+  assert.deepEqual(readSavedWindowState(harness.userDataPath), {
+    bounds: currentBounds,
+    isMaximized: false,
+    miniPlayer: { bounds: movedMiniBounds, alwaysOnTop: false }
   });
 });
 
