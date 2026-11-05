@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { stat } from 'node:fs/promises';
 
 export async function runMidiInputBrowserSmoke({ browser, baseURL }) {
     const context = await browser.newContext();
@@ -14,12 +15,26 @@ export async function runMidiInputBrowserSmoke({ browser, baseURL }) {
             const permission = await navigator.permissions.query({ name: 'midi', sysex: false });
             let access;
             try { access = await navigator.requestMIDIAccess({ sysex: false }); }
-            catch (error) { throw new Error(`${error.name}: MIDI permission=${permission.state}, secure=${isSecureContext}, origin=${location.origin}`); }
+            catch (error) {
+                return { available: true, initializationError: { name: error.name, message: error.message },
+                    permission: permission.state, secure: isSecureContext };
+            }
             return { available: true, inputs: access.inputs.size, outputs: access.outputs.size,
                 sysexEnabled: access.sysexEnabled };
         });
         assert.equal(ports.available, true, 'Chromium exposes Web MIDI in the secure managed fixture');
-        assert.equal(ports.sysexEnabled, false);
+        if (ports.initializationError) {
+            assert.equal(process.platform, 'linux');
+            assert.equal(ports.initializationError.name, 'InvalidStateError');
+            assert.equal(ports.initializationError.message, 'Platform dependent initialization failed.');
+            assert.equal(ports.permission, 'granted');
+            assert.equal(ports.secure, true);
+            await assert.rejects(stat('/dev/snd/seq'), { code: 'ENOENT' });
+            ports.nativeBackend = 'unavailable: Linux ALSA sequencer device is absent';
+            console.log('Web MIDI native port enumeration omitted: /dev/snd/seq is absent. Authored MIDI audio checks remain required.');
+        } else {
+            assert.equal(ports.sysexEnabled, false);
+        }
         const audio = [];
         for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
             const result = await page.evaluate(artifact => window.runMidiInputSmoke(artifact), artifact);
