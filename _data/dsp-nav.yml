@@ -20,6 +20,8 @@ groups:
     links:
       - title: "ML data augmentation"
         url: "/dsp/cookbook/ml-data-augmentation/"
+      - title: "MIDI to WAV"
+        url: "/dsp/cookbook/midi-to-wav/"
       - title: "Schema-driven agent"
         url: "/dsp/cookbook/schema-driven-agent/"
   - label: "Understand"

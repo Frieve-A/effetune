@@ -204,6 +204,7 @@ struct RenderState {
   float midi_gain_ = 1.0F;
   std::uint32_t midi_revision_ = 1u, midi_identity_ = 0u;
   std::array<int, 16> sf2_override_cache_{};
+  bool sf2_fallback_cache_ = true;
   std::uint32_t sf2_frame_ = 0, sf2_block_frames_ = 0, sf2_fx_position_ = 0,
                 sf2_timing_fade_start_ = 0;
   bool sf2_has_sends_ = false;
@@ -226,6 +227,7 @@ struct RenderState {
   std::uint32_t voice_limit_ = 32u, voice_extent_ = 0u, seed_ = 1u, salt_ = 0u, random_ = 1u;
   std::uint64_t age_ = 0u;
   int preview_midi_ = -1;
+  std::uint32_t preview_channel_ = 0u;
   std::uint64_t sample_clock_ = 0u, last_detection_ = 0u, silent_frames_ = 0u;
   std::uint64_t next_note_event_ = 0u;
   float low_register_ = 0.0F, high_register_ = 0.0F;
@@ -259,6 +261,12 @@ class SFZEngine final : public PluginKernel, private script::Host, private Rende
   using Trial = OfflineTrial<kVoices>;
   EFFETUNE_PARAMS(ParamsType)
 public:
+  SFZEngine() noexcept {
+    if constexpr (Midi) {
+      params_.automaticFallback = 1.0F;
+      params_.previewMidi = -1.0F;
+    }
+  }
   static std::uint32_t assetCapacityForSlot(std::uint32_t slot) noexcept {
     return slot == 0u ? kCapacity : 0u;
   }
@@ -1026,6 +1034,8 @@ public:
       return ET_ERR_ARGS;
     }
     voices_->fill({});
+    // The preview key owns its voice, so the next block reattacks a held preview.
+    preview_midi_ = -1;
     midi_meters_.clear();
     midi_count_ = midi_cursor_ = midi_flags_ = 0;
     clearSampleForecast();
@@ -2456,7 +2466,7 @@ private:
     paused_voices_->fill({});
     auto next = 0u;
     for (const auto &voice : *voices_)
-      if (voice.region && !voice.retired && heldSourceVoice(voice))
+      if (voice.region && !voice.retired && !voice.preview && heldSourceVoice(voice))
         (*paused_voices_)[next++] = voice;
     retireMidi();
     midi_running_ = false;
@@ -2465,6 +2475,8 @@ private:
   void resumeMidi() noexcept {
     for (auto &voice : *voices_)
       voice = {};
+    // The preview key owns its voice, so the next block reattacks a held preview.
+    preview_midi_ = -1;
     std::copy_n(paused_voices_->data(), voice_limit_, voices_->data());
     voice_extent_ = voice_limit_;
     trimVoiceExtent();
@@ -2495,7 +2507,7 @@ private:
         }
     }
     for (auto &voice : *voices_)
-      if (voice.region && !voice.retired) {
+      if (voice.region && !voice.retired && !voice.preview) {
         voice.sostenuto = false;
         const auto *note = script_session_ ? script_session_->find(voice.noteId) : nullptr;
         // Only key-driven regions belong to the source note-off. Release and controller
@@ -3042,12 +3054,23 @@ private:
         midi_selected_channel_ = selected;
       }
     }
-    if (bank() && bank()->sf2_)
+    if (bank() && bank()->sf2_) {
+      const bool fallbackChanged = sf2AutomaticFallback() != sf2_fallback_cache_;
+      sf2_fallback_cache_ = sf2AutomaticFallback();
       for (auto channel = 0u; channel < 16u; ++channel)
-        if (sf2PresetOverride(channel) != sf2_override_cache_[channel]) {
+        if (fallbackChanged || sf2PresetOverride(channel) != sf2_override_cache_[channel]) {
           clearSampleForecast();
           selectSf2Preset(channel);
         }
+    }
+  }
+  bool sf2AutomaticFallback(bool staged = false) const noexcept {
+    if constexpr (Midi) {
+      const auto &parameters = staged && params_pending_ ? staged_params_ : params_;
+      return parameters.automaticFallback >= .5F;
+    } else {
+      return true;
+    }
   }
   int sf2PresetOverride(std::uint32_t channel, bool staged = false) const noexcept {
     int selected = -1;
@@ -3115,6 +3138,9 @@ private:
           }
         }
       }
+    // Without automatic fallback, a missing bank/program stays silent.
+    if (!sf2AutomaticFallback(staged))
+      return result;
     if (result == UINT32_MAX && requestedBank != 128u)
       result = bank()->findPreset(0u, requestedProgram);
     if (result == UINT32_MAX)
@@ -3290,7 +3316,7 @@ private:
   void retireMidi(bool preserveRelease = false) noexcept {
     if (voices_)
       for (auto &v : *voices_)
-        if (v.region) {
+        if (v.region && !v.preview) {
           if (v.historyOnly || pendingVoiceStart(v)) {
             v.region = nullptr;
             continue;
@@ -3748,7 +3774,7 @@ private:
         if (key == 120u)
           c.pendingRelease.fill(0u);
         for (auto &v : *voices_)
-          if (v.channel == midi_channel_ && v.region) {
+          if (v.channel == midi_channel_ && v.region && !v.preview) {
             if (key != 120u && !keyDrivenRegion(v.region))
               continue;
             v.keyDown = false;
@@ -3771,7 +3797,7 @@ private:
       if (key == 121u) {
         flushMidiReleases(c);
         for (auto &v : *voices_)
-          if (v.region && v.channel == midi_channel_ && keyDrivenRegion(v.region)) {
+          if (v.region && !v.preview && v.channel == midi_channel_ && keyDrivenRegion(v.region)) {
             v.sostenuto = false;
             if (!v.keyDown)
               releaseMidiVoice(v);
@@ -4121,6 +4147,9 @@ private:
       failRuntime();
       return;
     }
+    modulation_block_frame_ = sf2_frame_ = 0u;
+    modulation_host_time_ = blockTime;
+    updatePreview();
     auto next = 0u;
     const bool useSf2Spans = Midi && bank() && bank()->sf2_ &&
                              bank()->state_ == ET_ASSET_STATE_ACTIVE && !script_session_ &&
@@ -4330,23 +4359,55 @@ private:
       }
     }
     for (auto &v : *voices_)
-      if (v.midi == midi && v.preview == preview)
-        release(v, preview);
+      if (v.midi == midi && v.preview == preview) {
+        if constexpr (Midi) {
+          // A Mixer key preview ends like a MIDI note-off, so released notes overlap.
+          v.keyDown = false;
+          releaseMidiVoice(v);
+        } else
+          release(v, preview);
+      }
   }
   void updatePreview() noexcept {
     if (!bank() || bank()->state_ != ET_ASSET_STATE_ACTIVE)
       return;
     const auto midi = static_cast<int>(std::round(bounded(params_.previewMidi, -1, 127, -1)));
-    if (midi == preview_midi_)
+    auto channel = 0u;
+    if constexpr (Midi)
+      channel = static_cast<std::uint32_t>(std::round(bounded(params_.previewChannel, 0, 15, 0)));
+    if (midi == preview_midi_ && channel == preview_channel_)
       return;
     if (preview_midi_ >= 0)
       releaseKey(static_cast<std::uint32_t>(preview_midi_), true);
     preview_midi_ = midi;
-    if (midi >= 0) {
+    preview_channel_ = channel;
+    if (midi < 0)
+      return;
+    const auto key = static_cast<std::uint32_t>(midi);
+    if constexpr (Midi) {
+      // Start the preview in its channel with a neutral note context, as script emissions do.
+      const auto savedChannel = midi_channel_, savedIdentity = midi_note_id_,
+                 savedTrigger = midi_trigger_;
+      const auto savedController = midi_controller_;
+      const auto savedOnly = midi_state_only_, savedReattack = midi_reattack_,
+                 savedFirst = midi_first_;
+      midi_channel_ = channel;
+      midi_note_id_ = midi_trigger_ = 0u;
+      midi_controller_ = -1;
+      midi_state_only_ = midi_reattack_ = false;
+      midi_first_ = true;
+      startVoices(key, logicalNoteKey(key), 100u, true);
+      midi_channel_ = savedChannel;
+      midi_note_id_ = savedIdentity;
+      midi_trigger_ = savedTrigger;
+      midi_controller_ = savedController;
+      midi_state_only_ = savedOnly;
+      midi_reattack_ = savedReattack;
+      midi_first_ = savedFirst;
+    } else {
       const auto velocity =
           static_cast<std::uint32_t>(std::round(bounded(params_.previewVelocity, 1, 127, 100)));
-      startVoices(static_cast<std::uint32_t>(midi), logicalNoteKey(static_cast<unsigned>(midi)),
-                  velocity, true);
+      startVoices(key, logicalNoteKey(key), velocity, true);
     }
   }
   void startOnset(std::uint32_t pitch, float level) noexcept {
@@ -4620,6 +4681,9 @@ private:
       modulation_random_ = static_cast<float>(random);
       modulation_cache_bank_ = nullptr;
     }
+    if (midi_controller_ >= 0 &&
+        !bank()->startController(static_cast<std::uint32_t>(midi_controller_)))
+      return;
     const auto *keys = bank()->indices_.data() + 129u + 2u * bank()->group_count_;
     auto *sequences = bank()->indices_.data() + 129u;
     auto *stamps = sequences + bank()->group_count_;
@@ -4634,9 +4698,21 @@ private:
     std::array<Selection, kVoices> selected{};
     std::uint32_t selected_count = 0u;
     // Groups share one sequence counter, advanced once for this note-on.
-    const auto begin = midi_controller_ >= 0 ? 0u : bank()->indices_.data()[sample_key];
-    const auto end =
+    auto begin = midi_controller_ >= 0 ? 0u : bank()->indices_.data()[sample_key];
+    auto end =
         midi_controller_ >= 0 ? bank()->region_count_ : bank()->indices_.data()[sample_key + 1];
+    // SF2 presets own contiguous region ranges and key lists are region-ordered, so only the
+    // selected preset's slice needs testing.
+    if (bank()->sf2_ && midi_controller_ < 0) {
+      const auto preset = (*midi_channels_)[midi_channel_].preset;
+      if (preset == UINT32_MAX)
+        return;
+      const auto range = bank()->preset(preset);
+      begin = static_cast<std::uint32_t>(
+          std::lower_bound(keys + begin, keys + end, range.firstRegion) - keys);
+      end = static_cast<std::uint32_t>(
+          std::lower_bound(keys + begin, keys + end, range.firstRegion + range.regionCount) - keys);
+    }
     for (auto i = begin; i < end; ++i) {
       const auto *r = region(midi_controller_ >= 0 ? i : keys[i]);
       const auto group = static_cast<std::uint32_t>(r[SequenceGroup]);

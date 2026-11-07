@@ -1,6 +1,7 @@
 import { instantiateDspBinding, ET_OK } from './internal/dsp-engine-binding.js';
 import { getEffectImplementation } from './catalog.js';
 import { prepareConvolutionAsset } from './assets.js';
+import { prewarmAsset } from './engine.js';
 import { AssetError, EffeTuneError, EffeTuneRuntimeError, ValidationError } from './errors.js';
 import { channelRange, packEffect, validateBassManagement } from './semantics.js';
 import { TELEMETRY_RING_BYTES } from './telemetry.js';
@@ -386,17 +387,11 @@ export async function createGraphEngineSession(artifact, state, resolvedAssets, 
             nodeId: effect.id
           });
         }
-        const warmupFrames = 128;
-        const silence = binding.getArenaViews().scratch.allChannels.subarray(0, prepared.beginInfo.processingChannels * warmupFrames);
-        const silencePtr = binding.pointerForArenaView(silence);
-        let assetState = binding.instanceAssetState(instanceId, slot);
-        const maximumWarmupBlocks = Math.ceil(2 * sampleRate / warmupFrames);
-        for (let block = 0; (assetState & 0xff) === 2 && block < maximumWarmupBlocks; block++) {
-          silence.fill(0);
-          requireOk(binding.instanceProcess(instanceId, silencePtr, prepared.beginInfo.processingChannels, warmupFrames, block * warmupFrames / sampleRate), `${effect.type} asset prewarming`);
-          assetState = binding.instanceAssetState(instanceId, slot);
-        }
-        if ((assetState & 0xff) !== 3) {
+        if (!prewarmAsset(binding, effect.type, instanceId, slot, {
+          processingChannels: prepared.beginInfo.processingChannels,
+          sampleRate,
+          payloadBytes: prepared.payload.byteLength
+        })) {
           throw new EffeTuneRuntimeError(`${effect.type} asset did not become active.`, {
             code: 'GRAPH_INSTANCE_PREPARE',
             path: `/nodes/${state.originalNodeIndexes.get(effect.id)}/assets`,

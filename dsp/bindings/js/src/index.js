@@ -107,6 +107,7 @@ export {
   RoomEQ,
   Saturation,
   SimpleJitter,
+  SoundFontPlayer,
   SpatialMapper,
   StereoBlend,
   SubSynth,
@@ -219,6 +220,7 @@ export {
   createRoomEQ,
   createSaturation,
   createSimpleJitter,
+  createSoundFontPlayer,
   createSpatialMapper,
   createStereoBlend,
   createSubSynth,
@@ -247,6 +249,12 @@ export {
   normalizeGraphDocument
 } from './graph-document.js';
 export { importLegacyPreset, parsePreset } from './preset.js';
+export { prepareSoundFont, SoundFontBank } from './soundfont.js';
+
+import { controlChange, noteOff, noteOn, pitchBend, programChange } from './midi.js';
+
+// MIDI message builders for stream events and EffeTuneNode.sendMidi().
+export const midi = Object.freeze({ noteOn, noteOff, controlChange, pitchBend, programChange });
 
 import { getEffectCatalog } from './catalog.js';
 

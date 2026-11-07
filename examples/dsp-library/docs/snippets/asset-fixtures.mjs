@@ -21,6 +21,9 @@ const COEFFICIENTS = Object.freeze({
   ])
 });
 
+export const requiresImpulseResponse = effect =>
+  effect.assets.some(asset => asset.required && asset.kind === 'impulseResponse');
+
 export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
   const requiredAssets = effect.assets.filter(asset => asset.required);
   if (!requiredAssets.length) {

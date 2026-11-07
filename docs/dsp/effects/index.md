@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 111 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 112 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -17,14 +17,14 @@ Browse all 111 semantic types registered in the v1 binding catalog. The list rem
 
 - [Analog Meter](/dsp/effects/analog-meter/) (`AnalogMeter`) — Passes audio through while exposing ballistic needle levels and, in Loudness mode, program loudness, loudness range, and true peak. <span data-effect-tags="analyzer  "></span>
 - [Chroma Spiral](/dsp/effects/chroma-spiral/) (`ChromaSpiral`) — Passes audio through while exposing a high-resolution spectrum for note-and-octave display. <span data-effect-tags="analyzer  "></span>
-- [Level Meter](/dsp/effects/level-meter/) (`LevelMeter`) — Passes audio through while the host-side EffeTune app can display peak and RMS levels. <span data-effect-tags="analyzer  "></span>
+- [Level Meter](/dsp/effects/level-meter/) (`LevelMeter`) — Passes audio through while exposing per-channel peak level, RMS level, and clipping. <span data-effect-tags="analyzer  "></span>
 - [Note Spectrogram](/dsp/effects/note-spectrogram/) (`NoteSpectrogram`) — Passes audio through while exposing pitch confidence and unrounded estimated cent offsets across the 88-key piano range. <span data-effect-tags="analyzer  "></span>
-- [Oscilloscope](/dsp/effects/oscilloscope/) (`Oscilloscope`) — Passes audio through while the host-side EffeTune app can display its waveform. <span data-effect-tags="analyzer  "></span>
+- [Oscilloscope](/dsp/effects/oscilloscope/) (`Oscilloscope`) — Passes audio through while exposing triggered or rolling waveform captures as sample points or minimum/maximum envelopes. <span data-effect-tags="analyzer  "></span>
 - [Pitch Meter](/dsp/effects/pitch-meter/) (`PitchMeter`) — Passes audio through while exposing one detected fundamental pitch, cents offset, confidence, and level. <span data-effect-tags="analyzer  "></span>
-- [Rhythm Analyzer](/dsp/effects/rhythm-analyzer/) (`RhythmAnalyzer`) — Passes audio through while exposing detected tempo, a per-cycle beat raster of hits, swing, and per-band timing offsets. <span data-effect-tags="analyzer  "></span>
-- [Spectrogram](/dsp/effects/spectrogram/) (`Spectrogram`) — Passes audio through while the host-side EffeTune app can display frequency content over time. <span data-effect-tags="analyzer  "></span>
-- [Spectrum Analyzer](/dsp/effects/spectrum-analyzer/) (`SpectrumAnalyzer`) — Passes audio through while the host-side EffeTune app can display its frequency spectrum. <span data-effect-tags="analyzer  "></span>
-- [Stereo Meter](/dsp/effects/stereo-meter/) (`StereoMeter`) — Passes audio through while the host-side EffeTune app can display stereo level and phase relationships. <span data-effect-tags="analyzer  "></span>
+- [Rhythm Analyzer](/dsp/effects/rhythm-analyzer/) (`RhythmAnalyzer`) — Passes audio through while exposing detected tempo, beat and onset events, a tempogram, and drum hits. <span data-effect-tags="analyzer  "></span>
+- [Spectrogram](/dsp/effects/spectrogram/) (`Spectrogram`) — Passes audio through while exposing log-frequency display intensities for each analysis step of a spectrogram. <span data-effect-tags="analyzer  "></span>
+- [Spectrum Analyzer](/dsp/effects/spectrum-analyzer/) (`SpectrumAnalyzer`) — Passes audio through while exposing the spectrum as dBFS levels per frequency bin, with peak hold. <span data-effect-tags="analyzer  "></span>
+- [Stereo Meter](/dsp/effects/stereo-meter/) (`StereoMeter`) — Passes audio through while exposing stereo side/mid samples, a polar envelope, correlation, left-right balance, and per-side peaks. <span data-effect-tags="analyzer  "></span>
 
 ## Basics
 
@@ -162,3 +162,4 @@ Browse all 111 semantic types registered in the v1 binding catalog. The list rem
 ## Others
 
 - [Oscillator](/dsp/effects/oscillator/) (`Oscillator`) — Generates a periodic test tone without requiring an input signal. <span data-effect-tags="others seeded "></span>
+- [SoundFont Player](/dsp/effects/soundfont-player/) (`SoundFontPlayer`) — Plays MIDI events with a prepared SF2, SF3, or SFZ instrument bank and adds the result to the input. <span data-effect-tags="others seeded asset"></span>

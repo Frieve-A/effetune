@@ -125,22 +125,30 @@ function resolveLegacyType(value, lookup) {
   return effect;
 }
 
-// Reject app presets for effects the library drives from a precomputed asset. These
-// effects replace the app's filter-design parameters with an impulse response supplied
-// by the caller, so an app export carries nothing convertible: reporting the app's
-// parameters as unsupported fields would read like a typo report instead of the
-// structural limit it is. The set is derived from the generated catalog's required
-// assets rather than a second hardcoded table. The Python binding keeps the same rule
-// in effetune.presets._reject_asset_backed_legacy_effect_v1 -- same error type, same
-// message -- and both are pinned to
+// Reject app presets for effects the library drives from a caller-supplied asset. An
+// impulse response replaces the app's filter-design parameters, and the app's SoundFont
+// reference names a bank only the app can load, so an app export carries nothing
+// convertible: reporting the app's parameters as unsupported fields would read like a
+// typo report instead of the structural limit it is. The set and the message follow
+// the generated catalog's required asset kind rather than a second hardcoded table.
+// The Python binding keeps the same rule in
+// effetune.presets._reject_asset_backed_legacy_effect_v1 -- same error type, same
+// message apart from its own API names -- and both are pinned to
 // dsp/bindings/common/legacy-app-export-v1.fixture.json.
 function rejectAssetBackedLegacyEffectV1(definition) {
-  if (!(definition.assets ?? []).some(asset => asset.required)) return;
+  const asset = (definition.assets ?? []).find(candidate => candidate.required);
+  if (!asset) return;
+  const prefix = `${definition.type} cannot be imported from an EffeTune app preset: `;
+  if (asset.kind === 'soundFont') {
+    throw new EffectError(
+      `${prefix}the app's SoundFont reference (sf) cannot be converted. Create the ` +
+      `${definition.type} effect directly and return its prepared .etsf bank from assetResolver.`
+    );
+  }
   throw new EffectError(
-    `${definition.type} cannot be imported from an EffeTune app preset: in the DSP ` +
-    'library this effect is driven by a precomputed impulse-response asset, and ' +
-    "the app's filter-design parameters cannot be converted. Construct the effect " +
-    'directly and supply its impulse-response asset instead.'
+    `${prefix}in the DSP library this effect is driven by a precomputed ` +
+    "impulse-response asset, and the app's filter-design parameters cannot be " +
+    'converted. Construct the effect directly and supply its impulse-response asset instead.'
   );
 }
 
@@ -263,9 +271,18 @@ const LEGACY_OBJECT_ARRAYS_V1 = Object.freeze({
 // and bus indexes under their short names, and a few plugins add their class name
 // under `pluginType`. Every one of them duplicates a value the surrounding node
 // already carries, which stays the source of truth, so they are dropped instead of
-// being reported as unknown parameters. The Python binding keeps the same table in
+// being reported as unknown parameters. The app also exports its editor-only
+// collapsed/locked UI state there (_uiCollapsed, _uiLocked), which is dropped the same
+// way. The Python binding keeps the same table in
 // effetune.presets._LEGACY_ECHOED_STRUCTURAL_KEYS_V1.
-const LEGACY_ECHOED_STRUCTURAL_KEYS_V1 = Object.freeze(['pluginType', 'ch', 'ib', 'ob']);
+const LEGACY_ECHOED_STRUCTURAL_KEYS_V1 = Object.freeze([
+  'pluginType',
+  'ch',
+  'ib',
+  'ob',
+  '_uiCollapsed',
+  '_uiLocked'
+]);
 
 // Horn Resonator and Horn Resonator Plus additionally echo the node's enabled switch
 // into their parameters. Unlike Modal Resonator's `en` -- an independent processing

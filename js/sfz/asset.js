@@ -1,7 +1,7 @@
 import { SFZ_MOD_STORAGE as STORAGE } from './modulation-schema.js';
 import { SFZ_EXTRA_DEFAULTS, SFZ_CONTROLLER_FAMILIES, sfzControllerOpcode } from './schema.js';
 import { sfzError, resolveSfzRegionOffset } from './parser.js';
-import { SFZ_DEFAULT_MAX_BYTES, requireSfzMaxBytes } from './limits.js';
+import { SFZ_DEFAULT_MAX_BYTES, SFZ_MAX_SAMPLES, requireSfzMaxBytes } from './limits.js';
 import { SFZ_SCRIPT_PROGRAM_VERSION } from './script-format.js';
 import { packSfzModulation } from './modulation.js';
 import { sfzRuntimeLimitations } from './runtime-support.js';
@@ -26,6 +26,9 @@ export const SFZ_REGION_FIELDS = Object.freeze([
   'ampeg_sustain', 'ampeg_release', ...Object.keys(SFZ_EXTRA_DEFAULTS), 'controlOffset', 'controlCount'
 ]);
 const INDEX_FIELDS = new Set(['sampleOffset', 'sampleFrames', 'offset', 'end', 'loop_start', 'loop_end', 'controlOffset', 'controlCount']);
+const INDEX_FIELD_LANES = SFZ_REGION_FIELDS.map(key => INDEX_FIELDS.has(key));
+const [SAMPLE_OFFSET_LANE, SEQ_GROUP_LANE, GROUP_LANE, OFF_BY_LANE, CONTROL_OFFSET_LANE, CONTROL_COUNT_LANE] =
+  ['sampleOffset', 'seqGroup', 'group', 'off_by', 'controlOffset', 'controlCount'].map(key => SFZ_REGION_FIELDS.indexOf(key));
 const CONTROLLER_IDS = new Map(Object.keys(SFZ_CONTROLLER_FAMILIES).map((family, index) => [family, index]));
 
 export function sfzAssetWarmupSamples(payload) {
@@ -107,7 +110,7 @@ export function sfzAssetTailSeconds(payload, dataEntry = null) {
 }
 
 export function sfzSampleCacheFootprint(sampleCount, cacheSlots, channels = 2, storage = null) {
-  if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > 10000 ||
+  if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > SFZ_MAX_SAMPLES ||
       !Number.isInteger(cacheSlots) || cacheSlots < 1 || cacheSlots > 32768 ||
       (channels !== 1 && channels !== 2) ||
       (storage && (!Number.isInteger(storage.slots16) || storage.slots16 < 0 || storage.slots16 > cacheSlots))) throw sfzError('prepare', 'Invalid SFZ sample cache capacity.');
@@ -176,6 +179,8 @@ export function packSfzAsset(regions, samples, { maxBytes = SFZ_DEFAULT_MAX_BYTE
   }
   const playable = [];
   const playableIndices = [];
+  const rows = [];
+  const controls = [];
   const invalidRegions = [];
   let firstInvalid;
   let ignoredLoopPoints = 0;
@@ -195,17 +200,23 @@ export function packSfzAsset(regions, samples, { maxBytes = SFZ_DEFAULT_MAX_BYTE
         normalized.loop_start = 0;
         normalized.loop_end = end;
       } else if (invalidLoop) throw sfzError('prepare', 'SFZ loop points exceed the sample.');
-      for (const key of SFZ_REGION_FIELDS) {
-        if (key === 'sampleOffset') continue;
-        const value = normalized[key];
+      // Large normalized regions are dictionary objects; read each lane once.
+      const row = new Float64Array(SFZ_REGION_FIELDS.length);
+      for (let field = 0; field < SFZ_REGION_FIELDS.length; field++) {
+        if (field === SAMPLE_OFFSET_LANE) continue;
+        const value = normalized[SFZ_REGION_FIELDS[field]];
         if (!Number.isFinite(value)) throw sfzError('prepare', 'SFZ region has invalid values.');
-        if (INDEX_FIELDS.has(key) && (!Number.isSafeInteger(value) || value < 0 || value > 0xffffffff)) {
+        if (INDEX_FIELD_LANES[field] && (!Number.isSafeInteger(value) || value < 0 || value > 0xffffffff)) {
           throw sfzError('prepare', 'SFZ sample positions must be non-negative integers.');
         }
+        row[field] = value;
       }
       if (invalidLoop) ignoredLoopPoints++;
       playable.push(normalized);
       playableIndices.push(regionIndex);
+      rows.push(row);
+      // Controller opcodes come only from the authored region, never from defaults or sample metadata.
+      controls.push(region);
     } catch (error) {
       if (error?.code !== 'prepare') throw error;
       firstInvalid ??= error;
@@ -222,7 +233,10 @@ export function packSfzAsset(regions, samples, { maxBytes = SFZ_DEFAULT_MAX_BYTE
     const ids = [...new Set(regions.flatMap(region => [region.group, region.off_by]).filter(id => id !== 0))].sort((a, b) => a - b);
     if (ids.length > 16777216) throw sfzError('too-large', 'The instrument has too many exclusive groups.');
     const tokens = new Map(ids.map((id, index) => [id, index + 1]));
-    regions = regions.map(region => ({ ...region, group: tokens.get(region.group) ?? 0, off_by: tokens.get(region.off_by) ?? 0 }));
+    for (const [index, region] of regions.entries()) {
+      rows[index][GROUP_LANE] = tokens.get(region.group) ?? 0;
+      rows[index][OFF_BY_LANE] = tokens.get(region.off_by) ?? 0;
+    }
   }
   // Streaming sample IDs match the captured provider's complete sorted list,
   // including samples whose regions fail sample-aware validation.
@@ -235,17 +249,18 @@ export function packSfzAsset(regions, samples, { maxBytes = SFZ_DEFAULT_MAX_BYTE
   const groupIds = [...new Set(regions.map(region => region.seqGroup))].sort((a, b) => a - b);
   const groupCount = groupIds.length;
   const groups = new Map(groupIds.map((id, index) => [id, index]));
-  const controls = regions.map(region => {
+  for (const [index, region] of controls.entries()) {
     const entries = [];
-    for (const [key, value] of Object.entries(region)) {
+    for (const key in region) {
+      const value = region[key];
       const route = sfzControllerOpcode(key);
       if (!route || value === SFZ_CONTROLLER_FAMILIES[route.family]) continue;
       if (genericModulation && !['locc', 'hicc', 'set_cc', 'on_locc', 'on_hicc'].includes(route.family)) continue;
       if (!Number.isFinite(value)) throw sfzError('prepare', 'SFZ controller has an invalid value.');
       entries.push([CONTROLLER_IDS.get(route.family) * 512 + route.controller, value]);
     }
-    return entries.sort((a, b) => a[0] - b[0]);
-  });
+    controls[index] = entries.sort((a, b) => a[0] - b[0]);
+  }
   const controlWords = controls.reduce((sum, entries) => sum + 2 * entries.length, 0);
   const controlOffset = headerWords + SFZ_REGION_FIELDS.length * regions.length;
   const scriptOffset = controlOffset + controlWords;
@@ -307,17 +322,19 @@ export function packSfzAsset(regions, samples, { maxBytes = SFZ_DEFAULT_MAX_BYTE
   new Uint8Array(payload, 32 + modulationOffset * 4, modulationBytes.byteLength).set(modulationBytes);
   let nextControl = controlOffset;
   for (const [index, region] of regions.entries()) {
-    const info = sampleInfo.get(region.sample);
-    const normalized = { ...region, ...info, seqGroup: groups.get(region.seqGroup),
-      controlOffset: nextControl, controlCount: controls[index].length };
+    const row = rows[index];
+    row[SAMPLE_OFFSET_LANE] = sampleInfo.get(region.sample).sampleOffset;
+    row[SEQ_GROUP_LANE] = groups.get(region.seqGroup);
+    row[CONTROL_OFFSET_LANE] = nextControl;
+    row[CONTROL_COUNT_LANE] = controls[index].length;
     for (const [id, value] of controls[index]) {
       integers[nextControl++] = id;
       packed[nextControl++] = value;
     }
-    for (const [field, key] of SFZ_REGION_FIELDS.entries()) {
-      const offset = headerWords + index * SFZ_REGION_FIELDS.length + field;
-      if (INDEX_FIELDS.has(key)) integers[offset] = normalized[key];
-      else packed[offset] = normalized[key];
+    let offset = headerWords + index * SFZ_REGION_FIELDS.length;
+    for (let field = 0; field < SFZ_REGION_FIELDS.length; field++, offset++) {
+      if (INDEX_FIELD_LANES[field]) integers[offset] = row[field];
+      else packed[offset] = row[field];
     }
   }
   let residentCursor = 0;

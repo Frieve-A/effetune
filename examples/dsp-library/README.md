@@ -15,6 +15,7 @@ The public site reuses EffeTune's existing GitHub Pages deployment:
 - guide: `/dsp/`
 - live demo: `/dsp/demo/`
 - Chain v1 schema: `/dsp/schemas/chain-v1.schema.json`
+- Graph v1 schema: `/dsp/schemas/graph-v1.schema.json`
 - Bundle v1 schema: `/dsp/schemas/bundle-v1.schema.json`
 
 No separate Pages site, custom domain, or Read the Docs project is used.

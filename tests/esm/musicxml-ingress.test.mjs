@@ -9,6 +9,8 @@ import { SCORE_EXTENSIONS } from '../../js/midi/score-file.js';
 import { getAudioMimeType } from '../../js/audio/audio-mime.js';
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 import metadataWorkerPool from '../../electron/library-metadata-worker-pool.cjs';
+import catalogScanRuntime from '../../electron/library-catalog-scan-runtime.cjs';
+import { loadFreshModule, withModuleLoadStub } from '../helpers/cjs-module-utils.cjs';
 
 const score = '<score-partwise version="4.0"><work><work-title>Authored score</work-title></work>' +
   '<part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>' +
@@ -82,12 +84,23 @@ test('Electron metadata workers decode MusicXML and reject generic XML with cata
     { code: 'transient-io' });
 });
 
-test('Electron static admission lists include every shared score extension and preserve score MIME types', async () => {
-  for (const path of ['electron/main.js', 'electron/file-handlers.js', 'electron/local-playback-ingress.cjs',
-    'electron/library-catalog-scan-runtime.cjs']) {
-    const source = await readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
-    for (const extension of SCORE_EXTENSIONS) assert.match(source, new RegExp(`'\\.?${extension}'`), `${path}: ${extension}`);
-  }
+test('Electron playback and catalog admission accept every shared score extension and preserve MIME types', async t => {
+  const fileHandlers = withModuleLoadStub({ electron: {} }, () => loadFreshModule('../../electron/file-handlers.js'));
+  const mainSource = await readFile(new URL('../../electron/main.js', import.meta.url), 'utf8');
+  assert.match(mainSource, /fileHandlers\.isSupportedPlaybackAudioPath\(path\)/);
+
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'effetune-score-admission-')));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const paths = SCORE_EXTENSIONS.map(extension => {
+    assert.ok(catalogScanRuntime.AUDIO_EXTENSIONS.has(`.${extension}`), extension);
+    const path = join(root, `score.${extension}`);
+    assert.ok(fileHandlers.isSupportedPlaybackAudioPath(path), extension);
+    return path;
+  });
+  // Admission validates the path and extension. Score decoding is covered above.
+  await Promise.all(paths.map(path => writeFile(path, 'score')));
+  const descriptors = await fileHandlers.admitLocalPlaybackPaths(paths);
+  assert.deepEqual(descriptors.map(descriptor => descriptor.path), paths);
   assert.equal(getAudioMimeType('score.MUSICXML'), 'application/vnd.recordare.musicxml+xml');
   assert.equal(getAudioMimeType('score.XML'), 'application/vnd.recordare.musicxml+xml');
   assert.equal(getAudioMimeType('score.MXL'), 'application/vnd.recordare.musicxml');

@@ -149,9 +149,18 @@ def _legacy_channel(value: Any) -> str:
 # and bus indexes under their short names, and a few plugins add their class name
 # under `pluginType`. Every one of them duplicates a value the surrounding node
 # already carries, which stays the source of truth, so they are dropped instead of
-# being reported as unknown parameters. The JavaScript binding keeps the same table
+# being reported as unknown parameters. The app also exports its editor-only
+# collapsed/locked UI state there (_uiCollapsed, _uiLocked), which is dropped the same
+# way. The JavaScript binding keeps the same table
 # in dsp/bindings/js/src/preset.js.
-_LEGACY_ECHOED_STRUCTURAL_KEYS_V1 = ("pluginType", "ch", "ib", "ob")
+_LEGACY_ECHOED_STRUCTURAL_KEYS_V1 = (
+    "pluginType",
+    "ch",
+    "ib",
+    "ob",
+    "_uiCollapsed",
+    "_uiLocked",
+)
 
 # Horn Resonator and Horn Resonator Plus additionally echo the node's enabled switch
 # into their parameters. Unlike Modal Resonator's `en` -- an independent processing
@@ -561,24 +570,33 @@ def _prepare_legacy_parameters_v1(
 
 
 def _reject_asset_backed_legacy_effect_v1(effect_type: str) -> None:
-    """Reject app presets for effects the library drives from a precomputed asset.
+    """Reject app presets for effects the library drives from a caller-supplied asset.
 
-    These effects replace the app's filter-design parameters with an impulse response
-    supplied by the caller, so an app export carries nothing convertible: reporting the
-    app's parameters as unsupported fields would read like a typo report instead of the
-    structural limit it is. The set is derived from the generated catalog's required
-    assets rather than a second hardcoded table. The JavaScript binding keeps the same
-    rule in dsp/bindings/js/src/preset.js -- same error type, same message -- and both
-    are pinned to dsp/bindings/common/legacy-app-export-v1.fixture.json.
+    An impulse response replaces the app's filter-design parameters, and the app's
+    SoundFont reference names a bank only the app can load, so an app export carries
+    nothing convertible: reporting the app's parameters as unsupported fields would read
+    like a typo report instead of the structural limit it is. The set and the message
+    follow the generated catalog's required asset kind rather than a second hardcoded
+    table. The JavaScript binding keeps the same rule in dsp/bindings/js/src/preset.js
+    -- same error type, same message apart from its own API names -- and both are
+    pinned to dsp/bindings/common/legacy-app-export-v1.fixture.json.
     """
     assets = effect_metadata(effect_type).get("assets") or ()
-    if not any(asset.get("required") for asset in assets):
+    asset = next((entry for entry in assets if entry.get("required")), None)
+    if asset is None:
         return
+    prefix = f"{effect_type} cannot be imported from an EffeTune app preset: "
+    if asset.get("kind") == "soundFont":
+        raise EffectError(
+            f"{prefix}the app's SoundFont reference (sf) cannot be converted. Create the "
+            f"{effect_type} effect directly and return its prepared .etsf bank, loaded "
+            "with SoundFontBank.load(), from asset_resolver."
+        )
     raise EffectError(
-        f"{effect_type} cannot be imported from an EffeTune app preset: in the DSP "
-        "library this effect is driven by a precomputed impulse-response asset, and "
-        "the app's filter-design parameters cannot be converted. Construct the effect "
-        "directly and supply its impulse-response asset instead."
+        f"{prefix}in the DSP library this effect is driven by a precomputed "
+        "impulse-response asset, and the app's filter-design parameters cannot be "
+        "converted. Construct the effect directly and supply its impulse-response asset "
+        "instead."
     )
 
 

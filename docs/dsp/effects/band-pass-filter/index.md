@@ -22,14 +22,14 @@ Retains a configurable frequency band while attenuating frequencies outside it.
 |---|---|---:|---|---|---|
 | `highPassFrequency` | `high_pass_frequency` | number / 1 | `1000` | Hz | 10 … 40000 |
 | `lowPassFrequency` | `low_pass_frequency` | number / 1 | `1000` | Hz | 10 … 40000 |
-| `highPassSlope` | `high_pass_slope` | integer / 1 | `-24` | dB/oct | -48 … 0 |
-| `lowPassSlope` | `low_pass_slope` | integer / 1 | `-24` | dB/oct | -48 … 0 |
+| `highPassSlope` | `high_pass_slope` | integer / 1 | `-24` | dB/oct | `0`, `-12`, `-24`, `-36`, `-48` |
+| `lowPassSlope` | `low_pass_slope` | integer / 1 | `-24` | dB/oct | `0`, `-12`, `-24`, `-36`, `-48` |
 
 
 
 ## EffeTune app documentation
 
-> The following section is reproduced from the English EffeTune app documentation. Its parameter names and values describe the app UI and can differ from semantic API parameters through transforms or value maps. The generated contract above is authoritative.
+> The following section is reproduced from the English EffeTune app documentation. It describes the app UI, so it can mention controls, meters, and displays that the library does not provide, and its parameter names and values can differ from the API through transforms or value maps. Only the parameters in the Contract table above, plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), are part of the library API; the Contract is authoritative. Some parameters take effect only when a related setting enables them.
 
 ## Band Pass Filter
 

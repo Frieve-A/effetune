@@ -79,12 +79,15 @@ While the browser toolbar has focus, use **F5** to reload, **F6** to select the 
 
 Opening or returning to **Browser** automatically selects browser audio. Browser audio is mixed with your selected input device. Choose **None** for the input device to listen to browser audio alone. The Player input option does not affect Browser playback. Local music playback can continue alongside browser audio. If audio capture stops, click **Browser** again to retry. **Clear site data** signs you out of websites and clears their stored data while keeping bookmarks.
 
+Websites that use Web MIDI see a single MIDI output named **EffeTune**. EffeTune plays what the page sends to it as live MIDI input, like a MIDI keyboard, through SoundFont Player in your effect pipeline; it never reaches your MIDI devices. From the first MIDI message the page sends, it replaces your MIDI input device until you click **Close** on the browser toolbar, leave the page, or reload it; the selected device then takes over again. Keep an instrument loaded in SoundFont Player and close Music Player, which takes priority over live MIDI input. See [Live MIDI Input](docs/plugins/others.md#live-midi-input).
+
 Use **Close** on the browser toolbar to stop browser audio processing and return to **Effect Pipeline**. The page and browsing history are kept. Open **Browser** again to resume audio processing on the same page.
 
 In **Settings > Config... > Browser**:
 
 - **Start page** sets the HTTP or HTTPS address shown when Browser first opens. The field is blank by default; when blank, it opens the [EffeTune streaming guide](https://effetune.frieve.com/streaming/). **Reset** clears the field without changing the current page.
 - **Open new tabs in the default browser** is enabled by default. Turn it off to open new-tab links in EffeTune's Browser instead. Separate windows, such as sign-in windows, stay inside EffeTune either way.
+- **Open music files in Music Player** is off by default, so downloads are saved to a location you choose. Turn it on to open downloaded music files in Music Player instead of saving them; other files are saved as usual. When it is on, a MIDI file that a website plays with its own built-in synthesizer also opens in Music Player, and the page is muted until you leave or reload it. Control playback in Music Player. Reload the page after changing this setting.
 - **User-Agent** is the browser identification sent to websites. The default identifies Browser as Chrome-compatible and includes the EffeTune name. Leave the field blank or click **Reset** to restore the default. After changing it, reload the page in Browser.
 
 To switch effects automatically between websites, save your pipelines as presets first. Under **URL rules**, click **Add rule**, enter a website and path such as `example.com/music/*`, and select a pipeline preset. Omit `http://` or `https://`, query strings, and `#` fragments; `*` matches any text. Use the up/down buttons to set priority, then click **Save rules**. The first enabled matching rule with an available preset wins.
@@ -195,6 +198,8 @@ Click the **Pipeline Presets** button in the Effect Pipeline header to open the 
 5. Press Ctrl+S (or Cmd+S on macOS) to open the dialog with the current preset name ready to edit.
 
 Each effect also has its own **Effect Presets** button. It opens system presets when the effect provides them and lets you save, rename, load, or remove your own settings for that effect. Effect presets change only that effect's parameters; they do not change its ON/OFF state or routing.
+
+Every preset dialog shows a search box at the top when its list is long. Type part of a name to narrow the list as you type.
 
 The existing `.effetune_preset` file import, export, and sharing features continue to use complete effect-chain presets.
 

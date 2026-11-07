@@ -2802,6 +2802,11 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     outline: none;
 }
 
+/* Grid rows and sections set their own display, so filtering needs this. */
+.preset-dialog [hidden] {
+    display: none;
+}
+
 .preset-dialog-header {
     display: flex;
     flex: 0 0 auto;
@@ -2913,7 +2918,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     margin-bottom: 2px;
 }
 
-.preset-dialog-name-input {
+.preset-dialog-name-input,
+.preset-dialog-search-input {
     appearance: none;
     box-sizing: border-box;
     width: 100%;
@@ -2927,10 +2933,16 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     color: var(--et-text-primary);
 }
 
-.preset-dialog-name-input:focus {
+.preset-dialog-name-input:focus,
+.preset-dialog-search-input:focus {
     outline: none;
     border-color: var(--et-accent);
     background-color: var(--et-surface-17);
+}
+
+.preset-dialog-search-input {
+    flex: 0 0 auto;
+    margin-bottom: 8px;
 }
 
 .preset-dialog-save-button {

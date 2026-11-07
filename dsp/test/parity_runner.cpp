@@ -544,6 +544,7 @@ bool runDirectReference(const std::string &type, const Control &control,
   constexpr std::uint32_t kTopologyIndependent = 2u;
   constexpr std::uint32_t kTopologyTrueStereo = 3u;
   constexpr std::uint32_t kTopologyMatrix = 4u;
+  constexpr float kReplacementDryLatencyMode = -1.0F;
   const bool room_eq = type == "RoomEqPlugin";
   const bool ir_reverb = type == "IRReverbPlugin";
   const bool fir_crossover = type == "FIRCrossoverPlugin";
@@ -699,7 +700,8 @@ bool runDirectReference(const std::string &type, const Control &control,
       const std::uint32_t manual_delay = control.initialParams[2u] > 0.0F
                                              ? static_cast<std::uint32_t>(control.initialParams[2u])
                                              : 0u;
-      float wet_mix = 0.0F;
+      // A reset stream with an active asset starts wet, matching the kernel reset.
+      float wet_mix = control.initialParams[0u] != kReplacementDryLatencyMode ? 1.0F : 0.0F;
       for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
         if (wet_mix < 1.0F) {
           wet_mix += 1.0F / 128.0F;
@@ -732,7 +734,8 @@ bool runDirectReference(const std::string &type, const Control &control,
     output.assign(input.size(), 0.0F);
     for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
       const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
-      float wet_mix = 0.0F;
+      // A reset stream with an active asset starts wet, matching the kernel reset.
+      float wet_mix = control.initialParams[0u] != kReplacementDryLatencyMode ? 1.0F : 0.0F;
       for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
         if (wet_mix < 1.0F) {
           wet_mix += 1.0F / 128.0F;
@@ -751,7 +754,8 @@ bool runDirectReference(const std::string &type, const Control &control,
     output.assign(input.size(), 0.0F);
     for (std::uint32_t channel = 0u; channel < control.channels; ++channel) {
       const std::size_t channel_offset = static_cast<std::size_t>(channel) * control.frames;
-      float wet_mix = 0.0F;
+      // A reset stream with an active asset starts wet, matching the kernel reset.
+      float wet_mix = control.initialParams[0u] != kReplacementDryLatencyMode ? 1.0F : 0.0F;
       for (std::uint32_t frame = 0u; frame < control.frames; ++frame) {
         if (wet_mix < 1.0F) {
           wet_mix += 1.0F / 128.0F;

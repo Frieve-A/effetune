@@ -12,6 +12,11 @@ function normalizeName(value) {
     return name && !RESERVED_NAMES.has(name) ? name : '';
 }
 
+// Same rule as the sidebar effect search: case-insensitive substring match.
+function matchesSearch(text, query) {
+    return text.toLowerCase().includes(query);
+}
+
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -175,6 +180,7 @@ export class PluginPresetDialog {
         this.renderRevision = 0;
         this.lastPresetByContext = new WeakMap();
         this.activeProvider = null;
+        this.searchInput = null;
     }
 
     showPlugin(plugin, anchorButton, options) {
@@ -193,6 +199,8 @@ export class PluginPresetDialog {
 
         const content = document.createElement('div');
         content.className = 'preset-dialog-content';
+        this.searchInput = this.createSearchInput(content);
+        dialog.appendChild(this.searchInput);
         dialog.appendChild(content);
 
         const saveRow = document.createElement('div');
@@ -238,6 +246,8 @@ export class PluginPresetDialog {
         await this.renderContent(content, provider, generation, saveRow);
         if (generation !== this.generation || document.querySelector('.preset-dialog') !== dialog) return dialog;
         this.pipelineCore.routingDialog.positionDialog(dialog, anchorButton);
+        // The final position sets the height limit that decides whether the list scrolls.
+        this.applySearch(content);
         this.setupCloseHandler(dialog, anchorButton, generation);
         this.setupKeyboardNavigation(dialog, content, provider, generation, saveRow);
 
@@ -262,6 +272,56 @@ export class PluginPresetDialog {
         closeButton.addEventListener('click', () => this.close());
         header.appendChild(closeButton);
         return header;
+    }
+
+    createSearchInput(content) {
+        const input = document.createElement('input');
+        input.type = 'search';
+        input.className = 'preset-dialog-search-input';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        const label = t('ui.pluginPresets.searchPlaceholder', 'Search presets...');
+        input.placeholder = label;
+        input.setAttribute('aria-label', label);
+        input.hidden = true;
+        input.addEventListener('input', () => this.applySearch(content));
+        return input;
+    }
+
+    applySearch(content) {
+        const input = this.searchInput;
+        if (!input || input.parentNode !== content.parentNode) return;
+        const query = input.value.trim().toLowerCase();
+        for (const section of content.children) {
+            let heading = null;
+            let headingMatches = false;
+            let hasSystemPresets = false;
+            let hasVisibleSystemPreset = false;
+            for (const child of section.children) {
+                if (child.classList.contains('preset-dialog-group-title')) {
+                    heading = child;
+                    headingMatches = matchesSearch(child.textContent, query);
+                    // Shown again below once one of its presets is visible.
+                    heading.hidden = true;
+                } else if (child.classList.contains('preset-dialog-system-preset')) {
+                    hasSystemPresets = true;
+                    child.hidden = !headingMatches && !matchesSearch(child.textContent, query);
+                    if (child.hidden) continue;
+                    hasVisibleSystemPreset = true;
+                    if (heading) heading.hidden = false;
+                } else if (child.classList.contains('preset-dialog-user-row')) {
+                    // A row being renamed has no name button and stays visible.
+                    const nameButton = child.querySelector('.preset-dialog-user-preset');
+                    if (nameButton) child.hidden = !matchesSearch(nameButton.textContent, query);
+                }
+            }
+            if (hasSystemPresets) section.hidden = !hasVisibleSystemPreset;
+        }
+        // Without a query, offer search only when the list would overflow even without the search row.
+        // Toggling hidden to measure would drop focus from the input, so add its height back instead.
+        // offsetTop is unaffected by body zoom, like scrollHeight and clientHeight.
+        const reserve = input.hidden ? 0 : content.offsetTop - input.offsetTop;
+        input.hidden = !input.value && !(content.scrollHeight > content.clientHeight + reserve);
     }
 
     isActiveContent(content, generation) {
@@ -355,6 +415,7 @@ export class PluginPresetDialog {
         if (provider.userPresetsAvailable !== false) sections.push(userSection);
         content.textContent = '';
         for (const section of sections) content.appendChild(section);
+        this.applySearch(content);
     }
 
     createSection(title) {
@@ -405,9 +466,15 @@ export class PluginPresetDialog {
     }
 
     getPresetButtons(content) {
+        const isShown = button => {
+            for (let node = button; node && node !== content; node = node.parentNode) {
+                if (node.hidden) return false;
+            }
+            return true;
+        };
         return Array.from(content.querySelectorAll(
             '.preset-dialog-system-preset, .preset-dialog-user-preset'
-        ));
+        )).filter(isShown);
     }
 
     getPresetContext(provider) {

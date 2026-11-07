@@ -7,8 +7,14 @@ permalink: /dsp/reference/compatibility/
 ---
 # Compatibility
 
-Python wheels cover CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
-macOS Apple Silicon; musllinux is not provided. Node.js `>=18` is required. Chromium
+Python wheels require CPython 3.10 or newer; the `cp312-abi3`
+wheel also covers newer CPython versions. Wheels are published for Windows x64
+(`win_amd64`), Linux x86-64 with glibc 2.27 or newer (`manylinux_2_27`), and
+macOS 15 or newer on Intel (`x86_64`) and Apple Silicon (`arm64`). There is no
+source distribution and no musllinux, Linux ARM, or 32-bit wheel, so on other
+systems pip reports `No matching distribution found for effetune`.
+
+Node.js `>=18` is required. Chromium
 is acceptance-tested. Other evergreen browsers are designed for but unverified.
 AudioWorklet support requires HTTPS or localhost; direct `file:` loading is unsupported.
 The npm package is ESM-only; use `.mjs` or a consumer package with
@@ -29,6 +35,24 @@ subscriber enables it and the last unsubscribe disables it. Long renders drain a
 every processing block. Public frames identify the semantic effect and contain owned
 arrays; binary frame types, versions, tap IDs, payload bytes, and Worklet transport stay
 private. Unknown or malformed frames are discarded.
+
+The `telemetry` list in a catalog entry names the effect's internal observation
+streams; it is metadata, not a list of `frame.kind` values. Streams of the types above
+are decoded as follows, and every other catalog telemetry name, such as
+`gainReduction` or `vinylStatus`, is metadata only and delivers no frames:
+
+| Catalog telemetry | `frame.kind` |
+|---|---|
+| `analogMeter` | `analogMeter` |
+| `levelMeter` | `level` |
+| `noteSpectrogram`, `noteTimbre`, `noteChordKey` | Same name |
+| `oscilloscope` | `oscilloscope` |
+| `pitch` | `pitch` |
+| `rhythmAnalyzer` | `rhythmAnalyzer` |
+| `spectrum`, `spectrumHq` | Same name |
+| `spectrogram`, `spectrogramHq` | Same name |
+| `stereoMeter` | `stereo` |
+| `tonalBalance` | `tonalBalance` |
 
 Common metadata:
 

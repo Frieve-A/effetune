@@ -28,9 +28,14 @@ Provides five configurable parametric equalizer bands.
 
 
 
+### Shelf Q limit
+
+When `filterTypes` is `lowShelf` or `highShelf`, the effective `qValues` is limited to 2.0.
+Larger values are accepted and behave as 2.0, as in the EffeTune app.
+
 ## EffeTune app documentation
 
-> The following section is reproduced from the English EffeTune app documentation. Its parameter names and values describe the app UI and can differ from semantic API parameters through transforms or value maps. The generated contract above is authoritative.
+> The following section is reproduced from the English EffeTune app documentation. It describes the app UI, so it can mention controls, meters, and displays that the library does not provide, and its parameter names and values can differ from the API through transforms or value maps. Only the parameters in the Contract table above, plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), are part of the library API; the Contract is authoritative. Some parameters take effect only when a related setting enables them.
 
 ## 5Band PEQ
 

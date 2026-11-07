@@ -83,6 +83,7 @@
     {"type":"Tremolo","class":"Tremolo","factory":"createTremolo"},
     {"type":"WowFlutter","class":"WowFlutter","factory":"createWowFlutter"},
     {"type":"Oscillator","class":"Oscillator","factory":"createOscillator"},
+    {"type":"SoundFontPlayer","class":"SoundFontPlayer","factory":"createSoundFontPlayer"},
     {"type":"AdaptivePredictionEffect","class":"AdaptivePredictionEffect","factory":"createAdaptivePredictionEffect"},
     {"type":"HornResonator","class":"HornResonator","factory":"createHornResonator"},
     {"type":"HornResonatorPlus","class":"HornResonatorPlus","factory":"createHornResonatorPlus"},

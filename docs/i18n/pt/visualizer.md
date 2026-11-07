@@ -85,6 +85,8 @@ Para **Title**, **Album** e **Artist**, defina separadamente fonte, tamanho, ali
 
 Adicione **Informações da faixa** para mostrar as tags e o formato de áudio disponíveis no arquivo ou na faixa de rede atual. Com AirPlay, também mostra as informações fornecidas sobre o dispositivo de origem, o codec recebido, o formato PCM do receptor e o volume na origem. Campos indisponíveis são omitidos. Use os mesmos ajustes de texto de Title. **Title**, **Artist**, **Album** e **Artwork** também mostram as informações enviadas por AirPlay.
 
+Na versão para desktop, **Title**, **Artist**, **Album**, **Artwork** e **Track information** também podem mostrar as informações da música que uma página do navegador integrado fornece aos controles de mídia do sistema. As informações do navegador são exibidas enquanto ele reproduz ou quando o player não tem faixa; caso contrário, é exibida a faixa do player. Se o site não fornecer informações da música, **Title**, **Artist**, **Album** e **Artwork** ficam vazios. A primeira linha de **Track information** é "Navegador - " seguido do nome de host do site.
+
 Adicione **Text** para um rótulo estático ou nome da sala (até 4096 caracteres, com suporte a várias linhas) usando os mesmos controles de tipografia, contorno e sombra de Title.
 
 Adicione **Playback Control** para colocar um botão do player no layout. Em **Ação**, escolha **Reproduzir / Pausar**, **Parar**, **Faixa anterior**, **Próxima faixa**, **Aleatório** ou **Repetir**; adicione um item para cada botão desejado. Fora de **Edit**, clique ou toque no botão, ou selecione-o com **Tab** e pressione **Enter** ou **Space**. Com o player aberto, controles indisponíveis ficam esmaecidos. Aleatório não está disponível durante a repetição de uma única faixa.
@@ -96,11 +98,13 @@ Adicione **Seek Bar** para uma barra horizontal de posição de reprodução. Fo
 
 - **Aparência** oferece **Fino**, **Clássico** e **Grosso** como pontos de partida. **Cor da barra**, **Opacidade da barra** e **Espessura da barra** ajustam o fundo; **Extremidades arredondadas** arredonda as pontas. A paleta colore a parte já reproduzida. **Mostrar marcador** exibe ou oculta o indicador de posição; **Tamanho do marcador** e **Cor do marcador** ajustam sua aparência. **Formato do marcador** permite escolher **Círculo**, **Quadrado**, **Losango** ou uma **Barra** vertical. **Espessura da borda do marcador** e **Cor da borda do marcador** adicionam um contorno; defina a espessura como 0 para ocultá-lo. Os efeitos de item existentes também se aplicam.
 
-Playback Control e Seek Bar continuam visíveis quando o player está pausado ou parado. Se nenhum player estiver aberto, ambos ficam ocultos fora de **Edit**, inclusive em Clean Feed; você ainda pode configurá-los no editor.
+Playback Control e Seek Bar continuam visíveis quando o player está pausado ou parado. Se nenhum player estiver aberto e o navegador integrado não tiver nenhuma música para mostrar, ambos ficam ocultos fora de **Edit**, inclusive em Clean Feed; você ainda pode configurá-los no editor.
 
 Adicione **Counter** para mostrar a posição atual do player integrado, acompanhando pausas e mudanças de posição. Com entrada externa, ele conta o tempo desde que o Counter foi adicionado ou o layout foi carregado na sessão atual, mesmo com o Visualizer oculto. Fora de **Edit**, clique ou toque no contador para zerar apenas seu tempo externo; a reprodução não muda.
 
 Durante o AirPlay, **Counter** e **Seek Bar** mostram a posição da faixa quando informada pelo dispositivo de origem e acompanham suas atualizações. A busca na faixa e os comandos de reprodução não compatíveis ficam indisponíveis. **Parar** encerra a recepção atual. Consulte o [guia de música em rede](openhome.md) para saber como configurar e entender os formatos de áudio.
+
+Em uma página em reprodução no navegador integrado, **Counter** e **Seek Bar** apenas exibem a posição e a duração. Como no AirPlay, a busca na faixa e as ações de **Playback Control** ficam indisponíveis.
 
 - **Número na lista**, **Horas**, **Minutos**, **Segundos** e **Frações de segundo** mostram ou ocultam cada campo separadamente. O padrão é `hh:mm:ss.mmm`, sem o número. A numeração da lista do player começa em 1; com entrada externa, aparece 00. A maior unidade inteira visível acumula o tempo: sem horas, aparecem minutos totais; sem horas nem minutos, segundos totais.
 - **Casas decimais** (1–4, padrão 3) define a quantidade de casas; 3 corresponde a milissegundos. **Separadores** › **Tempo** (`:`), **Frações de segundo** (`.`) e **Número** (um espaço) aceitam até oito caracteres cada ou podem ficar vazios.
@@ -192,7 +196,7 @@ Para um fundo discreto atrás das letras, experimente Saturação em 60% e Brilh
 
 ## Presets, compartilhamento, backup e configurações de exibição
 
-Use o diálogo de presets para salvar, recarregar, renomear ou excluir layouts com nome; os presets incluídos continuam disponíveis. **Configurações > Backup / Restaurar** faz backup dos presets salvos do Visualizer e de suas imagens de fundo, mas não do layout atual em edição.
+Use o diálogo de presets para salvar, recarregar, renomear ou excluir layouts com nome; os presets incluídos continuam disponíveis. Se a lista for longa, digite parte de um nome no campo de busca no topo do diálogo para filtrá-la. **Configurações > Backup / Restaurar** faz backup dos presets salvos do Visualizer e de suas imagens de fundo, mas não do layout atual em edição.
 
 Selecione **Compartilhar** na barra de ferramentas para copiar um link do layout atual (imagens de fundo não são incluídas nos links; use **Backup / Restaurar** para imagens). No aplicativo desktop ou na extensão do navegador, copie um link compartilhado e selecione **Importar link** ou pressione **Ctrl+V** (**⌘V** no Mac) no Visualizer. Um layout importado substitui o atual sem pedir confirmação; para voltar, abra **Edit** e selecione **Desfazer**.
 

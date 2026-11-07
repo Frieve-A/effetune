@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { buildPackage } from '../dsp/bindings/js/scripts/build.mjs';
 import { generateStimulus } from './dsp-parity/stimuli.mjs';
 import { compareAudio } from './dsp-parity/tolerance.mjs';
 
@@ -15,17 +16,24 @@ const DEFAULT_SUMMARY = path.join(
   'dsp-library-goldens-summary.json'
 );
 const EXPECTED_BACKENDS = Object.freeze({
-  'python-native': 1052,
-  'javascript-baseline': 1052,
-  'javascript-simd': 1052
+  'python-native': 1054,
+  'javascript-baseline': 1054,
+  'javascript-simd': 1054
 });
+const SOUND_FONT_FIXTURE = path.join(
+  REPOSITORY_ROOT,
+  'dsp',
+  'bindings',
+  'common',
+  'soundfont-sine-v1.etsf'
+);
 const EXPECTED_WORKLET_GOLDEN = Object.freeze({
-  'chromium-audioworklet-baseline': 113,
-  'chromium-audioworklet-simd': 113
+  'chromium-audioworklet-baseline': 114,
+  'chromium-audioworklet-simd': 114
 });
 const EXPECTED_WORKLET_NONIDENTITY = Object.freeze({
-  'chromium-audioworklet-nonidentity-baseline': 102,
-  'chromium-audioworklet-nonidentity-simd': 102
+  'chromium-audioworklet-nonidentity-baseline': 103,
+  'chromium-audioworklet-nonidentity-simd': 103
 });
 const PYTHON_STATE_CONTRACTS = Object.freeze([
   'sameSeed',
@@ -467,7 +475,31 @@ function wrapperAsset(asset, sampleRate) {
   };
 }
 
-function semanticDocument(testCase) {
+// Returns the case's asset as the chain asset name, its reference, and the
+// value the asset resolver returns for that reference.
+async function goldenAsset(asset, sampleRate) {
+  if (asset.sfz) {
+    // The synthetic SFZ asset is tracked as its prepared bank.
+    return {
+      name: 'soundFont',
+      reference: 'golden-soundfont',
+      value: new Uint8Array(await fs.readFile(SOUND_FONT_FIXTURE))
+    };
+  }
+  return {
+    name: 'impulseResponse',
+    reference: 'golden-ir',
+    value: wrapperAsset(asset, sampleRate)
+  };
+}
+
+// Plans carry asset bytes as arrays so they can cross into the browser page.
+function planAssetValue(asset) {
+  const bytes = Uint8Array.from(asset.bytes);
+  return asset.format ? { bytes, format: asset.format } : bytes;
+}
+
+function semanticDocument(testCase, asset = null) {
   const metadata = testCase.metadata;
   const node = {
     id: 'golden-effect',
@@ -476,7 +508,7 @@ function semanticDocument(testCase) {
     channel: 'all',
     parameters: semanticParameters(testCase, metadata.params)
   };
-  if (metadata.asset) node.assets = { impulseResponse: 'golden-ir' };
+  if (asset) node.assets = { [asset.name]: asset.reference };
   return { version: 1, chain: [node] };
 }
 
@@ -520,31 +552,7 @@ function decodeFloat32(buffer) {
 
 export async function stageJsPackage(repoRoot) {
   const stageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-dsp-acceptance-'));
-  const sourceRoot = path.join(repoRoot, 'dsp', 'bindings', 'js', 'src');
-  for (const entry of await fs.readdir(sourceRoot, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.d.ts'))) {
-      await fs.cp(path.join(sourceRoot, entry.name), path.join(stageRoot, entry.name));
-    }
-  }
-  await Promise.all([
-    fs.mkdir(path.join(stageRoot, 'internal'), { recursive: true }),
-    fs.mkdir(path.join(stageRoot, 'assets'), { recursive: true }),
-    fs.mkdir(path.join(stageRoot, 'catalog'), { recursive: true })
-  ]);
-  const copies = [
-    ['js/audio/dsp-engine-binding.js', 'internal/dsp-engine-binding.js'],
-    ['js/audio/dsp-wasm-loader.js', 'internal/dsp-wasm-loader.js'],
-    ['js/audio/dsp-params.generated.js', 'internal/dsp-params.generated.js'],
-    ['js/ir-library/ir-asset-payload.js', 'internal/ir-asset-payload.js'],
-    ['js/ir-library/ir-plugin-contract.js', 'internal/ir-plugin-contract.js'],
-    ['plugins/dsp/effetune-dsp.wasm', 'assets/effetune-dsp.wasm'],
-    ['plugins/dsp/effetune-dsp.simd.wasm', 'assets/effetune-dsp.simd.wasm'],
-    ['plugins/dsp/effetune-dsp.meta.json', 'assets/effetune-dsp.meta.json'],
-    ['dsp/bindings/generated/effects-v1.json', 'catalog/effects-v1.json']
-  ];
-  for (const [source, target] of copies) {
-    await fs.cp(path.join(repoRoot, source), path.join(stageRoot, target));
-  }
+  await buildPackage(stageRoot, repoRoot);
   await fs.writeFile(
     path.join(stageRoot, 'index.html'),
     '<!doctype html><meta charset="utf-8"><title>EffeTune acceptance</title>'
@@ -608,12 +616,14 @@ async function runJsVariant(api, cases, variant) {
       });
       const source = planarChannels(flatInput, metadata.channels, metadata.frameCount);
       const asset = metadata.asset
-        ? wrapperAsset(metadata.asset, metadata.sampleRate)
+        ? await goldenAsset(metadata.asset, metadata.sampleRate)
         : null;
-      chain = await api.createChain(semanticDocument(testCase), {
+      chain = await api.createChain(semanticDocument(testCase, asset), {
         variant,
         cache: true,
-        ...(asset ? { assetResolver: reference => reference === 'golden-ir' ? asset : null } : {})
+        ...(asset
+          ? { assetResolver: reference => reference === asset.reference ? asset.value : null }
+          : {})
       });
       if (expectedRejection) {
         failures.push({
@@ -917,7 +927,7 @@ export async function chooseWorkletPlans(cases, { preferNonIdentity = false } = 
     const channels = planarChannels(best.stimulus, metadata.channels, metadata.frameCount)
       .map(channel => Array.from(channel.subarray(0, frames)));
     const asset = metadata.asset
-      ? wrapperAsset(metadata.asset, metadata.sampleRate)
+      ? await goldenAsset(metadata.asset, metadata.sampleRate)
       : null;
     plans.push({
       publicType,
@@ -925,7 +935,7 @@ export async function chooseWorkletPlans(cases, { preferNonIdentity = false } = 
       goldenDifference: best.score,
       reference: Array.from(reference),
       tolerance: metadata.tolerance,
-      document: semanticDocument(best.testCase),
+      document: semanticDocument(best.testCase, asset),
       sampleRate: metadata.sampleRate,
       blockSize: metadata.blockSize,
       exactQuantum: best.exactQuantum,
@@ -935,8 +945,9 @@ export async function chooseWorkletPlans(cases, { preferNonIdentity = false } = 
       ...(asset
         ? {
             asset: {
-              bytes: Array.from(asset.bytes),
-              format: asset.format
+              reference: asset.reference,
+              bytes: Array.from(asset.value.bytes ?? asset.value),
+              ...(asset.value.format ? { format: asset.value.format } : {})
             }
           }
         : {})
@@ -1012,11 +1023,8 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
           cache: true,
           ...(plan.asset
             ? {
-                assetResolver: reference => reference === 'golden-ir'
-                  ? {
-                      bytes: Uint8Array.from(plan.asset.bytes),
-                      format: plan.asset.format
-                    }
+                assetResolver: reference => reference === plan.asset.reference
+                  ? planAssetValue(plan.asset)
                   : null
               }
             : {})
@@ -1102,10 +1110,9 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
           };
           const output = [];
           for (const plan of plans) {
-            let context;
             let node;
             try {
-              context = new OfflineAudioContext(
+              const context = new OfflineAudioContext(
                 plan.channels.length,
                 plan.frames,
                 plan.sampleRate
@@ -1131,12 +1138,11 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
                 fetch: artifactFetch,
                 ...(plan.asset
                   ? {
-                      assetResolver: reference => reference === 'golden-ir'
-                        ? {
-                            bytes: Uint8Array.from(plan.asset.bytes),
-                            format: plan.asset.format
-                          }
-                        : null
+                      assetResolver: reference => {
+                        if (reference !== plan.asset.reference) return null;
+                        const bytes = Uint8Array.from(plan.asset.bytes);
+                        return plan.asset.format ? { bytes, format: plan.asset.format } : bytes;
+                      }
                     }
                   : {})
               });
@@ -1200,7 +1206,6 @@ async function runWorkletAcceptance(stageRoot, cases, { api, mode = 'golden' } =
               }
             } finally {
               node?.close();
-              await context?.close?.();
             }
           }
           return output;
@@ -1451,9 +1456,9 @@ export async function runAcceptance(options = {}) {
     backends: [],
     status: 'failed'
   };
-  if (inventorySummary.effects !== 111 ||
-      inventorySummary.total !== 1052 ||
-      inventorySummary.assetCases !== 31 ||
+  if (inventorySummary.effects !== 112 ||
+      inventorySummary.total !== 1054 ||
+      inventorySummary.assetCases !== 33 ||
       inventorySummary.eventCases !== 170) {
     throw new Error(
       `Frozen inventory mismatch: ${JSON.stringify(inventorySummary)}`

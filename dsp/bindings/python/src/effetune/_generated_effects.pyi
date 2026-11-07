@@ -8,6 +8,9 @@ EffectChannel: TypeAlias = Literal["all", "stereo", "left", "right", "1", "2", "
 class IRReverbAssets(TypedDict):
     impulseResponse: str
 
+class SoundFontPlayerAssets(TypedDict):
+    soundFont: str
+
 EFFECT_METADATA: dict[str, object]
 _EFFECT_IMPLEMENTATION: dict[str, dict[str, object]]
 
@@ -499,8 +502,8 @@ class BandPassFilter(Effect):
         *,
         high_pass_frequency: float = ...,
         low_pass_frequency: float = ...,
-        high_pass_slope: int = ...,
-        low_pass_slope: int = ...,
+        high_pass_slope: Literal[0, -12, -24, -36, -48] = ...,
+        low_pass_slope: Literal[0, -12, -24, -36, -48] = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
@@ -1334,6 +1337,24 @@ class Oscillator(Effect):
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
+    ) -> None: ...
+
+class SoundFontPlayer(Effect):
+    effect_type: Literal["SoundFontPlayer"]
+    def __init__(
+        self,
+        *,
+        midi_channel: int = ...,
+        max_voices: int = ...,
+        output_gain: float = ...,
+        sample_quality: int = ...,
+        automatic_fallback: bool = ...,
+        preview_midi: int = ...,
+        preview_channel: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+        assets: SoundFontPlayerAssets,
     ) -> None: ...
 
 class AdaptivePredictionEffect(Effect):

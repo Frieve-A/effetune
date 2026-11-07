@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.17.0-c7c13b5eb7ae7ad5";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.18.0-76776b3e9d0eca52";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -107,6 +107,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/bass-management/design-core.js",
   "./js/bass-management/design-worker.js",
   "./js/bass-management/designer.js",
+  "./js/browser/browser-media-info.js",
+  "./js/browser/browser-midi-source.js",
   "./js/browser/browser-view.js",
   "./js/browser/shortcuts.js",
   "./js/browser/url-rules.js",
@@ -219,13 +221,14 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/measurement-store/client.js",
   "./js/midi/app-targets.js",
   "./js/midi/automation-scheduler.js",
+  "./js/midi/device-settings.js",
   "./js/midi/event-list.js",
-  "./js/midi/input-settings.js",
   "./js/midi/live-input.js",
   "./js/midi/local-input-sources.js",
   "./js/midi/lyrics-timeline.js",
   "./js/midi/mcu-protocol.js",
   "./js/midi/midi-controller-manager.js",
+  "./js/midi/midi-file-output.js",
   "./js/midi/midi-mapping-dialog.js",
   "./js/midi/midi-mapping-engine.js",
   "./js/midi/midi-mapping-store.js",

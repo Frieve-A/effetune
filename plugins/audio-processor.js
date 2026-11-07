@@ -823,7 +823,8 @@ class DspEngineBinding {
 
     publishSfzSamplePage(instanceId, { generation, sample, pageIndex, pcm, frames, channels, resident = false }) {
         if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
-        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 10000 ||
+        // 65536 matches SFZ_MAX_SAMPLES in js/sfz/limits.js and SamplePageCache::kMaxSamples.
+        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 65536 ||
             !Number.isSafeInteger(pageIndex) || pageIndex < 0 || !Number.isInteger(frames) || frames < 1 || frames > 4096 ||
             (channels !== 1 && channels !== 2) || !(pcm instanceof Float32Array) || pcm.length !== frames * channels) {
             throw new DspBindingError('Invalid sample page');
@@ -5056,7 +5057,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (!plugin || plugin.enabled === false || this.masterBypass || !entry.sfzSampleStream ||
             !['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin'].includes(plugin.type)) return;
         const note = plugin.type === 'SFZNotePlayerPlugin', input = scheduler?.input?.enabled === true;
-        const known = !note && !input && !!scheduler?.timeline && !!scheduler.generation && (scheduler.preparing || scheduler.playing);
+        // A keyboard preview plays keys outside the song, like live input.
+        const preview = (plugin.parameters?.pm ?? -1) >= 0;
+        const known = !note && !input && !preview && !!scheduler?.timeline && !!scheduler.generation && (scheduler.preparing || scheduler.playing);
         const nativeClock = this.dspBinding.instanceMidiClock(entry.id);
         const nativeGeneration = nativeClock.generation, generation = scheduler?.generation ?? 0;
         const timeline = scheduler?.timeline ?? null, speed = scheduler?.speed ?? 1;
@@ -6084,19 +6087,28 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     pumpDspTelemetry(blockSize = 128, finalBoundary = false) {
         this.visualizerTapNeedsPump = false;
-        if (!this.dspLive || (!finalBoundary && (this.dspPacketPool.length === 0 ||
+        if (!this.dspLive) return;
+        const endFrame = globalThis.currentFrame + blockSize;
+        if (!finalBoundary && (this.dspPacketPool.length === 0 ||
             (this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled &&
-                this.visualizerInstances.size === 0 && this.soundFontMidiMeteringEntries.size === 0)))) return;
+                this.visualizerInstances.size === 0 && this.soundFontMidiMeteringEntries.size === 0))) {
+            this.dspTelemetryBacklogFrame ??= endFrame;
+            return;
+        }
         const pooled = this.dspPacketPool.length !== 0;
         const packetView = pooled ? this.dspPacketPool.pop() : this.dspBoundaryPacket;
         try {
             const bytes = this.dspBinding.telemetryRead(packetView);
+            // A packet can include snapshots retained across skipped reads.
+            const mixerEndFrame = this.dspTelemetryBacklogFrame ?? endFrame;
+            this.dspTelemetryBacklogFrame = null;
             if (this.powerPolicy.enabled) this.powerPolicy.counters.telemetryReads++;
             if (bytes > 0) {
                 const packet = packetView.buffer;
                 this.port.postMessage({
                     type: 'dspTelemetry',
-                    endFrame: globalThis.currentFrame + blockSize,
+                    endFrame,
+                    mixerEndFrame,
                     contextFrameOffset: this.telemetryContextFrameOffset,
                     packet,
                     bytes,
@@ -7102,6 +7114,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 reply.checkpoints = [{ ...record, cursor: state.cursor }];
             }
             this._invalidatePowerSkipForMutation();
+            reply.appliedFrame = Math.max(globalThis.currentFrame, this.currentFrame + this.telemetryContextFrameOffset);
             reply.ok = true;
         } catch (error) { console.warn('SoundFont mixer action failed:', error); }
         this.port.postMessage(reply, reply.checkpoints?.map(item => item.bytes.buffer) ?? []);

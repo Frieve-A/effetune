@@ -91,20 +91,34 @@ export function collectWindowsRuntime(toolchain, outputRoot) {
 
 export async function downloadLockedArchive(url, destination, sha256) {
   if (existsSync(destination) && digest(readFileSync(destination)) === sha256) return;
-  const maxAttempts = 3;
-  let bytes;
-  for (let attempt = 1; ; attempt++) {
+  // Some mirrors close long transfers from CI hosts mid-body, so resets resume from the received
+  // offset. Only consecutive resets without progress count toward the retry limit.
+  const maxStalledAttempts = 3;
+  const chunks = [];
+  let received = 0;
+  let stalled = 0;
+  for (;;) {
+    const offset = received;
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, offset ? { headers: { Range: `bytes=${offset}-` } } : undefined);
       if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
-      bytes = Buffer.from(await response.arrayBuffer());
+      if (offset && response.status !== 206) {
+        chunks.length = 0;
+        received = 0;
+      }
+      for await (const chunk of response.body) {
+        chunks.push(chunk);
+        received += chunk.length;
+      }
       break;
     } catch (error) {
-      if (error?.cause?.code !== 'UND_ERR_SOCKET' || attempt === maxAttempts) throw error;
-      console.warn(`Archive connection reset (${attempt}/${maxAttempts}): ${url}; retrying.`);
-      await delay(250 * attempt);
+      stalled = received > offset ? 0 : stalled + 1;
+      if (error?.cause?.code !== 'UND_ERR_SOCKET' || stalled === maxStalledAttempts) throw error;
+      console.warn(`Archive connection reset after ${received} bytes: ${url}; resuming.`);
+      await delay(250 * (stalled + 1));
     }
   }
+  const bytes = Buffer.concat(chunks);
   if (digest(bytes) !== sha256) throw new Error(`Archive checksum mismatch: ${url}`);
   mkdirSync(dirname(destination), { recursive: true });
   writeFileSync(destination, bytes);

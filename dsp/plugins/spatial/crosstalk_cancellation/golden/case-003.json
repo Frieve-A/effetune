@@ -40,7 +40,7 @@
   },
   "performanceBudgetMs": 2500,
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:3f810308d4fe58c2d0548e8c565d9ee6165ae6a429b387ef0d7070acf4f5586a",
+  "referenceHash": "sha256:8f1f63e924cbedee085f25771bce2208b5821c6d7a9a24a00a7d8ff2c90c8859",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type CrosstalkCancellationPlugin --promote-production-native",
   "outputFloats": 24000,
   "byteLength": 96000,

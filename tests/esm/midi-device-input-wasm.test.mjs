@@ -75,7 +75,8 @@ async function setup(variant, source = '<region> sample=tone.wav key=60 loop_mod
         return output;
     };
     return { h, manager, input, power, asset, playback, send, pump, leases: () => leases,
-        setPlayer(player) { power.player = player; powerChange(); },
+        // A Music Player shown to the user owns MIDI; the tests attach shown players.
+        setPlayer(player) { power.player = player && { ui: { container: {} }, ...player }; powerChange(); },
         suspend() {
             h.context.state = 'suspended';
             let resolve; const promise = new Promise(done => { resolve = done; });
@@ -90,10 +91,12 @@ function createLiveInputManager({ rejectNoteOff = false, holdAcks = false } = {}
     let held = false;
     const pendingAcks = [];
     const plugin = { id: 7 };
+    const frames = [];
     let manager;
     const node = { port: { postMessage(message) {
         if (message.type === 'midiInputConfigure' && !message.enabled) held = false;
         if (message.type !== 'midiInputEvents') return;
+        frames.push(...message.events.map(event => event.frame));
         const accepted = !rejectNoteOff || !message.events.some(event => (event.status & 0xf0) === 0x80);
         if (accepted) for (const event of message.events)
             if ((event.status & 0xf0) === 0x90) held = true;
@@ -113,15 +116,16 @@ function createLiveInputManager({ rejectNoteOff = false, holdAcks = false } = {}
         async waitForEffectiveActiveWasmAssets() { return { ready: true }; }
     });
     manager.setLiveMidiInputSource('test-port');
-    const send = (status, data1, data2 = 0) => manager.enqueueLiveMidiInput({
-        data: [status, data1, data2], timeStamp: 0, sourceKey: 'test-port'
+    const send = (status, data1, data2 = 0, timeStamp = 0) => manager.enqueueLiveMidiInput({
+        data: [status, data1, data2], timeStamp, sourceKey: 'test-port'
     });
     const settle = async () => {
-        for (let attempt = 0; attempt < 50 && manager._liveMidi.flushing; attempt++)
+        const busy = () => manager._liveMidi.flushing || manager._liveMidi.inflight > 0;
+        for (let attempt = 0; attempt < 50 && busy(); attempt++)
             await new Promise(resolve => setTimeout(resolve, 0));
-        assert.equal(manager._liveMidi.flushing, false);
+        assert.equal(busy(), false);
     };
-    return { manager, send, settle, pendingAcks, held: () => held };
+    return { manager, send, settle, pendingAcks, frames, held: () => held };
 }
 
 test('live input manager resets a rejected Note Off without dropping the selected source', async t => {
@@ -137,6 +141,24 @@ test('live input manager resets a rejected Note Off without dropping the selecte
     assert.equal(f.held(), false, 'lost Note Off must release a voice admitted in the same generation');
     assert.ok(f.manager._liveMidi.generation > generation);
     assert.equal(f.manager._liveMidi.sourceKey, 'test-port');
+});
+
+test('live input manager keeps arrival spacing while an earlier batch awaits its render acknowledgement', async () => {
+    const f = createLiveInputManager({ holdAcks: true });
+    // The render head runs 10 ms ahead of the audible clock.
+    f.manager.audioContext = { sampleRate: 48000, state: 'running', get currentTime() { return performance.now() / 1000; },
+        getOutputTimestamp() { const now = performance.now(); return { contextTime: now / 1000 - .01, performanceTime: now }; } };
+    const first = performance.now();
+    f.send(0x90, 60, 100, first);
+    await new Promise(resolve => setTimeout(resolve, 4));
+    const second = performance.now();
+    f.send(0x90, 64, 100, second);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(f.pendingAcks.length, 2, 'a later chord note must not wait for the earlier batch to render');
+    const error = f.frames[1] - f.frames[0] - (second - first) * 48;
+    assert.ok(error > -48 && error < 48, `spacing error ${error} frames`);
+    for (const acknowledge of f.pendingAcks) acknowledge();
+    await f.settle();
 });
 
 test('live input manager retains the selected source after queue overflow', async t => {

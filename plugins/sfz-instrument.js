@@ -22,6 +22,8 @@ class SFZInstrumentPlugin extends PluginBase {
         this._instrumentPresentation = null;
         this._instrumentImageUrl = null;
         this._activeSwitches = null;
+        this._previewMidi = -1;
+        this._previewSession = null;
     }
 
     _t(key, fallback, params = {}) {
@@ -617,7 +619,83 @@ class SFZInstrumentPlugin extends PluginBase {
         return pending;
     }
 
+    _sendPreview() {
+        const audio = window.pipelineManager?.audioManager || window.audioManager;
+        if (this.audioHostActive === false || (!window.workletNode && !audio?.isAndroid)) return;
+        const message = { type: 'updatePlugin', plugin: this.getWorkletPluginData() };
+        if (audio?.commitPowerTopologyMutation) {
+            audio.commitPowerTopologyMutation(message, { reason: 'sfz-note-preview' });
+        } else window.workletNode.port.postMessage(message);
+    }
+
+    _stopPreview() {
+        const session = this._previewSession;
+        this._previewSession = null;
+        if (this._previewMidi !== -1) {
+            this._previewMidi = -1;
+            this._sendPreview();
+        }
+        if (!session) return;
+        if (session.canvas.hasPointerCapture(session.pointerId)) session.canvas.releasePointerCapture(session.pointerId);
+        session.detach();
+    }
+
+    // Holds one pointer preview on the given canvases. The plugin decides where a preview may start
+    // and which note a pointer position plays; this shared part owns the lease, delivery and stop paths.
+    _bindPreview(canvases, { canStart = () => true, update }) {
+        this._disposePreview?.();
+        const stop = () => this._stopPreview();
+        const hidden = () => { if (document.hidden) stop(); };
+        const bindings = canvases.map(canvas => {
+            const end = event => {
+                if (this._previewSession?.canvas === canvas && event.pointerId === this._previewSession.pointerId) stop();
+            };
+            const listeners = {
+                pointerdown: event => {
+                    const audio = window.pipelineManager?.audioManager || window.audioManager;
+                    const ready = audio?.hasNativePluginAsset?.(this, 0) ??
+                        Boolean(window.workletNode && this.getWasmAssets().has(0));
+                    if (event.defaultPrevented || event.button !== 0 || this._previewSession ||
+                        !this.enabled || this._sectionEnabled === false || this.hasLocalAudio === false ||
+                        this.audioHostActive === false || !ready || !canStart(event, canvas)) return;
+                    event.preventDefault();
+                    canvas.setPointerCapture(event.pointerId);
+                    const power = audio?.powerPolicyController;
+                    const release = power?.started ? power.acquireLease('sfz-note-preview', { mode: 'force-active' }) : null;
+                    window.addEventListener('blur', stop);
+                    window.addEventListener('pagehide', stop);
+                    document.addEventListener('visibilitychange', hidden);
+                    this._previewSession = { canvas, pointerId: event.pointerId, detach: () => {
+                        release?.();
+                        window.removeEventListener('blur', stop);
+                        window.removeEventListener('pagehide', stop);
+                        document.removeEventListener('visibilitychange', hidden);
+                    } };
+                    update(event, canvas);
+                },
+                pointermove: event => {
+                    if (this._previewSession?.canvas !== canvas || event.pointerId !== this._previewSession.pointerId) return;
+                    event.preventDefault();
+                    update(event, canvas);
+                },
+                pointerup: end,
+                pointercancel: end,
+                lostpointercapture: end
+            };
+            for (const [type, listener] of Object.entries(listeners)) canvas.addEventListener(type, listener);
+            return [canvas, listeners];
+        });
+        this._disposePreview = () => {
+            this._disposePreview = null;
+            stop();
+            for (const [canvas, listeners] of bindings) {
+                for (const [type, listener] of Object.entries(listeners)) canvas.removeEventListener(type, listener);
+            }
+        };
+    }
+
     cleanup() {
+        this._disposePreview?.();
         this._setInstrumentPresentation(null);
         this._instrumentDetails = this._currentSwitchLabels = null;
         this._presetSelect = this._presetChannelSelect = this._presetMenu = this._presetRow = null;

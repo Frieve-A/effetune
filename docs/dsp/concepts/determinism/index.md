@@ -20,12 +20,12 @@ an effect parameter such as `BitCrusher.seed`, whose catalog default is 11 and r
 ## Reproducible experiment
 
 The library has no standard experiment-manifest API. This source owns the complete experiment
-record: candidate wheel filename and twice-computed SHA-256, package and environment
+record: wheel filename and twice-computed SHA-256, package and environment
 versions, input construction and SHA-256, stream mode, parameters, seeds, each ordered
 open/process/close operation, exact process block spans, and every output hash. It uses
 `SimpleJitter.rmsJitterNanoseconds = 100`, stereo 48 kHz, 4096 frames, 256-frame
-blocks, execution seed 0 for identical runs and 1 for the variant. Save the emitted JSON
-and pass it back with `--replay-record`; the script reconstructs a new stream from that
+blocks, execution seed 0 for identical runs and 1 for the variant. Save the record
+with `--save-record` and pass it back with `--replay-record`; the script reconstructs a new stream from that
 record and requires identical input and output digests in the same environment.
 
 ```python
@@ -211,6 +211,7 @@ def replay_record(record, wheel_path, wheel_sha256):
 parser = argparse.ArgumentParser()
 parser.add_argument("--wheel", type=Path, required=True)
 parser.add_argument("--replay-record", type=Path)
+parser.add_argument("--save-record", type=Path)
 args = parser.parse_args()
 wheel_bytes = args.wheel.read_bytes()
 first_hash = digest_bytes(wheel_bytes)
@@ -222,9 +223,23 @@ if args.replay_record:
     result = replay_record(saved_record, args.wheel, first_hash)
 else:
     result = create_record(args.wheel, first_hash)
+    if args.save_record:
+        args.save_record.write_text(
+            json.dumps(result, sort_keys=True), encoding="utf-8"
+        )
 print(json.dumps(result, sort_keys=True))
 ```
 
+Save the script above as `research-experiment.py`. Install the same version with `pip install effetune==0.18.0`, then download its
+wheel file so the record can identify it. The wheel file name depends on your Python
+version and platform, following `effetune-0.18.0-<python tag>-<abi tag>-<platform tag>.whl`;
+for example, CPython 3.12 on Windows x64 downloads
+`effetune-0.18.0-cp312-abi3-win_amd64.whl`. Use the file name that pip reports.
+The first run saves the record with `--save-record`, which writes UTF-8 JSON
+regardless of the shell, and the second run replays it:
+
 ```console
-python research-experiment.py --wheel /path/to/effetune-0.17.0.whl
+pip download effetune==0.18.0 --no-deps -d wheels
+python research-experiment.py --wheel wheels/effetune-0.18.0-cp312-abi3-win_amd64.whl --save-record record.json
+python research-experiment.py --wheel wheels/effetune-0.18.0-cp312-abi3-win_amd64.whl --replay-record record.json
 ```

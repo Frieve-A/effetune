@@ -1477,6 +1477,17 @@ body.layout-mobile .ai-dialog.mobile-closing {
     pointer-events: none;
 }
 
+/* Inputs below 16px make iOS Safari zoom the page on focus. */
+body.layout-mobile .preset-dialog-name-input,
+body.layout-mobile .preset-dialog-search-input {
+    font-size: 16px;
+}
+
+/* The search input appears only when the sheet is at max height or a query is active; keep that height so filtering does not shrink the sheet and move the input. */
+body.layout-mobile .preset-dialog:has(> .preset-dialog-search-input:not([hidden])) {
+    height: 70%;
+}
+
 body.layout-mobile .routing-dialog-row {
     flex-wrap: wrap;
 }

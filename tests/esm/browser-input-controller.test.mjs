@@ -121,6 +121,20 @@ test('repeated Browser visits reuse pending and active capture without restartin
     });
 });
 
+test('captured Browser audio is silenced while the page audio is handed to the Music Player', async () => {
+    await withBrowser(async ({ input, emit, getStream }) => {
+        emit({ captureActive: false, captureGeneration: 0, pageAudioMuted: true });
+        assert.equal(await input.select(), true);
+        const [track] = getStream().getAudioTracks();
+        assert.equal(track.enabled, false);
+        emit({ captureActive: true, captureGeneration: input.generation, pageAudioMuted: false });
+        assert.equal(track.enabled, true);
+        emit({ captureActive: true, captureGeneration: input.generation, pageAudioMuted: true });
+        assert.equal(track.enabled, false);
+        assert.equal(input.active, true);
+    });
+});
+
 test('Browser mixes the configured device regardless of the local Player input setting', async () => {
     for (const mixed of [false, true]) {
         await withBrowser(async ({ input, io, calls, connected, audioManager }) => {

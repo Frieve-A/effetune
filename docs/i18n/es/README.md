@@ -77,12 +77,15 @@ Con el foco en la barra del navegador, usa **F5** para recargar, **F6** para sel
 
 Al abrir **Navegador** o volver a él, se selecciona automáticamente el audio del navegador. El audio del navegador se mezcla con el dispositivo de entrada seleccionado. Elige **Ninguno** como dispositivo de entrada para escuchar solo el audio del navegador. La opción de entrada del reproductor no afecta a la reproducción del navegador. La música local puede reproducirse junto con el audio del navegador. Si la captura se detiene, pulsa **Navegador** otra vez para reintentar. **Borrar datos de sitios** cierra la sesión en los sitios y borra sus datos guardados, conservando los marcadores.
 
+Los sitios que usan Web MIDI ven una única salida MIDI llamada **EffeTune**. Lo que la página envía a ella se reproduce como entrada MIDI en directo, igual que un teclado MIDI, con SoundFont Player en tu cadena de efectos; nunca llega a tus dispositivos MIDI. Desde el primer mensaje MIDI que envía, la página sustituye a tu dispositivo de entrada MIDI hasta que haces clic en **Cerrar** en la barra de herramientas del navegador, sales de la página o la recargas; entonces se vuelve al dispositivo seleccionado. Mantén un instrumento cargado en SoundFont Player y cierra Music Player, que tiene prioridad sobre la entrada MIDI en directo. Consulta [Entrada MIDI en directo](plugins/others.md#entrada-midi-en-directo).
+
 Usa **Cerrar** en la barra de herramientas del navegador para detener el procesamiento de su audio y volver a **Effect Pipeline**. Se conservan la página y el historial de navegación. Abre **Navegador** de nuevo para reanudar el procesamiento de audio en la misma página.
 
 En **Configuración > Configuración... > Navegador**:
 
 - **Página de inicio** establece la dirección HTTP o HTTPS que se abre al abrir el navegador por primera vez. El campo está vacío de forma predeterminada; cuando está vacío, se abre la [guía de streaming de EffeTune](https://effetune.frieve.com/streaming/). **Restablecer** vacía el campo sin cambiar la página actual.
 - **Abrir nuevas pestañas en el navegador predeterminado** está activado de forma predeterminada. Desactívalo para abrir esos enlaces en el navegador de EffeTune. Las ventanas independientes, como las de inicio de sesión, permanecen dentro de EffeTune en ambos casos.
+- **Abrir archivos de música en Music Player** está desactivado de forma predeterminada, así que las descargas se guardan en la ubicación que elijas. Al activarlo, los archivos de música que descargues se abren en Music Player en lugar de guardarse; los demás archivos se guardan como siempre. Además, en sitios que reproducen archivos MIDI con su propio sintetizador integrado, el archivo MIDI que reproduce la página también se abre en Music Player y la página queda silenciada hasta que salgas de ella o la recargues. Controla la reproducción desde Music Player. Después de cambiar este ajuste, recarga la página.
 - **User-Agent** es la identificación del navegador que se envía a los sitios web. El valor predeterminado identifica el navegador como compatible con Chrome e incluye el nombre EffeTune. Deja el campo vacío o pulsa **Restablecer** para recuperar el valor predeterminado. Después de cambiarlo, recarga la página en el navegador.
 
 Para cambiar los efectos automáticamente según el sitio, guarda primero tus cadenas como preajustes. En **Reglas de URL**, pulsa **Añadir regla**, introduce un sitio y una ruta como `example.com/music/*` y selecciona un preajuste de cadena. Omite `http://` o `https://`, las cadenas de consulta y los fragmentos `#`; `*` coincide con cualquier texto. Ajusta la prioridad con los botones de subir y bajar y pulsa **Guardar reglas**. Se usa la primera regla activada que coincida y tenga un preajuste disponible.
@@ -193,6 +196,8 @@ Haz clic en el botón **Preajustes de cadena de efectos** del encabezado de Effe
 5. Pulsa Ctrl+S (o Cmd+S en macOS) para abrir el diálogo con el nombre del preajuste actual listo para editar.
 
 Cada efecto también tiene su propio botón **Preajustes de efecto**. Abre los preajustes del sistema cuando el efecto los ofrece y te permite guardar, cambiar el nombre, cargar o eliminar tus propios ajustes para ese efecto. Los preajustes de efecto solo cambian los parámetros de ese efecto; no cambian su estado ON/OFF ni su enrutamiento.
+
+Todos los diálogos de preajustes muestran un cuadro de búsqueda en la parte superior cuando la lista es larga. Escribe parte de un nombre y la lista se irá filtrando mientras escribes.
 
 La importación, la exportación y el uso compartido de archivos `.effetune_preset` siguen usando preajustes de la cadena de efectos completa.
 

@@ -16,6 +16,7 @@ import {
   validateEffectSampleRate,
   validateSeed
 } from './semantics.js';
+import { normalizeMidiMessage } from './midi.js';
 import { decodeTelemetryPacket } from './telemetry.js';
 
 const PROCESSOR_NAME = 'effetune-dsp-processor';
@@ -102,6 +103,11 @@ function cloneAssetsForWorklet(resolvedAssets) {
   for (const [effectId, assets] of resolvedAssets) {
     const values = {};
     for (const [name, asset] of Object.entries(assets)) {
+      // SoundFont banks are structured-cloned so the caller keeps a usable bank.
+      if (asset.bank) {
+        values[name] = asset;
+        continue;
+      }
       const bytes = new Uint8Array(asset.bytes);
       values[name] = { ...asset, bytes };
       transfer.push(bytes.buffer);
@@ -158,7 +164,10 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
           cache: options.cache
         })
       : null;
-    const node = new EffeTuneNode(context, channels, document, seed);
+    const midiEffectIds = new Set([...resolvedAssets]
+      .filter(([, assets]) => Object.values(assets).some(asset => asset.bank))
+      .map(([effectId]) => effectId));
+    const node = new EffeTuneNode(context, channels, document, seed, midiEffectIds);
     const wasmBytes = artifact ? artifact.bytes.slice(0) : null;
     const assets = cloneAssetsForWorklet(resolvedAssets);
     const transfer = [...assets.transfer, ...(wasmBytes ? [wasmBytes] : [])];
@@ -180,7 +189,7 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
     }
   }
 
-  constructor(context, channels, document, seed) {
+  constructor(context, channels, document, seed, midiEffectIds = new Set()) {
     super(context, PROCESSOR_NAME, {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -192,6 +201,7 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
     this._initialDocument = cloneDocument(document);
     this._document = cloneDocument(document);
     this._seed = seed;
+    this._midiEffectIds = midiEffectIds;
     this._closed = false;
     this._runtimeError = null;
     this._latencySamples = 0;
@@ -384,6 +394,16 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
       }
       this._document = { version: 1, chain: effects };
     });
+  }
+
+  // Queues one MIDI message; the processor applies it at the start of its next block.
+  sendMidi(effectId, midi) {
+    this._assertOpen();
+    if (!this._midiEffectIds.has(effectId)) {
+      throw new ValidationError(`Effect ${effectId} does not accept MIDI events.`);
+    }
+    const message = normalizeMidiMessage(midi, 'sendMidi');
+    if (message !== null) this.port.postMessage({ type: 'midi', effectId, midi: message });
   }
 
   reset() {

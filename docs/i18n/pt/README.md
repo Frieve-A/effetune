@@ -77,12 +77,15 @@ Com o foco na barra do navegador, use **F5** para recarregar, **F6** para seleci
 
 Abrir **Navegador** ou voltar a ele seleciona automaticamente o áudio do navegador. O áudio do navegador é misturado com o dispositivo de entrada selecionado. Escolha **Nenhum** como dispositivo de entrada para ouvir apenas o navegador. A opção de entrada do Player não afeta a reprodução no navegador. A música local pode continuar tocando junto com o áudio do navegador. Se a captura parar, clique em **Navegador** de novo para tentar novamente. **Limpar dados dos sites** encerra as sessões nos sites e apaga os dados armazenados, mantendo os favoritos.
 
+Sites que usam Web MIDI veem uma única saída MIDI chamada **EffeTune**. O que a página envia a ela é tocado como entrada MIDI ao vivo, como um teclado MIDI, pelo SoundFont Player na sua cadeia de efeitos; nada chega aos seus dispositivos MIDI. A partir da primeira mensagem MIDI que envia, a página substitui o seu dispositivo de entrada MIDI até você clicar em **Fechar** na barra de ferramentas do navegador, sair da página ou recarregá-la; então volta a valer o dispositivo selecionado. Mantenha um instrumento carregado no SoundFont Player e feche o Music Player, que tem prioridade sobre a entrada MIDI ao vivo. Veja [Entrada MIDI ao vivo](plugins/others.md#entrada-midi-ao-vivo).
+
 Use **Fechar** na barra de ferramentas do navegador para interromper o processamento do áudio do navegador e voltar a **Effect Pipeline**. A página e o histórico de navegação são mantidos. Abra **Navegador** novamente para retomar o processamento de áudio na mesma página.
 
 Em **Configurações > Configuração... > Navegador**:
 
 - **Página inicial** define o endereço HTTP ou HTTPS exibido quando o navegador é aberto pela primeira vez. O campo fica vazio por padrão; quando está vazio, abre o [guia de streaming do EffeTune](https://effetune.frieve.com/streaming/). **Redefinir** limpa o campo sem mudar a página atual.
 - **Abrir novas abas no navegador padrão** vem ativado por padrão. Desative para abrir esses links no navegador do EffeTune. Janelas separadas, como as de login, continuam dentro do EffeTune em ambos os casos.
+- **Abrir arquivos de música no Music Player** vem desativado por padrão; assim, os downloads são salvos no local que você escolher. Quando ativado, os arquivos de música que você baixa são abertos no Music Player em vez de serem salvos, e os demais arquivos são salvos normalmente. Em sites que tocam arquivos MIDI com o próprio sintetizador integrado, o arquivo MIDI reproduzido pela página também é aberto no Music Player, e a página fica sem som até você sair dela ou recarregá-la. Controle a reprodução pelo Music Player. Depois de alterar essa opção, recarregue a página.
 - **User-Agent** é a identificação do navegador enviada aos sites. O valor padrão identifica o navegador como compatível com o Chrome e inclui o nome EffeTune. Deixe o campo vazio ou clique em **Redefinir** para restaurar o valor padrão. Após a alteração, recarregue a página no navegador.
 
 Para trocar os efeitos automaticamente conforme o site, primeiro salve suas cadeias como predefinições. Em **Regras de URL**, clique em **Adicionar regra**, informe um site e um caminho, como `example.com/music/*`, e selecione uma predefinição de cadeia. Omita `http://` ou `https://`, parâmetros de consulta e fragmentos `#`; `*` corresponde a qualquer texto. Ajuste a prioridade com os botões de subir e descer e clique em **Salvar regras**. É usada a primeira regra ativada que corresponda e tenha uma predefinição disponível.
@@ -193,6 +196,8 @@ Clique no botão **Predefinições de cadeia de efeitos** no cabeçalho do Effec
 5. Pressione Ctrl+S (ou Cmd+S no macOS) para abrir a caixa de diálogo com o nome da predefinição atual pronto para edição.
 
 Cada efeito também tem seu próprio botão **Predefinições de efeito**. Ele abre as predefinições do sistema quando o efeito as oferece e permite salvar, renomear, carregar ou remover suas próprias configurações desse efeito. As predefinições de efeito alteram apenas os parâmetros desse efeito; não alteram seu estado ON/OFF nem o roteamento.
+
+Todas as caixas de diálogo de predefinições mostram um campo de busca na parte superior quando a lista é longa. Digite parte de um nome para filtrar a lista enquanto digita.
 
 Os recursos existentes de importação, exportação e compartilhamento de arquivos `.effetune_preset` continuam usando predefinições da cadeia de efeitos completa.
 

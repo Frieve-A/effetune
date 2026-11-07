@@ -180,10 +180,11 @@ SF3 (.sf3) uses compressed samples; import and select its sounds in the same way
 
 The **MIDI Mixer** tab has one row for each of the 16 MIDI channels. An SF2/SF3 collection can provide a different sound for each channel; Bank Select and Program Change messages choose the sounds, and channel 10 uses the drum bank by default. GS/XG drum-part messages can assign percussion to other channels or return a channel to melodic sounds. Program Change selects an available drum kit in the loaded SoundFont. An SFZ instrument uses its own mappings.
 
-Before a Program Change, melodic channels use program 1 in bank 0 and channel 10 uses the standard drum kit, if those sounds are available. If the requested SF2/SF3 sound is missing, melodic channels try the same program in bank 0, then program 1 in bank 0; drum channels try the standard drum kit. **Patch** shows the sound actually used. If none of these sounds exists, the channel has no sound to play.
+Before a Program Change, melodic channels use program 1 in bank 0 and channel 10 uses the standard drum kit, if those sounds are available. If the requested SF2/SF3 sound is missing, melodic channels try the same program in bank 0, then program 1 in bank 0; drum channels try the standard drum kit. **Patch** shows the sound actually used. If none of these sounds exists, or **Automatic Fallback** is off, the channel has no sound to play.
 
 - **Patch** selects a named sound from the loaded SF2/SF3 collection for that channel. New notes use the selected sound; notes already sounding keep their original sound.
 - **Notes** lights each channel's keys while MIDI notes are held, from Note On to Note Off. Releasing a note turns its key off even if a sustain pedal or release tail keeps the sound playing. **Voices** counts the actual sample voices still sounding, including releases, against **Max Voices**. One note can use several sample voices.
+- Drag across a channel's keys with the mouse, touch, or a pen to play the loaded instrument at the pitch of the key under the pointer, using that channel's current **Patch** and mixer settings. Moving to another key or releasing works like a MIDI Note Off: the previous note fades with the instrument's own release, so notes with a slow release overlap. This works independently of the song and MIDI input, so it sounds on top of a playing song. A channel with **Mute** on stays silent, and only rows with active mixer controls respond.
 - **Vol.** (CC7, 0–127) adjusts the channel level. **EXP** (expression, CC11, 0–127) is an additional level control. Higher values make the channel louder; setting either to 0 silences it.
 - **Pan** (CC10, 0–127) moves the sound from left to right, with 64 at the center.
 - **Rev.** (CC91) and **Cho.** (CC93) adjust effect sends from 0 to 127. Higher values send more sound to the corresponding effect; the audible result depends on the instrument’s effect support and settings.
@@ -201,6 +202,7 @@ The **Settings** tab contains the saved playback settings:
 - **MIDI Channel** plays **All** channels by default, or only the selected channel from **1–16**.
 - **Instrument Level** adjusts the generated sound from -60 to +12 dB (default 0 dB), without changing incoming audio.
 - **Max Voices** limits simultaneous sample voices, including releases, to 1–1024 (default 64). Higher values preserve more overlapping sounds and use more processing.
+- **Automatic Fallback** (on by default) replaces a missing SF2/SF3 sound with a similar available one, as described above. Turn it off to keep channels that request a missing sound silent, which makes gaps in the SoundFont easy to notice.
 - **Interpolation** chooses how the instrument's samples are resampled. **FIR (64 taps)** uses the standard SF2/SF3 filter or the SFZ instrument's own quality setting. **FIR (32 taps)** (default) uses less processing for SF2/SF3; it uses 32 taps when no downsampling is needed, while FIR filters grow when playback requires downsampling to limit aliasing. **Cubic (4 points)** uses light interpolation, but lacks an anti-alias low-pass filter, so strongly raised notes or samples rich in high harmonics can produce aliasing. FIR and Cubic override an SFZ instrument's quality setting.
 
 The selected instrument and these settings are saved normally. The Music Player’s volume and mute also control the MIDI instrument. Presets, shared links, and backups store the instrument reference, not its samples; keep the original files available in the desktop app and for use on another device.
@@ -219,7 +221,9 @@ In **Settings**, expand **Instrument Details** to read the SFZ instrument's labe
 
 Live MIDI performance is available in the desktop app and web/PWA player. It is not supported in the Android app; Controller Mapping remains available there.
 
-To play from a MIDI keyboard or a virtual MIDI port, close Music Player. In **Audio Configuration**, choose **Refresh MIDI Devices**, allow MIDI access if asked, and select **MIDI Input Device**. Keep an instrument loaded in SoundFont Player. An open Music Player takes priority even while paused; choose **None** to stop live MIDI input. Without a loaded instrument, MIDI continues silently. Loading an instrument makes subsequent MIDI events audible; past notes are not replayed.
+To play from a MIDI keyboard or a virtual MIDI port, close Music Player. In **Audio Configuration**, choose **Refresh MIDI Devices**, allow MIDI access if asked, and select **MIDI Input Device**. Keep an instrument loaded in SoundFont Player. An open Music Player takes priority even while paused; choose **None** to stop live MIDI input. Without a loaded instrument, MIDI continues silently. Loading an instrument makes subsequent MIDI events audible; past notes are not replayed. Live MIDI input is not relayed to **MIDI Output Device**, which sends only MIDI file playback from Music Player to an external device.
+
+In the desktop app, websites in **Browser** that use Web MIDI can also play SoundFont Player through a MIDI output named **EffeTune**. From its first MIDI message, the page takes over live MIDI input until you click **Close** on the browser toolbar, leave the page, or reload it; live MIDI input then returns to the selected **MIDI Input Device**.
 
 ### SFZ Instruments
 

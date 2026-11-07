@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral, Real
@@ -11,6 +12,7 @@ from typing import Any, TypeAlias
 import numpy as np
 
 from .errors import AssetError
+from .soundfont import SoundFontBank
 
 MAX_ASSET_BYTES = 32 * 1024 * 1024
 TOPOLOGIES = frozenset(("automatic", "mono", "independent", "trueStereo", "matrix"))
@@ -82,7 +84,7 @@ class AssetData:
             raise AssetError("paths and input_count are only valid for matrix topology")
 
 
-AssetResolver: TypeAlias = Callable[[str], AssetData | Mapping[str, Any] | None]
+AssetResolver: TypeAlias = Callable[[str], AssetData | SoundFontBank | Mapping[str, Any] | None]
 
 
 def _coerce_path(value: Any) -> ConvolutionPath:
@@ -160,10 +162,16 @@ def _snapshot_samples(samples: Any) -> Any:
     return np.array(samples, copy=True, order="C", subok=False)
 
 
-def resolve_asset(reference: str, resolver: AssetResolver | None, effect_label: str) -> AssetData:
+def resolve_asset(
+    reference: str,
+    resolver: AssetResolver | None,
+    effect_label: str,
+    kind: str = "impulseResponse",
+) -> AssetData | SoundFontBank:
+    noun = "SoundFont bank" if kind == "soundFont" else "impulse-response asset"
     if resolver is None:
         raise AssetError(
-            f"{effect_label} requires impulse-response asset {reference!r}, "
+            f"{effect_label} requires {noun} {reference!r}, "
             "but no asset_resolver was provided"
         )
     try:
@@ -171,13 +179,16 @@ def resolve_asset(reference: str, resolver: AssetResolver | None, effect_label: 
     except AssetError:
         raise
     except Exception as error:
-        raise AssetError(
-            f"{effect_label} could not resolve impulse-response asset {reference!r}"
-        ) from error
+        raise AssetError(f"{effect_label} could not resolve {noun} {reference!r}") from error
     if value is None:
-        raise AssetError(
-            f"{effect_label} could not resolve impulse-response asset {reference!r}"
-        )
+        raise AssetError(f"{effect_label} could not resolve {noun} {reference!r}")
+    if kind == "soundFont":
+        if not isinstance(value, SoundFontBank):
+            raise AssetError(
+                f"{effect_label} needs a SoundFontBank for {reference!r}; "
+                "load the prepared .etsf file with SoundFontBank.load()"
+            )
+        return value
     try:
         return coerce_asset_data(value)
     except AssetError as error:
@@ -237,16 +248,23 @@ def resolve_room_eq_topology(asset: AssetData, processing_channels: int) -> str:
     return topology
 
 
-def resolve_rate_divider(asset_rate: int, processing_rate: float, requested: str) -> int:
-    requested_divider = {"full": 1, "half": 2, "quarter": 4}.get(requested)
-    candidates = (requested_divider,) if requested_divider is not None else (1, 2, 4)
-    for divider in candidates:
-        if divider is not None and abs(processing_rate / divider - asset_rate) < 0.5:
-            return divider
-    raise AssetError(
-        "IR sample rate must equal the processing rate selected by convolutionRate; "
-        "the Python wrapper does not resample assets"
-    )
+def resolve_rate_divider(
+    asset_rate: int, processing_rate: float, requested: str, latency: int
+) -> int:
+    """Resolve the IRReverb convolution-rate divider by the app's shared rule."""
+    mode = "full" if latency == 0 else requested
+    if mode == "auto":
+        mode = "half" if processing_rate >= 88_200 else "full"
+    if mode == "quarter" and processing_rate < 176_400:
+        raise AssetError("Quarter rate is available at sample rates of 176.4 kHz or higher.")
+    divider = {"full": 1, "half": 2, "quarter": 4}[mode]
+    required_rate = math.floor(processing_rate / divider + 0.5)
+    if asset_rate != required_rate:
+        raise AssetError(
+            f"IRReverb requires an impulse response at {required_rate} Hz for this "
+            "processing configuration; the Python wrapper does not resample assets"
+        )
+    return divider
 
 
 __all__ = [

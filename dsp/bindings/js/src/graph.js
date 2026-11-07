@@ -1,5 +1,5 @@
 import { loadDspArtifact } from './artifacts.js';
-import { resolveChainAssets } from './assets.js';
+import { resolveChainAssets, soundFontAssetNames } from './assets.js';
 import { AssetError, StateError, ValidationError } from './errors.js';
 import { createGraphEngineSession, effectiveNodeIds } from './graph-engine.js';
 import {
@@ -449,8 +449,23 @@ export class Graph {
   }
 }
 
+// Graph streams deliver no MIDI, so a MIDI-driven effect would stay silent.
+function rejectMidiEffects(state) {
+  const node = state.document.nodes.find(candidate => soundFontAssetNames(candidate.type).size > 0);
+  if (!node) return;
+  throw new ValidationError(
+    `${node.id} (${node.type}) needs MIDI input, which Graphs cannot deliver. Use a Chain and send MIDI events through ChainStream instead.`,
+    {
+      code: 'GRAPH_UNSUPPORTED_CAPABILITY',
+      path: `/nodes/${state.originalNodeIndexes.get(node.id)}/type`,
+      nodeId: node.id
+    }
+  );
+}
+
 export async function createGraph(input, options = {}) {
   const state = _normalizeGraphInput(input);
+  rejectMidiEffects(state);
   const resolvedAssets = new Map(options._resolvedAssets ?? []);
   const artifactOptions = {
     variant: options.variant,

@@ -39,8 +39,8 @@
     "policy": "per-sample"
   },
   "performanceBudgetMs": 2500,
-  "referenceEngine": "native-room-eq-direct-double-v2",
-  "referenceHash": "35e819cf73a00e7985580701ae3e468f1cead2f3b595e1061471ba0cd39e65be",
+  "referenceEngine": "native-room-eq-direct-double-v3",
+  "referenceHash": "cbc33a49a34ae0d45ed416d2b0173dcfd47545bb5daa4e444603f5b7bdceb416",
   "outputFloats": 8192,
   "byteLength": 32768,
   "binary": "case-001.f32"

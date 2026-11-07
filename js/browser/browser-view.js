@@ -1,6 +1,8 @@
 import { matchUrlRule } from './url-rules.js';
 import { browserShortcut } from './shortcuts.js';
 import { BrowserInputController } from '../audio/browser-input-controller.js';
+import { BrowserMidiSource } from './browser-midi-source.js';
+import { BrowserMediaInfo } from './browser-media-info.js';
 
 const DEFAULT_START_PAGE = 'https://effetune.frieve.com/streaming/';
 
@@ -73,6 +75,8 @@ export class BrowserView {
             this.renderStatus();
             void this.applyUrlRules();
         });
+        this.midi = new BrowserMidiSource(uiManager.audioManager, this.api);
+        this.media = new BrowserMediaInfo(this.api);
         this.unsubscribe = this.api.onState(state => this.applyState(state));
         this.unsubscribeFocus = this.api.onFocusAddress?.(() => {
             this.closePopup(false);
@@ -108,6 +112,8 @@ export class BrowserView {
             this.unsubscribeFocus?.();
             this.unsubscribeCommand?.();
             this.input.unsubscribe?.();
+            this.midi.dispose();
+            this.media.dispose();
             this.resize.disconnect();
             this.observer.disconnect();
             document.removeEventListener('pointerdown', this.outsidePointer);

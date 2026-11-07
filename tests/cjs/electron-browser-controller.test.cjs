@@ -5,7 +5,7 @@ const { createBrowserController, normalizeBrowserURL, normalizeBrowserSettings, 
 const RUNTIME_USER_AGENT = 'Mozilla/5.0 EffeTune/2.15.0 Chrome/152.0.0.0 Electron/44.5.1 Safari/537.36';
 const DEFAULT_USER_AGENT = RUNTIME_USER_AGENT.replace(/\sElectron\/\S+/g, '');
 
-function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, themePreset, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT } = {}) {
+function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, themePreset, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT, beforeMusicOpen } = {}) {
   const ipc = new EventEmitter();
   const handlers = new Map();
   ipc.handle = (name, fn) => handlers.set(name, fn);
@@ -69,8 +69,15 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
     contentView: { addChildView() {}, removeChildView() {} }
   });
   let settings = initialSettings || { bookmarks: [], startPage: '' };
+  const opened = [];
   const controller = createBrowserController({
     mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset,
+    async openMusicFiles(paths, canOpen) {
+      await beforeMusicOpen?.(paths);
+      if (!canOpen()) return false;
+      opened.push(...paths);
+      return true;
+    },
     translate: key => key,
     clipboard: { writeText: text => copied.push(text) },
     Menu: { buildFromTemplate(items) { return { popup: options => menus.push({ items, options }) }; } },
@@ -100,7 +107,7 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
     await mediaSession.handler({ frame: trusted.mainFrame, userGesture: true, videoRequested: true, audioRequested: true, ...changes }, value => { streams = value; });
     return streams;
   };
-  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, capture, contents, externalURLs, menus, copied };
+  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, capture, contents, externalURLs, menus, copied, opened };
 }
 
 test('browser page shortcuts are scoped to visible pages and leave unrelated app keys alone', async t => {
@@ -205,7 +212,7 @@ test('Browser accepts HTTP and HTTPS addresses and validates stored bookmarks', 
     assert.equal(normalizeBrowserURL(url), null);
   }
   assert.deepEqual(normalizeBrowserSettings({ bookmarks: [{ name: ' Music ', url: 'example.com' }, { name: 'bad', url: 'file:///x' }], startPage: 'javascript:x' }), {
-    bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '', userAgent: '', openTabsExternally: true, urlRules: []
+    bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '', userAgent: '', openTabsExternally: true, openMusicFilesInPlayer: false, urlRules: []
   });
   assert.equal(normalizeBrowserSettings(undefined).startPage, '');
 });
@@ -265,7 +272,7 @@ test('Browser User-Agent is saved independently and updates owned pages without 
   const settings = { bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: 'https://example.com/' };
   await h.invoke('save-settings', settings);
   const saved = await h.invoke('save-settings', { userAgent: ' Desktop Browser/1.0 ' });
-  assert.deepEqual(saved.settings, { ...settings, userAgent: 'Desktop Browser/1.0', openTabsExternally: true, urlRules: [] });
+  assert.deepEqual(saved.settings, { ...settings, userAgent: 'Desktop Browser/1.0', openTabsExternally: true, openMusicFilesInPlayer: false, urlRules: [] });
   assert.equal(h.partition.userAgent, 'Desktop Browser/1.0');
   assert.equal(wc.userAgent, 'Desktop Browser/1.0');
   assert.equal(child.webContents.userAgent, 'Desktop Browser/1.0');
@@ -404,7 +411,7 @@ test('Browser lazily isolates remote pages and rejects foreign/subframe IPC and 
   const wc = h.views[0].webContents;
   assert.equal(wc.muted, true);
   assert.equal(h.views[0].options.webPreferences.preload,
-    require('node:path').resolve(__dirname, '../../electron/browser-fullscreen-preload.js'));
+    require('node:path').resolve(__dirname, '../../electron/browser-preload.js'));
   assert.equal(h.views[0].options.webPreferences.contextIsolation, true);
   assert.equal(h.views[0].options.webPreferences.nodeIntegration, false);
   assert.equal(h.views[0].options.webPreferences.sandbox, true);
@@ -537,9 +544,6 @@ test('Navigation, external tabs, popups and downloads share the remote boundary'
   assert.equal(result.action, 'allow');
   assert.equal(result.overrideBrowserWindowOptions.webPreferences.partition, PARTITION);
   assert.equal(wc.open({ url: 'https://other.example.com', disposition: 'new-window' }).action, 'deny');
-  let downloadBlocked = false;
-  h.partition.emit('will-download', { preventDefault() { downloadBlocked = true; } });
-  assert.equal(downloadBlocked, true);
 });
 
 test('Disabling external tabs keeps GET tab navigation in the captured Browser and preserves login windows', async t => {
@@ -669,4 +673,452 @@ test('Browser URL rules persist independently, reject invalid edits and retain o
   }
   assert.deepEqual((await h.invoke('save-settings', { userAgent: '' })).settings.urlRules, browserRules);
   assert.deepEqual(normalizeBrowserSettings({ urlRules: [{ pattern: 3 }] }).urlRules, []);
+});
+
+test('Browser MIDI relays only valid messages from the live, captured view and resets on clear, capture end and teardown', async t => {
+  const h = harness(t);
+  await h.invoke('navigate', 'https://example.com/');
+  const view = h.views[0];
+  const wc = view.webContents;
+  assert.equal(view.options.webPreferences.nodeIntegrationInSubFrames, true);
+  assert.equal(view.options.webPreferences.sandbox, true);
+  assert.equal(view.options.webPreferences.contextIsolation, true);
+  assert.equal(wc.open({ url: 'https://login.example.com', disposition: 'new-window' })
+    .overrideBrowserWindowOptions.webPreferences.nodeIntegrationInSubFrames, false);
+  for (const permission of ['midi', 'midiSysex']) {
+    assert.equal(h.partition.check(wc, permission, 'https://example.com'), false);
+    let granted;
+    h.partition.request(wc, permission, value => { granted = value; }, { requestingUrl: 'https://example.com' });
+    assert.equal(granted, false);
+  }
+  const sent = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:midi') sent.push(value); };
+  const relay = (value, sender = wc, senderFrame = { detached: false }) => h.ipc.emit('browser:midi', { sender, senderFrame }, value);
+  // Browser MIDI follows Browser audio processing: nothing is relayed before capture is active.
+  relay([{ data: [0x90, 60, 100], delay: 0 }]);
+  relay({ clear: true });
+  assert.deepEqual(sent, []);
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  assert.equal(h.views.length, 1);
+  const sysex = [0xf0, ...new Array(254).fill(0x10), 0xf7];
+  relay([
+    { data: [0x90, 60, 100], delay: 0 }, { data: [0xc0, 5], delay: 11 }, { data: sysex, delay: 60000, extra: true },
+    { data: [0x90, 60], delay: 1 }, { data: [0x90, 60, 128], delay: 1 }, { data: [0xc0, 5, 1], delay: 1 },
+    { data: [0xf8, 0], delay: 1 }, { data: [0xf1, 0], delay: 1 }, { data: [144.5, 60, 1], delay: 1 },
+    { data: [0xf0, 1, 2], delay: 1 }, { data: [0xf0, 0x80, 0xf7], delay: 1 }, { data: [...sysex.slice(0, -1), 1, 0xf7], delay: 1 },
+    { data: [0x80, 60, 0], delay: Infinity }, { data: [0x80, 60, 0], delay: '1' }, { data: [0x80, 60, 0], delay: -1 },
+    { data: [0x80, 60, 0], delay: 60001 }, { data: '\x90<d', delay: 1 }, null
+  ]);
+  assert.deepEqual(sent, [{ events: [
+    { data: [0x90, 60, 100], delay: 0 }, { data: [0xc0, 5], delay: 11 }, { data: sysex, delay: 60000 }
+  ] }]);
+  sent.length = 0;
+  relay(new Array(257).fill({ data: [0x90, 60, 100], delay: 1 }));
+  relay({ events: [{ data: [0x90, 60, 100], delay: 1 }] });
+  relay([{ data: [0x90, 60, 100], delay: 1 }], h.trusted);
+  relay([{ data: [0x90, 60, 100], delay: 1 }], h.contents());
+  const child = new EventEmitter();
+  child.webContents = h.contents(); child.isDestroyed = () => false;
+  child.setMenu = child.setTitle = child.destroy = () => {};
+  wc.emit('did-create-window', child);
+  relay([{ data: [0x90, 60, 100], delay: 1 }], child.webContents);
+  // An unloading document of the view cannot relay after its page was reset.
+  relay([{ data: [0x80, 60, 0], delay: 0 }], wc, { detached: true });
+  relay({ clear: true }, wc, { detached: true });
+  relay([{ data: [0x80, 60, 0], delay: 0 }], wc, null);
+  relay({ clear: true }, child.webContents);
+  assert.deepEqual(sent, []);
+  relay({ clear: true });
+  wc.emit('did-navigate', {}, 'https://example.com/next');
+  assert.deepEqual(sent, [{ reset: true }, { reset: true }]);
+  // Ending capture releases the page's live MIDI input once and stops the relay.
+  await h.invoke('set-capture-state', { ...token, active: false });
+  await h.invoke('set-capture-state', { ...token, active: false });
+  relay([{ data: [0x90, 60, 100], delay: 1 }]);
+  assert.deepEqual(sent, [{ reset: true }, { reset: true }, { reset: true }]);
+  wc.emit('render-process-gone', {}, { reason: 'crashed' });
+  assert.deepEqual(sent, [{ reset: true }, { reset: true }, { reset: true }, { reset: true }]);
+  relay([{ data: [0x90, 60, 100], delay: 1 }], wc);
+  assert.equal(sent.length, 4);
+  await h.invoke('navigate', 'https://example.com/');
+  sent.length = 0;
+  h.views[1].webContents.close();
+  assert.deepEqual(sent, [{ reset: true }]);
+  await h.invoke('navigate', 'https://example.com/');
+  sent.length = 0;
+  h.controller.dispose();
+  assert.deepEqual(sent, [{ reset: true }]);
+  assert.equal(h.ipc.listenerCount('browser:midi'), 0);
+});
+
+test('Browser media info is normalized, follows its owning frame, is sent only during capture, and clears with the page', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
+  const h = harness(t);
+  await h.invoke('navigate', 'https://music.example.com/album');
+  const wc = h.views[0].webContents;
+  const sent = [];
+  const fetches = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:media') sent.push(value); };
+  h.partition.fetch = async (url, init) => {
+    fetches.push([url, init.credentials, init.referrer]);
+    return new Response(Uint8Array.of(1, 2, 3), { headers: { 'content-type': 'image/jpeg' } });
+  };
+  const top = wc.mainFrame;
+  const sub = { detached: false };
+  const post = (value, senderFrame = top, sender = wc) => h.ipc.emit('browser:media', { sender, senderFrame }, value);
+  post({
+    title: '  Song  ', artist: 'A'.repeat(600), album: 7, playing: true, position: 12.5, duration: 0, rate: NaN,
+    artwork: [
+      null,
+      { src: 'https://img.example.com/small.jpg', sizes: '96x96' },
+      { src: 'data:image/png;base64,AAAA', sizes: '1024x1024' },
+      { src: 'https://img.example.com/large.jpg', sizes: '128x128 512x512' },
+      { src: 'blob:https://music.example.com/1', sizes: '2048x2048' }
+    ]
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, []);
+  // The artwork is fetched with the page's credentials and sent as a data: URL.
+  assert.deepEqual(fetches, [['https://img.example.com/large.jpg', 'include', 'https://music.example.com/album']]);
+  // Activation sends the info cached while capture was inactive.
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  assert.deepEqual(sent, [{
+    title: 'Song', artist: 'A'.repeat(512), album: '', artworkUrl: 'data:image/jpeg;base64,AQID',
+    site: 'music.example.com', playing: true, position: 12.5, duration: null, rate: 1
+  }]);
+  post({ title: 'Ad', playing: false }, sub);
+  post(null, sub);
+  post({ title: 'Other', playing: true }, top, h.contents());
+  post({ title: 'Late', playing: true }, { detached: true });
+  assert.equal(sent.length, 1);
+  post({ title: 'Clip', playing: true, duration: 30, artwork: 'none' }, sub);
+  wc.emit('did-navigate-in-page', {}, 'https://music.example.com/next');
+  assert.deepEqual([sent.length, sent[1].title, sent[1].duration, sent[1].artworkUrl], [2, 'Clip', 30, '']);
+  sub.detached = true;
+  post({ title: 'Song', playing: false });
+  assert.deepEqual([sent.length, sent[2].title, sent[2].playing], [3, 'Song', false]);
+  // Ending capture clears the app's info but keeps the page's for the next capture.
+  await h.invoke('set-capture-state', { ...token, active: false });
+  post({ title: 'Paused', playing: false });
+  assert.deepEqual(sent.slice(3), [null]);
+  const next = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...next, active: true });
+  assert.equal(sent.at(-1).title, 'Paused');
+  wc.emit('did-navigate', {}, 'https://example.com/');
+  post(null);
+  assert.deepEqual(sent.slice(5), [null]);
+  post({ title: 'Song', playing: true });
+  h.controller.dispose();
+  assert.deepEqual(sent.slice(6).map(value => value?.title ?? null), ['Song', null]);
+  assert.equal(h.ipc.listenerCount('browser:media'), 0);
+});
+
+test('Browser media resumes at the elapsed position, forgets a removed subframe owner, and sends only image artwork', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
+  const h = harness(t);
+  await h.invoke('navigate', 'https://music.example.com/');
+  const wc = h.views[0].webContents;
+  const sent = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:media') sent.push(value); };
+  const types = { 'https://img.example.com/cover.png': 'image/png', 'https://img.example.com/page': 'text/html' };
+  let missingFetches = 0;
+  h.partition.fetch = async url => {
+    if (url.endsWith('/missing.png')) missingFetches++;
+    if (!types[url]) throw new TypeError('fetch failed');
+    return new Response(Uint8Array.of(1, 2, 3), { headers: { 'content-type': types[url] } });
+  };
+  const post = (value, senderFrame = wc.mainFrame) => h.ipc.emit('browser:media', { sender: wc, senderFrame }, value);
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const activate = async () => {
+    const token = h.prepare(); await h.capture();
+    await h.invoke('set-capture-state', { ...token, active: true });
+    return token;
+  };
+  let token = await activate();
+  post({ title: 'Song', playing: true, position: 10, duration: 100, rate: 2, artwork: [{ src: 'https://img.example.com/cover.png' }] });
+  assert.equal(sent.at(-1).artworkUrl, '');
+  await settle();
+  assert.equal(sent.at(-1).artworkUrl, 'data:image/png;base64,AQID');
+  // An unchanged picture is left out of later reports until capture resumes.
+  post({ title: 'Song', playing: true, position: 11, duration: 100, rate: 2, artwork: [{ src: 'https://img.example.com/cover.png' }] });
+  assert.equal('artworkUrl' in sent.at(-1), false);
+  await h.invoke('set-capture-state', { ...token, active: false });
+  t.mock.timers.tick(5000);
+  token = await activate();
+  assert.deepEqual([sent.at(-1).position, sent.at(-1).artworkUrl], [21, 'data:image/png;base64,AQID']);
+  await h.invoke('set-capture-state', { ...token, active: false });
+  t.mock.timers.tick(60000);
+  await activate();
+  assert.equal(sent.at(-1).position, 100);
+  // Non-image and unavailable artwork clear the picture once.
+  const count = sent.length;
+  post({ title: 'Page', playing: true, artwork: [{ src: 'https://img.example.com/page' }] });
+  await settle();
+  post({ title: 'Missing', playing: true, artwork: [{ src: 'https://img.example.com/missing.png' }] });
+  await settle();
+  assert.deepEqual(sent.slice(count).map(value => value.artworkUrl), ['', undefined]);
+  // A failed address is fetched again after the page navigates.
+  wc.emit('did-navigate', {}, 'https://music.example.com/again');
+  post({ title: 'Missing', playing: true, artwork: [{ src: 'https://img.example.com/missing.png' }] });
+  await settle();
+  assert.equal(missingFetches, 2);
+  // A subframe owner that leaves the page is forgotten.
+  const sub = { detached: false };
+  post({ title: 'Embed', playing: true }, sub);
+  t.mock.timers.tick(1000);
+  assert.equal(sent.at(-1).title, 'Embed');
+  sub.detached = true;
+  t.mock.timers.tick(1000);
+  assert.equal(sent.at(-1), null);
+});
+
+function midiFile(track = 0) {
+  return Uint8Array.of(0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, track);
+}
+
+// Waits with a referenced timer so pending file I/O keeps the test alive.
+async function until(condition) {
+  for (let attempt = 0; attempt < 400 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.ok(condition());
+}
+
+test('Browser MIDI files open in Music Player only when enabled, skip immediate repeats, and mute the page', async t => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const off = harness(t);
+  await off.invoke('navigate', 'https://example.com/');
+  const offQuery = { sender: off.views[0].webContents, senderFrame: {} };
+  off.ipc.emit('browser:midi-files-enabled', offQuery);
+  assert.equal(offQuery.returnValue, false);
+  off.ipc.emit('browser:midi-file', { sender: off.views[0].webContents, senderFrame: {} }, { bytes: midiFile(), name: 'song.mid' });
+
+  const h = harness(t, { settings: { openMusicFilesInPlayer: true } });
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  await h.invoke('navigate', 'https://example.com/');
+  const wc = h.views[0].webContents;
+  assert.equal(wc.muted, false);
+  // Muting the page does not silence its loopback capture, so the app is told to.
+  const pageAudioMuted = [];
+  const send = h.trusted.send;
+  h.trusted.send = (channel, value) => {
+    if (channel === 'browser:state') pageAudioMuted.push(value.pageAudioMuted);
+    return send?.call(h.trusted, channel, value);
+  };
+  for (const [sender, expected, senderFrame = {}] of [[wc, true], [h.trusted, false], [h.contents(), false],
+    [wc, false, { detached: true }], [wc, false, null]]) {
+    const query = { sender, senderFrame };
+    h.ipc.emit('browser:midi-files-enabled', query);
+    assert.equal(query.returnValue, expected);
+  }
+  const post = (value, sender = wc, senderFrame = {}) => h.ipc.emit('browser:midi-file', { sender, senderFrame }, value);
+  post({ bytes: midiFile(7), name: 'unloading.mid' }, wc, { detached: true });
+  post({ bytes: midiFile(), name: 'song.mid' });
+  post({ bytes: midiFile(), name: 'again.mid' });
+  post({ bytes: midiFile(1), name: 'other.mid' }, h.contents());
+  post({ bytes: Uint8Array.of(...midiFile(2).slice(0, 7), 7, 0, 0, 0, 1, 0, 96) });
+  post({ bytes: midiFile(3).slice(0, 13) });
+  post({ bytes: [...midiFile(4)] });
+  await until(() => h.opened.length === 1);
+  post({ bytes: midiFile(5), name: 'play.php?x' });
+  await until(() => h.opened.length === 2);
+  assert.equal(wc.muted, true);
+  assert.deepEqual(pageAudioMuted, [true]);
+  assert.deepEqual(h.opened.map(file => path.basename(file)), ['song.mid', 'play.php_x.mid']);
+  assert.deepEqual([...fs.readFileSync(h.opened[0])], [...midiFile()]);
+  assert.deepEqual(off.opened, []);
+
+  wc.emit('did-navigate', {}, 'https://example.com/next');
+  assert.equal(wc.muted, false);
+  assert.equal(pageAudioMuted.at(-1), false);
+  post({ bytes: midiFile() });
+  await until(() => h.opened.length === 3);
+  assert.equal(path.basename(h.opened[2]), 'Browser MIDI.mid');
+  assert.equal(wc.muted, true);
+  await h.invoke('save-settings', { openMusicFilesInPlayer: false });
+  post({ bytes: midiFile(6) });
+  assert.deepEqual(await h.invoke('save-settings', { openMusicFilesInPlayer: 'yes' }), { ok: false, error: 'invalidRequest' });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.opened.length, 3);
+  // Closing capture stops opening files, but the page hook stays installed for a later capture.
+  await h.invoke('save-settings', { openMusicFilesInPlayer: true });
+  await h.invoke('set-capture-state', { ...token, active: false });
+  const closedQuery = { sender: wc, senderFrame: {} };
+  h.ipc.emit('browser:midi-files-enabled', closedQuery);
+  assert.equal(closedQuery.returnValue, true);
+  post({ bytes: midiFile(8), name: 'closed.mid' });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.opened.length, 3);
+  h.controller.dispose();
+  for (const file of h.opened) assert.equal(fs.existsSync(path.dirname(file)), false);
+});
+
+test('Browser removes music temp dirs only for owners that have exited', async t => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-browser-test-')));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.mock.method(os, 'tmpdir', () => root);
+  const pids = [123, 456, 789].filter(pid => pid !== process.pid);
+  const [exited, active] = pids;
+  t.mock.method(process, 'kill', (pid, signal) => {
+    assert.equal(signal, 0);
+    if (pid === exited) throw Object.assign(new Error('Process exited'), { code: 'ESRCH' });
+    assert.equal(pid, active);
+    return true;
+  });
+  const stale = fs.mkdtempSync(path.join(root, `effetune-browser-music-${exited}-`));
+  fs.writeFileSync(path.join(stale, 'song.mid'), midiFile());
+  const live = fs.mkdtempSync(path.join(root, `effetune-browser-music-${active}-`));
+  const unknown = fs.mkdtempSync(path.join(root, 'effetune-browser-music-'));
+  const unrelated = fs.mkdtempSync(path.join(root, 'effetune-browser-other-'));
+  const file = path.join(root, `effetune-browser-music-file-${process.pid}`);
+  fs.writeFileSync(file, '');
+  harness(t);
+  await until(() => !fs.existsSync(stale));
+  for (const entry of [live, unknown, unrelated, file]) assert.ok(fs.existsSync(entry));
+});
+
+test('Browser drops late MIDI writes and rechecks capture before handing files to the player', async t => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-browser-test-')));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.mock.method(os, 'tmpdir', () => root);
+  const resumeWrite = Promise.withResolvers();
+  const resumeOpen = Promise.withResolvers();
+  const writeFile = fs.promises.writeFile;
+  let oldFile, pendingFile;
+  t.mock.method(fs.promises, 'writeFile', async (file, bytes) => {
+    if (path.basename(file) === 'old.mid') {
+      oldFile = file;
+      await resumeWrite.promise;
+    }
+    return writeFile(file, bytes);
+  });
+  const h = harness(t, {
+    settings: { openMusicFilesInPlayer: true },
+    async beforeMusicOpen([file]) {
+      if (path.basename(file) !== 'pending.mid') return;
+      pendingFile = file;
+      await resumeOpen.promise;
+    }
+  });
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  await h.invoke('navigate', 'https://example.com/');
+  const sender = h.views[0].webContents;
+  const post = (name, track) => h.ipc.emit('browser:midi-file', { sender, senderFrame: {} }, { name, bytes: midiFile(track) });
+
+  post('old.mid', 1);
+  post('new.mid', 2);
+  await until(() => h.opened.length === 1);
+  resumeWrite.resolve();
+  await until(() => !fs.existsSync(path.dirname(oldFile)));
+  assert.deepEqual(h.opened.map(file => path.basename(file)), ['new.mid']);
+
+  sender.emit('did-navigate', {}, 'https://example.com/next');
+  post('pending.mid', 3);
+  await until(() => Boolean(pendingFile));
+  await h.invoke('set-capture-state', { ...token, active: false });
+  resumeOpen.resolve();
+  await until(() => !fs.existsSync(path.dirname(pendingFile)));
+  assert.equal(h.opened.length, 1);
+  assert.equal(h.controller.getState().pageAudioMuted, false);
+});
+
+test('Browser MIDI files reopen earlier songs and keep only the newest four temp dirs', async t => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const h = harness(t, { settings: { openMusicFilesInPlayer: true } });
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  await h.invoke('navigate', 'https://example.com/');
+  const wc = h.views[0].webContents;
+  // Posts one file and waits until it opens, so the open order is deterministic.
+  const post = async track => {
+    const count = h.opened.length;
+    h.ipc.emit('browser:midi-file', { sender: wc, senderFrame: {} }, { bytes: midiFile(track), name: `${track}.mid` });
+    await until(() => h.opened.length === count + 1);
+  };
+  for (const track of [0, 1, 0]) await post(track);
+  assert.deepEqual(h.opened.map(file => path.basename(file)), ['0.mid', '1.mid', '0.mid']);
+  await post(2);
+  assert.ok(h.opened.every(file => fs.existsSync(file)));
+  await post(3);
+  assert.equal(fs.existsSync(path.dirname(h.opened[0])), false);
+  assert.ok(h.opened.slice(1).every(file => fs.existsSync(file)));
+  h.controller.dispose();
+  assert.ok(h.opened.every(file => !fs.existsSync(path.dirname(file))));
+});
+
+test('Browser opens music downloads in Music Player when enabled and leaves other downloads to the Save dialog', async t => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const download = (h, filename, totalBytes = 15, sender = h.views[0].webContents) => {
+    const item = new EventEmitter();
+    Object.assign(item, {
+      getFilename: () => filename, getTotalBytes: () => totalBytes, getReceivedBytes: () => item.received || 0,
+      setSavePath(value) { item.savePath = value; }, cancel() { item.cancelled = true; }
+    });
+    const event = { preventDefault() { event.prevented = true; } };
+    h.partition.emit('will-download', event, item, sender);
+    return { event, item };
+  };
+  const saveDialog = ({ event, item }) => {
+    assert.equal(event.prevented, undefined);
+    assert.equal(item.savePath, undefined);
+  };
+  const off = harness(t);
+  await off.invoke('navigate', 'https://example.com/');
+  saveDialog(download(off, 'song.flac'));
+
+  // Downloads are user actions: they open without an active capture and leave the page unmuted.
+  const h = harness(t, { settings: { openMusicFilesInPlayer: true } });
+  await h.invoke('navigate', 'https://example.com/');
+  const wc = h.views[0].webContents;
+  for (const [name, sender] of [['archive.zip', wc], ['feed.xml', wc], ['song.flac', h.contents()]]) {
+    saveDialog(download(h, name, 15, sender));
+  }
+  const accepted = download(h, 'Song.FLAC');
+  assert.equal(accepted.event.prevented, undefined);
+  assert.equal(path.basename(accepted.item.savePath), 'Song.FLAC');
+  fs.writeFileSync(accepted.item.savePath, 'audio');
+  accepted.item.emit('done', {}, 'completed');
+  await until(() => h.opened.length === 1);
+  assert.equal(h.opened[0], accepted.item.savePath);
+  assert.equal(h.controller.getState().pageAudioMuted, false);
+
+  const tooLarge = download(h, 'huge.wav', 2 * 1024 * 1024 * 1024 + 1);
+  saveDialog(tooLarge);
+  const oversized = download(h, 'big.wav', 0);
+  oversized.item.received = 2 * 1024 * 1024 * 1024 + 1;
+  oversized.item.emit('updated', {}, 'progressing');
+  assert.equal(oversized.item.cancelled, true);
+  fs.writeFileSync(oversized.item.savePath, 'partial');
+  oversized.item.emit('done', {}, 'cancelled');
+  const interrupted = download(h, 'cut.mp3');
+  interrupted.item.emit('done', {}, 'interrupted');
+  for (const { item } of [oversized, interrupted]) assert.equal(fs.existsSync(path.dirname(item.savePath)), false);
+  assert.equal(h.opened.length, 1);
+
+  // The newest four files are kept across navigation: the fifth overall evicts the first.
+  h.views[0].webContents.emit('did-navigate', {}, 'https://example.com/next');
+  const later = [];
+  for (const name of ['a.flac', 'b.flac', 'c.flac', 'd.flac']) {
+    const next = download(h, name);
+    fs.writeFileSync(next.item.savePath, 'audio');
+    next.item.emit('done', {}, 'completed');
+    await until(() => h.opened.length === later.length + 2);
+    later.push(next);
+    if (later.length < 4) assert.equal(fs.existsSync(path.dirname(accepted.item.savePath)), true);
+  }
+  assert.equal(fs.existsSync(path.dirname(accepted.item.savePath)), false);
+  assert.ok(later.every(({ item }) => fs.existsSync(item.savePath)));
+  h.controller.dispose();
+  assert.ok(later.every(({ item }) => !fs.existsSync(path.dirname(item.savePath))));
 });

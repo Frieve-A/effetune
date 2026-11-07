@@ -121,6 +121,7 @@ export class MidiControllerManager {
     this.learnCallback = null;
     this.performanceInputKey = '';
     this.performanceInputCallback = null;
+    this.outputDeviceKey = '';
     this.disposed = false;
     this.changeListeners = new Set();
     if (isAndroidHost(this.window)) this.unsubscribeNativeActions = subscribeAndroidMidiActions(this.window);
@@ -202,10 +203,10 @@ export class MidiControllerManager {
     this.localInputs.syncSubscriptions(this.store.mappings, {
       dialogOpen: this.dialogOpen || this.learnActive
     });
-    const needsMidi = this.hasMidiMappings() || this.learnActive || Boolean(this.performanceInputKey);
+    const needsMidi = this.hasMidiMappings() || this.learnActive || this.usesMusicalMidi();
     if (needsMidi) await this.ensureMidiAccess();
     if (this.disposed) return;
-    this.setMidiRuntimeActive(this.hasMidiMappings() || this.learnActive || Boolean(this.performanceInputKey) ||
+    this.setMidiRuntimeActive(this.hasMidiMappings() || this.learnActive || this.usesMusicalMidi() ||
       (this.dialogOpen && Boolean(this.midiAccess)));
     this.mcu.startFeedbackPoller();
     this.emitChange();
@@ -221,7 +222,7 @@ export class MidiControllerManager {
 
   async ensureMidiAccess() {
     if (this.disposed) return null;
-    const sysex = Boolean(this.performanceInputKey);
+    const sysex = this.usesMusicalMidi();
     if (!this.isSupported() || this.midiAccess && (!sysex || this.midiAccess.sysexEnabled !== false)) return this.midiAccess;
     if (this.midiRequest) {
       await this.midiRequest;
@@ -455,6 +456,21 @@ export class MidiControllerManager {
     )?.port || null;
   }
 
+  // Musical input and file-playback output carry SysEx and keep the runtime alive for hot-plug.
+  usesMusicalMidi() {
+    return Boolean(this.performanceInputKey || this.outputDeviceKey);
+  }
+
+  async setOutputDevice(key) {
+    if (this.disposed) return;
+    this.outputDeviceKey = typeof key === 'string' ? key : '';
+    await this.syncRuntime();
+  }
+
+  getSelectedOutput() {
+    return this.outputDeviceKey ? this.findOutput(this.outputDeviceKey) : null;
+  }
+
   async setPerformanceInput(key, callback) {
     if (this.disposed) return;
     this.performanceInputKey = typeof key === 'string' ? key : '';
@@ -473,6 +489,7 @@ export class MidiControllerManager {
     this.disposed = true;
     this.performanceInputKey = '';
     this.performanceInputCallback = null;
+    this.outputDeviceKey = '';
     if (this.midiAccessTimer) {
       clearTimeout(this.midiAccessTimer);
       this.midiAccessTimer = null;

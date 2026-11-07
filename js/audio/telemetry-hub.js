@@ -326,7 +326,9 @@ export class TelemetryHub {
                 const frame = Object.freeze({ ...parsedFrame, ...(source ? { source } : {}),
                     ...((parsedFrame.frameType === TelemetryFrameType.TAP_SFZ_KEYSWITCHES ||
                         parsedFrame.frameType === TelemetryFrameType.TAP_SOUNDFONT_MIXER)
-                        ? { subscription: this.subscribers.get(this._key(parsedFrame.tapId, parsedFrame.frameType)) } : {}) });
+                        ? { subscription: this.subscribers.get(this._key(parsedFrame.tapId, parsedFrame.frameType)) } : {}),
+                    ...(parsedFrame.frameType === TelemetryFrameType.TAP_SOUNDFONT_MIXER
+                        ? { endFrame: message.mixerEndFrame ?? message.endFrame } : {}) });
                 if (this.visualSyncResolver) this._receive(frame, sourcePort, message.endFrame, message.contextFrameOffset);
                 else this._dispatch(frame, sourcePort);
             });

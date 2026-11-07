@@ -709,6 +709,7 @@ test('registers core handlers and delegates file, config, update, path, and URL 
       preferences: {
         inputDeviceId: '__effetune_no_audio_input__',
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         outputDeviceId: 'speaker1',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
@@ -1602,6 +1603,7 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       {
         ...silentPreferences,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
         gaplessPlayback: true
@@ -1668,6 +1670,7 @@ test('audio preference IPC persists a verified output-device fallback without re
       {
         ...defaultOutputPreferences,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         inputDeviceLabel: '',
         gaplessPlayback: true
       }

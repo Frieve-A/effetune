@@ -3,6 +3,7 @@
 from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version
 
+from . import midi
 from ._base import Effect
 from ._generated_effects import *  # noqa: F403
 from ._generated_effects import EFFECT_METADATA as _INTERNAL_EFFECT_METADATA
@@ -24,6 +25,7 @@ from .graph_document import (
     wet_dry_graph_document,
 )
 from .presets import LegacyImportReport, import_legacy_preset
+from .soundfont import SoundFontBank
 from .telemetry import (
     AnalogMeterTelemetryChannel,
     AnalogMeterTelemetryFrame,
@@ -87,6 +89,7 @@ __all__ = [
     "RhythmAnalyzerDrumTelemetryEvent",
     "RhythmAnalyzerTelemetryBeat",
     "RhythmAnalyzerTelemetryFrame",
+    "SoundFontBank",
     "SpectrogramHqTelemetryFrame",
     "SpectrogramTelemetryFrame",
     "SpectrumHqTelemetryFrame",
@@ -99,6 +102,7 @@ __all__ = [
     "ValidationError",
     "__version__",
     "import_legacy_preset",
+    "midi",
     "send_return_graph_document",
     "wet_dry_graph_document",
     *_generated_all,

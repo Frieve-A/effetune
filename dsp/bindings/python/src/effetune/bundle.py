@@ -14,7 +14,7 @@ import numpy as np
 
 from .assets import AssetData, MAX_ASSET_BYTES, coerce_asset_data
 from .errors import AssetError, ValidationError
-from .validation import validate_chain_document
+from .validation import asset_kind, validate_chain_document
 
 _ETA1_HEADER_BYTES = 32
 _ETA1_PATH_BYTES = 12
@@ -83,6 +83,13 @@ class Bundle:
             raise AssetError("bundle assets must be an object")
 
         effects = validate_chain_document(chain)
+        for effect in effects:
+            if any(asset_kind(effect.effect_type, name) == "soundFont" for name in effect.assets):
+                raise AssetError(
+                    f"{effect.id or effect.effect_type} uses a SoundFont, which bundles cannot "
+                    "include yet. Load the chain without a bundle and provide the SoundFont "
+                    "through asset_resolver."
+                )
         canonical_chain = {
             "version": 1,
             "chain": [effect.to_dict() for effect in effects],

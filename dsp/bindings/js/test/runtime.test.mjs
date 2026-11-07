@@ -571,7 +571,7 @@ test('all generated effects normalize and pack against their private layouts', (
   for (const type of EFFECT_TYPES) {
     const options = assetTypes.has(type)
       ? { assets: { impulseResponse: 'ir' } }
-      : {};
+      : type === 'SoundFontPlayer' ? { assets: { soundFont: 'bank' } } : {};
     const effect = createEffect(type, options);
     const normalized = normalizeChainDocument([effect]).chain[0];
     const packed = packEffect(normalized);

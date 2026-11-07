@@ -1283,7 +1283,10 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 111)
+        bank = effetune.SoundFontBank.load(
+            REPOSITORY_ROOT / "dsp" / "bindings" / "common" / "soundfont-sine-v1.etsf"
+        )
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 112)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None
@@ -1294,8 +1297,13 @@ class NativeChainTests(unittest.TestCase):
             }:
                 argument = _snake_case(definition["name"])
                 options[argument] = _nondefault_value(definition)
-            if any(asset["required"] for asset in metadata["assets"]):
-                options["assets"] = {"impulseResponse": "smoke-ir"}
+            options_assets = {
+                asset["name"]: "smoke-asset"
+                for asset in metadata["assets"]
+                if asset["required"]
+            }
+            if options_assets:
+                options["assets"] = options_assets
             with self.subTest(effect=effect_type):
                 effect = EFFECT_CLASSES[effect_type](**options)
                 if definition is not None and options.keys() != {"assets"}:
@@ -1307,7 +1315,9 @@ class NativeChainTests(unittest.TestCase):
                 asset = (
                     effetune.AssetData(np.ones((4, 1), dtype=np.float32), 48_000)
                     if effect_type == "CrosstalkCancellation"
-                    else crossover_ir if effect_type == "FIRCrossover" else ir
+                    else crossover_ir if effect_type == "FIRCrossover"
+                    else bank if effect_type == "SoundFontPlayer"
+                    else ir
                 )
                 chain = effetune.Chain(
                     [effect],

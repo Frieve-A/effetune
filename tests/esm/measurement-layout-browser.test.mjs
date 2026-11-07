@@ -126,7 +126,8 @@ test('measurement shared layout keeps actions, history and analysis selectors st
         let wrappedLabels = 0, wrappedControls = 0;
         const checkLabels = async (language, width, screen) => {
             const actual = await page.evaluate(labelGeometry);
-            const expected = await reference.evaluate(({ actual, mobile }) => {
+            const expected = await reference.evaluate(({ actual, language, mobile }) => {
+                document.documentElement.lang = language;
                 document.body.classList.toggle('layout-mobile', mobile);
                 const host = document.getElementById('label-reference'); host.replaceChildren();
                 return actual.map(item => {
@@ -139,7 +140,7 @@ test('measurement shared layout keeps actions, history and analysis selectors st
                         controls: [...row.querySelectorAll('input')].map(el => ({ width: el.getBoundingClientRect().width, wrapped: el.getBoundingClientRect().top >= rect.bottom })),
                         style: Object.fromEntries(['font', 'lineHeight', 'display', 'alignItems', 'whiteSpace'].map(key => [key, css[key]])) };
                 });
-            }, { actual, mobile: width <= 1158 });
+            }, { actual, language, mobile: width <= 1158 });
             for (const [index, label] of actual.entries()) {
                 const prefix = `${language} ${width} ${screen} ${label.text}`;
                 assert.deepEqual(label.style, expected[index].style, `${prefix}: actual Effect label style`);

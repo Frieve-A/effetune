@@ -8,7 +8,8 @@ permalink: /dsp/cookbook/ml-data-augmentation/
 # ML data augmentation
 
 **Goal:** create repeatable seeded audio degradation without using the EffeTune app.
-Use a candidate or verified Python wheel and the canonical experiment fixture.
+Install the published package with `pip install effetune`; the example generates its
+own input signal.
 
 ```python
 import numpy as np

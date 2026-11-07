@@ -226,6 +226,8 @@ function processCommandLineArgs(argv) {
 
 // Export functions
 module.exports = {
+  PLAYBACK_AUDIO_EXTENSIONS,
+  isSupportedPlaybackAudioPath,
   setMainWindow,
   getUserDataPath,
   showSaveDialog,

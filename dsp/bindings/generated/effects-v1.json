@@ -2066,8 +2066,13 @@
           "count": 1,
           "default": -24,
           "unit": "dB/oct",
-          "minimum": -48,
-          "maximum": 0
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48
+          ]
         },
         {
           "name": "lowPassSlope",
@@ -2075,8 +2080,13 @@
           "count": 1,
           "default": -24,
           "unit": "dB/oct",
-          "minimum": -48,
-          "maximum": 0
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48
+          ]
         }
       ],
       "seeded": false,
@@ -6257,6 +6267,78 @@
       "assets": []
     },
     {
+      "type": "SoundFontPlayer",
+      "parameters": [
+        {
+          "name": "midiChannel",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 16
+        },
+        {
+          "name": "maxVoices",
+          "type": "integer",
+          "count": 1,
+          "default": 64,
+          "minimum": 1,
+          "maximum": 1024
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 12
+        },
+        {
+          "name": "sampleQuality",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        {
+          "name": "automaticFallback",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
+          "name": "previewMidi",
+          "type": "integer",
+          "count": 1,
+          "default": -1,
+          "minimum": -1,
+          "maximum": 127
+        },
+        {
+          "name": "previewChannel",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 15
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": [
+        {
+          "name": "soundFont",
+          "kind": "soundFont",
+          "required": true
+        }
+      ]
+    },
+    {
       "type": "AdaptivePredictionEffect",
       "parameters": [
         {
@@ -9401,7 +9483,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "8d144305f71d69d15d61b61840c9d2a0f9b7dfe809bc70239e64aef6dbf4d307",
-    "privateLayoutSha256": "a71ea2079d079c7eb144627e7ccc7586e33f51235f84420ee46c85fbc80a353f"
+    "publicCatalogSha256": "4d5c64a5dcb8a4405af443a159808dc24fb4fdae530b2a349c823e3540d00f8b",
+    "privateLayoutSha256": "8b8f917cd5c8786d112ee88e8d0d3572e43473004c90a70d1a08eeee29426d45"
   }
 }

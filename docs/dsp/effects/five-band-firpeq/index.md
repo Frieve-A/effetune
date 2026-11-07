@@ -27,9 +27,21 @@ See [Assets and bundles](/dsp/concepts/assets-and-bundles/#asset-required-effect
 
 
 
+### Asset requirements
+
+`assets.impulseResponse`: One coefficient channel in `mono` topology. The same filter runs on every selected channel.
+
+The coefficient sample rate must equal the processing sample rate; the library does not resample coefficients.
+
+The library does not design this filter from the app controls described below. Supply finished coefficients, at most 131072 frames per channel.
+
+`latencyMode` is the convolution block size in samples. The filtered output is delayed by exactly this amount, and `"0"` adds no delay.
+
+`filterDelaySamples` declares the delay already contained in the coefficients, such as the center tap of a linear-phase FIR. The effect does not delay the filtered signal by this amount; it reports `latencyMode + filterDelaySamples` as its latency, and unselected channels are delayed by that total.
+
 ## EffeTune app documentation
 
-> The following section is reproduced from the English EffeTune app documentation. Its parameter names and values describe the app UI and can differ from semantic API parameters through transforms or value maps. The generated contract above is authoritative.
+> The following section is reproduced from the English EffeTune app documentation. It describes the app UI, so it can mention controls, meters, and displays that the library does not provide, and its parameter names and values can differ from the API through transforms or value maps. Only the parameters in the Contract table above, plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), are part of the library API; the Contract is authoritative. Some parameters take effect only when a related setting enables them.
 
 ## 5Band FIR PEQ
 

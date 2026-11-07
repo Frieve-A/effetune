@@ -12,8 +12,8 @@ tree without distribution metadata reports `0+source`.
 
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
-host-neutral C++20 DSP core used by the EffeTune application. Version 0.17.0
-provides 111 semantic effect classes, ordered serial chains, stateful block
+host-neutral C++20 DSP core used by the EffeTune application. Version 0.18.0
+provides 112 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->
@@ -75,6 +75,8 @@ Generated effect constructors and `create_effect()` accept Python `snake_case`
 keywords:
 
 ```python
+import effetune as et
+
 shift = et.PitchShifter(pitch_shift=3)
 same_shift = et.create_effect("PitchShifter", pitch_shift=3)
 ```
@@ -115,10 +117,16 @@ identify an enabled effect with an explicit `id`, and provide one or more
 semantic parameter updates:
 
 ```python
-output = stream.process(audio, events=[
-    {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
-    {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
-])
+import numpy as np
+import effetune as et
+
+chain = et.Chain([et.Compressor(id="voice", threshold=-18, ratio=4)])
+audio = np.full((2, 4800), 0.25, dtype=np.float32)
+with chain.stream(48_000, channels=2) as stream:
+    output = stream.process(audio, events=[
+        {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
+        {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
+    ])
 ```
 
 Each event is merged with the effect's current parameters. Frame zero applies
@@ -131,12 +139,53 @@ linearly in gain over 5 ms (rounded up to whole samples), restarting from the
 current gain if another target arrives. See the executable
 [Volume automation examples](https://effetune.frieve.com/dsp/concepts/streaming-and-events/#volume-automation).
 Events cannot change parameters that require convolution assets to be staged
-again. Open a new stream after changing `IRReverb.channelMode`, `latency`, or
+again. Open a new stream after changing any `BassManagement` parameter other
+than `bassGain`, `lfeGain`, and `headroom`, or after changing
+`IRReverb.channelMode`, `latency`, or
 `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
-`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or `RoomEQ`.
+`CrosstalkCancellation`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or
+`RoomEQ`.
 `close()` is idempotent. Processing or resetting a closed stream raises
 `StateError`.
+
+### Play a SoundFont
+
+`SoundFontPlayer` plays a prepared SoundFont bank from MIDI events in a stream.
+Python loads only prepared `.etsf` banks, so prepare an `.sf2` or `.sfz` file
+once with the JavaScript package:
+
+```console
+npx -p @effetune/dsp effetune-soundfont prepare piano.sf2 piano.etsf
+```
+
+```python
+import numpy as np
+import effetune as et
+
+bank = et.SoundFontBank.load("piano.etsf")
+chain = et.Chain(
+    [et.SoundFontPlayer(id="piano", assets={"soundFont": "piano"})],
+    asset_resolver=lambda reference: bank,
+)
+silence = np.zeros((2, 48_000), dtype=np.float32)
+with chain.stream(48_000, channels=2) as stream:
+    output = stream.process(silence, events=[
+        {"frame": 0, "effectId": "piano", "midi": et.midi.note_on(0, 60, 100)},
+        {"frame": 24_000, "effectId": "piano", "midi": et.midi.note_off(0, 60)},
+    ])
+```
+
+A MIDI event has `frame`, `effectId`, and `midi` instead of `parameters`, and
+is ordered by frame together with parameter events. `et.midi` builds note,
+control change, program change, and pitch bend messages; raw MIDI bytes as a
+list, tuple, `bytes`, or `bytearray` also work, and aftertouch and system
+messages are ignored. Notes keep sounding
+across `process()` calls; `reset()` releases them. One effect accepts at most
+4096 MIDI events within one `block_size` window. Offline `Chain.process()`
+does not accept MIDI events, so only the `previewMidi` preview note sounds
+there. A `Graph` cannot contain a `SoundFontPlayer`, and bundles cannot
+contain SoundFont banks.
 
 ## Presets and bundles
 
@@ -162,9 +211,14 @@ Use `Chain.from_legacy_preset()` or `import_legacy_preset()` to convert an app
 preset whose effects form one ordered serial path. Branched and multi-bus
 routing is rejected because flattening it would change the acoustic result.
 Move or copy the desired effects into one serial path in the app and export it
-again, or reproduce the branching in the host around separate Chains.
-Unsupported channels, effects, partial short-key arrays, and unknown fields
-are reported rather than silently dropped.
+again, rebuild the branching with
+[Graph v1](https://effetune.frieve.com/dsp/reference/graph-v1/), or reproduce it
+in the host around separate Chains.
+Duplicate structural keys and display-only state written by the app are
+validated and discarded; the import report warns when preset metadata is
+discarded or a Section is flattened. Unsupported channels, effects, partial
+short-key arrays, and other unknown fields raise an error rather than being
+silently dropped.
 
 Effects with public observation support provide opt-in decoded telemetry.
 See [Compatibility](https://effetune.frieve.com/dsp/reference/compatibility/#analyzers-and-telemetry)
@@ -173,6 +227,11 @@ Rhythm Analyzer, and Tonal Balance EQ. Pass `on_telemetry` to
 `Chain.process()` or `Chain.stream()`, or manage a streaming subscription:
 
 ```python
+import numpy as np
+import effetune as et
+
+chain = et.Chain([et.LevelMeter(id="meter")])
+audio = np.full((2, 4800), 0.25, dtype=np.float32)
 with chain.stream(48_000, channels=2) as stream:
     unsubscribe = stream.subscribe(lambda frame: print(frame.kind))
     output = stream.process(audio)
@@ -199,6 +258,9 @@ impulses at the processing sample rate. See
 for the required-asset effects and executable examples, and
 [Bass Management](https://effetune.frieve.com/dsp/effects/bass-management/)
 for its conditional Linear-mode asset requirement.
+CrosstalkCancellation requires four prepared filter channels in trueStereo topology
+(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
+channels. Automatic topology is accepted for this four-channel asset.
 Resolvers return `AssetData` containing finite, C-contiguous planar float32
 samples, an integer sample rate, and an explicit or unambiguous topology. The
 runtime rejects missing, malformed, hash-mismatched, ambiguous, and
@@ -312,7 +374,7 @@ MODULATION_STYLES = {
 ```console
 effetune render input.wav output.wav --preset mastering.json
 effetune render input.wav output.wav --preset room-bundle --subtype FLOAT
-effetune render input.wav output.flac --chain "[{\"type\":\"Volume\",\"parameters\":{\"volume\":-3}}]"
+effetune render input.wav output.flac --chain chain.json
 effetune chain validate mastering.json
 effetune preset inspect mastering.json
 effetune bundle pack room-chain.json room-bundle --asset room-ir=room-ir.wav
@@ -321,6 +383,10 @@ effetune bundle pack room-chain.json room-bundle --asset room-ir=room-ir.wav
 Audio decoding and encoding are delegated to SoundFile. The CLI does not
 invoke ffmpeg, resample, measure loudness, or change the input sample rate.
 `--preset` accepts a Chain file, a Bundle directory, or its `bundle.json`.
+
+`--chain` accepts a JSON file, for example `chain.json` containing
+`[{"type":"Volume","parameters":{"volume":-3}}]`, which avoids shell-specific
+quoting.
 
 ## Supported Python wheels
 
@@ -334,14 +400,19 @@ python -m build -Ccmake.define.ET_PYTHON_STABLE_ABI=ON -Cwheel.py-api=cp312
 
 That `cp312-abi3` wheel covers supported newer CPython versions. This is a
 private static-link extension; the repository's wasm32 C ABI is not exposed as
-a native public ABI. Linux x86-64, Windows AMD64, macOS Intel, and macOS Apple
-Silicon wheels are built and clean-install tested independently.
+a native public ABI. Wheels are built and clean-install tested independently
+for these platforms:
 
-Official Python releases are wheels only. An sdist built from this subproject
-would omit DSP sources located above the Python package directory, so source
-builds are supported only from a complete EffeTune repository checkout.
+| Platform | Minimum | Wheel platform tag |
+|---|---|---|
+| Windows x64 | 64-bit CPython | `win_amd64` |
+| Linux x86-64 | glibc 2.27 | `manylinux_2_27_x86_64` |
+| macOS Intel | macOS 15 | `macosx_15_0_x86_64` |
+| macOS Apple Silicon | macOS 15 | `macosx_15_0_arm64` |
 
-CrosstalkCancellation requires four prepared filter channels in trueStereo topology
-(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
-channels. Automatic topology is accepted for this four-channel asset. Its
-latencyMode and filterDelaySamples parameters require opening a new stream.
+Official Python releases are wheels only. There is no musllinux, Linux ARM, or
+32-bit wheel, so on other systems pip reports
+`No matching distribution found for effetune`. An sdist built from this
+subproject would omit DSP sources located above the Python package directory,
+so source builds are supported only from a complete EffeTune repository
+checkout.

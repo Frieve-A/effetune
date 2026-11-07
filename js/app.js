@@ -654,11 +654,18 @@ class App {
                 console.warn('MIDI controller startup failed:', error);
             });
         }
-        const midiInputKey = window.audioPreferences?.midiInputDeviceKey ||
-            window.electronIntegration?.audioPreferences?.midiInputDeviceKey || '';
+        const midiPreference = name => window.audioPreferences?.[name] ||
+            window.electronIntegration?.audioPreferences?.[name] || '';
+        const midiInputKey = midiPreference('midiInputDeviceKey');
         if (midiInputKey && !isAndroidHost()) {
             this.applyMidiInputPreference(midiInputKey).catch(error => {
                 console.warn('MIDI input startup failed:', error);
+            });
+        }
+        const midiOutputKey = midiPreference('midiOutputDeviceKey');
+        if (midiOutputKey && !isAndroidHost()) {
+            this.applyMidiOutputPreference(midiOutputKey).catch(error => {
+                console.warn('MIDI output startup failed:', error);
             });
         }
 
@@ -718,6 +725,13 @@ class App {
         }
         const input = await this.midiLiveInputPromise;
         await input.select(key);
+    }
+
+    async applyMidiOutputPreference(key) {
+        if (isAndroidHost()) return;
+        if (!key && !this.midiControllerManager && !this.midiControllerManagerPromise) return;
+        const manager = await this.ensureMidiControllerManager();
+        await manager.setOutputDevice(key);
     }
 
     /**

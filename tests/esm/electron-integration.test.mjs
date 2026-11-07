@@ -538,6 +538,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       useWasmDsp: true,
       gaplessPlayback: true,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       outputChannels: 2,
       latencyHint: 'interactive'
     });
@@ -551,6 +552,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       useWasmDsp: true,
       gaplessPlayback: true,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       outputChannels: 2,
       latencyHint: 'interactive'
     });

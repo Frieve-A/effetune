@@ -43,7 +43,8 @@ const chain = await createChain({
   }]
 });
 const output = await chain.process(input, { sampleRate: 48000 });
-console.log(output.length, output[0].length, output[0][0]);
+const peak = output[0].reduce((max, sample) => Math.max(max, Math.abs(sample)), 0);
+console.log(output.length, output[0].length, peak);
 chain.close();
 ```
 

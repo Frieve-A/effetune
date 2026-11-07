@@ -346,8 +346,10 @@ def _compile_error(
 def _prepare_asset(native: Any, native_index: int, effect: Effect, asset: AssetData, sample_rate: float, effect_channels: int) -> None:
     if effect.effect_type == "IRReverb":
         topology = resolve_topology(asset, effect_channels, effect.parameters["channelMode"])
-        divider = resolve_rate_divider(asset.sample_rate, sample_rate, effect.parameters["convolutionRate"])
         head_block = int(effect.parameters["latency"])
+        divider = resolve_rate_divider(
+            asset.sample_rate, sample_rate, effect.parameters["convolutionRate"], head_block
+        )
     elif effect.effect_type == "BassManagement":
         asset = _bass_management_asset(effect, asset, effect_channels)
         topology = resolve_topology(asset, effect_channels, "matrix")
@@ -569,7 +571,7 @@ class GraphStream:
                     native.set_effect_parameter_bytes(native_index, packed_bytes, layout_hash)
                 if effect.assets:
                     asset_nodes.add(effect.id)
-                    reference = next(iter(effect.assets.values()))
+                    name, reference = next(iter(effect.assets.items()))
                     original = self._state["original_node_indexes"][effect.id]
                     # Resolution and preparation are one step from the caller's point of view, so
                     # both report the node whose asset could not be made ready.
@@ -838,11 +840,27 @@ class GraphStream:
         self.close()
 
 
+def _reject_midi_effects(state: dict[str, Any]) -> None:
+    """Graph streams deliver no MIDI, so a MIDI-driven effect would stay silent."""
+    for node in state["document"]["nodes"]:
+        if any(
+            entry["kind"] == "soundFont" for entry in effect_metadata(node["type"]).get("assets", ())
+        ):
+            raise ValidationError(
+                f"{node['id']} ({node['type']}) needs MIDI input, which Graphs cannot deliver. "
+                "Use a Chain and send MIDI events through Chain.stream() instead.",
+                code="GRAPH_UNSUPPORTED_CAPABILITY",
+                path=f"/nodes/{state['original_node_indexes'][node['id']]}/type",
+                node_id=node["id"],
+            )
+
+
 class Graph:
     """A canonical immutable Graph v1 document."""
 
     def __init__(self, document: Any, *, asset_resolver: AssetResolver | None = None) -> None:
         self._state = normalize_graph_input(document)
+        _reject_midi_effects(self._state)
         self.asset_resolver = asset_resolver
         self._closed = False
 

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createChain, getEffectCatalog } from '@effetune/dsp';
-import { ASSET_EFFECT_TYPES, assetSetup } from './asset-fixtures.mjs';
+import {
+  ASSET_EFFECT_TYPES,
+  assetSetup,
+  requiresImpulseResponse
+} from './asset-fixtures.mjs';
 
 const sampleRate = 48000;
-const effects = getEffectCatalog().effects.filter(effect =>
-  effect.assets.some(asset => asset.required)
-);
+const effects = getEffectCatalog().effects.filter(requiresImpulseResponse);
 assert.deepEqual(effects.map(effect => effect.type), ASSET_EFFECT_TYPES);
 for (const variant of ['baseline', 'simd']) {
   for (const effect of effects) {

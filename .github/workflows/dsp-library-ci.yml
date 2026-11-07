@@ -736,7 +736,7 @@ jobs:
         run: |
           wheel="$(find candidate/python -maxdepth 1 -name '*.whl' -print -quit)"
           test -n "$wheel"
-          python -m pip install "$wheel"
+          python -m pip install "$wheel" mido==1.3.3
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Stage the candidate npm tarball for acceptance

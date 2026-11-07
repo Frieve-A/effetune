@@ -12,6 +12,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this.mc = 0;
         this.pl = 64;
         this.sq = 1;
+        this.af = true;
         this._presetChannels = 16;
         this._mixerRows = [];
         this._mixerLevelFrame = null;
@@ -20,16 +21,18 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._visualizerMidiMeteringConsumers = new Set();
         this._selectedTab = 'mixer';
         this._mixerColorMode = 'Normal';
+        this._previewChannel = 0;
         this.temporalCapability = 'reset-on-resume';
     }
 
     getParameters() {
         return { ...PluginBase.prototype.getParameters.call(this), sf: this.sf,
-            mc: this.mc, pl: this.pl, og: this.og, sq: this.sq };
+            mc: this.mc, pl: this.pl, og: this.og, sq: this.sq, af: this.af };
     }
 
     getWorkletPluginData(parameters = this.getParameters()) {
-        return { ...PluginBase.prototype.getWorkletPluginData.call(this, parameters),
+        return { ...PluginBase.prototype.getWorkletPluginData.call(this,
+            { ...parameters, pm: this._previewMidi, pc: this._previewChannel }),
             runtimeAssetErrorRevision: this._isCurrentWasmAssetOperation(0, this._runtimeAssetErrorRevision) ?
                 this._runtimeAssetErrorRevision : -1 };
     }
@@ -66,12 +69,17 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     }
 
     setParameters(params = {}) {
-        if (params.mc !== undefined) this.mc = Math.round(this.parseFiniteNumber(params.mc, 0, 16, this.mc));
+        if (params.mc !== undefined) {
+            const mc = Math.round(this.parseFiniteNumber(params.mc, 0, 16, this.mc));
+            if (mc !== this.mc) this._stopPreview();
+            this.mc = mc;
+        }
         for (const [key, min, max] of [['pl', 1, 1024], ['og', -60, 12]]) {
             if (params[key] !== undefined) this[key] = this.parseFiniteNumber(params[key], min, max, this[key]);
         }
         this.pl = Math.round(this.pl);
         if ([0, 1, 2].includes(params.sq)) this.sq = params.sq;
+        if (typeof params.af === 'boolean') this.af = params.af;
         PluginBase.prototype._setValidatedParameters.call(this, params);
         if (typeof params.sf === 'string') {
             const id = /^[a-f0-9]{24}$/.test(params.sf) ? params.sf : '';
@@ -86,7 +94,10 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         }
         this.updateParameters();
         this._renderStatus();
-        if (!this.enabled) this._clearVoiceDisplay();
+        if (!this.enabled) {
+            this._stopPreview();
+            this._clearVoiceDisplay();
+        }
     }
 
     async createOfflineDspState() {
@@ -181,6 +192,8 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             ['pl', 'Max Voices', 1, 1024, 1, '', true]
         ]) settings.append(this.createParameterControl(label, min, max, step, this[key],
             value => this.setParameters({ [key]: value }), unit, key, null, logarithmic));
+        settings.append(this.createCheckboxControl('Automatic Fallback', this.af,
+            value => this.setParameters({ af: value }), 'af'));
         settings.append(this.createRadioGroup('Interpolation', [
             { value: 0, label: 'FIR (64 taps)' }, { value: 1, label: 'FIR (32 taps)' },
             { value: 2, label: 'Cubic (4 points)' }
@@ -200,7 +213,10 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             this._mixerVisible = false;
             this._mixerObserver = new IntersectionObserver(entries => {
                 this._mixerVisible = entries.some(entry => entry.isIntersecting);
-                if (!this._mixerVisible) this._resetMixerFlashes();
+                if (!this._mixerVisible) {
+                    this._stopPreview();
+                    this._resetMixerFlashes();
+                }
                 this._updateMidiMetering();
                 if (this._mixerVisible) this._renderMixer();
             });
@@ -432,6 +448,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             keyboard.width = 384;
             keyboard.height = 24;
             keyboard.dataset.channel = String(channel + 1);
+            keyboard.style.touchAction = 'pan-y';
             keyboard.setAttribute('role', 'img');
             keyboard.setAttribute('aria-label', `Channel ${channel + 1} sounding notes`);
             const toggles = ['mute', 'solo'].map(type => {
@@ -467,6 +484,10 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             body.appendChild(row);
             return { row, patch, keyboard, level, mute: toggles[0], solo: toggles[1], knobs };
         });
+        this._bindPreview(this._mixerRows.map(row => row.keyboard), {
+            canStart: (event, canvas) => this._mixerChannelEnabled(Number(canvas.dataset.channel) - 1),
+            update: (event, canvas) => this._previewMixerAt(event, canvas)
+        });
         scroll.appendChild(table);
         container.appendChild(scroll);
         this._renderPresetSelection();
@@ -484,27 +505,49 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const set = next => {
             next = Math.max(0, Math.min(127, Math.round(next)));
             this._setMixerKnobValue(knob, next, controller);
-            this._sendMixerAction({ type: 'control', channel, controller, value: next });
+            const action = { type: 'control', channel, controller, value: next };
+            const drag = knob._mixerDrag;
+            if (!drag) return this._sendMixerAction(action);
+            const command = drag.command = {};
+            return this._sendMixerAction(action, true).then(appliedFrame => {
+                if (knob._mixerDrag !== drag || drag.command !== command) return;
+                if (!Number.isSafeInteger(appliedFrame)) {
+                    this._resetMixerKnobDrag(knob);
+                    this._renderMixer();
+                } else {
+                    command.appliedFrame = appliedFrame;
+                    if (drag.pointer === null) this._renderMixer();
+                }
+            });
         };
-        let pointer = null, startY = 0, startValue = 0;
-        const end = event => {
-            if (event.pointerId !== pointer) return;
-            pointer = null;
-            if (knob.hasPointerCapture?.(event.pointerId)) knob.releasePointerCapture(event.pointerId);
+        const end = (event, keepCommand) => {
+            const drag = knob._mixerDrag;
+            if (drag?.pointer !== event.pointerId) return;
+            if (keepCommand && drag.command) {
+                drag.pointer = null;
+                if (knob.hasPointerCapture?.(event.pointerId)) knob.releasePointerCapture(event.pointerId);
+            } else this._resetMixerKnobDrag(knob);
+            this._renderMixer();
         };
         knob.addEventListener('pointerdown', event => {
-            if (event.button !== 0 || knob.getAttribute('aria-disabled') === 'true') return;
+            if (event.button !== 0 || knob.getAttribute('aria-disabled') === 'true' ||
+                knob._mixerDrag?.pointer != null) return;
             event.preventDefault();
             knob.focus();
-            pointer = event.pointerId;
-            startY = event.clientY;
-            startValue = Number(knob.getAttribute('aria-valuenow'));
-            knob.setPointerCapture(pointer);
+            const drag = knob._mixerDrag ??= {};
+            drag.pointer = event.pointerId;
+            drag.startY = event.clientY;
+            drag.startValue = Number(knob.getAttribute('aria-valuenow'));
+            knob.setPointerCapture(event.pointerId);
         });
         knob.addEventListener('pointermove', event => {
-            if (event.pointerId === pointer) set(startValue + startY - event.clientY);
+            const drag = knob._mixerDrag;
+            if (drag?.pointer === event.pointerId) return set(drag.startValue + drag.startY - event.clientY);
         });
-        for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) knob.addEventListener(type, end);
+        knob.addEventListener('pointerup', event => end(event, true));
+        for (const type of ['pointercancel', 'lostpointercapture']) {
+            knob.addEventListener(type, event => end(event, false));
+        }
         knob.addEventListener('keydown', event => {
             if (knob.getAttribute('aria-disabled') === 'true') return;
             const current = Number(knob.getAttribute('aria-valuenow'));
@@ -521,6 +564,16 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         return knob;
     }
 
+    _resetMixerKnobDrag(knob) {
+        const pointer = knob._mixerDrag?.pointer;
+        knob._mixerDrag = null;
+        if (pointer != null && knob.hasPointerCapture?.(pointer)) knob.releasePointerCapture(pointer);
+    }
+
+    _resetMixerKnobDrags() {
+        for (const row of this._mixerRows) for (const knob of row.knobs) this._resetMixerKnobDrag(knob);
+    }
+
     _setMixerKnobValue(knob, value, controller) {
         if (knob.getAttribute('aria-valuenow') === String(value)) return;
         knob.setAttribute('aria-valuenow', String(value));
@@ -530,12 +583,12 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         knob.children[0].style.transform = `rotate(${-135 + value / 127 * 270}deg)`;
     }
 
-    async _sendMixerAction(action) {
+    async _sendMixerAction(action, reportAppliedFrame = false) {
         const manager = window.audioManager || window.uiManager?.audioManager;
         if (!this.enabled || this._sectionEnabled === false || this.hasLocalAudio === false ||
             !manager?.sendSoundFontMixerAction) return;
         try {
-            await manager.sendSoundFontMixerAction(this, action);
+            return await manager.sendSoundFontMixerAction(this, action, reportAppliedFrame);
         } catch (error) {
             console.error('SoundFont mixer control could not be delivered:', error);
             if (this._status) {
@@ -573,6 +626,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
 
     _clearVoiceDisplay() {
         this._mixerState = null;
+        this._resetMixerKnobDrags();
         this._resetMixerLevels();
         this._resetMixerFlashes();
         this._renderMixer();
@@ -625,6 +679,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         previous?.unsubscribe();
         this._mixerSubscription = null;
         this._mixerState = null;
+        this._resetMixerKnobDrags();
         this._resetMixerLevels();
         this._resetMixerFlashes();
         if (!hub?.subscribe || !Number.isInteger(tap) || tap < 0 || tap > 0xffffffff) return;
@@ -663,7 +718,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             if (!Number.isFinite(data.levelPeak) || data.levelPeak < 0) return;
             channels.push(data);
         }
-        this._mixerState = { voices, limit, channels };
+        this._mixerState = { voices, limit, channels, endFrame: frame.endFrame };
         this._renderPresetSelection();
         this._mixerLevelFrame = this._selectedTab === 'mixer' && this._mixerVisible && !document.hidden
             ? this._mixerState : null;
@@ -674,7 +729,41 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     startAnimation() { this._updateMidiMetering(); this._renderMixer(); }
     stopAnimation() {
         this._updateMidiMetering();
-        if (!this.enabled || this._sectionEnabled === false) this._clearVoiceDisplay();
+        if (!this.enabled || this._sectionEnabled === false) {
+            this._stopPreview();
+            this._clearVoiceDisplay();
+        }
+    }
+
+    _mixerControlsEnabled() {
+        const manager = window.audioManager || window.uiManager?.audioManager;
+        return this.enabled !== false && this._sectionEnabled !== false && !!this.sf && this._mixerReady &&
+            this.hasLocalAudio !== false && !!manager?.sendSoundFontMixerAction && !!this._mixerState;
+    }
+
+    _mixerChannelEnabled(channel, controlsEnabled = this._mixerControlsEnabled()) {
+        return controlsEnabled && (this.mc === 0 || this.mc === channel + 1);
+    }
+
+    _previewMixerAt(event, canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const axis = window.FrequencyAxis;
+        if (!rect.width || !rect.height || !axis) return;
+        const x = Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width));
+        const y = Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height));
+        const midi = axis.hitKey(axis.noteAxisKeys(0, 127, canvas.width), x, y, 24, 15)?.midi;
+        const channel = Number(canvas.dataset.channel) - 1;
+        if (midi === undefined || (midi === this._previewMidi && channel === this._previewChannel)) return;
+        this._previewMidi = midi;
+        this._previewChannel = channel;
+        this._sendPreview();
+        this._renderMixer();
+    }
+
+    _stopPreview() {
+        const sounding = this._previewMidi !== -1;
+        super._stopPreview();
+        if (sounding) this._renderMixer();
     }
 
     _renderMixer() {
@@ -690,16 +779,15 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const limit = state?.limit ?? this.pl;
         if (this._voiceValue) this._voiceValue.textContent = `${voices ?? '—'} / ${limit}`;
         if (this._voiceBar) this._voiceBar.style.backgroundSize = `${(voices ?? 0) / limit * 100}% 100%`;
-        const manager = window.audioManager || window.uiManager?.audioManager;
-        const controlsEnabled = active && !!this.sf && this._mixerReady &&
-            this.hasLocalAudio !== false && !!manager?.sendSoundFontMixerAction && !!state;
+        const controlsEnabled = this._mixerControlsEnabled();
         for (const [channel, row] of (this._mixerRows || []).entries()) {
             const data = state?.channels[channel];
-            const enabled = controlsEnabled && (this.mc === 0 || this.mc === channel + 1);
+            const enabled = this._mixerChannelEnabled(channel, controlsEnabled);
             row.row.dataset.filtered = String(this.mc !== 0 && this.mc !== channel + 1);
             row.patch.disabled = !enabled || !this._presets.length || !!this._pending;
             row.mute.disabled = row.solo.disabled = !enabled;
             for (const knob of row.knobs) {
+                if (!enabled && knob._mixerDrag) this._resetMixerKnobDrag(knob);
                 knob.setAttribute('aria-disabled', String(!enabled));
                 knob.tabIndex = enabled ? 0 : -1;
             }
@@ -714,7 +802,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
                 row.solo.className = `matrix-button${data.solo ? ' active' : ''}`;
                 for (const [index, [controller, value]] of [[7, data.volume], [10, data.pan], [11, data.expression],
                     [91, data.reverb], [93, data.chorus]].entries()) {
-                    this._setMixerKnobValue(row.knobs[index], value, controller);
+                    const knob = row.knobs[index];
+                    const drag = knob._mixerDrag;
+                    if (drag) {
+                        if (drag.pointer !== null || (drag.command && !(state.endFrame > drag.command.appliedFrame))) continue;
+                        knob._mixerDrag = null;
+                    }
+                    this._setMixerKnobValue(knob, value, controller);
                 }
                 const flashValues = [`${data.bank}:${data.program}:${data.presetIndex}`,
                     data.volume, data.pan, data.expression, data.reverb, data.chorus];
@@ -764,10 +858,12 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const context = canvas.getContext?.('2d'), axis = window.FrequencyAxis, palette = window.ThemePalette;
         if (!context || !axis || !palette) return;
         const colors = [palette.get('graph-trace'), '#111', '#eee', palette.get('graph-label')]; // theme-allow: Self-painted piano keys use the same fixed key colors as SoundFont Note Player.
+        const preview = Number(canvas.dataset.channel) - 1 === this._previewChannel ? this._previewMidi : -1;
         const previous = canvas._mixerKeyboard;
-        if (previous?.mode === this._mixerColorMode && previous.colors.every((color, index) => color === colors[index]) &&
+        if (previous?.mode === this._mixerColorMode && previous.preview === preview &&
+            previous.colors.every((color, index) => color === colors[index]) &&
             (notes ? previous.notes && notes.every((value, index) => previous.notes[index] === value) : !previous.notes)) return;
-        canvas._mixerKeyboard = { colors, mode: this._mixerColorMode, notes: notes ? notes.slice() : null };
+        canvas._mixerKeyboard = { colors, mode: this._mixerColorMode, preview, notes: notes ? notes.slice() : null };
         const keys = axis.noteAxisKeys(0, 127, canvas.width);
         const pressed = midi => Boolean(notes?.[midi >> 3] & (1 << (midi & 7)));
         const sounding = [];
@@ -790,6 +886,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
                 }
                 context.fillStyle = color;
                 context.fillRect(start, 0, end - start, black ? 15 : 24);
+                if (key.midi === preview) {
+                    // Painting in key order lets the black keys cover the overlay of a white preview key.
+                    context.globalAlpha = .55;
+                    context.fillStyle = colors[0];
+                    context.fillRect(start, 0, end - start, black ? 15 : 24);
+                    context.globalAlpha = 1;
+                }
                 context.strokeStyle = colors[3];
                 context.lineWidth = .5;
                 context.strokeRect(start, 0, end - start, black ? 15 : 24);
@@ -817,6 +920,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._mixerSubscription = null;
         this._mixerObserver?.disconnect();
         this._mixerObserver = null;
+        this._resetMixerKnobDrags();
         this._resetMixerFlashes();
         this._mixerRows = [];
         this._tabs = this._voiceValue = this._voiceBar = this._bankSummary = this._preparationProgress = null;

@@ -665,14 +665,14 @@
     ]
   },
   "echoedStructuralKeys": {
-    "comment": "The app's serializer echoes structural values back into the long-format parameters object: plugin-base.js getSerializableParameters() re-emits the assigned channel and bus indexes under their short names, Brickwall Limiter adds its class name under pluginType, and both Horn Resonators duplicate the node's enabled switch under en. All of them are dropped unconditionally; the node keeps being the source of truth. Modal Resonator's en is a genuinely independent processing switch and must keep being folded into enabled. Expected parameters are asserted key by key, not exhaustively.",
+    "comment": "The app's serializer echoes structural values back into the long-format parameters object: plugin-base.js getSerializableParameters() re-emits the assigned channel and bus indexes under their short names, Brickwall Limiter adds its class name under pluginType, the editor-only _uiCollapsed and _uiLocked UI state is exported there, and both Horn Resonators duplicate the node's enabled switch under en. All of them are dropped unconditionally; the node keeps being the source of truth. Modal Resonator's en is a genuinely independent processing switch and must keep being folded into enabled. Expected parameters are asserted key by key, not exhaustively.",
     "preset": {
       "pipeline": [
         {
           "name": "Section",
           "enabled": true,
           "channel": "R",
-          "parameters": { "cm": "Echoed channel", "ch": "R" }
+          "parameters": { "cm": "Echoed channel", "ch": "R", "_uiCollapsed": true }
         },
         {
           "name": "Brickwall Limiter",
@@ -680,6 +680,8 @@
           "channel": "R",
           "parameters": {
             "pluginType": "BrickwallLimiterPlugin",
+            "_uiCollapsed": true,
+            "_uiLocked": true,
             "ch": "R",
             "ib": 0,
             "ob": 0,
@@ -790,10 +792,10 @@
     "outcomeLegend": {
       "imports": "the node imports and yields the listed effect types, each on the listed channel",
       "flattened": "the node is a Section: it is folded into the surrounding chain and contributes no effect",
-      "assetBackedRejected": "the semantic effect replaces the app's filter-design parameters with a precomputed impulse-response asset, so the app export carries no convertible parameters; both bindings reject the node up front with the listed error type and message rather than reporting the app's parameters as unsupported fields"
+      "assetBackedRejected": "the semantic effect replaces the app's filter-design parameters with a precomputed impulse-response asset, or the app's SoundFont reference with a prepared SoundFont bank, so the app export carries no convertible parameters; both bindings reject the node up front with the listed error type and message rather than reporting the app's parameters as unsupported fields"
     },
-    "count": 92,
-    "outcomeCounts": {"imports":80,"assetBackedRejected":10,"flattened":2},
+    "count": 93,
+    "outcomeCounts": {"imports":80,"assetBackedRejected":11,"flattened":2},
     "entries": [
       {"displayName":"Chroma Spiral","variant":"default","outcome":"imports","types":["ChromaSpiral"],"channel":"stereo","node":{"name":"Chroma Spiral","enabled":true,"parameters":{"dm":0,"lo":1,"hi":7,"ft":3,"lr":24,"df":-60}}},
       {"displayName":"Level Meter","variant":"default","outcome":"imports","types":["LevelMeter"],"channel":"stereo","node":{"name":"Level Meter","enabled":true,"parameters":{}}},
@@ -885,6 +887,7 @@
       {"displayName":"Multiband Balance","variant":"default","outcome":"imports","types":["MultibandBalance"],"channel":"stereo","node":{"name":"Multiband Balance","enabled":true,"parameters":{"f1":100,"f2":500,"f3":2000,"f4":8000,"bands":[{"balance":0},{"balance":0},{"balance":0},{"balance":0},{"balance":0}]}}},
       {"displayName":"Phase Select EQ","variant":"default","outcome":"imports","types":["PhaseSelectEQ"],"channel":"stereo","node":{"name":"Phase Select EQ","enabled":true,"parameters":{"regions":[{"en":true,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100},{"en":false,"ofl":80,"fl":100,"fh":10000,"ofh":12000,"opl":0,"pl":0,"ph":30,"oph":45,"gn":100}]}}},
       {"displayName":"Stereo Blend","variant":"default","outcome":"imports","types":["StereoBlend"],"channel":"stereo","node":{"name":"Stereo Blend","enabled":true,"parameters":{"stereo":60}}},
+      {"displayName":"SoundFont Player","variant":"default","outcome":"assetBackedRejected","errorType":"EffectError","messageIncludes":"SoundFontPlayer cannot be imported from an EffeTune app preset: the app's SoundFont reference (sf) cannot be converted","node":{"name":"SoundFont Player","enabled":true,"parameters":{"sf":"bank-1","mc":0,"pl":64,"og":0,"sq":0,"af":true}}},
       {"displayName":"Section","variant":"default","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":""}}},
       {"displayName":"Section","variant":"channelRight","outcome":"flattened","types":[],"node":{"name":"Section","enabled":true,"parameters":{"cm":"","ch":"R"},"channel":"R"}}
     ]

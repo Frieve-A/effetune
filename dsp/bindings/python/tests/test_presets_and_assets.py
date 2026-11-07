@@ -1514,6 +1514,45 @@ class PresetAndAssetTests(unittest.TestCase):
                 ),
             )
 
+    def test_ir_rate_is_resolved_from_convolution_rate_and_latency(self) -> None:
+        ir = np.zeros((1, 64), dtype=np.float32)
+        ir[0, 0] = 1.0
+        source = np.zeros((1, 128), dtype=np.float32)
+        cases = (
+            ("auto", 128, 48_000, None),
+            ("auto", 128, 96_000, "48000 Hz"),
+            ("quarter", 128, 24_000, "176.4 kHz"),
+            ("auto", 0, 48_000, "96000 Hz"),
+            ("auto", 0, 96_000, None),
+        )
+        for rate, latency, ir_rate, error in cases:
+            with self.subTest(rate=rate, latency=latency, ir_rate=ir_rate):
+                chain = effetune.Chain(
+                    [
+                        effetune.IRReverb(
+                            assets={"impulseResponse": "room"},
+                            channel_mode="mono",
+                            convolution_rate=rate,
+                            latency=latency,
+                        )
+                    ]
+                )
+
+                def run() -> None:
+                    chain(
+                        source,
+                        96_000,
+                        asset_resolver=lambda _: effetune.AssetData(
+                            ir, ir_rate, topology="mono"
+                        ),
+                    )
+
+                if error is None:
+                    run()
+                else:
+                    with self.assertRaisesRegex(effetune.AssetError, error):
+                        run()
+
     def test_missing_wrong_and_nonfinite_assets_raise_asset_error(self) -> None:
         chain = effetune.Chain(
             [

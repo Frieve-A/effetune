@@ -6,8 +6,9 @@ export async function createVolumeGraph(
   destination = context.destination,
   options = {}
 ) {
-  if (typeof OfflineAudioContext === 'undefined' ||
-      !(context instanceof OfflineAudioContext)) {
+  const isOffline = typeof OfflineAudioContext !== 'undefined' &&
+    context instanceof OfflineAudioContext;
+  if (!isOffline) {
     await context.resume();
   }
   const node = await EffeTuneNode.create(context, {
@@ -28,7 +29,7 @@ export async function createVolumeGraph(
       source.disconnect();
       node.disconnect();
       node.close();
-      if (typeof context.close === 'function') await context.close();
+      if (!isOffline && typeof context.close === 'function') await context.close();
     }
   };
 }

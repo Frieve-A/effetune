@@ -414,7 +414,7 @@ void samplePlayerAssetTests() {
   const std::vector<std::pair<std::string, std::vector<float>>> players{
       {"SFZNotePlayerPlugin", {.5F, -30, 3, 28, 91, 32, 0,  100, 0, 0, 1,
                                1,   1,   0, 18, 0,  0,  -1, 100, 0, -1}},
-      {"SoundFontPlayerPlugin", {0, 64, 0, 0}}};
+      {"SoundFontPlayerPlugin", {0, 64, 0, 0, 1, -1, 0}}};
   for (const auto maxFrames : {64, 4096}) {
     NativeEngine native(48000, maxFrames);
     for (const auto &[type, parameters] : players) {

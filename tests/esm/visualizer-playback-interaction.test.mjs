@@ -5,6 +5,7 @@ import { VisualizerFeed } from '../../js/visualizer/visualizer-feed.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { MediaSessionManager } from '../../js/ui/audio-player/media-session-manager.js';
+import { BrowserMediaInfo } from '../../js/browser/browser-media-info.js';
 import { createItem, encodeLayoutShare, decodeLayoutShare } from '../../js/visualizer/visualizer-model.js';
 
 function setup() {
@@ -67,6 +68,50 @@ test('Visualizer shares AirPlay metadata, artwork and reported time without a pl
     assert.match(view.metadata()['track-info'], /Source audio: FLAC \/ 48 kHz \/ 24-bit \/ 2 ch \/ 960 kbps/);
     assert.doesNotMatch(view.metadata()['track-info'], /Receiver PCM/);
     assert.doesNotMatch(view.metadata()['track-info'], /AirPlay|ALAC|iPad/);
+});
+
+test('Visualizer shows Browser media read-only when the Player is idle or has no track', () => {
+    const { view, player, state } = setup();
+    let media = null;
+    const api = { onMedia: callback => { media = callback; return () => {}; } };
+    view.uiManager.browserView = { media: new BrowserMediaInfo(api) };
+    player.contextManager = { getCurrentPlaybackTime: () => 5 };
+    player.mediaSessionManager = { buildMetadata: snapshot => MediaSessionManager.prototype.buildMetadata.call({}, snapshot) };
+    Object.assign(state, { currentTrack: { meta: { title: 'Local song' } }, isPlaying: true, isStopped: false });
+    media({ title: 'Web song', artist: 'Web artist', album: '', artworkUrl: '', site: 'example.com',
+        playing: true, position: 10, duration: 12, rate: 2 });
+    assert.equal(view.metadata().title, 'Web song', 'A playing Browser page wins even while the Player plays');
+    Object.assign(view, { hasLyrics: true, video: { enabled: true, active: true, load: () => assert.fail('Browser display must not touch Player video') } });
+    player.trackLyrics = new Map([[state.currentTrack, { lines: [] }]]);
+    assert.equal(view.lyrics(), null, 'Player lyrics are hidden while Browser media is shown');
+    assert.equal(view.videoFrame(), null, 'Player video is hidden while Browser media is shown');
+
+    state.isPlaying = false;
+    assert.equal(view.metadata().title, 'Web song');
+    assert.deepEqual(view.metadata().artwork, []);
+    assert.equal(view.metadata()['track-info'], 'Browser - example.com\nTitle: Web song\nArtist: Web artist');
+    const playback = view.playback();
+    assert.equal(playback.playing, true);
+    assert.equal(playback.duration, 12);
+    assert.ok(playback.position >= 10);
+    assert.equal(playback.seekEnabled, false);
+    assert.deepEqual(Object.values(playback.enabled).filter(Boolean), []);
+    view.layout.items = [createItem('counter', 'time')];
+    const start = view.uiManager.browserView.media.report.receivedAt;
+    const counter = view.counters(start + 500).get('time');
+    assert.deepEqual([counter.time, counter.external, counter.speed, counter.source], [11, false, 2, 'browser\0Web song\0Web artist']);
+    assert.equal(view.counters(start + 5000).get('time').time, 12, 'Extrapolation stops at the reported duration');
+
+    media({ title: 'Web song', artist: 'Web artist', album: '', artworkUrl: 'https://example.com/cover.jpg', site: 'example.com',
+        playing: false, position: 3, duration: 12, rate: 1 });
+    assert.equal(view.metadata().title, 'Local song', 'A paused page does not replace the current Player track');
+    state.currentTrack = null;
+    assert.equal(view.metadata().artwork[0].src, 'https://example.com/cover.jpg');
+    assert.equal(view.counters(start + 9000).get('time').time, 3);
+    media({ title: 'Web song', artist: 'Web artist', album: '', site: 'example.com', playing: false, position: 4, duration: 12, rate: 1 });
+    assert.equal(view.metadata().artwork[0].src, 'https://example.com/cover.jpg', 'A report without artworkUrl keeps the image');
+    media(null);
+    assert.equal(view.metadata(), null);
 });
 
 function setupPlaybackControls() {

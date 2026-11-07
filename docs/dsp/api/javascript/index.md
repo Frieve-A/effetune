@@ -13,7 +13,7 @@ npm install @effetune/dsp
 
 The package is ESM-only. These signatures follow the shipped `index.d.ts` and
 `worklet.d.ts`. The generated declarations remain authoritative for individual
-effect options; the 111 named class/factory pairs are
+effect options; the 112 named class/factory pairs are
 not repeated here.
 
 ## Chain creation and offline processing
@@ -46,8 +46,24 @@ class Chain {
 ```
 
 `ProcessOptions` requires `sampleRate` and optionally accepts `seed`,
-`blockSize`, and `onTelemetry`. `CreateChainOptions` accepts
-`assetResolver` plus baseline/SIMD artifact selection and URLs. Offline processing
+`blockSize`, and `onTelemetry`. `CreateChainOptions` and `CreateGraphOptions`
+accept `assetResolver` (see [Assets and bundles](/dsp/concepts/assets-and-bundles/))
+plus these `ArtifactOptions`, which choose and load the WebAssembly module. The
+defaults suit Node.js and a browser that serves the package's `dist/` directory
+unchanged; set the URLs when a bundler or CDN moves the `assets/` files.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `variant` | `'auto'` | `'auto'` uses the SIMD module when the runtime supports WebAssembly SIMD and the baseline module otherwise. `'baseline'` always uses the baseline module. `'simd'` throws `EffeTuneRuntimeError` when SIMD is unsupported |
+| `wasmUrl` | Package `assets/effetune-dsp.wasm` | URL of the baseline module |
+| `simdWasmUrl` | Package `assets/effetune-dsp.simd.wasm` | URL of the SIMD module |
+| `metaUrl` | Package `assets/effetune-dsp.meta.json` | URL of the metadata file that must match the module |
+| `fetch` | `globalThis.fetch` | Function used to load `http:` and `https:` URLs; `file:` URLs are read from disk in Node.js |
+| `webAssembly` | `globalThis.WebAssembly` | WebAssembly implementation used to compile the module |
+| `cache` | `true` | Reuses a compiled module for the same variant and URLs within the page or process. `false`, a custom `fetch`, or a custom `webAssembly` disables reuse |
+
+Relative URLs resolve against the package module. Plain `http:` URLs are accepted only
+from the module's own origin or localhost; other origins require HTTPS. Offline processing
 returns newly owned channels with fresh state. All input channels must have equal
 length, and every sample must be finite; non-finite input raises `ValidationError`
 before native state is reached.
@@ -171,19 +187,74 @@ interface ChainStream {
   reset(): this
   process(
     audio: readonly Float32Array[],
-    options?: { events?: readonly ParameterEvent[] }
+    options?: StreamProcessOptions
   ): Promise<Float32Array[]>
   close(): void
 }
+
+interface StreamProcessOptions {
+  events?: readonly (ParameterEvent | MidiEvent)[]
+}
+interface ParameterEvent {
+  frame: number
+  effectId: string
+  parameters: Record<string, unknown>
+}
+interface MidiEvent {
+  frame: number
+  effectId: string
+  midi: MidiMessage
+}
+type MidiMessage = readonly number[] | Uint8Array
 ```
 
 `StreamOptions` requires `sampleRate` and optionally accepts `channels`,
-`seed`, `blockSize`, and `onTelemetry`. Event parameter objects are partial
-updates applied in input order. Rejected non-finite blocks do not change stream state.
+`seed`, `blockSize`, and `onTelemetry`. Event frames are zero-based within the
+current block. Event parameter objects are partial updates applied in input order;
+`midi` events drive MIDI effects such as
+[SoundFont Player](/dsp/effects/soundfont-player/) (see
+[MIDI events](/dsp/concepts/streaming-and-events/#midi-events)). Rejected non-finite blocks do not change stream state.
 `latencySamples` is the live aggregate and is numerically symmetric with Python
 `Stream.latency_samples`. Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) require a newly opened
 stream and are rejected before processing.
+
+## SoundFont banks and MIDI
+
+```ts
+prepareSoundFont(
+  source: ArrayBuffer | ArrayBufferView | string |
+    { selectedPath: string; files: Map<string, Blob | Uint8Array> },
+  options?: {
+    maxBytes?: number // 256 MiB, at most 1 GiB
+    root?: string // SFZ path only; defaults to the SFZ file's folder
+  }
+): Promise<SoundFontBank>
+
+class SoundFontBank {
+  static fromBytes(bytes: ArrayBuffer | ArrayBufferView): SoundFontBank
+  toBytes(): Uint8Array
+  readonly payload: ArrayBuffer
+  readonly pages: readonly SoundFontPage[]
+}
+
+const midi: Readonly<{
+  noteOn(channel: number, note: number, velocity: number): [number, number, number]
+  noteOff(channel: number, note: number, velocity?: number): [number, number, number]
+  controlChange(channel: number, controller: number, value: number): [number, number, number]
+  pitchBend(channel: number, value14: number): [number, number, number] // 8192 is the centre
+  programChange(channel: number, program: number): [number, number, number]
+}>
+```
+
+`prepareSoundFont()` turns SoundFont file bytes, a `.sf2` or `.sfz` path (Node.js), or an SFZ file set keyed by relative path into a bank for
+[SoundFont Player](/dsp/effects/soundfont-player/). For an SFZ path, `root` is the
+folder its sample paths may reach; set it to a shared parent folder when the SFZ refers
+to samples such as `../Samples/`. `toBytes()` and `fromBytes()` save and reload a prepared bank without preparing it again. An `assetResolver` may
+return a `SoundFontBank` or the bytes from `toBytes()`; see
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks), which also covers
+the Node.js limits. The `midi` helpers build `MidiEvent` messages; channels are
+zero-based (0 to 15).
 
 ## ETA1 and catalog
 
@@ -198,7 +269,7 @@ encodeEta1(options: {
 getEffectCatalog(): Readonly<{
   version: 1
   channels: readonly EffectChannel[]
-  effects: readonly Readonly<Record<string, unknown>>[]
+  effects: readonly EffectCatalogEntry[]
 }>
 const EFFECT_CATALOG: ReturnType<typeof getEffectCatalog>
 createEffect<T extends EffectType>(
@@ -210,8 +281,10 @@ createEffect<T extends EffectType>(
 ```
 
 `encodeEta1()` validates finite, equal-length planar channels and matrix paths.
-`EFFECT_CATALOG`, `EFFECT_CLASSES`, and all 111 root class/factory pairs cover the
-same semantic catalog as Python without private implementation data.
+`EFFECT_CATALOG`, `EFFECT_CLASSES`, and all 112 root class/factory pairs cover the
+same semantic catalog as Python without private implementation data. Each
+`EffectCatalogEntry` carries the effect `type`, its `parameters` (each an
+`EffectCatalogParameter`), and the catalog metadata for seeds and assets.
 
 ## AudioWorklet
 
@@ -226,6 +299,7 @@ EffeTuneNode.create(
 node.subscribe(callback: TelemetryCallback): () => void
 node.unsubscribe(callback: TelemetryCallback): boolean
 node.setParam(effectId: string, parameterName: string, value: unknown): Promise<void>
+node.sendMidi(effectId: string, midi: MidiMessage): void
 node.reset(): Promise<void>
 node.close(): void
 node.latencySamples: number

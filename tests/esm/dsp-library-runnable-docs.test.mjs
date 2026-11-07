@@ -47,7 +47,8 @@ test('source-generating overlay is backed by the frozen runtime fixture', () => 
   executeNpmSnippet('verify-source-generation.mjs', [
     path.join(docsRoot, 'fixtures', 'source-generation-v0.1.json'),
     path.join(repoRoot, 'docs', 'dsp', 'catalog', 'effects-v1.json'),
-    path.join(docsRoot, 'effects-v1.docs.json')
+    path.join(docsRoot, 'effects-v1.docs.json'),
+    path.join(repoRoot, 'dsp', 'bindings', 'common', 'soundfont-sine-v1.etsf')
   ]);
 });
 

@@ -85,6 +85,8 @@ En **Title**, **Album** y **Artist**, ajusta por separado la fuente, el tamaño,
 
 Añade **Información de la pista** para mostrar las etiquetas y el formato de audio disponibles del archivo o la pista de red actual. Con AirPlay también muestra la información proporcionada sobre el emisor, el códec recibido, el formato PCM del receptor y el volumen del emisor. Los campos no disponibles se omiten. Usa los mismos ajustes de texto que Title. **Title**, **Artist**, **Album** y **Artwork** también muestran la información enviada por AirPlay.
 
+En la versión de escritorio, **Title**, **Artist**, **Album**, **Artwork** y **Track information** también pueden mostrar la información de la canción que una página del navegador integrado ofrece a los controles multimedia del sistema. Se muestra la información del navegador mientras este reproduce o cuando el reproductor no tiene ninguna pista; en caso contrario, se muestra la pista del reproductor. Si el sitio no ofrece información de la canción, **Title**, **Artist**, **Album** y **Artwork** quedan vacíos. La primera línea de **Track information** es «Navegador - » seguido del nombre de host del sitio.
+
 Añade **Text** para mostrar una etiqueta fija o el nombre de la sala (hasta 4096 caracteres, compatible con varias líneas) con los mismos controles tipográficos, de contorno y de sombra que Title.
 
 Añade **Playback Control** para colocar un botón del reproductor en el diseño. En **Acción**, elige **Reproducir / Pausar**, **Detener**, **Pista anterior**, **Pista siguiente**, **Aleatorio** o **Repetir**; añade un elemento por cada botón que quieras. Fuera de **Edit**, haz clic o toca el botón, o enfócalo con **Tab** y pulsa **Enter** o **Space**. Con el reproductor abierto, los controles no disponibles aparecen atenuados. Aleatorio no está disponible al repetir una sola pista.
@@ -96,11 +98,13 @@ Añade **Seek Bar** para disponer de una barra horizontal de posición de reprod
 
 - **Apariencia** ofrece **Fino**, **Clásico** y **Grueso** como puntos de partida. **Color de la barra**, **Opacidad de la barra** y **Grosor de la barra** ajustan el fondo; **Extremos redondeados** redondea sus extremos. La paleta colorea la parte reproducida. **Mostrar control deslizante** permite mostrar u ocultar el indicador de posición; **Tamaño del control deslizante** y **Color del control deslizante** ajustan su aspecto. **Forma del control deslizante** permite elegir **Círculo**, **Cuadrado**, **Rombo** o una **Barra** vertical. **Grosor del borde del control deslizante** y **Color del borde del control deslizante** añaden un contorno; ajusta el grosor a 0 para ocultarlo. También se aplican los efectos de elemento existentes.
 
-Playback Control y Seek Bar permanecen visibles cuando el reproductor está pausado o detenido. Si no hay ningún reproductor abierto, ambos se ocultan fuera de **Edit**, también en Clean Feed; puedes seguir configurándolos en el editor.
+Playback Control y Seek Bar permanecen visibles cuando el reproductor está pausado o detenido. Si no hay ningún reproductor abierto y el navegador integrado no tiene ninguna canción que mostrar, ambos se ocultan fuera de **Edit**, también en Clean Feed; puedes seguir configurándolos en el editor.
 
 Añade **Counter** para mostrar la posición actual del reproductor integrado, siguiendo las pausas y los saltos de posición. Con una entrada externa, cuenta el tiempo desde que añades el Counter o cargas el diseño en la sesión actual, incluso con Visualizer oculto. Fuera de **Edit**, haz clic o toca el contador para poner a cero solo su tiempo externo; la reproducción no cambia.
 
 Durante AirPlay, **Counter** y **Seek Bar** muestran la posición de la pista cuando el emisor la proporciona y se actualizan con sus notificaciones. No se puede cambiar de posición ni usar acciones de reproducción no admitidas. **Detener** finaliza la recepción actual. Consulta la [guía de música en red](openhome.md) para configurar la recepción y conocer los formatos de audio.
+
+En una página que se reproduce en el navegador integrado, **Counter** y **Seek Bar** solo muestran la posición y la duración. Como con AirPlay, no se puede cambiar de posición ni usar las acciones de **Playback Control**.
 
 - **Número en la lista**, **Horas**, **Minutos**, **Segundos** y **Subsegundos** permiten mostrar cada campo por separado. Por defecto se muestra `hh:mm:ss.mmm`, sin número. El número empieza en 1 para la lista del reproductor y muestra 00 con entrada externa. La unidad entera más alta acumula el tiempo: sin horas se muestran minutos totales; sin horas ni minutos, segundos totales.
 - **Decimales** (1–4, por defecto 3) establece la precisión mostrada; 3 corresponde a milisegundos. **Separadores** › **Tiempo** (`:`), **Subsegundos** (`.`) y **Número** (un espacio) admiten hasta ocho caracteres o pueden quedar vacíos.
@@ -192,7 +196,7 @@ Para un fondo discreto detrás de las letras, pruebe Saturación al 60% y Brillo
 
 ## Preajustes, compartir, copia de seguridad y ajustes de visualización
 
-Usa el diálogo de preajustes para guardar, volver a cargar, cambiar el nombre o eliminar diseños con nombre; los preajustes integrados siguen disponibles. **Configuración > Copia de seguridad / Restaurar** guarda en la copia de seguridad los preajustes de Visualizer guardados y sus imágenes de fondo, pero no el diseño de trabajo actual.
+Usa el diálogo de preajustes para guardar, volver a cargar, cambiar el nombre o eliminar diseños con nombre; los preajustes integrados siguen disponibles. Si la lista es larga, escribe parte de un nombre en el cuadro de búsqueda de la parte superior del diálogo para filtrarla. **Configuración > Copia de seguridad / Restaurar** guarda en la copia de seguridad los preajustes de Visualizer guardados y sus imágenes de fondo, pero no el diseño de trabajo actual.
 
 Selecciona **Compartir** en la barra de herramientas para copiar un enlace al diseño actual (las imágenes de fondo no se incluyen en los enlaces; usa **Copia de seguridad / Restaurar** para las imágenes). En la aplicación de escritorio o en la extensión de navegador, copia un enlace compartido y selecciona **Importar enlace** o pulsa **Ctrl+V** (**⌘V** en Mac) dentro de Visualizer. Un diseño importado sustituye al actual sin pedir confirmación; para volver atrás, abre **Edit** y selecciona **Deshacer**.
 

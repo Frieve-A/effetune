@@ -77,12 +77,15 @@ Lorsque la barre du navigateur a le focus, utilisez **F5** pour recharger, **F6*
 
 Ouvrir **Navigateur** ou y revenir sélectionne automatiquement le son du navigateur. Le son du navigateur est mélangé à celui du périphérique d’entrée sélectionné. Choisissez **Aucun** comme périphérique d’entrée pour écouter uniquement le navigateur. L’option d’entrée du lecteur ne modifie pas la lecture dans le navigateur. La musique locale peut être lue en même temps que le son du navigateur. Si la capture s’arrête, cliquez à nouveau sur **Navigateur** pour réessayer. **Effacer les données des sites** vous déconnecte des sites et efface leurs données enregistrées, tout en conservant les favoris.
 
+Les sites qui utilisent Web MIDI voient une seule sortie MIDI nommée **EffeTune**. Ce que la page y envoie est joué comme une entrée MIDI en direct, à la manière d’un clavier MIDI, par SoundFont Player dans votre chaîne d’effets ; rien n’est transmis à vos périphériques MIDI. Dès le premier message MIDI qu’elle envoie, la page remplace votre périphérique d’entrée MIDI jusqu’à ce que vous cliquiez sur **Fermer** dans la barre d’outils du navigateur, quittiez la page ou la rechargiez ; le périphérique sélectionné est alors rétabli. Gardez un instrument chargé dans SoundFont Player et fermez Music Player, qui est prioritaire sur l’entrée MIDI en direct. Voir [Entrée MIDI en direct](plugins/others.md#entrée-midi-en-direct).
+
 Utilisez **Fermer** dans la barre d’outils du navigateur pour arrêter le traitement de son audio et revenir à **Effect Pipeline**. La page et l’historique de navigation sont conservés. Rouvrez **Navigateur** pour reprendre le traitement audio sur la même page.
 
 Dans **Paramètres > Configuration... > Navigateur** :
 
 - **Page de démarrage** définit l’adresse HTTP ou HTTPS affichée à la première ouverture du navigateur. Le champ est vide par défaut ; lorsqu’il est vide, le [guide de streaming d’EffeTune](https://effetune.frieve.com/streaming/) s’ouvre. **Réinitialiser** vide le champ sans changer la page actuelle.
 - **Ouvrir les nouveaux onglets dans le navigateur par défaut** est activé par défaut. Désactivez cette option pour ouvrir ces liens dans le navigateur d’EffeTune. Les fenêtres séparées, notamment pour la connexion à un compte, restent dans EffeTune dans les deux cas.
+- **Ouvrir les fichiers musicaux dans Music Player** est désactivé par défaut : les téléchargements sont alors enregistrés à l’emplacement de votre choix. Une fois l’option activée, les fichiers musicaux que vous téléchargez s’ouvrent dans Music Player au lieu d’être enregistrés ; les autres fichiers sont enregistrés normalement. Sur les sites qui lisent des fichiers MIDI avec leur propre synthétiseur intégré, le fichier MIDI lu par la page s’ouvre lui aussi dans Music Player et le son de la page est coupé jusqu’à ce que vous la quittiez ou la rechargiez. Contrôlez la lecture depuis Music Player. Après avoir modifié ce réglage, rechargez la page.
 - **User-Agent** est l’identification du navigateur transmise aux sites web. La valeur par défaut présente le navigateur comme compatible avec Chrome et inclut le nom EffeTune. Laissez le champ vide ou cliquez sur **Réinitialiser** pour rétablir la valeur par défaut. Après toute modification, rechargez la page dans le navigateur.
 
 Pour changer automatiquement d’effets selon le site, enregistrez d’abord vos chaînes comme préréglages. Sous **Règles d’URL**, cliquez sur **Ajouter une règle**, saisissez un site et un chemin comme `example.com/music/*`, puis choisissez un préréglage de chaîne. Omettez `http://` ou `https://`, les paramètres de requête et les fragments `#` ; `*` correspond à n’importe quel texte. Réglez la priorité avec les boutons de déplacement vers le haut et le bas, puis cliquez sur **Enregistrer les règles**. La première règle activée qui correspond et dont le préréglage est disponible est utilisée.
@@ -193,6 +196,8 @@ Cliquez sur le bouton **Préréglages de chaîne d’effets** dans l’en-tête 
 5. Appuyez sur Ctrl+S (ou Cmd+S sous macOS) pour ouvrir la boîte de dialogue avec le nom du préréglage actuel prêt à être modifié.
 
 Chaque effet possède également son propre bouton **Préréglages d’effet**. Il ouvre les préréglages système lorsque l’effet en fournit et permet d’enregistrer, renommer, charger ou supprimer vos réglages pour cet effet. Les préréglages d’effet ne modifient que les paramètres de cet effet ; ils ne modifient ni son état ON/OFF ni son routage.
+
+Toutes les boîtes de dialogue de préréglages affichent un champ de recherche en haut lorsque la liste est longue. Saisissez une partie d’un nom : la liste se filtre au fil de la saisie.
 
 L’importation, l’exportation et le partage de fichiers `.effetune_preset` continuent d’utiliser des préréglages de chaîne d’effets complète.
 

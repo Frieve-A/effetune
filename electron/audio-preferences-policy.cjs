@@ -3,6 +3,7 @@
 const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   inputDeviceId: '__effetune_no_audio_input__',
   midiInputDeviceKey: '',
+  midiOutputDeviceKey: '',
   outputDeviceId: 'default',
   inputDeviceLabel: '',
   outputDeviceLabel: '',
@@ -53,23 +54,25 @@ const DEVICE_LABEL_ID_KEYS = Object.freeze({
   outputDeviceLabel: 'outputDeviceId'
 });
 
+const MIDI_DEVICE_KEYS = Object.freeze(['midiInputDeviceKey', 'midiOutputDeviceKey']);
+
 function isGaplessPlaybackOnlyChange(previousPreferences, nextPreferences) {
-  return isPreferenceOnlyChange(previousPreferences, nextPreferences, 'gaplessPlayback');
+  return isPreferenceOnlyChange(previousPreferences, nextPreferences, ['gaplessPlayback']);
 }
 
-function isMidiInputOnlyChange(previousPreferences, nextPreferences) {
-  return isPreferenceOnlyChange(previousPreferences, nextPreferences, 'midiInputDeviceKey');
+function isMidiDeviceOnlyChange(previousPreferences, nextPreferences) {
+  return isPreferenceOnlyChange(previousPreferences, nextPreferences, MIDI_DEVICE_KEYS);
 }
 
-function isPreferenceOnlyChange(previousPreferences, nextPreferences, field) {
+function isPreferenceOnlyChange(previousPreferences, nextPreferences, fields) {
   const previous = normalizeAudioPreferences(previousPreferences);
   const next = mergeAudioPreferences(previousPreferences, nextPreferences);
-  if (previous[field] === next[field]) return false;
+  if (fields.every(field => previous[field] === next[field])) return false;
   const keys = new Set([
     ...Object.keys(previous),
     ...Object.keys(next)
   ]);
-  return [...keys].every(key => key === field ||
+  return [...keys].every(key => fields.includes(key) ||
     Object.is(previous[key], next[key]) ||
     (key in DEVICE_LABEL_ID_KEYS &&
       Object.is(previous[DEVICE_LABEL_ID_KEYS[key]], next[DEVICE_LABEL_ID_KEYS[key]])));
@@ -84,8 +87,9 @@ function canPersistAudioPreferencesWithoutReload(
   const previous = normalizeAudioPreferences(previousPreferences);
   const next = mergeAudioPreferences(previousPreferences, nextPreferences);
   const applyInPlace = options?.applyInPlace;
-  if (applyInPlace === 'midi-input') {
-    return typeof next.midiInputDeviceKey === 'string' && isMidiInputOnlyChange(previous, next);
+  if (applyInPlace === 'midi-devices') {
+    return MIDI_DEVICE_KEYS.every(key => typeof next[key] === 'string') &&
+      isMidiDeviceOnlyChange(previous, next);
   }
   if (applyInPlace === 'gapless-playback') {
     return isGaplessPlaybackOnlyChange(previous, next);
@@ -123,6 +127,6 @@ module.exports = {
   mergeAudioPreferences,
   audioPipelineConfigurationEqual,
   isGaplessPlaybackOnlyChange,
-  isMidiInputOnlyChange,
+  isMidiDeviceOnlyChange,
   canPersistAudioPreferencesWithoutReload
 };

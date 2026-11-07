@@ -418,11 +418,14 @@ void testQualityAndTracking() {
   const QualityResult fixed = runQualityCase(50.0, 1.0F, true);
   const QualityResult fixed_16 = runQualityCase(50.0, 1.0F, true, 16u);
   const QualityResult automatic = runQualityCase(49.9, 0.0F, true);
+  const QualityResult automatic_60 = runQualityCase(60.1, 0.0F, true);
   std::printf("Hum Remover measured clean RMS %.9f, fixed reduction %.3f dB, "
               "16-harmonic reduction %.3f dB, auto reduction %.3f dB, "
               "auto frequency %.6f Hz\n",
               clean.difference_rms, fixed.reduction_db, fixed_16.reduction_db,
               automatic.reduction_db, automatic.telemetry.fundamental);
+  std::printf("Hum Remover measured 60.1 Hz auto reduction %.3f dB, auto frequency %.6f Hz\n",
+              automatic_60.reduction_db, automatic_60.telemetry.fundamental);
 
   check(clean.difference_rms < 0.01,
         "clean-signal subtraction stays below the measured floor gate");
@@ -434,6 +437,56 @@ void testQualityAndTracking() {
   check(std::abs(static_cast<double>(automatic.telemetry.fundamental) - 49.9) < 0.04,
         "Auto follows 49.9 Hz with a gate narrower than the initial 0.1 Hz error");
   check(automatic.reduction_db > 8.0, "Auto reduces the tracked harmonic basis");
+  check(std::abs(static_cast<double>(automatic_60.telemetry.fundamental) - 60.1) < 0.04,
+        "Auto acquires a 60 Hz-region hum from its 50 Hz start");
+  check(automatic_60.reduction_db > 8.0, "Auto reduces an acquired 60 Hz-region hum");
+}
+
+// A sustained bass note a semitone from 60 Hz must not make Auto jump away from a quiet 50 Hz hum.
+double largestFrequencyJumpWithBass(double bass_frequency) {
+  constexpr std::uint32_t note_start = 2u * 96000u;
+  constexpr std::uint32_t frames = 8u * 96000u;
+  KernelHarness harness(static_cast<float>(kSampleRate), 1u, kMaximumFrames);
+  harness.stage(defaultParams());
+  std::array<Oscillator, 3u> hum{};
+  for (std::uint32_t harmonic = 0u; harmonic < hum.size(); ++harmonic) {
+    hum[harmonic].set(50.0 * static_cast<double>(harmonic + 1u), kSampleRate,
+                      0.3 * static_cast<double>(harmonic + 1u));
+  }
+  Oscillator bass;
+  bass.set(bass_frequency, kSampleRate);
+  std::array<float, kMaximumFrames> block{};
+  float previous = readTelemetry(harness).fundamental;
+  double largest_jump = 0.0;
+  for (std::uint32_t offset = 0u; offset < frames; offset += kMaximumFrames) {
+    for (std::uint32_t frame = 0u; frame < kMaximumFrames; ++frame) {
+      double sample = 0.0;
+      for (std::uint32_t harmonic = 0u; harmonic < hum.size(); ++harmonic) {
+        sample += 0.001 * hum[harmonic].imaginary / static_cast<double>(harmonic + 1u);
+        hum[harmonic].advance();
+      }
+      if (offset + frame >= note_start) {
+        sample += 0.1 * bass.imaginary;
+        bass.advance();
+      }
+      block[frame] = static_cast<float>(sample);
+    }
+    harness.process(block.data(), 1u, kMaximumFrames);
+    const float fundamental = readTelemetry(harness).fundamental;
+    const double jump = std::abs(static_cast<double>(fundamental) - previous);
+    largest_jump = jump > largest_jump ? jump : largest_jump;
+    previous = fundamental;
+  }
+  return largest_jump;
+}
+
+void testNominalIgnoresAdjacentBass() {
+  const double b1_jump = largestFrequencyJumpWithBass(61.74);
+  const double b_flat1_jump = largestFrequencyJumpWithBass(58.27);
+  std::printf("Hum Remover measured largest Auto frequency step with B1 %.6f Hz, Bb1 %.6f Hz\n",
+              b1_jump, b_flat1_jump);
+  check(b1_jump < 2.0, "a sustained B1 bass does not switch Auto away from 50 Hz hum");
+  check(b_flat1_jump < 2.0, "a sustained Bb1 bass does not switch Auto away from 50 Hz hum");
 }
 
 void testMaximumHarmonics() {
@@ -539,6 +592,7 @@ int main() {
   testLatencyAndFramePartitioning();
   testChannelIndependence();
   testQualityAndTracking();
+  testNominalIgnoresAdjacentBass();
   testMaximumHarmonics();
   testTelemetryAdaptationAndSilenceFloor();
   if (failures != 0) {

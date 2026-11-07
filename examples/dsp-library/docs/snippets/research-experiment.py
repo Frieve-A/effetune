@@ -180,6 +180,7 @@ def replay_record(record, wheel_path, wheel_sha256):
 parser = argparse.ArgumentParser()
 parser.add_argument("--wheel", type=Path, required=True)
 parser.add_argument("--replay-record", type=Path)
+parser.add_argument("--save-record", type=Path)
 args = parser.parse_args()
 wheel_bytes = args.wheel.read_bytes()
 first_hash = digest_bytes(wheel_bytes)
@@ -191,4 +192,8 @@ if args.replay_record:
     result = replay_record(saved_record, args.wheel, first_hash)
 else:
     result = create_record(args.wheel, first_hash)
+    if args.save_record:
+        args.save_record.write_text(
+            json.dumps(result, sort_keys=True), encoding="utf-8"
+        )
 print(json.dumps(result, sort_keys=True))

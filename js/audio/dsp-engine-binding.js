@@ -817,7 +817,8 @@ export class DspEngineBinding {
 
     publishSfzSamplePage(instanceId, { generation, sample, pageIndex, pcm, frames, channels, resident = false }) {
         if (!this.engine || !this._sfzStreamPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
-        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 10000 ||
+        // 65536 matches SFZ_MAX_SAMPLES in js/sfz/limits.js and SamplePageCache::kMaxSamples.
+        if (!Number.isSafeInteger(generation) || generation < 1 || !Number.isInteger(sample) || sample < 0 || sample >= 65536 ||
             !Number.isSafeInteger(pageIndex) || pageIndex < 0 || !Number.isInteger(frames) || frames < 1 || frames > 4096 ||
             (channels !== 1 && channels !== 2) || !(pcm instanceof Float32Array) || pcm.length !== frames * channels) {
             throw new DspBindingError('Invalid sample page');

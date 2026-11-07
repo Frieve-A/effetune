@@ -1044,12 +1044,13 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
           gaplessPlayback: nextPreferences.gaplessPlayback
         });
       }
-      if (options?.applyInPlace === 'midi-input') {
+      if (options?.applyInPlace === 'midi-devices') {
         if (!persistWithoutReload) {
-          return { success: false, error: 'MIDI input must be saved without other audio preference changes' };
+          return { success: false, error: 'MIDI devices must be saved without other audio preference changes' };
         }
         nextPreferences = mergeAudioPreferences(previousPreferences, {
-          midiInputDeviceKey: nextPreferences.midiInputDeviceKey
+          midiInputDeviceKey: nextPreferences.midiInputDeviceKey,
+          midiOutputDeviceKey: nextPreferences.midiOutputDeviceKey
         });
       }
 

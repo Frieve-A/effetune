@@ -9,14 +9,17 @@ import { DspEngineBinding, ET_ERR_STATE } from '../../js/audio/dsp-engine-bindin
 
 function worklet() {
   let Processor;
-  vm.runInNewContext(fs.readFileSync(new URL('../../plugins/audio-processor.js', import.meta.url), 'utf8'), {
+  const globals = {
+    currentFrame: 128,
     console: { warn() {} }, AudioWorkletProcessor: class {},
     registerProcessor(name, Type) { if (name === 'plugin-processor') Processor = Type; }
-  });
+  };
+  vm.runInNewContext(fs.readFileSync(new URL('../../plugins/audio-processor.js', import.meta.url), 'utf8'), globals);
   const calls = [], replies = [];
   const plugin = { id: 7, type: 'SoundFontPlayerPlugin', parameters: { sf: 'bank' } };
   const state = { enabled: true, paused: true, cursor: 17 };
   const processor = Object.assign(Object.create(Processor.prototype), {
+    currentFrame: 128, telemetryContextFrameOffset: 128,
     plugins: [plugin], wasmInstances: new Map([[7, { id: 11 }]]),
     soundFontMidiMeteringEntries: new Set(),
     dspAssetCache: new Map([[7, new Map([[0, { operationRevision: 3, replayEpoch: 9 }]])]]),
@@ -27,7 +30,7 @@ function worklet() {
     captureSfzRuntimeCheckpoint: () => ({ bytes: Uint8Array.of(42), clockFrame: 123, generation: 5 }),
     _invalidatePowerSkipForMutation() {}, port: { postMessage(data) { replies.push(data); } }
   });
-  return { processor, calls, replies, send(action, extra = {}) {
+  return { processor, calls, replies, globals, send(action, extra = {}) {
     processor.handlePortMessage({ type: 'soundFontMixerAction', pluginId: 7, token: 3, replayEpoch: 9,
       requestId: 1, action, ...extra });
     return replies.at(-1);
@@ -38,6 +41,7 @@ test('paused mixer edits use the CONTROL-only native ingress, preserve pending m
   const h = worklet();
   const result = h.send({ type: 'program', channel: 2, bank: 42, program: 19 });
   assert.equal(result.ok, true);
+  assert.equal(result.appliedFrame, 256, 'The completed context frame is authoritative even before currentFrame advances');
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls)), [['events', 11, [
     { offsetFrames: 0, status: 178, data1: 0, data2: 42 },
     { offsetFrames: 0, status: 178, data1: 32, data2: 0 },
@@ -74,15 +78,32 @@ test('manager rejects superseded replies and stores refreshed paused checkpoints
     _audioGraphGeneration: 1, _getActiveDspWorklets: () => [node],
     _getSfzRuntimePlugin: () => plugin, _getSfzRuntimeAssetIdentity: () => identity,
     getSfzSamplePreparation: () => null, getEffectiveActiveWasmAssetSnapshot: () => ({ ready: true }),
-    _requestDspControl: async () => ({ ok: true, checkpoints }),
+    _requestDspControl: async () => ({ ok: true, checkpoints, appliedFrame: 256 }),
     storeSfzRuntimeCheckpoints(_node, records) { stored = records; return true; }
   });
   assert.equal(await manager.sendSoundFontMixerAction(plugin, { type: 'control', channel: 0, controller: 11, value: 80 }), true);
+  assert.equal(await manager.sendSoundFontMixerAction(plugin, { type: 'control', channel: 0, controller: 7, value: 80 }, true), 256);
   assert.equal(stored, checkpoints);
   manager._requestDspControl = async () => { identity = { ...identity, replayEpoch: 10 }; return { ok: true }; };
   await assert.rejects(manager.sendSoundFontMixerAction(plugin, { type: 'mute', channel: 0, value: true }), /could not be updated/);
   manager.getSfzSamplePreparation = () => Promise.resolve();
   await assert.rejects(manager.sendSoundFontMixerAction(plugin, {}), /Wait until/);
+});
+
+test('a packet containing deferred native snapshots carries a conservative mixer frame', () => {
+  const { processor, replies, globals } = worklet();
+  Object.assign(processor, { dspLive: true, dspPacketPool: [], powerPolicy: { enabled: false } });
+  processor.dspBinding.telemetryRead = () => 600;
+  processor.pumpDspTelemetry(128);
+  assert.equal(replies.length, 0);
+  globals.currentFrame += 128;
+  processor.dspPacketPool.push(new Uint8Array(600));
+  processor.pumpDspTelemetry(128);
+  assert.deepEqual([replies.at(-1).endFrame, replies.at(-1).mixerEndFrame], [384, 256]);
+  globals.currentFrame += 128;
+  processor.dspPacketPool.push(new Uint8Array(600));
+  processor.pumpDspTelemetry(128);
+  assert.deepEqual([replies.at(-1).endFrame, replies.at(-1).mixerEndFrame], [512, 512]);
 });
 
 test('MIDI metering desire survives missing worklets and replays only for the current plugin instance', () => {

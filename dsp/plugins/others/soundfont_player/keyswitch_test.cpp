@@ -48,7 +48,7 @@ int main() {
   auto *kernel = descriptor->construct(storage.data());
   kernel->prepare({48000, 2, 128});
   require(kernel->preparedSuccessfully(), "kernel prepare");
-  const generated::SoundFontPlayerPluginParams params{0, 64, 0, 0};
+  const generated::SoundFontPlayerPluginParams params{0, 64, 0, 0, 1, -1, 0};
   require(kernel->stageParameters(reinterpret_cast<const float *>(&params), params.kFloatCount,
                                   descriptor->paramsHash) == ET_OK,
           "normal parameters");

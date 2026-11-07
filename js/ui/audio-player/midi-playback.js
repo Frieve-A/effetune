@@ -1,9 +1,14 @@
 import { readScoreArtwork } from './score-artwork-source.js';
 import { isScoreFile, isMusicXmlFile, parseScoreAsync, SCORE_MAX_BYTES } from '../../midi/score-file.js';
 import { validateMidiSchedule } from '../../midi/smf-scheduler.js';
+import { MidiFileOutput } from '../../midi/midi-file-output.js';
+import { audibleContextTime } from '../../audio/visual-sync.js';
 import { readMidiWrdBytes } from './midi-wrd-source.js';
 
 const MIDI_INSTRUMENT_TYPE = 'SoundFontPlayerPlugin';
+
+// Connected external output selected in Audio Configuration, or null.
+const selectedMidiOutput = () => globalThis.window?.midiControllerManager?.getSelectedOutput?.() ?? null;
 
 function scoreFileName(track) {
   if (typeof track === 'string') return track;
@@ -95,6 +100,7 @@ export const midiPlaybackMethods = {
   },
 
   postMidiTransport(playing, position = this.getCurrentMidiTime(), { preparing = false, mode = 'reset', generation = null, timeline = this.midiTimeline, preservePresentation = false } = {}) {
+    this.midiOutput?.stop();
     const context = this.audioPlayer.audioContext;
     const nextGeneration = generation ?? this.audioManager.nextMidiGeneration?.(this.midiGeneration) ?? (this.midiGeneration ?? 0) + 1;
     if (this.midiPreparation && this.midiPreparation.generation !== nextGeneration) this.midiPreparation.finish(false);
@@ -174,7 +180,9 @@ export const midiPlaybackMethods = {
           } else if (node !== this.audioManager.workletNode) return;
           if (data.type === 'midiPosition' && Number.isFinite(data.position) && data.position >= 0) {
             this.midiPosition = Math.min(data.position, this.midiTimeline?.duration ?? 0);
+            this.midiOutput?.pump(data.generation);
           } else if (data.type === 'midiEnded' && this.midiPlaying && !this.midiEndNotified) {
+            this.midiOutput?.finish(data.generation);
             this.midiEndNotified = true;
             this.midiNaturalTail = true;
             this.midiPosition = this.midiTimeline?.duration ?? 0;
@@ -221,6 +229,7 @@ export const midiPlaybackMethods = {
   },
 
   captureMidiCheckpoints({ sourceFailure = false, preservePendingSeek = false } = {}) {
+    this.midiOutput?.stop();
     if (this.midiCheckpointTimeline === this.midiTimeline && this.midiCheckpointAvailable) return Promise.resolve(true);
     if (this.midiPreparation) {
       const pending = this.midiPreparation;
@@ -297,6 +306,7 @@ export const midiPlaybackMethods = {
   },
 
   prepareMidiTransport(position, isCurrent = null, timeline = this.midiTimeline, { preservePresentation = false } = {}) {
+    this.midiOutput?.stop();
     this.midiPreparation?.finish(false);
     const nodes = this.getMidiWorklets();
     const resume = this.midiCheckpointAvailable && this.midiCheckpointTimeline === timeline &&
@@ -410,9 +420,24 @@ export const midiPlaybackMethods = {
     for (const node of this.getMidiWorklets()) node.port.postMessage({ type: 'midiStart',
       generation: this.midiGeneration, anchorFrame: Math.round(this.midiAnchorTime * context.sampleRate),
       delayFrames: Math.round(.02 * context.sampleRate) });
+    if (this.midiTimeline) {
+      this.midiOutput ??= new MidiFileOutput({ getOutput: selectedMidiOutput,
+        getClockOffset: now => this.getMidiOutputClockOffset(now) });
+      this.midiOutput.start(this.midiTimeline, { position, anchorTime: this.midiAnchorTime,
+        speed: this.midiSpeed, generation: this.midiGeneration });
+    }
     this.audioManager.clearSfzRuntimeCheckpoints?.({ types: [MIDI_INSTRUMENT_TYPE] });
     this.midiCheckpointAvailable = false;
     this.midiCheckpointTimeline = null;
+  },
+
+  // performance.now() milliseconds at which render context time zero is heard.
+  getMidiOutputClockOffset(now) {
+    const context = this.audioPlayer.audioContext;
+    const heard = audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
+      currentTime: context.currentTime, outputLatency: context.outputLatency,
+      baseLatency: context.baseLatency, performanceTime: now });
+    return now - heard + (this.audioManager.getTotalPipelineLatencySamples?.() ?? 0) / context.sampleRate * 1000;
   },
 
   setMidiPlaybackSpeed() {
@@ -421,6 +446,7 @@ export const midiPlaybackMethods = {
     this.midiSpeed = this.getCurrentState()?.playbackSpeed ?? 1;
     this.midiPosition = position;
     this.midiAnchorTime = context.currentTime;
+    this.midiOutput?.retime(context.currentTime, this.midiSpeed);
     for (const node of this.getMidiWorklets()) node.port.postMessage({ type: 'midiSpeed',
       position, speed: this.midiSpeed, anchorFrame: Math.round(context.currentTime * context.sampleRate) });
   },
@@ -463,6 +489,7 @@ export const midiPlaybackMethods = {
   },
 
   showMidiInstrumentNotice() {
+    if (selectedMidiOutput()) return;
     const source = this.midiTimeline ?? this.activeSourceGeneration ?? null;
     if (this.midiInstrumentNoticeSource === source) return;
     this.midiInstrumentNoticeSource = source;
@@ -554,6 +581,7 @@ export const midiPlaybackMethods = {
   },
 
   releaseMidiPlayback({ preserveCheckpoint = false, preserveTransport = false } = {}) {
+    this.midiOutput?.stop();
     if (!this.midiTimeline && !this.midiSource) return;
     if (!preserveTransport) this.postMidiTransport(false, 0, { mode: preserveCheckpoint ? 'pause' : 'reset' });
     this.midiTimeline = null;

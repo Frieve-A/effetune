@@ -97,6 +97,7 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
     position = headerEnd;
     const allEvents = [];
     const lyricByteGroups = new Map();
+    const rawSysex = new Map();
     const lyricHints = { ...(typeof languageHints === 'string' ? { language: languageHints } : languageHints),
         referenceTexts: [...(Array.isArray(languageHints?.referenceTexts) ? languageHints.referenceTexts : []), fileName] };
     const textFragments = [];
@@ -180,6 +181,13 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
                 allEvents.push({ ...base, type: 'sysex', status, byteLength: length,
                     dataPreview: [...bytes.subarray(position, position + Math.min(length, 16))],
                     ...(systemReset ? { systemReset } : {}), ...(drumMode ? { drumMode } : {}) });
+                // Keep complete F0...F7 packets for external MIDI output; escapes and split packets are not sendable.
+                const payload = bytes.subarray(position, position + length);
+                if (status === 0xf0 && payload.at(-1) === 0xf7 && payload.subarray(0, -1).every(byte => byte < 128)) {
+                    const data = new Uint8Array(length + 1);
+                    data[0] = 0xf0; data.set(payload, 1);
+                    rawSysex.set(allEvents.at(-1), data);
+                }
                 position += length;
             } else fail('midi-corrupt', 'This MIDI file contains an invalid event.');
         }
@@ -219,7 +227,7 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
     const tempoMap = [{ tick: 0, seconds: 0, quarter: 0, microsecondsPerQuarter: 500000 }];
     const timeSignatures = [{ tick: 0, seconds: 0, quarter: 0, numerator: 4, denominator: 4 }];
     let originTick = 0, originSeconds = 0, originQuarter = 0, tempo = 500000;
-    const events = [], lyricCues = [];
+    const events = [], lyricCues = [], sysex = [];
     for (const event of allEvents) {
         event.seconds = secondsPerTick === null
             ? originSeconds + (event.tick - originTick) * tempo / (division * 1000000)
@@ -232,7 +240,9 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
         } else if (event.type === 'timeSignature') timeSignatures.push(event);
         else if (event.type === 'lyric') lyricCues.push(event);
         else if (event.type === 'midi') events.push(event);
-        else if (event.systemReset || event.drumMode) events.push({ tick: event.tick, track: event.track, order: event.order,
+        if (rawSysex.has(event)) sysex.push({ tick: event.tick, track: event.track, order: event.order,
+            seconds: event.seconds, data: rawSysex.get(event) });
+        if (event.systemReset || event.drumMode) events.push({ tick: event.tick, track: event.track, order: event.order,
             type: 'midi', status: 0, data1: event.drumMode?.channel ?? 0, data2: event.drumMode?.mode ?? 0,
             ...(event.systemReset ? { systemReset: event.systemReset } : { drumMode: event.drumMode }),
             seconds: event.seconds, quarter: event.quarter });
@@ -256,7 +266,7 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
         ? karaokeCues.map(cue => ({ ...cue, part: String(cue.track), verse: '1' })) : [];
     return { format, division, secondsPerTick, durationTicks, duration,
         title: karaokeTitle || names.find(name => name.track === 0 && name.title)?.title || names.find(name => name.title)?.title || fileName.replace(/\.(?:mid|midi|kar)$/i, ''),
-        events, tempoMap, timeSignatures, displayEvents: allEvents,
+        events, tempoMap, timeSignatures, displayEvents: allEvents, ...(sysex.length ? { sysex } : {}),
         ...(cues.length ? { lyrics: { source: useLyric ? 'midi' : 'kar',
             ...(karaokeLanguage ? { language: karaokeLanguage } : {}), cues: cues.map((cue, index) => ({ ...cue,
                 endSeconds: cues[index + 1]?.seconds ?? duration })) } } : {}) };

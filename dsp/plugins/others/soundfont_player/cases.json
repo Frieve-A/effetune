@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 4096,
+    "params": {
+      "pm": 83
+    }
+  },
+  "cases": [
+    {
+      "id": "preview-sine-bank-stereo-48k",
+      "stimulus": "silence",
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    },
+    {
+      "id": "preview-sine-bank-mono-96k-block63",
+      "stimulus": "silence",
+      "sampleRate": 96000,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 63,
+      "params": { "og": -6 },
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    }
+  ]
+}

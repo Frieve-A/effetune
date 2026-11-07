@@ -11,8 +11,11 @@ export class BrowserInputController {
         this.selected = false;
         this.active = false;
         this.pending = null;
+        this.pageAudioMuted = false;
         audioManager.ioManager.browserInput = this;
         this.unsubscribe = api.onState(state => {
+            this.pageAudioMuted = state.pageAudioMuted === true;
+            this.applyPageAudioMute();
             if (this.active && (state.captureActive === false ||
                 state.captureGeneration !== this.generation)) {
                 void this.release({ keepSelection: true }).catch(error => {
@@ -67,6 +70,7 @@ export class BrowserInputController {
                 return false;
             }
             this.stream = stream;
+            this.applyPageAudioMute();
             const tracks = stream.getAudioTracks();
             if (tracks.length === 0 || tracks.some(track => track.readyState !== 'live')) {
                 throw new Error('Browser capture has no live audio');
@@ -95,6 +99,12 @@ export class BrowserInputController {
             } else if (stream) this.audioManager.ioManager._stopStreamTracksOnce(stream);
             return false;
         }
+    }
+
+    // Muting the page's webContents does not silence its loopback capture, so
+    // silence the captured tracks while a MIDI file plays in the Music Player instead.
+    applyPageAudioMute() {
+        for (const track of this.stream?.getAudioTracks() ?? []) track.enabled = !this.pageAudioMuted;
     }
 
     async bindGraph(revision = this.revision) {

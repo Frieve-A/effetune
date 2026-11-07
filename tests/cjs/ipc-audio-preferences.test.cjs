@@ -17,7 +17,7 @@ const {
 
 const noInput = '__effetune_no_audio_input__';
 
-test('MIDI-only IPC preserves audio preferences and never reloads, including rejected mixed changes', async () => {
+test('MIDI-device-only IPC preserves audio preferences and never reloads, including rejected mixed changes', async () => {
   const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-midi-preferences-')));
   const preferencesPath = path.join(tempRoot, 'audio-preferences.json');
   const messages = [], timers = [];
@@ -27,15 +27,19 @@ test('MIDI-only IPC preserves audio preferences and never reloads, including rej
     const handlers = registerAudioPreferencesHandlers(tempRoot, mainWindow);
     const save = handlers.get('save-audio-preferences');
     await withPatchedPropertyAsync(global, 'setTimeout', (...args) => timers.push(args), async () => {
-      assert.deepEqual(await save(null, { midiInputDeviceKey: 'Virtual\0' + '2' }, { applyInPlace: 'midi-input' }), { success: true });
+      assert.deepEqual(await save(null, { midiInputDeviceKey: 'Virtual\0' + '2' }, { applyInPlace: 'midi-devices' }), { success: true });
+      assert.deepEqual(await save(null, { midiOutputDeviceKey: 'Synth' }, { applyInPlace: 'midi-devices' }), { success: true });
       const stored = JSON.parse(await fs.readFile(preferencesPath, 'utf8'));
       assert.equal(stored.midiInputDeviceKey, 'Virtual\0' + '2');
+      assert.equal(stored.midiOutputDeviceKey, 'Synth');
       assert.equal(stored.inputDeviceId, 'mic');
       assert.equal(stored.sampleRate, 48000);
-      assert.equal((await save(null, { midiInputDeviceKey: '', sampleRate: 96000 }, { applyInPlace: 'midi-input' })).success, false);
+      assert.equal((await save(null, { midiInputDeviceKey: '', sampleRate: 96000 }, { applyInPlace: 'midi-devices' })).success, false);
       assert.deepEqual(JSON.parse(await fs.readFile(preferencesPath, 'utf8')), stored);
-      assert.deepEqual(await save(null, { midiInputDeviceKey: '' }, { applyInPlace: 'midi-input' }), { success: true });
-      assert.equal((await handlers.get('load-audio-preferences')()).preferences.midiInputDeviceKey, '');
+      assert.deepEqual(await save(null, { midiInputDeviceKey: '', midiOutputDeviceKey: '' }, { applyInPlace: 'midi-devices' }), { success: true });
+      const cleared = (await handlers.get('load-audio-preferences')()).preferences;
+      assert.equal(cleared.midiInputDeviceKey, '');
+      assert.equal(cleared.midiOutputDeviceKey, '');
       assert.deepEqual(messages, []);
       assert.deepEqual(timers, []);
     });
@@ -68,6 +72,16 @@ test('Electron accepts reload suppression only for a gapless-only change', () =>
     { applyInPlace: 'unrecognized' },
     noInput
   ), false);
+});
+
+test('Electron applies MIDI device changes in place only when nothing else changes', () => {
+  const previous = { inputDeviceId: 'mic-1', sampleRate: 48000, midiInputDeviceKey: 'In', midiOutputDeviceKey: '' };
+  const canPersist = next => canPersistAudioPreferencesWithoutReload(
+    previous, { ...previous, ...next }, { applyInPlace: 'midi-devices' }, noInput);
+  assert.equal(canPersist({ midiOutputDeviceKey: 'Synth' }), true);
+  assert.equal(canPersist({ midiInputDeviceKey: '', midiOutputDeviceKey: 'Synth' }), true);
+  assert.equal(canPersist({}), false);
+  assert.equal(canPersist({ midiOutputDeviceKey: 'Synth', sampleRate: 96000 }), false);
 });
 
 test('Electron ignores device label differences while the device IDs are unchanged', () => {
@@ -248,6 +262,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
   // was switched to player-only for this session (command-line music files).
   const storedPreferences = {
     midiInputDeviceKey: '',
+    midiOutputDeviceKey: '',
     inputDeviceId: 'mic-1',
     outputDeviceId: 'speaker-1',
     inputDeviceLabel: 'Microphone (no permission)',

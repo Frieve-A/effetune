@@ -80,6 +80,18 @@ test('SF2 keeps stereo links as individual mono zones and preserves signed coars
   assert.equal(compiled.regions[0].sample.sampleLink, 1);
 });
 
+test('SF2 tolerates distributed-bank defects: unsoundable zones are dropped, flagless samples are mono, empty loops play unlooped', async () => {
+  const compile = async edit => { const parsed = await parseSf2(reader(fixture())); edit(parsed.tables.shdr[0]); return compileSf2(parsed); };
+  for (const edit of [sample => { sample.end = sample.start; }, sample => { sample.start += 65536; },
+    sample => { sample.sampleRate = 0; }, sample => { sample.sampleType = 0x8001; }]) {
+    const compiled = await compile(edit);
+    assert.equal(compiled.regions.length, 0); assert.equal(compiled.diagnostics.ignoredZones, 1);
+  }
+  assert.equal((await compile(sample => { sample.sampleType = 0; })).regions.length, 1);
+  const compiled = await compile(sample => { sample.loopEnd = sample.loopStart; });
+  assert.equal(compiled.regions[0].generators[54], 0); assert.equal(compiled.diagnostics.adjustedLoops, 1);
+});
+
 test('SF2 resolves chained modulation by zone-local indices and removes circular links', async () => {
   const parsed = await parseSf2(reader(fixture()));
   const values = [

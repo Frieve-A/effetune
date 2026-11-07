@@ -434,6 +434,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
             </div>
             <div class="power-mode-help" id="browser-start-page-help"></div>
           </div>
+          <div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="browser-open-music-files" aria-describedby="browser-open-music-files-help">
+              <label for="browser-open-music-files" id="browser-open-music-files-label"></label>
+            </div>
+            <div class="power-mode-help" id="browser-open-music-files-help"></div>
+          </div>
           <fieldset class="device-section browser-rules" id="browser-rules-controls">
             <legend class="section-label" id="browser-rules-title"></legend>
             <div class="power-mode-help" id="browser-rules-help"></div>
@@ -1568,6 +1575,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (browserStartPageLabel) browserStartPageLabel.textContent = t('dialog.config.browser.startPage');
     const browserStartPageHelp = document.getElementById('browser-start-page-help');
     if (browserStartPageHelp) browserStartPageHelp.textContent = t('dialog.config.browser.startPageHelp');
+    const browserOpenMusicFilesLabel = document.getElementById('browser-open-music-files-label');
+    if (browserOpenMusicFilesLabel) browserOpenMusicFilesLabel.textContent = t('dialog.config.browser.openMusicFiles');
+    const browserOpenMusicFilesHelp = document.getElementById('browser-open-music-files-help');
+    if (browserOpenMusicFilesHelp) browserOpenMusicFilesHelp.textContent = t('dialog.config.browser.openMusicFilesHelp');
     const browserResetStartPageLabel = document.getElementById('browser-reset-start-page');
     if (browserResetStartPageLabel) browserResetStartPageLabel.textContent = t('dialog.config.browser.reset');
     const browserResetUserAgentLabel = document.getElementById('browser-reset-user-agent');
@@ -1986,12 +1997,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
   const browserStartPage = document.getElementById('browser-start-page');
   const browserResetStartPage = document.getElementById('browser-reset-start-page');
   const browserResetUserAgent = document.getElementById('browser-reset-user-agent');
-  const browserControls = [browserUserAgent, browserOpenTabs, browserStartPage, browserResetStartPage, browserResetUserAgent, document.getElementById('browser-rules-controls')].filter(Boolean);
+  const browserOpenMusicFiles = document.getElementById('browser-open-music-files');
+  const browserControls = [browserUserAgent, browserOpenTabs, browserStartPage, browserResetStartPage, browserResetUserAgent, browserOpenMusicFiles, document.getElementById('browser-rules-controls')].filter(Boolean);
   function syncBrowserControls() {
     if (!browserUserAgent) return;
     browserUserAgent.value = config.browser?.userAgent || defaultBrowserUserAgent;
     browserOpenTabs.checked = config.browser?.openTabsExternally !== false;
     browserStartPage.value = config.browser?.startPage || '';
+    browserOpenMusicFiles.checked = config.browser?.openMusicFilesInPlayer === true;
     for (const control of browserControls) control.disabled = !window.electronAPI?.browser;
   }
   async function saveBrowserSettings(patch) {
@@ -2026,6 +2039,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   browserOpenTabs?.addEventListener('change', () => saveBrowserSettings({ openTabsExternally: browserOpenTabs.checked }));
   browserStartPage?.addEventListener('change', () => saveBrowserSettings({ startPage: browserStartPage.value }));
   browserResetStartPage?.addEventListener('click', () => saveBrowserSettings({ startPage: '' }));
+  browserOpenMusicFiles?.addEventListener('change', () => saveBrowserSettings({ openMusicFilesInPlayer: browserOpenMusicFiles.checked }));
   function labelBrowserRule(element, key, attribute) {
     browserRuleLabels.push([element, key, attribute]);
     if (attribute) element.setAttribute(attribute, t(`dialog.config.browser.rules.${key}`));

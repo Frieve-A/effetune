@@ -4,14 +4,16 @@ import path from 'node:path';
 
 import { createChain } from '@effetune/dsp';
 
-const bundleRoot = path.resolve(process.argv[2]);
-const manifest = JSON.parse(fs.readFileSync(
+// A Bundle directory written by Bundle.pack() or `effetune bundle pack`.
+const bundleRoot = path.resolve(process.argv[2] ?? 'python-bundle');
+const bundle = JSON.parse(fs.readFileSync(
   path.join(bundleRoot, 'bundle.json'),
   'utf8'
 ));
 for (const variant of ['baseline', 'simd']) {
-  const chain = await createChain(manifest, {
+  const chain = await createChain(bundle, {
     variant,
+    // Receives each manifest reference, such as "assets/<sha256>.eta1".
     assetResolver: reference => fs.readFileSync(path.join(bundleRoot, reference))
   });
   const input = [Float32Array.of(0.5), Float32Array.of(-0.25)].map(channel => {

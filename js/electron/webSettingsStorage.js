@@ -15,6 +15,7 @@ export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
 export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   inputDeviceId: 'default',
   midiInputDeviceKey: '',
+  midiOutputDeviceKey: '',
   outputDeviceId: 'default',
   inputDeviceLabel: '',
   outputDeviceLabel: '',

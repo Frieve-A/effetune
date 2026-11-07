@@ -15,6 +15,7 @@
     { "id": "streaming-and-events", "status": "launch", "path": "/dsp/concepts/streaming-and-events/", "title": "Streaming and events", "output": "docs/dsp/concepts/streaming-and-events/index.md" },
     { "id": "assets-and-bundles", "status": "launch", "path": "/dsp/concepts/assets-and-bundles/", "title": "Assets and bundles", "output": "docs/dsp/concepts/assets-and-bundles/index.md", "anchors": ["asset-required-effects"] },
     { "id": "ml-data-augmentation", "status": "launch", "path": "/dsp/cookbook/ml-data-augmentation/", "title": "ML data augmentation", "output": "docs/dsp/cookbook/ml-data-augmentation/index.md" },
+    { "id": "midi-to-wav", "status": "launch", "path": "/dsp/cookbook/midi-to-wav/", "title": "MIDI to WAV", "output": "docs/dsp/cookbook/midi-to-wav/index.md" },
     { "id": "schema-driven-agent", "status": "launch", "path": "/dsp/cookbook/schema-driven-agent/", "title": "Schema-driven agent", "output": "docs/dsp/cookbook/schema-driven-agent/index.md" },
     { "id": "python-api", "status": "launch", "path": "/dsp/api/python/", "title": "Python API", "output": "docs/dsp/api/python/index.md", "installSurfaces": ["python"] },
     { "id": "javascript-api", "status": "launch", "path": "/dsp/api/javascript/", "title": "JavaScript API", "output": "docs/dsp/api/javascript/index.md", "installSurfaces": ["npm"] },
@@ -52,7 +53,7 @@
     "groups": [
       { "label": "Start", "routeIds": ["landing", "python-start", "javascript-start", "audioworklet-start", "cli-start"] },
       { "label": "Effects", "routeIds": ["effects"] },
-      { "label": "Build", "routeIds": ["ml-data-augmentation", "schema-driven-agent"] },
+      { "label": "Build", "routeIds": ["ml-data-augmentation", "midi-to-wav", "schema-driven-agent"] },
       { "label": "Understand", "routeIds": ["processing-model", "determinism", "chain-and-presets", "streaming-and-events", "assets-and-bundles"] },
       { "label": "Reference", "routeIds": ["python-api", "javascript-api", "chain-v1", "graph-v1", "bundle-v1", "compatibility", "verification", "release-integrity"] },
       { "label": "Help", "routeIds": ["faq", "demo"] }

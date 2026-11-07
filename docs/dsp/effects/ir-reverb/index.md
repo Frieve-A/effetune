@@ -32,9 +32,15 @@ See [Assets and bundles](/dsp/concepts/assets-and-bundles/#asset-required-effect
 
 
 
+### Asset requirements
+
+`assets.impulseResponse`: `channelMode` sets the topology. `mono` uses one IR channel for every selected channel. `independent` uses one IR channel per selected channel. `trueStereo` uses four IR channels (LL, LR, RL, RR) and exactly two selected channels. `matrix` uses explicit convolution paths. `automatic` chooses `mono` for a one-channel IR, `trueStereo` for a four-channel IR on two selected channels, and `independent` when the IR has one channel per selected channel; give other layouts explicitly as `matrix`.
+
+The IR sample rate must equal the convolution rate that `convolutionRate` selects: `full` is the processing rate, `half` is half of it, and `quarter` is a quarter of it (processing rates of 176.4 kHz and higher only). `auto` selects `half` at processing rates of 88.2 kHz and higher and `full` below that. `latency` `0` always uses `full`. The library does not resample the IR.
+
 ## EffeTune app documentation
 
-> The following section is reproduced from the English EffeTune app documentation. Its parameter names and values describe the app UI and can differ from semantic API parameters through transforms or value maps. The generated contract above is authoritative.
+> The following section is reproduced from the English EffeTune app documentation. It describes the app UI, so it can mention controls, meters, and displays that the library does not provide, and its parameter names and values can differ from the API through transforms or value maps. Only the parameters in the Contract table above, plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), are part of the library API; the Contract is authoritative. Some parameters take effect only when a related setting enables them.
 
 ## IR Reverb
 

@@ -142,7 +142,9 @@ test('production schemas expose the audited automation population', async () => 
       SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity', 'detection', 'preset']
     },
     appInstrumentControls: {
-      SoundFontPlayerPlugin: ['midiChannel', 'maxVoices', 'sampleQuality']
+      SoundFontPlayerPlugin: [
+        'midiChannel', 'maxVoices', 'sampleQuality', 'automaticFallback', 'previewMidi', 'previewChannel'
+      ]
     },
     resetsLearningState: {
       AdaptivePredictionEffectPlugin: ['resetToken']

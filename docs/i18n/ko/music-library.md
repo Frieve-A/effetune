@@ -22,7 +22,7 @@ lang: ko
 
 MP4, WebM, M4V, MOV, MKV, 3GP 파일을 포함하려면 **설정 > 구성... > 일반**에서 **음악 라이브러리에 동영상 파일 형식 포함**을 켠 뒤 폴더를 추가하거나 다시 스캔하세요. 이 설정은 기본적으로 꺼져 있으며, 바꿔도 기존 카탈로그가 즉시 바뀌지는 않습니다. 동영상 파일 내부의 오디오 코덱을 포함해 실제로 재생할 수 있는지는 브라우저나 OS의 디코더에 따라 다릅니다. 동영상 표시는 [음악 플레이어 가이드](music-player.md#video)를 참조하세요.
 
-MIDI/KAR(`.mid`, `.midi`, `.kar`) 및 MusicXML(`.musicxml`, `.xml`, `.mxl`) 파일을 포함하려면 같은 설정 화면에서 **음악 라이브러리에 MIDI 파일 포함**을 켠 뒤 폴더를 추가하거나 다시 스캔하세요. 이 설정은 기본적으로 꺼져 있으며, 바꿔도 기존 카탈로그가 즉시 바뀌지는 않습니다. 소리를 들으려면 SoundFont Player를 추가하고 악기를 불러오세요. 자세한 내용은 [MIDI 파일](music-player.md#midi-파일)과 [MusicXML 파일](music-player.md#musicxml-files)을 참조하세요. MIDI와 MusicXML 재생 및 라이브러리 등록은 데스크톱 앱과 웹/PWA 플레이어에서 사용할 수 있습니다. Android 앱에서는 지원하지 않습니다.
+MIDI/KAR(`.mid`, `.midi`, `.kar`) 및 MusicXML(`.musicxml`, `.xml`, `.mxl`) 파일을 포함하려면 같은 설정 화면에서 **음악 라이브러리에 MIDI 파일 포함**을 켠 뒤 폴더를 추가하거나 다시 스캔하세요. 이 설정은 기본적으로 꺼져 있으며, 바꿔도 기존 카탈로그가 즉시 바뀌지는 않습니다. 소리를 들으려면 SoundFont Player를 추가하고 악기를 불러오거나 **MIDI 출력 장치**에서 외부 장치를 선택하세요. 자세한 내용은 [MIDI 파일](music-player.md#midi-파일)과 [MusicXML 파일](music-player.md#musicxml-files)을 참조하세요. MIDI와 MusicXML 재생 및 라이브러리 등록은 데스크톱 앱과 웹/PWA 플레이어에서 사용할 수 있습니다. Android 앱에서는 지원하지 않습니다.
 
 이 설정은 음악 라이브러리에만 적용됩니다. 지원되는 파일은 음악 플레이어에서 직접 열 수 있습니다.
 

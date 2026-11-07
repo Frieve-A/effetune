@@ -13,14 +13,20 @@ Use this path to process a planar NumPy array.
 pip install effetune
 ```
 
-Wheels target CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
-macOS Apple Silicon. musllinux is not provided. Input must be C-contiguous
+Python wheels require CPython 3.10 or newer; the `cp312-abi3`
+wheel also covers newer CPython versions. Wheels are published for Windows x64
+(`win_amd64`), Linux x86-64 with glibc 2.27 or newer (`manylinux_2_27`), and
+macOS 15 or newer on Intel (`x86_64`) and Apple Silicon (`arm64`). There is no
+source distribution and no musllinux, Linux ARM, or 32-bit wheel, so on other
+systems pip reports `No matching distribution found for effetune`. Input must be C-contiguous
 `float32` with shape `(channels, frames)`; the core does not resample.
 
 Generated effect constructors and `create_effect()` accept Python
 `snake_case` keywords:
 
 ```python
+import effetune as et
+
 shift = et.PitchShifter(pitch_shift=3)
 same_shift = et.create_effect("PitchShifter", pitch_shift=3)
 ```

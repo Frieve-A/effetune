@@ -85,6 +85,8 @@ Pour **Title**, **Album** et **Artist**, réglez séparément la police, la tail
 
 Ajoutez **Informations sur le morceau** pour afficher les tags et le format audio disponibles pour le fichier ou le morceau réseau en cours. Avec AirPlay, cet élément affiche aussi les informations fournies sur l’émetteur, le codec reçu, le format PCM du récepteur et le volume de l’émetteur. Les champs indisponibles sont omis. Utilisez les mêmes réglages de texte que pour Title. **Title**, **Artist**, **Album** et **Artwork** affichent également les informations transmises par l’émetteur AirPlay.
 
+Dans l’application de bureau, **Title**, **Artist**, **Album**, **Artwork** et **Track information** peuvent aussi afficher les informations sur le morceau qu’une page du navigateur intégré fournit aux commandes multimédia du système. Les informations du navigateur s’affichent pendant sa lecture ou lorsque le lecteur n’a aucun morceau ; sinon, c’est le morceau du lecteur qui s’affiche. Si le site ne fournit aucune information, **Title**, **Artist**, **Album** et **Artwork** restent vides. La première ligne de **Track information** est « Navigateur - » suivi du nom d’hôte du site.
+
 Ajoutez **Text** pour afficher un libellé fixe ou le nom d’une pièce d’écoute (jusqu’à 4 096 caractères, multiligne pris en charge) avec les mêmes réglages de typographie, de contour et d’ombre que Title.
 
 Ajoutez **Playback Control** pour placer un bouton du lecteur dans votre composition. Choisissez une **Action** : **Lecture / Pause**, **Arrêter**, **Piste précédente**, **Piste suivante**, **Aléatoire** ou **Répéter** ; ajoutez un élément par bouton souhaité. Hors du mode **Edit**, cliquez ou touchez le bouton, ou sélectionnez-le avec **Tab**, puis appuyez sur **Enter** ou **Space**. Lorsque le lecteur est ouvert, les commandes indisponibles sont estompées. La lecture aléatoire est indisponible pendant la répétition d’une seule piste.
@@ -96,11 +98,13 @@ Ajoutez **Seek Bar** pour placer une barre horizontale de position de lecture. H
 
 - **Apparence** propose **Fin**, **Classique** et **Épais** comme points de départ. **Couleur de la piste**, **Opacité de la piste** et **Épaisseur de la piste** règlent le fond de la barre ; **Extrémités arrondies** arrondit ses extrémités. La palette colore la partie déjà lue. **Afficher le curseur** permet d’afficher ou de masquer le repère de position ; **Taille du curseur** et **Couleur du curseur** règlent son apparence. **Forme du curseur** propose **Cercle**, **Carré**, **Losange** ou une **Barre** verticale. **Épaisseur de bordure du curseur** et **Couleur de bordure du curseur** ajoutent un contour ; réglez l’épaisseur sur 0 pour le masquer. Les effets d’élément existants s’appliquent également.
 
-Playback Control et Seek Bar restent visibles quand le lecteur est en pause ou arrêté. Si aucun lecteur n’est ouvert, les deux sont masqués hors du mode **Edit**, y compris dans Clean Feed ; vous pouvez toujours les configurer dans l’éditeur.
+Playback Control et Seek Bar restent visibles quand le lecteur est en pause ou arrêté. Si aucun lecteur n’est ouvert et que le navigateur intégré n’a aucun morceau à afficher, les deux sont masqués hors du mode **Edit**, y compris dans Clean Feed ; vous pouvez toujours les configurer dans l’éditeur.
 
 Ajoutez **Counter** pour afficher la position actuelle du lecteur intégré, en suivant les pauses et les déplacements dans le morceau. Avec une entrée externe, il mesure le temps écoulé depuis l’ajout du Counter ou le chargement de la disposition dans la session actuelle, même lorsque Visualizer est masqué. En dehors d’**Edit**, cliquez ou touchez le compteur pour remettre à zéro son temps externe uniquement ; la lecture reste inchangée.
 
 Pendant AirPlay, **Counter** et **Seek Bar** affichent la position du morceau lorsqu’elle est communiquée par l’émetteur, et suivent ses mises à jour. Le déplacement dans le morceau et les commandes non prises en charge sont indisponibles. **Arrêter** met fin à la réception en cours. Consultez le [guide de musique en réseau](openhome.md) pour la configuration et les formats audio.
+
+Pour une page lue dans le navigateur intégré, **Counter** et **Seek Bar** se limitent à afficher la position et la durée. Comme avec AirPlay, le déplacement dans le morceau et les actions de **Playback Control** sont indisponibles.
 
 - **Numéro dans la liste**, **Heures**, **Minutes**, **Secondes** et **Fractions de seconde** affichent ou masquent chaque champ séparément. Par défaut, l’affichage est `hh:mm:ss.mmm`, sans numéro. Le numéro commence à 1 dans la liste du lecteur et affiche 00 avec une entrée externe. La plus grande unité entière affichée cumule le temps : sans heures, les minutes sont totales ; sans heures ni minutes, les secondes sont totales.
 - **Décimales** (1–4, par défaut 3) règle le nombre de décimales ; 3 correspond aux millisecondes. **Séparateurs** › **Temps** (`:`), **Fractions de seconde** (`.`) et **Numéro** (une espace) acceptent jusqu’à huit caractères chacun, ou peuvent rester vides.
@@ -192,7 +196,7 @@ Pour un fond discret derrière les paroles, essayez Saturation à 60 % et Lumino
 
 ## Préréglages, partage, sauvegarde et réglages d’affichage
 
-Utilisez la boîte de dialogue des préréglages pour enregistrer, recharger, renommer ou supprimer vos dispositions nommées ; les préréglages intégrés restent disponibles. **Paramètres > Sauvegarde / Restauration** sauvegarde les préréglages Visualizer enregistrés et leurs images de fond, mais pas la disposition de travail actuelle.
+Utilisez la boîte de dialogue des préréglages pour enregistrer, recharger, renommer ou supprimer vos dispositions nommées ; les préréglages intégrés restent disponibles. Si la liste est longue, saisissez une partie d’un nom dans le champ de recherche en haut de la boîte de dialogue pour la filtrer. **Paramètres > Sauvegarde / Restauration** sauvegarde les préréglages Visualizer enregistrés et leurs images de fond, mais pas la disposition de travail actuelle.
 
 Sélectionnez **Partager** dans la barre d’outils pour copier un lien vers la disposition actuelle (les images de fond ne sont pas incluses dans les liens ; utilisez **Sauvegarde / Restauration** pour les images). Dans l’application de bureau ou l’extension de navigateur, copiez un lien de partage et sélectionnez **Importer un lien** ou appuyez sur **Ctrl+V** (**⌘V** sur Mac) dans Visualizer. Une disposition importée remplace l’actuelle sans confirmation ; pour revenir en arrière, ouvrez **Edit** et sélectionnez **Annuler**.
 

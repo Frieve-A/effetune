@@ -1596,13 +1596,16 @@ export function packSimpleJitterPluginParams(params = {}) {
   return packed;
 }
 
-export const SoundFontPlayerPlugin_PARAMS_HASH = 0x844a0998;
+export const SoundFontPlayerPlugin_PARAMS_HASH = 0x7dca0295;
 export function packSoundFontPlayerPluginParams(params = {}) {
-  const packed = new Float32Array(4);
+  const packed = new Float32Array(7);
   packed[0] = (() => { const value = params["mc"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 16) return 16; return value; })();
   packed[1] = (() => { const value = params["pl"]; if (!(Number.isSafeInteger(value))) return 64; if (value < 1) return 1; if (value > 1024) return 1024; return value; })();
   packed[2] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -60) return -60; if (value > 12) return 12; return value; })();
   packed[3] = (() => { const value = params["sq"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 2) return 2; return value; })();
+  packed[4] = (params["af"] === true || params["af"] === 1 ? 1 : params["af"] === false || params["af"] === 0 ? 0 : 1);
+  packed[5] = (() => { const value = params["pm"]; if (!(Number.isSafeInteger(value))) return -1; if (value < -1) return -1; if (value > 127) return 127; return value; })();
+  packed[6] = (() => { const value = params["pc"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 15) return 15; return value; })();
   return packed;
 }
 
@@ -2783,7 +2786,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   SaturationPlugin: Object.freeze({ hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 }),
   SFZNotePlayerPlugin: Object.freeze({ hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 21 }),
   SimpleJitterPlugin: Object.freeze({ hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 }),
-  SoundFontPlayerPlugin: Object.freeze({ hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 4 }),
+  SoundFontPlayerPlugin: Object.freeze({ hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 7 }),
   SpatialMapperPlugin: Object.freeze({ hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 }),
   SpectrogramPlugin: Object.freeze({ hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 }),
   SpectrumAnalyzerPlugin: Object.freeze({ hash: SpectrumAnalyzerPlugin_PARAMS_HASH, floatCount: 3 }),
@@ -2899,7 +2902,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["SaturationPlugin", Object.freeze({ pack: packSaturationPluginParams, hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 })],
   ["SFZNotePlayerPlugin", Object.freeze({ pack: packSFZNotePlayerPluginParams, hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 21 })],
   ["SimpleJitterPlugin", Object.freeze({ pack: packSimpleJitterPluginParams, hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 })],
-  ["SoundFontPlayerPlugin", Object.freeze({ pack: packSoundFontPlayerPluginParams, hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 4 })],
+  ["SoundFontPlayerPlugin", Object.freeze({ pack: packSoundFontPlayerPluginParams, hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 7 })],
   ["SpatialMapperPlugin", Object.freeze({ pack: packSpatialMapperPluginParams, hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 })],
   ["SpectrogramPlugin", Object.freeze({ pack: packSpectrogramPluginParams, hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 })],
   ["SpectrumAnalyzerPlugin", Object.freeze({ pack: packSpectrumAnalyzerPluginParams, hash: SpectrumAnalyzerPlugin_PARAMS_HASH, floatCount: 3 })],

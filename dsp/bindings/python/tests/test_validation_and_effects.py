@@ -56,6 +56,8 @@ class ValidationAndEffectsTests(unittest.TestCase):
             effect = (
                 effect_class(assets={"impulseResponse": "room"})
                 if name in asset_effects
+                else effect_class(assets={"soundFont": "bank"})
+                if name == "SoundFontPlayer"
                 else effect_class()
             )
             self.assertEqual(effect.type, name)

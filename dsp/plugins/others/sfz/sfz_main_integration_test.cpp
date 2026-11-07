@@ -67,6 +67,7 @@ struct Player {
     values[0] = static_cast<float>(selectedChannel);
     values[1] = 64;
     values[2] = gain;
+    values[4] = 1;
     CHECK(kernel->stageParameters(values.data(), descriptor->paramsFloatCount,
                                   descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();

@@ -1,6 +1,6 @@
 {
   "name": "@effetune/dsp",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "EffeTune's deterministic WebAssembly audio effects for JavaScript and AudioWorklet",
   "type": "module",
   "license": "MIT",
@@ -20,7 +20,11 @@
   "sideEffects": [
     "./dist/worklet-processor.js"
   ],
+  "bin": {
+    "effetune-soundfont": "bin/effetune-soundfont.mjs"
+  },
   "files": [
+    "bin/",
     "dist/",
     "LICENSE",
     "README.md",

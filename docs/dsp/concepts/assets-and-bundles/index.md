@@ -10,23 +10,33 @@ permalink: /dsp/concepts/assets-and-bundles/
 ## Asset-required effects
 
 `CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`, and
-`RoomEQ` require `assets.impulseResponse`. FIR filter effects require prepared
-coefficients at the processing rate; IR Reverb accepts supported convolution
-topologies. The resolver returns Python `AssetData` or deterministic ETA1
-bytes/`{bytes, format}` in JavaScript. It never relies on repository fixtures.
+`RoomEQ` require `assets.impulseResponse`. The resolver returns Python `AssetData` or
+deterministic ETA1 bytes/`{bytes, format}` in JavaScript. It never relies on
+repository fixtures. `SoundFontPlayer` requires `assets.soundFont` instead; see
+[SoundFont banks](#soundfont-banks).
 
-Crosstalk Cancellation requires four prepared filter channels in trueStereo topology
-(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
-channels. Automatic topology is accepted for this four-channel asset.
+| Effect | `impulseResponse` layout |
+|---|---|
+| [`CrosstalkCancellation`](/dsp/effects/crosstalk-cancellation/#asset-requirements) | Four coefficient channels in `trueStereo` topology, ordered LL, LR, RL, RR. The selector must select exactly two channels. |
+| [`FIRCrossover`](/dsp/effects/fir-crossover/#asset-requirements) | One coefficient channel per band (`bandCount` channels) in `matrix` topology. Select an even number of channels from 4 to 16, at least `2 × bandCount`. Put the stereo input in lanes 0 and 1. Band `b` leaves on lanes `2b` and `2b + 1`, and any remaining lanes are silent. In Python, give the matching paths (input 0 to lane `2b`, input 1 to lane `2b + 1`, both through IR channel `b`) and `input_count=2`. |
+| [`FiveBandFIRPEQ`](/dsp/effects/five-band-firpeq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
+| [`GroupDelayEQ`](/dsp/effects/group-delay-eq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
+| [`GroupDelayPEQ`](/dsp/effects/group-delay-peq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
+| [`IRReverb`](/dsp/effects/ir-reverb/#asset-requirements) | `channelMode` sets the topology. `mono` uses one IR channel for every selected channel. `independent` uses one IR channel per selected channel. `trueStereo` uses four IR channels (LL, LR, RL, RR) and exactly two selected channels. `matrix` uses explicit convolution paths. `automatic` chooses `mono` for a one-channel IR, `trueStereo` for a four-channel IR on two selected channels, and `independent` when the IR has one channel per selected channel; give other layouts explicitly as `matrix`. |
+| [`RoomEQ`](/dsp/effects/room-eq/#asset-requirements) | One shared coefficient channel (`mono`) or one coefficient channel per selected channel (`independent`). |
+
+FIR filter effects take finished coefficients at the processing sample rate; the
+library does not design filters or resample assets. IR Reverb takes an IR at the rate
+its `convolutionRate` selects. Each effect page lists the rate, latency, and
+`filterDelaySamples` rules under **Asset requirements**.
 
 [Bass Management](/dsp/effects/bass-management/) requires a low-pass asset only
 for configured Linear routing with Managed inputs or low-pass-filtered LFE inputs;
 see its effect page for the coefficient layout and an executable example.
 
 The examples below run each effect with two distinct caller-owned IRs and require
-finite, non-zero, different output. FIR Crossover uses two coefficient channels,
-accepts stereo in processing lanes 0 and 1, and routes its two bands to four output
-lanes.
+finite, non-zero, different output. The FIR Crossover example uses two bands, so it
+processes four lanes.
 
 Bundle v1 combines Chain JSON with external ETA1 manifests. Python
 `Bundle.pack()` writes a deterministic directory bundle, and
@@ -88,14 +98,54 @@ sf.write("input.wav", source.T, 48_000, subtype="FLOAT")
 ```
 
 ```console
-effetune bundle pack room-chain.json cli-bundle \
-  --asset room-ir=room-ir.wav
+effetune bundle pack room-chain.json cli-bundle --asset room-ir=room-ir.wav
 effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT
 ```
 
 `--preset cli-bundle/bundle.json` is equivalent to the Bundle-directory form above.
 For WAV output, omitting `--subtype` keeps SoundFile's PCM_16 default; use
 `--subtype FLOAT` when the rendered samples must remain 32-bit floating point.
+
+JavaScript loads the same directory by passing `bundle.json` to `createChain()` with an
+`assetResolver` that reads each manifest reference relative to the Bundle directory.
+This example reads the `python-bundle` directory written above:
+
+```js
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { createChain } from '@effetune/dsp';
+
+// A Bundle directory written by Bundle.pack() or `effetune bundle pack`.
+const bundleRoot = path.resolve(process.argv[2] ?? 'python-bundle');
+const bundle = JSON.parse(fs.readFileSync(
+  path.join(bundleRoot, 'bundle.json'),
+  'utf8'
+));
+for (const variant of ['baseline', 'simd']) {
+  const chain = await createChain(bundle, {
+    variant,
+    // Receives each manifest reference, such as "assets/<sha256>.eta1".
+    assetResolver: reference => fs.readFileSync(path.join(bundleRoot, reference))
+  });
+  const input = [Float32Array.of(0.5), Float32Array.of(-0.25)].map(channel => {
+    const padded = new Float32Array(1024);
+    padded.set(channel);
+    return padded;
+  });
+  const output = await chain.process(input, {
+    sampleRate: 48000,
+    seed: 0,
+    blockSize: 64
+  });
+  assert.ok(output.every(channel => channel.every(Number.isFinite)));
+  assert.ok(output.some(channel =>
+    channel.some(sample => Math.abs(sample) > 1e-7)
+  ));
+  chain.close();
+}
+```
 
 Python `AssetData` examples for the required-asset effects listed above:
 
@@ -224,6 +274,9 @@ const COEFFICIENTS = Object.freeze({
   ])
 });
 
+export const requiresImpulseResponse = effect =>
+  effect.assets.some(asset => asset.required && asset.kind === 'impulseResponse');
+
 export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
   const requiredAssets = effect.assets.filter(asset => asset.required);
   if (!requiredAssets.length) {
@@ -287,12 +340,14 @@ Then run the JavaScript resolver examples for the same effects:
 ```js
 import assert from 'node:assert/strict';
 import { createChain, getEffectCatalog } from '@effetune/dsp';
-import { ASSET_EFFECT_TYPES, assetSetup } from './asset-fixtures.mjs';
+import {
+  ASSET_EFFECT_TYPES,
+  assetSetup,
+  requiresImpulseResponse
+} from './asset-fixtures.mjs';
 
 const sampleRate = 48000;
-const effects = getEffectCatalog().effects.filter(effect =>
-  effect.assets.some(asset => asset.required)
-);
+const effects = getEffectCatalog().effects.filter(requiresImpulseResponse);
 assert.deepEqual(effects.map(effect => effect.type), ASSET_EFFECT_TYPES);
 for (const variant of ['baseline', 'simd']) {
   for (const effect of effects) {
@@ -348,3 +403,37 @@ for (const variant of ['baseline', 'simd']) {
   }
 }
 ```
+
+## SoundFont banks
+
+[SoundFont Player](/dsp/effects/soundfont-player/) takes an instrument bank as
+`assets.soundFont`. Prepare an SF2 file, or an SFZ file with WAV, AIFF, or FLAC
+samples, into an ETSF1 bank once with the JavaScript package. Node.js cannot prepare
+SF3 files or SFZ files with Ogg samples; prepare those in a browser, where
+`prepareSoundFont()` decodes them with the browser's own audio decoder, so the browser
+must support Ogg Vorbis.
+
+```console
+npx -p @effetune/dsp effetune-soundfont prepare piano.sf2 piano.etsf
+```
+
+A bank larger than 256 MiB, such as a full General MIDI set, needs
+`--max-bytes <bytes>` (1 GiB at most).
+
+In JavaScript, `prepareSoundFont(source, { maxBytes })` accepts SF2 bytes, an
+`.sf2` or `.sfz` path in Node.js, or `{ selectedPath, files }` for an SFZ with its
+sample files. An SFZ path reads samples only from within the SFZ file's folder; for an
+SFZ that refers to samples such as `../Samples/`, pass a folder that contains both as
+`{ root }` (`--root <folder>` on the command line). If a sample file cannot be
+found, preparation fails with an `AssetError` that names it. `bank.toBytes()` writes
+ETSF1 and `SoundFontBank.fromBytes()` reads it back. Python reads ETSF1 only, with
+`effetune.SoundFontBank.load(path_or_bytes)`.
+
+The whole bank stays in memory while it is used, so playback never waits for
+sample data. A bank larger than `maxBytes` (256 MiB by default, 1 GiB at most) is
+rejected; raise `maxBytes` for a larger bank.
+
+Return the bank from the asset resolver, as with an impulse response. Bundle v1
+cannot contain SoundFont banks, so keep the ETSF1 file next to the Chain JSON and
+resolve it yourself. [MIDI events](/dsp/concepts/streaming-and-events/#midi-events)
+shows complete examples that play a prepared bank.

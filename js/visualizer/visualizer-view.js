@@ -12,6 +12,7 @@ import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
 import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
 import { getMidiLyricsData } from '../midi/lyrics-timeline.js';
+import { musicPlayerOwnsMidi } from '../midi/live-input.js';
 
 // Undo, Redo, and Delete stay available on range, color, select, and button controls.
 const NON_TEXT_INPUT_TYPES = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
@@ -27,7 +28,7 @@ export class VisualizerView {
         this.hasLyrics = false;
         this.store = new VisualizerPresetStore({ onError: () => this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.') });
         this.sources = new VisualizerSources(uiManager.audioManager,
-            () => uiManager.audioManager.powerPolicyController?.player
+            () => musicPlayerOwnsMidi(uiManager.audioManager.powerPolicyController)
                 ? uiManager.audioManager.powerPolicyController.player.contextManager?.getMidiPresentation?.() ?? null
                 : uiManager.audioManager.getLiveMidiPresentation?.() ?? null);
         this.video = new SynchronizedVideo();
@@ -382,11 +383,24 @@ export class VisualizerView {
         this.feed?.setVisible(visible);
         this.updateVisibility();
     }
+    // Browser media wins whenever the Browser page is playing; otherwise it
+    // only replaces the Player when the Player has nothing to show.
+    browserMedia(snapshot, now = performance.now()) {
+        const media = this.uiManager.browserView?.media?.current(now);
+        if (!media) return null;
+        return media.playing || !snapshot?.currentTrack && !snapshot?.liveInputActive ? media : null;
+    }
     metadata() {
         const player = this.uiManager.audioPlayer;
         // OpenHome can retain the player and its last track after the UI closes.
-        if (!player?.ui?.container) return null;
-        const snapshot = player?.stateManager?.getStateSnapshot();
+        const snapshot = player?.ui?.container ? player.stateManager?.getStateSnapshot() : null;
+        const browser = this.browserMedia(snapshot);
+        if (browser) {
+            const { title, artist, album } = browser;
+            return { title, artist, album, artwork: browser.artworkUrl ? [{ src: browser.artworkUrl }] : [], artworkPending: false,
+                'track-info': formatTrackInformation({ metadata: { title, artist, album }, format: {} }, (key, fallback) => this.t(key, fallback),
+                    `${this.t('dialog.config.browser.title', 'Browser')} - ${browser.site}`) };
+        }
         if (!snapshot?.currentTrack && !snapshot?.liveInputActive) return null;
         const metadata = player.mediaSessionManager?.buildMetadata(snapshot);
         if (!metadata) return null;
@@ -399,7 +413,7 @@ export class VisualizerView {
         const player = this.uiManager.audioPlayer;
         if (!this.hasLyrics || !player?.ui?.container) return null;
         const snapshot = player.stateManager.getStateSnapshot();
-        if (!snapshot.currentTrack) return null;
+        if (this.browserMedia(snapshot) || !snapshot.currentTrack) return null;
         const midi = this.sources.getMidiPresentation();
         const midiData = midi?.timeline ? getMidiLyricsData(midi.timeline) : null;
         if (midiData) return { data: midiData, midiTimeline: midi.timeline, time: midi.position,
@@ -421,9 +435,13 @@ export class VisualizerView {
         };
     }
     playback(target = this.playbackTarget(), owner = this) {
-        const state = target?.ui?.container ? target.stateManager?.getStateSnapshot?.() : null;
+        const snapshot = target?.ui?.container ? target.stateManager?.getStateSnapshot?.() : null;
+        // Browser media is shown read-only, like AirPlay without transport control.
+        const browser = this.browserMedia(snapshot);
+        const state = browser ? { isPlaying: browser.playing, isStopped: !browser.playing,
+            currentTrackDuration: browser.duration, currentTrackPosition: browser.position } : snapshot;
         const present = !!state;
-        const available = !!state && state.controlsEnabled !== false &&
+        const available = !browser && !!state && state.controlsEnabled !== false &&
             (target.isRemote || state.liveInputActive || !!state.currentTrack || state.playlistLength > 0);
         const enabled = Object.fromEntries(Object.entries(PLAYBACK_METHODS).map(([action, method]) => {
             const receiver = action === 'shuffle' || action === 'repeat' ? target?.playbackManager : target;
@@ -433,7 +451,7 @@ export class VisualizerView {
                 !(action === 'shuffle' && state.repeatMode === 'ONE')];
         }));
         const duration = Number.isFinite(state?.currentTrackDuration) && state.currentTrackDuration > 0 ? state.currentTrackDuration : 0;
-        const currentTime = state?.isPlaying ? target.contextManager?.getCurrentPlaybackTime?.() : state?.currentTrackPosition;
+        const currentTime = !browser && state?.isPlaying ? target.contextManager?.getCurrentPlaybackTime?.() : state?.currentTrackPosition;
         const position = Math.max(0, Math.min(duration, Number.isFinite(currentTime) ? currentTime : 0));
         const seek = this.seekGesture || owner.seekGesture || this.feed?.seekGesture;
         return { available: present, playing: !!state?.isPlaying, stopped: !state || !!state.isStopped,
@@ -624,6 +642,12 @@ export class VisualizerView {
         if (!items.length) return new Map();
         const player = this.uiManager.audioPlayer;
         const snapshot = player?.ui?.container ? player.stateManager.getStateSnapshot() : null;
+        const browser = this.browserMedia(snapshot, now);
+        if (browser) {
+            const descriptor = { time: browser.position > 0 ? browser.position : 0, trackIndex: 0, external: false,
+                playing: browser.playing, speed: browser.rate || 1, source: `browser\0${browser.title}\0${browser.artist}`, stamp: now / 1000 };
+            return new Map(items.map(item => [item.id, descriptor]));
+        }
         const live = snapshot?.liveInputActive === true;
         const external = !snapshot?.currentTrack && !live;
         const position = external ? 0 : snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
@@ -724,6 +748,8 @@ export class VisualizerView {
         const player = this.uiManager.audioPlayer;
         // OpenHome can retain the player and its last track after the UI closes.
         const snapshot = player?.ui?.container ? player.stateManager?.getStateSnapshot() : null;
+        // Browser media owns the display; leave the Player's video state untouched.
+        if (this.browserMedia(snapshot)) return null;
         if (!snapshot) {
             this.video.load(null);
             return null;

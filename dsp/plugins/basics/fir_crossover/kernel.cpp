@@ -386,7 +386,11 @@ private:
     dry_delay_.clear(delaySamplesCount);
     wet_delay_.clear(delaySamplesCount);
     delay_position_ = 0u;
-    wet_mix_.fill(0.0F);
+    // A reset stream has no earlier output to crossfade from, so an active asset starts wet.
+    wet_mix_.fill(asset_state_ == ET_ASSET_STATE_ACTIVE &&
+                          params_.latencyMode != kReplacementDryLatencyMode
+                      ? 1.0F
+                      : 0.0F);
     split_output_muted_ = true;
     replacement_dry_ready_ = false;
     latency_transition_remaining_ = 0u;

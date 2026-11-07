@@ -22,7 +22,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:89daebfc231441f5814dda3a0aeb010bbfa925a00ff6d62c39ec59c7e80a313f",
+  "referenceHash": "sha256:fbb5d3b04312acf71f48a8d59326d9f30ed491848cfb77e9deeba93e7c79dfb6",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type HumRemoverPlugin --promote-production-native",
   "outputFloats": 4096,
   "byteLength": 16384,

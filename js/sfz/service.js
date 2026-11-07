@@ -105,7 +105,7 @@ async function prepareBank(bytes, decode, onDiagnostic, maxBytes, options) {
     name: bank.selectedPath.split('/').pop() };
 }
 
-async function prepareBankSource(id, file, { decode, prepareStreamedBank, prepareSoundFontBank, maxBytes, onDiagnostic, cacheBackend, isCurrent, onSourceProgress, onPreparationProgress, preparationContext, estimateEffectBytes }) {
+export async function prepareBankSource(id, file, { decode, prepareStreamedBank, prepareSoundFontBank, maxBytes, onDiagnostic, cacheBackend, isCurrent, onSourceProgress, onPreparationProgress, preparationContext, estimateEffectBytes }) {
   const source = await openSfzBankSource(file), definitions = new Map();
   if (/\.sf[23]$/i.test(source.selectedPath)) {
     if (typeof prepareSoundFontBank !== 'function') throw sfzError('prepare', 'SoundFont playback is unavailable. Reload the app and try again.');

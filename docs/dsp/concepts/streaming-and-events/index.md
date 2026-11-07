@@ -21,10 +21,16 @@ must be in non-decreasing frame order; events sharing a frame are merged in supp
 order before that sample:
 
 ```python
-output = stream.process(audio, events=[
-    {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
-    {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
-])
+import numpy as np
+import effetune as et
+
+chain = et.Chain([et.Compressor(id="voice", threshold=-18, ratio=4)])
+audio = np.full((2, 4800), 0.25, dtype=np.float32)
+with chain.stream(48_000, channels=2) as stream:
+    output = stream.process(audio, events=[
+        {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
+        {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
+    ])
 ```
 
 A scheduled event updates the semantic target at its frame; the event mechanism
@@ -33,12 +39,122 @@ transition to that target. Scheduling small events does not bypass that smoothin
 or guarantee an exact sample-by-sample automation curve.
 
 An open stream or AudioWorklet accepts only values the native parameter commit can
-apply immediately. Open a new stream after changing `IRReverb.channelMode`,
+apply immediately. Open a new stream after changing any `BassManagement` parameter
+other than `bassGain`, `lfeGain`, and `headroom` (including `phase`, `taps`, `roles`,
+`routes`, `subs`, `frequencies`, `slopes`, `routeInversions`, `lfeLowpass`,
+`lfeFrequency`, and `lfeSlope`), or after changing `IRReverb.channelMode`,
 `latency`, or `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
 `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `CrosstalkCancellation`, or `RoomEQ`. Live updates to those
 asset-configuration parameters raise `ValidationError` before processing or posting
 a Worklet command.
+
+## MIDI events
+
+[SoundFont Player](/dsp/effects/soundfont-player/) plays MIDI events placed in the same
+`events` array. A MIDI event is `{frame, effectId, midi: [status, data1, data2]}`
+and carries `midi` instead of `parameters`. `midi` takes the raw message bytes:
+a JavaScript array or `Uint8Array`, or a Python list, tuple, `bytes`, or
+`bytearray`. The `midi` helpers (`midi.noteOn()` in JavaScript,
+`effetune.midi.note_on()` in Python, and so on) build these messages. Note on, note
+off, control change, program change (two or three bytes), and pitch bend are played.
+Aftertouch and system messages are ignored, so raw Web MIDI data can be passed
+unchanged; a malformed message raises `ValidationError`. The player's
+`midiChannel` parameter selects which MIDI channels it follows (`0` follows all of
+them). Each segment of `blockSize` frames (Python: `block_size`) accepts up to 4096 MIDI
+events per effect; if a segment has more, spread the events over more frames or use
+a smaller block size.
+
+This example plays middle C for half a second with the bank prepared in
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks):
+
+```python
+import sys
+
+import numpy as np
+import effetune as et
+
+SAMPLE_RATE = 48_000
+bank = et.SoundFontBank.load(sys.argv[1] if len(sys.argv) > 1 else "piano.etsf")
+chain = et.Chain(
+    [et.SoundFontPlayer(id="piano", assets={"soundFont": "piano"})],
+    asset_resolver=lambda _reference: bank,
+)
+silence = np.zeros((2, SAMPLE_RATE), dtype=np.float32)
+with chain.stream(SAMPLE_RATE, channels=2) as stream:
+    # Middle C on MIDI channel 1 for half a second, then the release tail.
+    output = stream.process(silence, events=[
+        {"frame": 0, "effectId": "piano", "midi": [0x90, 60, 100]},
+        {"frame": 24_000, "effectId": "piano", "midi": [0x80, 60, 0]},
+    ])
+assert np.isfinite(output).all()
+assert np.max(np.abs(output[:, :24_000])) > 1e-4
+```
+
+```js
+import fs from 'node:fs';
+import { createChain, SoundFontBank } from '@effetune/dsp';
+
+const sampleRate = 48000;
+const bank = SoundFontBank.fromBytes(fs.readFileSync(process.argv[2] ?? 'piano.etsf'));
+const chain = await createChain({
+  version: 1,
+  chain: [{ id: 'piano', type: 'SoundFontPlayer', parameters: {}, assets: { soundFont: 'piano' } }]
+}, { assetResolver: () => bank });
+const stream = await chain.stream({ sampleRate, channels: 2 });
+try {
+  // Middle C on MIDI channel 1 for half a second, then the release tail.
+  const output = await stream.process(
+    [new Float32Array(sampleRate), new Float32Array(sampleRate)],
+    {
+      events: [
+        { frame: 0, effectId: 'piano', midi: [0x90, 60, 100] },
+        { frame: 24000, effectId: 'piano', midi: [0x80, 60, 0] }
+      ]
+    }
+  );
+  if (!output.every(channel => channel.every(Number.isFinite))) {
+    throw new Error('Non-finite output');
+  }
+  if (!output[0].subarray(0, 24000).some(sample => Math.abs(sample) > 1e-4)) {
+    throw new Error('The note did not sound');
+  }
+} finally {
+  stream.close();
+  chain.close();
+}
+```
+
+For real-time playback in a browser, send MIDI bytes to an open `EffeTuneNode`
+with `sendMidi(effectId, midi)`. The message is applied at the start of the next
+audio block, so its timing follows the block size rather than a frame position.
+This example loads a prepared bank served next to the page and forwards Web MIDI
+input to the player:
+
+```js
+import { SoundFontBank } from '@effetune/dsp';
+import { EffeTuneNode } from '@effetune/dsp/worklet';
+
+const context = new AudioContext();
+const response = await fetch('piano.etsf');
+const bank = SoundFontBank.fromBytes(await response.arrayBuffer());
+const node = await EffeTuneNode.create(context, {
+  version: 1,
+  chain: [{ id: 'piano', type: 'SoundFontPlayer', parameters: {}, assets: { soundFont: 'piano' } }]
+}, { assetResolver: () => bank });
+node.connect(context.destination);
+
+const access = await navigator.requestMIDIAccess();
+for (const input of access.inputs.values()) {
+  input.onmidimessage = message => node.sendMidi('piano', message.data);
+}
+// Browsers start audio only after a user gesture.
+document.addEventListener('click', () => context.resume(), { once: true });
+```
+
+Graph processing and one-shot `Effect.process` do not accept MIDI events; use a
+stream or an `EffeTuneNode`. To render a Standard MIDI File, see
+[MIDI to WAV](/dsp/cookbook/midi-to-wav/).
 
 ## Processing a file in blocks
 

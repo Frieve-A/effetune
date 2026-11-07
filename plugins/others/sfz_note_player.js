@@ -26,9 +26,7 @@ class SFZNotePlayerPlugin extends SFZInstrumentPlugin {
         this._velocities = new Float32Array(128);
         this._activeVoices = 0;
         this._voiceFrameTime = null;
-        this._previewMidi = -1;
         this._previewVelocity = 100;
-        this._previewPointerId = null;
         this.animationFrameId = null;
         this.isVisible = false;
         this._boundTelemetry = frame => this.handleTelemetry(frame);
@@ -221,69 +219,6 @@ class SFZNotePlayerPlugin extends SFZInstrumentPlugin {
         this._sendPreview();
     }
 
-    _sendPreview() {
-        const audio = window.pipelineManager?.audioManager || window.audioManager;
-        if (this.audioHostActive === false || (!window.workletNode && !audio?.isAndroid)) return;
-        const message = { type: 'updatePlugin', plugin: this.getWorkletPluginData() };
-        if (audio?.commitPowerTopologyMutation) {
-            audio.commitPowerTopologyMutation(message, { reason: 'sfz-note-preview' });
-        } else window.workletNode.port.postMessage(message);
-    }
-
-    _stopPreview() {
-        const pointerId = this._previewPointerId;
-        this._previewPointerId = null;
-        if (this._previewMidi !== -1) {
-            this._previewMidi = -1;
-            this._sendPreview();
-        }
-        if (pointerId !== null && this.canvas?.hasPointerCapture(pointerId)) this.canvas.releasePointerCapture(pointerId);
-        this._releasePreviewLease?.();
-        this._releasePreviewLease = null;
-    }
-
-    _bindPreview() {
-        const canvas = this.canvas;
-        const stop = () => this._stopPreview();
-        const end = event => {
-            if (event.pointerId === this._previewPointerId) stop();
-        };
-        const listeners = {
-            pointerdown: event => {
-                const audio = window.pipelineManager?.audioManager || window.audioManager;
-                const ready = audio?.hasNativePluginAsset?.(this, 0) ??
-                    Boolean(window.workletNode && this.getWasmAssets().has(0));
-                if (event.defaultPrevented || event.button !== 0 || this._previewPointerId !== null ||
-                    !this.enabled || this._sectionEnabled === false || this.hasLocalAudio === false ||
-                    this.audioHostActive === false || !ready) return;
-                event.preventDefault();
-                this._previewPointerId = event.pointerId;
-                canvas.setPointerCapture(event.pointerId);
-                const power = audio?.powerPolicyController;
-                if (power?.started) this._releasePreviewLease = power.acquireLease('sfz-note-preview', { mode: 'force-active' });
-                this._previewAt(event);
-            },
-            pointermove: event => {
-                if (event.pointerId !== this._previewPointerId) return;
-                event.preventDefault();
-                this._previewAt(event);
-            },
-            pointerup: end,
-            pointercancel: end,
-            lostpointercapture: end
-        };
-        const visibility = () => { if (document.hidden) stop(); };
-        for (const [type, listener] of Object.entries(listeners)) canvas.addEventListener(type, listener);
-        window.addEventListener('blur', stop);
-        document.addEventListener('visibilitychange', visibility);
-        this._disposePreview = () => {
-            stop();
-            for (const [type, listener] of Object.entries(listeners)) canvas.removeEventListener(type, listener);
-            window.removeEventListener('blur', stop);
-            document.removeEventListener('visibilitychange', visibility);
-        };
-    }
-
     drawGraph(now) {
         const canvas = this.canvas;
         const voiceValue = `${this._activeVoices} / ${this.pl}`;
@@ -395,7 +330,6 @@ class SFZNotePlayerPlugin extends SFZInstrumentPlugin {
     }
 
     createUI() {
-        this._disposePreview?.();
         this.stopAnimation();
         this.observer?.disconnect();
         this.resizeGraphDisposer?.();
@@ -475,7 +409,7 @@ class SFZNotePlayerPlugin extends SFZInstrumentPlugin {
         this.resizeGraphDisposer = graph.dispose;
         this.canvas.setAttribute('role', 'img');
         this.canvas.setAttribute('aria-label', 'Sounding SFZ notes and decaying velocity bars');
-        this._bindPreview();
+        this._bindPreview([this.canvas], { update: event => this._previewAt(event) });
         display.appendChild(graph.container);
         container.appendChild(display);
         container.appendChild(this._createInstrumentDetails());
@@ -499,8 +433,6 @@ class SFZNotePlayerPlugin extends SFZInstrumentPlugin {
     }
 
     cleanup() {
-        this._disposePreview?.();
-        this._disposePreview = null;
         this.stopAnimation();
         this.observer?.disconnect();
         this.observer = null;

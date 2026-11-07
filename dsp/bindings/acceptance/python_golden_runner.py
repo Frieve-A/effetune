@@ -393,7 +393,7 @@ def synthetic_ir(asset: dict[str, Any], sample_rate: int) -> np.ndarray:
     return samples
 
 
-def make_chain(effetune: Any, case: dict[str, Any]) -> tuple[Any, Any]:
+def make_chain(effetune: Any, case: dict[str, Any], repo_root: Path) -> tuple[Any, Any]:
     metadata = case["metadata"]
     parameters = semantic_parameters(case, metadata["params"])
     node: dict[str, Any] = {
@@ -404,7 +404,14 @@ def make_chain(effetune: Any, case: dict[str, Any]) -> tuple[Any, Any]:
         "parameters": parameters,
     }
     resolver = None
-    if "asset" in metadata:
+    if "asset" in metadata and "sfz" in metadata["asset"]:
+        # The synthetic SFZ asset is tracked as its prepared bank.
+        bank = effetune.SoundFontBank.load(
+            repo_root / "dsp" / "bindings" / "common" / "soundfont-sine-v1.etsf"
+        )
+        node["assets"] = {"soundFont": "golden-soundfont"}
+        resolver = lambda reference: bank if reference == "golden-soundfont" else None
+    elif "asset" in metadata:
         asset = metadata["asset"]
         samples = synthetic_ir(asset, metadata["sampleRate"])
         topology_names = {
@@ -1102,7 +1109,7 @@ def main() -> int:
             ):
                 raise RuntimeError("golden binary length does not match metadata")
             source = generate_stimulus(metadata)
-            chain, resolver = make_chain(effetune, case)
+            chain, resolver = make_chain(effetune, case, repo_root)
             if expected_rejection is not None:
                 failures.append(
                     {

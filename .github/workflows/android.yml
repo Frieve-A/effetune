@@ -51,6 +51,15 @@ jobs:
       - name: Install verified toolchain
         run: |
           sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.31.6'
+          # The emulator runner creates AVDs with cmdline-tools/latest. The runner image ships an
+          # avdmanager there that cannot parse the API 37 image metadata and writes a 96 MB AVD.
+          sdkmanager_path="$(command -v sdkmanager)"
+          cmdline_tools="$(realpath -e "$(dirname "$(dirname "$sdkmanager_path")")")"
+          latest="$ANDROID_HOME/cmdline-tools/latest"
+          if [[ ! "$latest" -ef "$cmdline_tools" ]]; then
+            rm -rf -- "$latest"
+            ln -s -- "$cmdline_tools" "$latest"
+          fi
           sudo chmod a+rw /dev/kvm
           npm ci --ignore-scripts
           node scripts/build-android-assets.mjs
@@ -77,7 +86,7 @@ jobs:
           api-level: '37.0'
           arch: x86_64
           target: default
-          emulator-boot-timeout: 180
+          emulator-boot-timeout: 600
           emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
           script: |
             adb pull /product/app/webview/webview.apk out/android/current-webview.apk

@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1052;
-const EFFECT_COUNT = 111;
-const WORKLET_GOLDEN_CASE_COUNT = 113;
-const NON_IDENTITY_EFFECT_COUNT = 102;
+const GOLDEN_CASE_COUNT = 1054;
+const EFFECT_COUNT = 112;
+const WORKLET_GOLDEN_CASE_COUNT = 114;
+const NON_IDENTITY_EFFECT_COUNT = 103;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
   const { cases } = await discoverFrozenGoldenCases(repoRoot);
@@ -450,7 +450,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   const inventory = summarizeInventory(cases);
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
-  assert.equal(inventory.assetCases, 31);
+  assert.equal(inventory.assetCases, 33);
   // Tube Simulator's power-6l6gc-pentode, power-kt88-distributed and minimum-drive-12ax7 used to
   // reach their configuration with a mid-stream event, but each of those events changes a
   // reset-class parameter, and the fade and warmup that follows outlasts the frames left in the

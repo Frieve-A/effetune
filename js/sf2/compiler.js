@@ -1,4 +1,5 @@
 import { sf2Error } from './parser.js';
+import { SF2_MAX_ROUTES } from './modulation.js';
 
 // Independently implemented from Creative/E-mu SoundFont 2.04, sections 8–10:
 // https://www.synthfont.com/sfspec24.pdf
@@ -103,39 +104,49 @@ export function compileSf2(parsed, { presetIndex = null } = {}) {
         const velocityRange = intersect(instrument.generators.get(44) ?? 0x7f00, presetZone.generators.get(44) ?? 0x7f00);
         if (keyRange[0] > keyRange[1] || velocityRange[0] > velocityRange[1]) continue;
         if (keyRange[1] > 127 || velocityRange[1] > 127) throw sf2Error('Invalid MIDI zone range');
-        const generators = Float64Array.from(SF2_GENERATOR_DEFAULTS);
+        const generators = new Float64Array(SF2_GENERATOR_DEFAULTS);
         for (const [id, amount] of instrument.generators) generators[id] = amount;
         for (const [id, amount] of presetZone.generators) if (![41, 43, 44].includes(id)) generators[id] += amount;
         const start = sample.start + generators[0] + 32768 * generators[4];
         const end = sample.end + generators[1] + 32768 * generators[12];
+        // Distributed banks contain zones that no synthesizer can sound: ROM or zero-rate
+        // samples, and address offsets past the sample (for example a coarse start offset
+        // authored for a longer sample). Such zones are dropped like other unusable zones
+        // rather than failing the whole bank.
+        if (sample.sampleType & 0x8000 || sample.sampleRate < 1 || sample.sampleRate > 768000 ||
+            start < 0 || end <= start || end > (sample.compressed?.frames ?? parsed.sampleFrames)) {
+          diagnostics.ignoredZones++; continue;
+        }
         const requestedLoopStart = sample.loopStart + generators[2] + 32768 * generators[45];
         const requestedLoopEnd = sample.loopEnd + generators[3] + 32768 * generators[50];
         // Section 10.5 clips out-of-range synthesis parameters to their nearest
         // realizable value; sample addresses themselves must remain in the pool.
         let loopStart = Math.max(start, Math.min(end, requestedLoopStart));
         let loopEnd = Math.max(start, Math.min(end, requestedLoopEnd));
-        if (generators[54] & 1 && loopEnd <= loopStart) {
+        const looped = generators[54] & 1;
+        if (looped && loopEnd <= loopStart) {
           loopStart = Math.max(start, sample.loopStart);
           loopEnd = Math.min(end, sample.loopEnd);
+          // A loop that is still empty cannot be realized, so the zone plays unlooped,
+          // as common synthesizers do for distributed banks with zero-length loops.
+          if (loopEnd <= loopStart) generators[54] = 0;
         }
-        if (generators[54] & 1 && (loopStart !== requestedLoopStart || loopEnd !== requestedLoopEnd)) diagnostics.adjustedLoops++;
-        if (sample.sampleType & 0x8000) throw sf2Error('The preset requires external ROM samples');
-        const sampleType = sample.sampleType & ~0x10;
-        if (![1, 2, 4, 8].includes(sampleType) || sampleType !== 1 && sample.sampleLink >= tables.shdr.length - 1 ||
-            start < 0 || end <= start || end > (sample.compressed?.frames ?? parsed.sampleFrames) || sample.sampleRate < 1 || sample.sampleRate > 768000 ||
-            generators[54] & 1 && (loopStart < start || loopEnd > end || loopEnd <= loopStart)) {
-          throw sf2Error(`Invalid sample geometry: ${JSON.stringify({ sampleId, start, end, loopStart, loopEnd, modes: generators[54], sample })}`);
+        if (looped && (!(generators[54] & 1) || loopStart !== requestedLoopStart || loopEnd !== requestedLoopEnd)) diagnostics.adjustedLoops++;
+        // Every sample plays as an individual mono source, so a type without channel
+        // flags (written by some editors) is mono; only declared links must resolve.
+        if ([2, 4, 8].includes(sample.sampleType & ~0x10) && sample.sampleLink >= tables.shdr.length - 1) {
+          throw sf2Error(`Invalid sample link: ${JSON.stringify({ sampleId, sample })}`);
         }
         const mods = new Map([...defaultMods, ...instrument.modulators]);
         for (const [key, mod] of presetZone.modulators) mods.set(key, { ...mod, amount: mod.amount + (mods.get(key)?.amount ?? 0) });
         const selected = [...mods.values()], indices = new Map(selected.map((mod, index) => [mod.key, index]));
         routeCount += selected.length;
-        if (selected.length > 65536 || routeCount > 1048576) throw sf2Error('Too many compiled SoundFont modulation routes');
+        if (selected.length > 65536 || routeCount > SF2_MAX_ROUTES) throw sf2Error('Too many compiled SoundFont modulation routes');
         const compiledMods = selected.map(({ key: _key, link, ...mod }) => ({ ...mod, link: link === null ? -1 : indices.get(link) ?? -1 }));
         regions.push({ presetIndex: preset.index, bank: preset.bank, program: preset.program, sampleId, keyRange, velocityRange,
           generators, modulators: compiledMods, sample: { ...sample, start, end, loopStart, loopEnd,
             originalPitch: sample.originalPitch > 127 ? 60 : sample.originalPitch } });
-        if (regions.length > 65536) throw sf2Error('Too many compiled SoundFont zones');
+        if (regions.length > 262144) throw sf2Error('Too many compiled SoundFont zones');
       }
     }
     presets.push({ ...preset, firstRegion, regionCount: regions.length - firstRegion });

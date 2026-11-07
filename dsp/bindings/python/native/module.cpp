@@ -42,6 +42,15 @@ constexpr std::size_t kAssetCapacity = 32u * 1024u * 1024u;
 constexpr std::size_t kConvolverImplUpperBound = 16u * 1024u;
 constexpr std::size_t kConvolverStageUpperBound = 512u;
 constexpr std::size_t kPffftSetupFixedUpperBound = 136u;
+constexpr std::uint32_t kPrewarmQuantum = 128u;
+constexpr std::uint32_t kMinimumPrewarmCalls = 2000u;
+// Native SoundFont verification advances 8 work units per rendered frame and each
+// unit covers at least 64 payload bytes, so a payload needs at most one frame per
+// 512 bytes on top of the two seconds that convolution warm-up may take. The limit
+// only stops an asset that can no longer progress (matches the JavaScript engine).
+constexpr double kPrewarmPayloadBytesPerFrame = 512.0;
+constexpr std::uint32_t kMidiGeneration = 1u;
+constexpr std::uint32_t kMaxMidiEvents = 4096u;
 
 void checkStatus(const char *operation, et_status status) {
   if (status != ET_OK) {
@@ -157,6 +166,35 @@ std::size_t assetFootprint(std::uint32_t frames, std::uint32_t asset_channels,
   return std::max(begin_upper_bound, payload + convolverUpperBound(frames, asset_channels, topology,
                                                                    processing_channels, head_block,
                                                                    matrix_paths, matrix_inputs));
+}
+
+// Prepared sample-player control block: the asset header plus the sampler table.
+std::uint32_t soundFontControlBytes(PackedUint8 payload) {
+  const std::size_t bytes = payload.shape(0);
+  if (bytes < 56u || bytes % 4u != 0u || bytes > std::numeric_limits<std::uint32_t>::max() ||
+      readU32(payload.data()) != kAssetMagic || readU32(payload.data() + 4u) != 1u ||
+      kAssetHeaderBytes + static_cast<std::size_t>(readU32(payload.data() + 8u)) * 4u != bytes) {
+    throw std::invalid_argument("invalid SoundFont bank payload");
+  }
+  const std::size_t control =
+      kAssetHeaderBytes + static_cast<std::size_t>(readU32(payload.data() + 48u)) * 4u;
+  if (control < 56u || control > bytes) {
+    throw std::invalid_argument("invalid SoundFont bank control block");
+  }
+  return static_cast<std::uint32_t>(control);
+}
+
+// Native memory the SoundFont Player needs for this bank: payload plus preparation.
+std::uint64_t soundFontFootprint(PackedUint8 payload, double sample_rate,
+                                 std::uint32_t processing_channels, std::uint32_t max_frames) {
+  const std::uint32_t control = soundFontControlBytes(payload);
+  std::uint64_t additional = 0u;
+  checkStatus("SoundFont preparation estimate",
+              et_sample_player_preparation_bytes(
+                  payload.data(), control, static_cast<std::uint32_t>(payload.shape(0)),
+                  ET_ASSET_F32_MULTICH, static_cast<float>(sample_rate), processing_channels,
+                  max_frames, 0.0, &additional, ET_SAMPLE_PLAYER_MAIN));
+  return payload.shape(0) + additional;
 }
 
 std::int8_t channelSpec(const std::string &channel) {
@@ -324,7 +362,86 @@ public:
                 engine_->commitInstanceAsset(nodes_[node_index].handle, 0u,
                                              static_cast<std::uint32_t>(payload.size()),
                                              ET_ASSET_F32_MULTICH));
-    asset_nodes_.push_back({node_index, processing_channels});
+    asset_nodes_.push_back({node_index, processing_channels, maxPrewarmCalls(payload.size())});
+  }
+
+  // Stages a prepared SoundFont bank; footprint comes from sound_font_footprint().
+  void setSoundFont(std::uint32_t node_index, PackedUint8 payload,
+                    std::uint32_t processing_channels, std::uint64_t footprint) {
+    requireOpen();
+    if (finished_ || node_index >= nodes_.size() ||
+        footprint > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::invalid_argument("invalid SoundFont bank");
+    }
+    soundFontControlBytes(payload);
+    const auto bytes = static_cast<std::uint32_t>(payload.shape(0));
+    const effetune::AssetBeginInfo info{1u,
+                                        (bytes - kAssetHeaderBytes) / 4u,
+                                        0u,
+                                        kPrewarmQuantum,
+                                        1u,
+                                        0u,
+                                        0u,
+                                        processing_channels,
+                                        static_cast<std::uint32_t>(footprint),
+                                        bytes};
+    const et_instance handle = nodes_[node_index].handle;
+    std::uint8_t *staging = engine_->beginInstanceAsset(handle, 0u, info, 0.0);
+    if (staging == nullptr) {
+      throw std::runtime_error("DSP rejected the SoundFont bank");
+    }
+    std::memcpy(staging, payload.data(), bytes);
+    checkStatus("DSP SoundFont commit",
+                engine_->commitInstanceAsset(handle, 0u, bytes, ET_ASSET_F32_MULTICH));
+    asset_nodes_.push_back({node_index, processing_channels, maxPrewarmCalls(bytes)});
+  }
+
+  void configureSampleStream(std::uint32_t node_index) {
+    requireOpen();
+    requireNode(node_index);
+    checkStatus("DSP sample cache configuration",
+                engine_->configureInstanceSampleStream(nodes_[node_index].handle, kMidiGeneration));
+  }
+
+  void publishSamplePage(std::uint32_t node_index, std::uint32_t sample, std::uint64_t page,
+                         PackedFloat32 pcm, std::uint32_t frames, std::uint32_t channels) {
+    requireOpen();
+    requireNode(node_index);
+    if (frames == 0u || frames > 4096u || (channels != 1u && channels != 2u) ||
+        pcm.shape(0) != static_cast<std::size_t>(frames) * channels) {
+      throw std::invalid_argument("invalid SoundFont sample page");
+    }
+    // Flag 1 marks the page resident for the whole session.
+    checkStatus("DSP sample loading",
+                engine_->publishInstanceSamplePage(nodes_[node_index].handle, kMidiGeneration,
+                                                   sample, page, pcm.data(), frames, channels, 1u));
+  }
+
+  // Rows are [offset_frames, message, note_id]; flags is 0 or ET_MIDI_RESET.
+  void setMidiEvents(std::uint32_t node_index, MatrixUint32 events, std::uint32_t flags) {
+    requireOpen();
+    requireNode(node_index);
+    if (events.shape(1) != 3u || events.shape(0) > kMaxMidiEvents) {
+      throw std::invalid_argument("invalid MIDI event block");
+    }
+    const auto count = static_cast<std::uint32_t>(events.shape(0));
+    std::vector<et_midi_event> block(count, et_midi_event{});
+    for (std::uint32_t index = 0u; index < count; ++index) {
+      block[index].offset_frames = events(index, 0u);
+      block[index].message = events(index, 1u);
+      block[index].note_id = events(index, 2u);
+    }
+    checkStatus("DSP MIDI events",
+                engine_->setInstanceMidiEvents(nodes_[node_index].handle, block.data(), count,
+                                               kMidiGeneration, flags));
+  }
+
+  void setMidiClock(std::uint32_t node_index, std::uint64_t frame) {
+    requireOpen();
+    requireNode(node_index);
+    checkStatus("DSP MIDI clock",
+                engine_->setInstanceMidiClock(nodes_[node_index].handle, frame, kMidiGeneration,
+                                              ET_MIDI_CLOCK_RUNNING));
   }
 
   void finish() {
@@ -550,6 +667,7 @@ private:
   struct AssetNode {
     std::uint32_t node_index;
     std::uint32_t processing_channels;
+    std::uint32_t max_prewarm_calls;
   };
 
   void requireOpen() const {
@@ -558,15 +676,28 @@ private:
     }
   }
 
+  void requireNode(std::uint32_t node_index) const {
+    if (node_index >= nodes_.size()) {
+      throw std::invalid_argument("invalid native effect index");
+    }
+  }
+
+  std::uint32_t maxPrewarmCalls(std::size_t payload_bytes) const {
+    const auto calls = static_cast<std::uint32_t>(std::ceil(
+        (2.0 * sample_rate_ + static_cast<double>(payload_bytes) / kPrewarmPayloadBytesPerFrame) /
+        static_cast<double>(std::min(block_size_, kPrewarmQuantum))));
+    return std::max(calls, kMinimumPrewarmCalls);
+  }
+
   void prewarmAssets() {
-    const std::uint32_t quantum = std::min(block_size_, 128u);
+    const std::uint32_t quantum = std::min(block_size_, kPrewarmQuantum);
     for (const AssetNode &asset_node : asset_nodes_) {
       std::vector<float> silence(static_cast<std::size_t>(asset_node.processing_channels) * quantum,
                                  0.0F);
       std::uint32_t calls = 0u;
       while ((engine_->instanceAssetState(nodes_[asset_node.node_index].handle, 0u) & 0xffu) ==
                  ET_ASSET_STATE_PREPARING &&
-             calls < 2000u) {
+             calls < asset_node.max_prewarm_calls) {
         checkStatus("DSP asset preparation",
                     engine_->processInstance(nodes_[asset_node.node_index].handle, silence.data(),
                                              asset_node.processing_channels, quantum, 0.0));
@@ -574,7 +705,7 @@ private:
       }
       if ((engine_->instanceAssetState(nodes_[asset_node.node_index].handle, 0u) & 0xffu) !=
           ET_ASSET_STATE_ACTIVE) {
-        throw std::runtime_error("impulse-response asset did not become active");
+        throw std::runtime_error("DSP asset did not become active");
       }
     }
   }
@@ -613,6 +744,8 @@ private:
 
 NB_MODULE(_native, module) {
   module.doc() = "Private static-link adapter for the EffeTune Python DSP package";
+  module.def("sound_font_footprint", &soundFontFootprint, nb::arg("payload").noconvert(),
+             nb::arg("sample_rate"), nb::arg("processing_channels"), nb::arg("max_frames"));
   nb::class_<NativeChain>(module, "_NativeChain")
       .def(nb::init<double, std::uint32_t, std::uint32_t>(), nb::arg("sample_rate"),
            nb::arg("channels"), nb::arg("block_size"))
@@ -623,6 +756,15 @@ NB_MODULE(_native, module) {
            nb::arg("sample_rate"), nb::arg("topology"), nb::arg("head_block"),
            nb::arg("rate_divider"), nb::arg("paths").noconvert(), nb::arg("input_count"),
            nb::arg("processing_channels"))
+      .def("set_sound_font", &NativeChain::setSoundFont, nb::arg("node_index"),
+           nb::arg("payload").noconvert(), nb::arg("processing_channels"), nb::arg("footprint"))
+      .def("configure_sample_stream", &NativeChain::configureSampleStream, nb::arg("node_index"))
+      .def("publish_sample_page", &NativeChain::publishSamplePage, nb::arg("node_index"),
+           nb::arg("sample"), nb::arg("page"), nb::arg("pcm").noconvert(), nb::arg("frames"),
+           nb::arg("channels"))
+      .def("set_midi_events", &NativeChain::setMidiEvents, nb::arg("node_index"),
+           nb::arg("events").noconvert(), nb::arg("flags"))
+      .def("set_midi_clock", &NativeChain::setMidiClock, nb::arg("node_index"), nb::arg("frame"))
       .def("finish", &NativeChain::finish)
       .def("finish_graph", &NativeChain::finishGraph, nb::arg("descriptor").noconvert())
       .def("set_effect_parameters", &NativeChain::setEffectParameters, nb::arg("node_index"),

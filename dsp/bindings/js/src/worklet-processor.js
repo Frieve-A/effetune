@@ -1,4 +1,4 @@
-import { createEngineSession } from './engine.js';
+import { createEngineSession, MIDI_EVENT_CAPACITY } from './engine.js';
 import { errorMessage } from './errors.js';
 import { countTelemetryFrames, TELEMETRY_RING_BYTES } from './telemetry.js';
 
@@ -12,6 +12,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
     this.channels = 0;
     this.processedFrames = 0;
     this.pendingCommands = [];
+    this.blockMidi = [];
     this.sourceChannels = [];
     this.targetChannels = [];
     this.telemetryEnabled = false;
@@ -43,7 +44,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
       return;
     }
     if (message?.type === 'setParam' || message?.type === 'reset' ||
-        message?.type === 'setTelemetryEnabled') {
+        message?.type === 'setTelemetryEnabled' || message?.type === 'midi') {
       this.pendingCommands.push(message);
     }
   }
@@ -84,8 +85,20 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
     }
   }
 
+  // Commands apply in arrival order at the block start. MIDI messages beyond one
+  // block's event capacity stay queued for the next block.
   applyCommands() {
-    for (const command of this.pendingCommands.splice(0)) {
+    this.blockMidi.length = 0;
+    let applied = 0;
+    for (const command of this.pendingCommands) {
+      if (command.type === 'midi') {
+        if (this.blockMidi.length === MIDI_EVENT_CAPACITY) break;
+        command.offset = 0;
+        this.blockMidi.push(command);
+        applied += 1;
+        continue;
+      }
+      applied += 1;
       try {
         if (command.type === 'setParam') {
           this.session?.setPacked(
@@ -96,6 +109,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
           );
         } else if (command.type === 'reset') {
           this.session?.reset();
+          this.blockMidi.length = 0;
           this.processedFrames = 0;
         } else if (command.type === 'setTelemetryEnabled') {
           this.telemetryEnabled = command.enabled === true;
@@ -117,6 +131,7 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
         });
       }
     }
+    this.pendingCommands.splice(0, applied);
   }
 
   drainTelemetry() {
@@ -170,7 +185,8 @@ class EffeTuneDspProcessor extends AudioWorkletProcessor {
     try {
       const frameCount = output[0].length;
       this.session.process(
-        this.sourceChannels, this.targetChannels, 0, frameCount, sampleRate, this.processedFrames
+        this.sourceChannels, this.targetChannels, 0, frameCount, sampleRate, this.processedFrames,
+        this.blockMidi
       );
       this.processedFrames += frameCount;
       this.drainTelemetry();

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://effetune.frieve.com/dsp/schemas/bundle-v1.schema.json",
   "title": "EffeTune DSP Bundle v1",
-  "description": "Manifest form for a canonical chain and bounded external impulse-response assets. Container and transport are outside this schema.",
+  "description": "Manifest form for a canonical chain and bounded external impulse-response assets. SoundFont assets cannot be bundled in v1. Container and transport are outside this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [

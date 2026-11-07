@@ -47,8 +47,9 @@ export async function createVolumeGraph(
   destination = context.destination,
   options = {}
 ) {
-  if (typeof OfflineAudioContext === 'undefined' ||
-      !(context instanceof OfflineAudioContext)) {
+  const isOffline = typeof OfflineAudioContext !== 'undefined' &&
+    context instanceof OfflineAudioContext;
+  if (!isOffline) {
     await context.resume();
   }
   const node = await EffeTuneNode.create(context, {
@@ -69,7 +70,7 @@ export async function createVolumeGraph(
       source.disconnect();
       node.disconnect();
       node.close();
-      if (typeof context.close === 'function') await context.close();
+      if (!isOffline && typeof context.close === 'function') await context.close();
     }
   };
 }
@@ -117,4 +118,7 @@ AudioWorklet path is tested in Chromium.
 returns an unsubscribe function; `unsubscribe(callback)` removes it. Callbacks run on
 the node side, never inside DSP processing. `droppedTelemetryFrames` reports loss.
 `reset()` clears state and `close()` releases the worklet-side instance.
+`sendMidi(effectId, midi)` sends one MIDI message to a
+[SoundFont Player](/dsp/effects/soundfont-player/) at the start of the next block
+(see [MIDI events](/dsp/concepts/streaming-and-events/#midi-events)).
 Scheduled frame events belong to Python/JavaScript streams, not this Worklet API.

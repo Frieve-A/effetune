@@ -1,6 +1,8 @@
 export const SFZ_SIZE_LIMIT_MIB_OPTIONS = Object.freeze([64, 128, 256, 512, 1024]);
 export const SFZ_DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 export const SFZ_MAX_SUPPORTED_BYTES = 1024 * 1024 * 1024;
+// Samples per prepared bank; matches SamplePageCache::kMaxSamples in the DSP.
+export const SFZ_MAX_SAMPLES = 65536;
 
 export function normalizeSfzSizeLimitMiB(value) {
   return SFZ_SIZE_LIMIT_MIB_OPTIONS.includes(value) ? value : SFZ_DEFAULT_MAX_BYTES / (1024 * 1024);

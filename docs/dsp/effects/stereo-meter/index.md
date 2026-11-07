@@ -1,7 +1,7 @@
 ---
 layout: dsp
 title: "Stereo Meter — EffeTune DSP"
-description: "Passes audio through while the host-side EffeTune app can display stereo level and phase relationships."
+description: "Passes audio through while exposing stereo side/mid samples, a polar envelope, correlation, left-right balance, and per-side peaks."
 lang: en
 permalink: /dsp/effects/stereo-meter/
 ---
@@ -9,7 +9,7 @@ permalink: /dsp/effects/stereo-meter/
 
 Semantic type: `StereoMeter` · Category: analyzer
 
-Passes audio through while the host-side EffeTune app can display stereo level and phase relationships.
+Passes audio through while exposing stereo side/mid samples, a polar envelope, correlation, left-right balance, and per-side peaks.
 
 Use the opt-in decoded telemetry callback or subscription API to observe this effect. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry).
 
@@ -29,7 +29,7 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## EffeTune app documentation
 
-> The following section is reproduced from the English EffeTune app documentation. Its parameter names and values describe the app UI and can differ from semantic API parameters through transforms or value maps. The generated contract above is authoritative.
+> The following section is reproduced from the English EffeTune app documentation. It describes the app UI, so it can mention controls, meters, and displays that the library does not provide, and its parameter names and values can differ from the API through transforms or value maps. Only the parameters in the Contract table above, plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), are part of the library API; the Contract is authoritative. Some parameters take effect only when a related setting enables them.
 
 ## Stereo Meter
 

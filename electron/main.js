@@ -79,11 +79,14 @@ const packageJson = require('../package.json');
 const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
-const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
-
-function isSupportedPlaybackAudioPath(filePath) {
-  return PLAYBACK_AUDIO_EXTENSION_PATTERN.test(filePath || '');
+// Opens local music files in the running app's Music Player.
+async function openMusicPaths(paths, canOpen = () => true) {
+  const mainWindow = constants.getMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const descriptors = await fileHandlers.admitLocalPlaybackPaths(paths);
+  if (mainWindow.isDestroyed() || !canOpen()) return false;
+  mainWindow.webContents.send('open-music-files', descriptors);
+  return true;
 }
 
 let themeRegistry;
@@ -616,6 +619,7 @@ function createWindow() {
     }),
     themePreset: themeRegistry.getThemePreset(constants.getAppConfig().theme),
     allowStartupCapture: constants.getAppConfig().startupView === 'browser',
+    openMusicFiles: openMusicPaths,
     getSettings: () => constants.getAppConfig().browser,
     saveSettings: browser => {
       const config = { ...configModule.loadConfig(), browser };
@@ -1562,8 +1566,7 @@ if (!shouldStart) {
         const admittedFiles = [...commandLineMusicFiles];
         constants.clearCommandLineMusicFiles();
         try {
-          const descriptors = await fileHandlers.admitLocalPlaybackPaths(admittedFiles);
-          mainWindow.webContents.send('open-music-files', descriptors);
+          await openMusicPaths(admittedFiles);
         } catch (error) {
           console.error('Second-instance music file admission diagnostic:', error?.code || error?.name || 'unknown');
         }
@@ -1598,15 +1601,14 @@ app.on('open-file', async (event, path) => {
     } catch (error) {
       console.error('Error checking preset file:', error);
     }
-  } else if (isSupportedPlaybackAudioPath(path)) {
+  } else if (fileHandlers.isSupportedPlaybackAudioPath(path)) {
     try {
       // Check if file exists
       if (fs.existsSync(path)) {
         const mainWin = constants.getMainWindow();
         if (mainWin && mainWin.webContents) {
           // If app is already running, send the file path to the renderer
-          const descriptors = await fileHandlers.admitLocalPlaybackPaths([path]);
-          mainWin.webContents.send('open-music-files', descriptors);
+          await openMusicPaths([path]);
         } else {
           // If app is not yet running, store the path to be opened when the app is ready
           constants.addCommandLineMusicFile(path);

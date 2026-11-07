@@ -69,10 +69,17 @@ export function sfzMidiKey(value) {
   const pitch = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[match[1].toLowerCase()];
   return (Number(match[3]) + 1) * 12 + pitch + (match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0);
 }
+// Opcode names form a small vocabulary, while large banks query them once per region.
+const controllerOpcodes = new Map();
 export function sfzControllerOpcode(key) {
-  const match = /^(.*?)([0-9]{1,3})$/.exec(key);
-  return match && Object.hasOwn(SFZ_CONTROLLER_FAMILIES, match[1]) && Number(match[2]) < 128
-    ? { family: match[1], controller: Number(match[2]) } : null;
+  let route = controllerOpcodes.get(key);
+  if (route === undefined) {
+    const match = /^(.*?)([0-9]{1,3})$/.exec(key);
+    route = match && Object.hasOwn(SFZ_CONTROLLER_FAMILIES, match[1]) && Number(match[2]) < 128
+      ? Object.freeze({ family: match[1], controller: Number(match[2]) }) : null;
+    if (controllerOpcodes.size < 65536) controllerOpcodes.set(key, route);
+  }
+  return route;
 }
 export function sfzControllerValue(region, family, controller) {
   return region[family + controller] ?? SFZ_CONTROLLER_FAMILIES[family];

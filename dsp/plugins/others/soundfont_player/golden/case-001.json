@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "type": "SoundFontPlayerPlugin",
+  "id": "preview-sine-bank-stereo-48k",
+  "stimulus": "silence",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 12000,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "mc": 0,
+    "pl": 64,
+    "og": 0,
+    "sq": 0,
+    "af": true,
+    "pm": 83,
+    "pc": 0
+  },
+  "events": [],
+  "asset": {
+    "sfz": {
+      "kind": "sfz-sine-v1"
+    }
+  },
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:fbb5d3b04312acf71f48a8d59326d9f30ed491848cfb77e9deeba93e7c79dfb6",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SoundFontPlayerPlugin --promote-production-native",
+  "outputFloats": 24000,
+  "byteLength": 96000,
+  "binary": "case-001.f32"
+}

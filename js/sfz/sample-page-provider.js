@@ -1,6 +1,7 @@
 import { SfzSampleStreamWorker } from './sample-stream-worker.js';
 import { SfzSampleStream, SFZ_SAMPLE_PAGE_FRAMES } from './sample-stream.js';
 import { startSfzWorkerSupply } from './sample-supply-port.js';
+import { SFZ_MAX_SAMPLES } from './limits.js';
 
 const failure = code => Object.assign(new Error('The instrument samples could not be prepared. Reload the instrument.'), { code });
 const MAX_PUBLISH_IN_FLIGHT = 4;
@@ -67,7 +68,7 @@ export class SfzSamplePageProvider {
   get worker() { return this._worker ??= new SfzSampleStreamWorker({ workerFactory: this.workerFactory }); }
   async prepare(paths, knownPcm = null) {
     if (this.closed) throw failure('sample-cancelled');
-    if (this.preparing || !Array.isArray(paths) || !paths.length || paths.length > 10000 ||
+    if (this.preparing || !Array.isArray(paths) || !paths.length || paths.length > SFZ_MAX_SAMPLES ||
         paths.some(path => typeof path !== 'string') || new Set(paths).size !== paths.length) throw failure('sample-range');
     if (this.paths && (this.paths.length !== paths.length || paths.some((path, index) => path !== this.paths[index]))) throw failure('sample-generation');
     this.paths ??= [...paths]; this.preparing = true;

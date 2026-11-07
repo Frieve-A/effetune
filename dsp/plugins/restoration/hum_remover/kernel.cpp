@@ -16,6 +16,11 @@ constexpr std::uint32_t kMaximumHarmonics = 64u;
 constexpr double kMinimumFrequencyHz = 45.0;
 constexpr double kMaximumFrequencyHz = 65.0;
 constexpr double kInitialFrequencyHz = 50.0;
+// Auto also watches the mains nominal (50 or 60 Hz) on the other side of this boundary.
+constexpr double kNominalBoundaryHz = 55.0;
+// Hum is stationary while notes change within seconds, so the other-nominal detector uses a long
+// fixed time constant that rejects a bass note a semitone away by about 39 dB.
+constexpr double kNominalDetectorSeconds = 8.0;
 constexpr double kFrequencyUpdateSeconds = 0.005;
 constexpr double kFrequencyLoopRatio = 3.0;
 constexpr double kTelemetrySmoothingTimeConstant = 0.1;
@@ -67,6 +72,15 @@ struct ChannelState {
   double frequency_hz = kInitialFrequencyHz;
   double previous_cosine_weight = 0.0;
   double previous_sine_weight = 0.0;
+  // Auto only: fundamental demodulator at the mains nominal that is not currently tracked.
+  double detector_phase_real = 1.0;
+  double detector_phase_imaginary = 0.0;
+  double detector_rotation_real = 1.0;
+  double detector_rotation_imaginary = 0.0;
+  double detector_real = 0.0;
+  double detector_imaginary = 0.0;
+  double detector_frequency_hz = 0.0;
+  std::uint32_t detector_hold = 0u;
   std::uint32_t frequency_counter = 0u;
   std::uint32_t nyquist_harmonics = kMaximumHarmonics;
 };
@@ -95,6 +109,7 @@ public:
       frequency_update_samples_ = 1u;
     }
     telemetry_smoothing_ = 1.0 - std::exp(-1.0 / (kTelemetrySmoothingTimeConstant * sample_rate_));
+    detector_step_ = 1.0 / (kNominalDetectorSeconds * sample_rate_);
     reset();
   }
 
@@ -128,6 +143,8 @@ public:
 
     const std::uint32_t requested_harmonics = active_harmonics_;
     const double adaptation_step = adaptation_step_;
+    const double detector_step = detector_step_;
+    const bool automatic = frequency_mode_ == 0u;
     double removed_power = removed_power_smoothed_;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       double frame_removed_power = 0.0;
@@ -167,6 +184,20 @@ public:
         }
         audio[index] = static_cast<float>(output);
         frame_removed_power += removed * removed;
+
+        if (automatic) {
+          state.detector_real +=
+              detector_step * (input * state.detector_phase_real - state.detector_real);
+          state.detector_imaginary +=
+              detector_step * (-input * state.detector_phase_imaginary - state.detector_imaginary);
+          const double next_detector_real =
+              state.detector_phase_real * state.detector_rotation_real -
+              state.detector_phase_imaginary * state.detector_rotation_imaginary;
+          state.detector_phase_imaginary =
+              state.detector_phase_real * state.detector_rotation_imaginary +
+              state.detector_phase_imaginary * state.detector_rotation_real;
+          state.detector_phase_real = next_detector_real;
+        }
 
         const double next_phase_real = state.phase_real * state.rotation_real -
                                        state.phase_imaginary * state.rotation_imaginary;
@@ -212,6 +243,47 @@ private:
     state.phase_imaginary = 0.0;
     state.frequency_counter = 0u;
     setFrequency(state, frequency_hz);
+    configureDetector(state);
+  }
+
+  void configureDetector(ChannelState &state) noexcept {
+    state.detector_frequency_hz = state.frequency_hz < kNominalBoundaryHz ? 60.0 : 50.0;
+    const double radians = 2.0 * kPi * state.detector_frequency_hz / sample_rate_;
+    state.detector_rotation_real = std::cos(radians);
+    state.detector_rotation_imaginary = std::sin(radians);
+    state.detector_phase_real = 1.0;
+    state.detector_phase_imaginary = 0.0;
+    state.detector_real = 0.0;
+    state.detector_imaginary = 0.0;
+    state.detector_hold = 0u;
+  }
+
+  // The frequency loop is far too slow to pull in a 10 Hz offset, so Auto jumps to the other
+  // mains nominal once its fundamental stays 6 dB stronger than the tracked one for one tracking
+  // time constant, which the tracked weights need to settle.
+  void updateNominal(ChannelState &state, double weight_power) noexcept {
+    const double magnitude =
+        std::sqrt(state.detector_phase_real * state.detector_phase_real +
+                  state.detector_phase_imaginary * state.detector_phase_imaginary);
+    if (std::isfinite(magnitude) && magnitude > 0.0) {
+      state.detector_phase_real /= magnitude;
+      state.detector_phase_imaginary /= magnitude;
+    } else {
+      state.detector_phase_real = 1.0;
+      state.detector_phase_imaginary = 0.0;
+    }
+    // The demodulator converges to half the amplitude, the weights to the full amplitude.
+    const double detector_power = state.detector_real * state.detector_real +
+                                  state.detector_imaginary * state.detector_imaginary;
+    state.detector_hold = detector_power > weight_power ? state.detector_hold + 1u : 0u;
+    if (state.detector_hold > nominal_switch_updates_) {
+      clearWeights(state);
+      setFrequency(state, state.detector_frequency_hz);
+      configureDetector(state);
+    } else if ((state.frequency_hz < kNominalBoundaryHz) ==
+               (state.detector_frequency_hz < kNominalBoundaryHz)) {
+      configureDetector(state);
+    }
   }
 
   void setFrequency(ChannelState &state, double frequency_hz) noexcept {
@@ -237,6 +309,8 @@ private:
     adaptation_step_ = 1.0 / (tracking_time_constant_ * sample_rate_);
     frequency_gain_ = static_cast<double>(frequency_update_samples_) /
                       (kFrequencyLoopRatio * tracking_time_constant_ * sample_rate_);
+    nominal_switch_updates_ = static_cast<std::uint32_t>(
+        tracking_time_constant_ * sample_rate_ / static_cast<double>(frequency_update_samples_));
 
     if (new_harmonics > active_harmonics_) {
       for (ChannelState &state : channels_) {
@@ -256,6 +330,10 @@ private:
           setFrequency(state, fixed_frequency);
           state.previous_cosine_weight = state.cosine_weights[0];
           state.previous_sine_weight = state.sine_weights[0];
+        }
+      } else {
+        for (ChannelState &state : channels_) {
+          configureDetector(state);
         }
       }
     } else if (frequency_mode_ != 0u) {
@@ -294,6 +372,9 @@ private:
     }
     state.previous_cosine_weight = cosine_weight;
     state.previous_sine_weight = sine_weight;
+    if (frequency_mode_ == 0u) {
+      updateNominal(state, cosine_weight * cosine_weight + sine_weight * sine_weight);
+    }
   }
 
   void flushDenormals(std::uint32_t channel_count) noexcept {
@@ -329,6 +410,7 @@ private:
   double adaptation_step_ = 0.0;
   double frequency_gain_ = 0.0;
   double telemetry_smoothing_ = 0.0;
+  double detector_step_ = 0.0;
   double removed_power_smoothed_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;
@@ -336,6 +418,7 @@ private:
   std::uint32_t active_harmonics_ = 0u;
   std::uint32_t frequency_mode_ = 0u;
   std::uint32_t frequency_update_samples_ = 1u;
+  std::uint32_t nominal_switch_updates_ = 0u;
   bool prepared_ = false;
 };
 

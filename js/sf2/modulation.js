@@ -1,12 +1,14 @@
 import { sf2Error } from './parser.js';
 
 export const SF2_MODULATION_SECTION_VERSION = 2;
+// Must match the route limit in dsp/plugins/others/sfz/bank.h.
+export const SF2_MAX_ROUTES = 4194304;
 const HEADER_WORDS = 10, DIRECTORY_WORDS = 4, ROUTE_WORDS = 10, GENERATOR_WORDS = 61;
 
 export function packSf2Modulation(compiled) {
   const regionCount = compiled.regions.length;
   const routeCount = compiled.regions.reduce((count, region) => count + region.modulators.length, 0);
-  if (routeCount > 1048576) throw sf2Error('Too many SoundFont modulation routes');
+  if (routeCount > SF2_MAX_ROUTES) throw sf2Error('Too many SoundFont modulation routes');
   const directoryOffset = HEADER_WORDS, routeOffset = directoryOffset + regionCount * DIRECTORY_WORDS;
   const generatorOffset = routeOffset + routeCount * ROUTE_WORDS;
   const buffer = new ArrayBuffer((generatorOffset + regionCount * GENERATOR_WORDS) * 4);

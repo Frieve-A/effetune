@@ -67,6 +67,7 @@ export async function prepareStreamedSfzBank({ id, parsed, maxBytes, createSampl
       return opened;
     } });
   const samples = new Map(paths.map((path, index) => [path, factory.samples[index]]));
+  let sf2Image = null;
   const build = async (context, budget = maxBytes, estimate = estimateEffectBytes, previous = null) => {
     const warnings = [];
     const options = { maxBytes: budget, script, modulation: parsed.modulation, effects: parsed.effects,
@@ -87,8 +88,19 @@ export async function prepareStreamedSfzBank({ id, parsed, maxBytes, createSampl
     const cacheChannels = factory.samples.some(sample => sample.channels === 2) ? 2 : 1;
     const plan = slots => storage ? sfzStorageSlots(slots, samples, ranges) : null;
     const cacheBytes = slots => sfzSampleCacheFootprint(samples.size, slots, cacheChannels, plan(slots));
-    const provisional = packStreamedSfzAsset(parsed.regions, samples,
+    let provisional;
+    if (storage) provisional = packStreamedSfzAsset(parsed.regions, samples,
       { ...options, cacheSlots: minimum, storagePlan: plan(minimum) });
+    else if (!sf2Image) {
+      provisional = packStreamedSfzAsset(parsed.regions, samples, { ...options, cacheSlots: minimum });
+      sf2Image = { ...provisional };
+    } else {
+      // An SF2 image depends only on the immutable bank apart from its cache-slot
+      // header lane, so context changes copy it instead of repacking every region.
+      if (sf2Image.payload.byteLength > budget) throw sfzError('too-large', 'The SFZ samples are too large to load.');
+      provisional = { ...sf2Image, payload: sf2Image.payload.slice(0) };
+      new Uint32Array(provisional.payload, 32)[14] = minimum;
+    }
     let descriptor = provisional;
     if (context) {
       // Query one metadata-only minimum geometry. Only the generated shared cache

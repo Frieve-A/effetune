@@ -370,6 +370,26 @@ test('every Graph recipe rejects a positive-latency IRReverb with one message', 
   assert.doesNotThrow(() => createSendReturnGraphDocument(dryDisabledIr));
 });
 
+test('Graph rejects a MIDI-driven effect even when disabled and points to ChainStream', async () => {
+  const document = {
+    version: 1,
+    input: { id: 'input' },
+    output: { id: 'output' },
+    nodes: [{ id: 'piano', type: 'SoundFontPlayer', enabled: false, parameters: {}, assets: { soundFont: 'piano-sf2' } }],
+    edges: [
+      { id: 'in', source: 'input', destination: 'piano' },
+      { id: 'out', source: 'piano', destination: 'output' }
+    ]
+  };
+  await assert.rejects(
+    createGraph(document),
+    error => error.name === 'ValidationError' &&
+      error.code === 'GRAPH_UNSUPPORTED_CAPABILITY' &&
+      error.path === '/nodes/0/type' && error.nodeId === 'piano' &&
+      /ChainStream/.test(error.message)
+  );
+});
+
 test('Graph recipes reject a non-effect before deriving a node id', () => {
   for (const input of ['Volume', 5, null, ['Volume']]) {
     for (const build of [createWetDryGraphDocument, createSendReturnGraphDocument]) {

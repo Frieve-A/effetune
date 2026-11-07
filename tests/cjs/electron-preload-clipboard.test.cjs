@@ -195,7 +195,7 @@ test('preload forwards Browser commands and results through their dedicated IPC 
 
   assert.equal(Object.isFrozen(browser), true);
   assert.deepEqual(Object.keys(browser).sort(), [
-    'prepareCapture', ...cases.map(([method]) => method), 'onState', 'onFocusAddress', 'onCommand'
+    'prepareCapture', ...cases.map(([method]) => method), 'onState', 'onFocusAddress', 'onCommand', 'onMidi', 'onMedia'
   ].sort());
   for (const [method, args, channel] of cases) {
     assert.deepEqual(await browser[method](...args), { channel, args }, method);
@@ -213,9 +213,11 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   const states = [];
   const focusRequests = [];
   const commands = [];
+  const media = [];
   const unsubscribeCommand = browser.onCommand((...args) => commands.push(args));
   const unsubscribeState = browser.onState((...args) => states.push(args));
   const unsubscribeFocus = browser.onFocusAddress((...args) => focusRequests.push(args));
+  const unsubscribeMedia = browser.onMedia((...args) => media.push(args));
   const event = { sender: { privileged: true } };
   const state = { url: 'https://example.test/', captureActive: true, captureGeneration: 7 };
   harness.listeners.get('browser:command')(event, { action: 'reload' }, 'private-extra-argument');
@@ -227,6 +229,11 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   harness.listeners.get('browser:focus-address')(event);
   assert.deepEqual(states, [[state]]);
   assert.deepEqual(focusRequests, [[undefined]]);
+  const nowPlaying = { title: 'Song', playing: true };
+  harness.listeners.get('browser:media')(event, nowPlaying, 'private-extra-argument');
+  assert.deepEqual(media, [[nowPlaying]]);
+  unsubscribeMedia();
+  assert.equal(harness.listeners.has('browser:media'), false);
 
   unsubscribeState();
   unsubscribeState();

@@ -3,6 +3,31 @@ import test from 'node:test';
 import { createNativeSamplerWorklet } from '../helpers/native-sampler-worklet.mjs';
 import { createNativeMidiPlaybackOwner } from '../helpers/midi-native-playback.mjs';
 import { createSf2RuntimeFixture } from '../helpers/sf2-runtime-fixture.mjs';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
+
+const renderPeak = async (h, blocks) => {
+  let peak = 0;
+  for (let block = 0; block < blocks; block++) {
+    for (const value of h.render()[0]) peak = Math.max(peak, Math.abs(value));
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return peak;
+};
+// Sends the keyboard preview parameters through the same updatePlugin path as the plugin UI.
+const sendPreview = (h, parameters, pm, pc = 0) => {
+  Object.assign(parameters, { pm, pc });
+  const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
+  return h.send({ type: 'updatePlugin', plugin: { id: 7, type: 'SoundFontPlayerPlugin', enabled: true,
+    parameters: { ...parameters }, inputBus: 0, outputBus: 0, channel: 'A',
+    wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash } });
+};
+const assertPreview = async (h, parameters, key, label) => {
+  await sendPreview(h, parameters, key);
+  assert.ok(await renderPeak(h, 8) > .001, `${label}: the preview key sounds`);
+  await sendPreview(h, parameters, -1);
+  await renderPeak(h, 2);
+  assert.ok(await renderPeak(h, 4) < 1e-6, `${label}: releasing the preview decays to silence`);
+};
 
 for (const variant of ['baseline', 'simd']) test(`${variant} mixer edits reach native idle and paused state, survive checkpoint resume, and musical reset clears transient masks`, async () => {
   const fixture = await createSf2RuntimeFixture({ resident: true }), h = await createNativeSamplerWorklet({ variant });
@@ -88,4 +113,68 @@ for (const variant of ['baseline', 'simd']) test(`${variant} mixer edits reach n
     if (owner) { owner.midiNaturalTail = false; await owner.stopMidi(); }
     await h.close(); await fixture.close();
   }
+});
+
+for (const variant of ['baseline', 'simd']) test(`${variant} keyboard preview sounds without a song, while paused and after a checkpoint restore`, async () => {
+  const fixture = await createSf2RuntimeFixture({ resident: true }), h = await createNativeSamplerWorklet({ variant });
+  let owner;
+  try {
+    const parameters = await h.initialize('SoundFontPlayerPlugin', fixture.descriptor);
+    await h.waitForJoinReady();
+    await assertPreview(h, parameters, 60, 'No song');
+    const playback = createNativeMidiPlaybackOwner(h); owner = playback.owner;
+    owner.midiTimeline = { duration: 1, events: [{ seconds: 0, status: 144, data1: 60, data2: 127 }] };
+    const preparation = owner.prepareMidiTransport(0);
+    await h.waitFor(() => !owner.midiPreparation); assert.equal(await preparation, true);
+    await h.waitForJoinReady();
+    const start = owner.playMidi(); await h.waitFor(() => playback.state.isPlaying); assert.equal(await start, true);
+    assert.ok(await renderPeak(h, 20) > .001);
+    const pause = owner.pauseMidi(); await h.waitFor(() => playback.state.isPaused); await pause;
+    await renderPeak(h, 4);
+    assert.ok(await renderPeak(h, 4) < 1e-6, 'Pausing fades the song voices');
+    await assertPreview(h, parameters, 72, 'Paused');
+    const checkpoint = h.manager.getSfzRuntimeCheckpoints(h.node)[0];
+    assert.ok(checkpoint?.bytes.byteLength);
+    assert.equal(h.binding.instanceReadMidiCheckpoint(h.processor.wasmInstances.get(7).id, checkpoint.bytes), 0);
+    await assertPreview(h, parameters, 64, 'Checkpoint restore');
+    assert.equal(playback.reported, 0);
+  } finally {
+    owner?.midiCheckpointRequest?.finish(false); owner?.midiPreparation?.finish(false);
+    if (owner) { owner.midiNaturalTail = false; await owner.stopMidi(); }
+    await h.close(); await fixture.close();
+  }
+});
+
+for (const variant of ['baseline', 'simd']) test(`${variant} keyboard preview sounds during streamed playback and follows the channel mute`, async () => {
+  const fixture = await createSf2RuntimeFixture(), h = await createNativeSamplerWorklet({ variant });
+  try {
+    const parameters = await h.initialize('SoundFontPlayerPlugin', fixture.descriptor);
+    await h.send({ type: 'midiTransport', timeline: { duration: 2, events: [
+      { seconds: 0, status: 144, data1: 60, data2: 127 }, { seconds: .05, status: 128, data1: 60, data2: 0 }
+    ] }, generation: 1, position: 0, playing: false, preparing: true, anchorFrame: h.frame, speed: 1, gain: 1 });
+    await h.waitFor(() => h.messages.some(message => message.type === 'midiPrepared' && message.generation === 1));
+    await h.waitForJoinReady();
+    await h.send({ type: 'midiStart', generation: 1, anchorFrame: h.frame + 128 });
+    const id = h.processor.wasmInstances.get(7).id;
+    const settled = scope => () => {
+      const snapshot = h.binding.instanceStreamReadiness(id);
+      return snapshot?.scope === scope && snapshot.pendingPages === 0;
+    };
+    assert.ok(await renderPeak(h, 20) > .001);
+    // Let the song note and its release end while the song forecast stays in place.
+    await renderPeak(h, 150);
+    await h.waitFor(settled(1));
+    assert.ok(await renderPeak(h, 4) < 1e-6);
+    // A preview leaves the song forecast, like live input; the first key may miss its pages.
+    await sendPreview(h, parameters, 72);
+    await h.waitFor(settled(2));
+    await sendPreview(h, parameters, 67);
+    assert.ok(await renderPeak(h, 8) > .001, 'A preview key sounds during streamed playback');
+    const plugin = h.manager._getSfzRuntimePlugin(h.node, 7);
+    assert.equal(await h.manager.sendSoundFontMixerAction(plugin, { type: 'mute', channel: 0, value: true }), true);
+    await renderPeak(h, 2);
+    assert.ok(await renderPeak(h, 4) < 1e-7, 'The muted channel silences its preview');
+    await sendPreview(h, parameters, -1);
+    assert.deepEqual(h.errors, []);
+  } finally { await h.close(); await fixture.close(); }
 });

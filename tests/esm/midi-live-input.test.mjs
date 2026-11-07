@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MidiLiveInput } from '../../js/midi/live-input.js';
 
+const shownPlayer = { paused: true, ui: { container: {} } };
+
 function harness() {
   let port = { state: 'connected' }, change, powerChange, receive;
   const sources = [], messages = [];
@@ -52,7 +54,7 @@ test('attached Music Player owns MIDI even paused, while browser audio does not'
   h.power.browserSelected = true;
   await h.input.select('Virtual MIDI');
   h.send([0x90, 60, 100]);
-  h.power.player = { paused: true };
+  h.power.player = shownPlayer;
   // A message can precede the asynchronous power observation notification.
   h.send([0x90, 62, 100]);
   h.powerChange();
@@ -63,6 +65,16 @@ test('attached Music Player owns MIDI even paused, while browser audio does not'
   h.send([0x90, 64, 100]);
   assert.equal(h.messages.length, 2);
   assert.deepEqual(h.sources, ['Virtual MIDI', null, 'Virtual MIDI']);
+  h.input.dispose();
+});
+
+test('hidden network renderer player without UI leaves live MIDI available', async () => {
+  const h = harness();
+  h.power.player = { ui: { container: null } };
+  await h.input.select('Virtual MIDI');
+  h.send([0x90, 60, 100]);
+  assert.equal(h.messages.length, 1);
+  assert.deepEqual(h.sources, ['Virtual MIDI']);
   h.input.dispose();
 });
 
@@ -96,7 +108,7 @@ test('live reset recognition shares source ownership and accepts only complete v
   assert.deepEqual(h.messages.map(event => event.systemReset), [1, 2, 3]);
   for (const packet of [[0xf0, 0x7e, 0x7f, 9, 2, 0xf7], [0xf0, 0x7e, 0x80, 9, 1, 0xf7],
     [0xf0, 0x41, 0x10, 0x42, 0x12, 0x40, 0, 0x7f, 0, 0, 0xf7], [0xf0, 0x7e, 0x7f, 9, 1]]) h.send(packet);
-  h.power.player = { paused: true }; h.powerChange();
+  h.power.player = shownPlayer; h.powerChange();
   h.send([0xf0, 0x7e, 0x7f, 9, 1, 0xf7]);
   assert.equal(h.messages.length, 3); h.input.dispose();
 });

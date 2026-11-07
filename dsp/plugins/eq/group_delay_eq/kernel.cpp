@@ -304,7 +304,11 @@ private:
   void resetRuntime() noexcept {
     dry_delay_.clear();
     delay_position_ = 0u;
-    wet_mix_.fill(0.0F);
+    // A reset stream has no earlier output to crossfade from, so an active asset starts wet.
+    wet_mix_.fill(asset_state_ == ET_ASSET_STATE_ACTIVE &&
+                          params_.latencyMode != kReplacementDryLatencyMode
+                      ? 1.0F
+                      : 0.0F);
     replacement_dry_ready_ = false;
     latency_transition_remaining_ = 0u;
   }

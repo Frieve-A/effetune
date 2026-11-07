@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 import logging
 from numbers import Integral
@@ -20,9 +21,12 @@ from .assets import (
 )
 from .bundle import Bundle
 from .errors import AssetError, EffeTuneRuntimeError, StateError, ValidationError
+from .midi import _normalize_message
 from .presets import LegacyImportReport, import_legacy_preset, load_preset_document
+from .soundfont import SoundFontBank
 from .telemetry import TelemetryFrame, _decode_telemetry_packet
 from .validation import (
+    asset_kind,
     effect_metadata,
     pack_parameter_bytes,
     pack_parameters,
@@ -37,6 +41,11 @@ from .validation import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_SOUND_FONT_MAX_BYTES = 1 << 30
+_MIDI_EVENT_CAPACITY = 4096
+_MIDI_RESET = 1
+_NO_MIDI_EVENTS = np.zeros((0, 3), dtype=np.uint32)
 
 _STREAM_RECONFIGURATION_PARAMETERS = {
     "BassManagement": frozenset({"phase", "taps", "roles", "frequencies", "slopes", "routes", "routeInversions",
@@ -85,6 +94,46 @@ def _bass_management_asset(effect, asset, channels):
         )
     return AssetData(asset.samples, asset.sample_rate, kind=asset.kind,
                      topology=asset.topology, paths=asset.paths, input_count=channels)
+
+
+def _stage_sound_font(
+    native: Any,
+    native_index: int,
+    label: str,
+    bank: SoundFontBank,
+    sample_rate: float,
+    processing_channels: int,
+    max_frames: int,
+) -> None:
+    """Upload a prepared bank and publish all of its pages as resident (same rule as JS)."""
+    from ._native import sound_font_footprint
+
+    # The native call copies the bytes into its own staging memory, so no copy is needed here.
+    payload = np.frombuffer(bank.payload, dtype=np.uint8)
+    try:
+        footprint = int(
+            sound_font_footprint(payload, sample_rate, processing_channels, max_frames)
+        )
+    except Exception as error:
+        raise AssetError(
+            f"{label} cannot prepare its SoundFont bank for these audio settings. "
+            "Prepare the bank again with this version of EffeTune DSP."
+        ) from error
+    if footprint > _SOUND_FONT_MAX_BYTES:
+        raise AssetError(
+            f"{label} needs more than 1 GiB of memory for its SoundFont bank. "
+            "Choose a smaller SoundFont or fewer channels."
+        )
+    try:
+        native.set_sound_font(native_index, payload, processing_channels, footprint)
+        if bank.pages:
+            native.configure_sample_stream(native_index)
+            for page in bank.pages:
+                native.publish_sample_page(
+                    native_index, page.sample, page.page_index, page.pcm, page.frames, page.channels
+                )
+    except Exception as error:
+        raise AssetError(f"{label} could not load its SoundFont bank.") from error
 
 
 def _canonicalize_processing_parameters(
@@ -342,6 +391,10 @@ class Stream:
         ] = {}
         self._current_parameters: dict[str, dict[str, Any]] = {}
         self._processing_parameters: dict[str, dict[str, Any]] = {}
+        # MIDI-driven effects in chain order: (effect id or None, native index).
+        self._midi_nodes: list[tuple[str | None, int]] = []
+        self._midi_clock = 0
+        self._next_note_id = 1
 
         enabled = [(index, effect) for index, effect in enumerate(chain.effects) if effect.enabled]
         resolved_assets: dict[int, Any] = {}
@@ -359,9 +412,11 @@ class Stream:
                 raise ValidationError(
                     f"{effect.effect_type} supports these sample rates: {supported}"
                 )
-            for reference in effect.assets.values():
+            for name, reference in effect.assets.items():
                 label = effect.id or f"{effect.effect_type} at index {index}"
-                resolved_assets[index] = resolve_asset(reference, asset_resolver, label)
+                resolved_assets[index] = resolve_asset(
+                    reference, asset_resolver, label, asset_kind(effect.effect_type, name)
+                )
 
         if not enabled:
             if on_telemetry is not None:
@@ -399,19 +454,31 @@ class Stream:
                     initial_parameter_bytes.append(
                         (native_index, packed_bytes, layout_hash)
                     )
-                if effect.assets:
+                if isinstance(resolved_assets.get(index), SoundFontBank):
+                    _stage_sound_font(
+                        native,
+                        native_index,
+                        effect.id or f"{effect.effect_type} at index {index}",
+                        resolved_assets[index],
+                        self.sample_rate,
+                        processing_channels[index],
+                        max(32, self.block_size),
+                    )
+                    self._midi_nodes.append((effect.id, native_index))
+                elif effect.assets:
                     asset = resolved_assets[index]
                     effect_channels = processing_channels[index]
                     if effect.effect_type == "IRReverb":
                         topology = resolve_topology(
                             asset, effect_channels, effect.parameters["channelMode"]
                         )
+                        head_block = int(effect.parameters["latency"])
                         divider = resolve_rate_divider(
                             asset.sample_rate,
                             self.sample_rate,
                             effect.parameters["convolutionRate"],
+                            head_block,
                         )
-                        head_block = int(effect.parameters["latency"])
                     elif effect.effect_type == "BassManagement":
                         asset = _bass_management_asset(effect, asset, effect_channels)
                         topology = resolve_topology(asset, effect_channels, "matrix")
@@ -509,6 +576,7 @@ class Stream:
                     native_index, packed_bytes, layout_hash
                 )
             self._native = native
+            self._reset_midi()
             if on_telemetry is not None:
                 self.subscribe(on_telemetry)
         except (AssetError, ValidationError):
@@ -581,58 +649,64 @@ class Stream:
         if self._closed:
             raise StateError("cannot process a closed stream")
         source = validate_audio(audio, channels=self.channels)
-        prepared_events = self._prepare_events(events, source.shape[1])
+        parameter_events, midi_events = self._prepare_events(events, source.shape[1])
         output = source.copy(order="C")
         if self._native is None:
-            if prepared_events:
+            if parameter_events:
                 raise ValidationError("parameter events require an enabled effect with an id")
             return output
+        segments = self._plan_segments(output.shape[1], parameter_events, midi_events)
         try:
-            cursor = 0
-            for (
-                frame,
-                effect_id,
-                native_index,
-                packed,
-                packed_bytes,
-                layout_hash,
-                parameters,
-                processing_parameters,
-            ) in prepared_events:
-                self._process_range(output, cursor, frame)
-                self._native.set_effect_parameters(
-                    native_index, packed, layout_hash
-                )
-                if packed_bytes is not None:
-                    self._native.set_effect_parameter_bytes(
-                        native_index, packed_bytes, layout_hash
+            for start, end, segment_parameter_events, segment_midi_events in segments:
+                for (
+                    _,
+                    effect_id,
+                    native_index,
+                    packed,
+                    packed_bytes,
+                    layout_hash,
+                    parameters,
+                    processing_parameters,
+                ) in segment_parameter_events:
+                    self._native.set_effect_parameters(
+                        native_index, packed, layout_hash
                     )
-                self._current_parameters[effect_id] = parameters
-                self._processing_parameters[effect_id] = processing_parameters
-                cursor = frame
-            self._process_range(output, cursor, output.shape[1])
+                    if packed_bytes is not None:
+                        self._native.set_effect_parameter_bytes(
+                            native_index, packed_bytes, layout_hash
+                        )
+                    self._current_parameters[effect_id] = parameters
+                    self._processing_parameters[effect_id] = processing_parameters
+                self._process_segment(output, start, end, segment_midi_events)
         except Exception as error:
             raise EffeTuneRuntimeError("native DSP processing failed") from error
         return output
 
     def _prepare_events(
         self, events: Iterable[Mapping[str, Any]], frames: int
-    ) -> list[
-        tuple[
-            int,
-            str,
-            int,
-            np.ndarray,
-            np.ndarray | None,
-            int,
-            dict[str, Any],
-            dict[str, Any],
-        ]
+    ) -> tuple[
+        list[
+            tuple[
+                int,
+                str,
+                int,
+                np.ndarray,
+                np.ndarray | None,
+                int,
+                dict[str, Any],
+                dict[str, Any],
+            ]
+        ],
+        list[tuple[int, str, tuple[int, int, int]]],
     ]:
+        """Validate events and split them into parameter events and MIDI events."""
         try:
             supplied = list(events)
         except TypeError as error:
-            raise ValidationError("events must be an iterable of parameter event objects") from error
+            raise ValidationError("events must be an iterable of event objects") from error
+        midi_effect_ids = {effect_id for effect_id, _ in self._midi_nodes if effect_id is not None}
+        midi_events: list[tuple[int, str, tuple[int, int, int]]] = []
+        previous_frame = 0
         prepared: list[
             tuple[
                 int,
@@ -657,13 +731,12 @@ class Stream:
             str, tuple[int, dict[str, Any], dict[str, Any]]
         ] = {}
         for index, event in enumerate(supplied):
-            if not isinstance(event, Mapping) or set(event) != {
-                "frame",
-                "effectId",
-                "parameters",
-            }:
+            if not isinstance(event, Mapping) or set(event) not in (
+                {"frame", "effectId", "parameters"},
+                {"frame", "effectId", "midi"},
+            ):
                 raise ValidationError(
-                    f"events[{index}] requires only frame, effectId, and parameters"
+                    f"events[{index}] requires frame, effectId, and either parameters or midi"
                 )
             frame = event["frame"]
             if (
@@ -674,7 +747,20 @@ class Stream:
                 raise ValidationError(
                     f"events[{index}].frame must be an integer from 0 to {frames - 1}"
                 )
+            if int(frame) < previous_frame:
+                raise ValidationError("events must be ordered by frame")
+            previous_frame = int(frame)
             effect_id = event["effectId"]
+            if "midi" in event:
+                if not isinstance(effect_id, str) or effect_id not in midi_effect_ids:
+                    raise ValidationError(
+                        f"events[{index}].effectId must identify an enabled MIDI-driven "
+                        "effect such as SoundFontPlayer"
+                    )
+                message = _normalize_message(event["midi"], f"events[{index}]")
+                if message is not None:
+                    midi_events.append((int(frame), effect_id, message))
+                continue
             if not isinstance(effect_id, str) or effect_id not in self._event_effects:
                 raise ValidationError(
                     f"events[{index}].effectId must identify an enabled effect"
@@ -726,22 +812,86 @@ class Stream:
                     processing_validated,
                 )
             )
-        if any(
-            prepared[index][0] > prepared[index + 1][0]
-            for index in range(len(prepared) - 1)
-        ):
-            raise ValidationError("parameter events must be ordered by frame")
-        return prepared
+        return prepared, midi_events
 
-    def _process_range(self, output: np.ndarray, start: int, end: int) -> None:
-        while start < end:
-            segment_end = min(start + self.block_size, end)
-            segment = np.ascontiguousarray(output[:, start:segment_end])
-            self._native.process_in_place(segment)
-            output[:, start:segment_end] = segment
-            if self._telemetry_callbacks:
-                self._drain_telemetry()
-            start = segment_end
+    def _plan_segments(
+        self, frames: int, parameter_events: list[Any], midi_events: list[Any]
+    ) -> list[tuple[int, int, list[Any], list[Any]]]:
+        """Split the call at block boundaries and parameter events; each MIDI event
+        goes to the segment that contains its frame (same plan as the JavaScript binding)."""
+        segments = []
+        parameter_index = midi_index = start = 0
+        while start < frames:
+            parameter_start = parameter_index
+            while (
+                parameter_index < len(parameter_events)
+                and parameter_events[parameter_index][0] == start
+            ):
+                parameter_index += 1
+            end = start + self.block_size
+            if parameter_index < len(parameter_events):
+                end = min(end, parameter_events[parameter_index][0])
+            end = min(end, frames)
+            midi_start = midi_index
+            while midi_index < len(midi_events) and midi_events[midi_index][0] < end:
+                midi_index += 1
+            segment_midi = midi_events[midi_start:midi_index]
+            if len(segment_midi) > _MIDI_EVENT_CAPACITY:
+                effect_id, count = Counter(event[1] for event in segment_midi).most_common(1)[0]
+                if count > _MIDI_EVENT_CAPACITY:
+                    raise ValidationError(
+                        f"Effect {effect_id} has more than {_MIDI_EVENT_CAPACITY} MIDI events "
+                        f"within {end - start} frames. Spread the events over more frames or "
+                        "use a smaller block_size."
+                    )
+            segments.append(
+                (start, end, parameter_events[parameter_start:parameter_index], segment_midi)
+            )
+            start = end
+        return segments
+
+    def _process_segment(
+        self, output: np.ndarray, start: int, end: int, midi_events: list[Any]
+    ) -> None:
+        # Every MIDI-driven effect receives the render clock and its own (possibly
+        # empty) event block before each native call.
+        for node_id, native_index in self._midi_nodes:
+            rows = []
+            for frame, effect_id, (status, data1, data2) in midi_events:
+                if effect_id != node_id:
+                    continue
+                note_on = status & 0xF0 == 0x90 and data2 > 0
+                rows.append(
+                    (
+                        frame - start,
+                        status | data1 << 8 | data2 << 16,
+                        self._take_note_id() if note_on else 0,
+                    )
+                )
+            self._native.set_midi_clock(native_index, self._midi_clock)
+            self._native.set_midi_events(
+                native_index,
+                np.array(rows, dtype=np.uint32) if rows else _NO_MIDI_EVENTS,
+                0,
+            )
+        segment = np.ascontiguousarray(output[:, start:end])
+        self._native.process_in_place(segment)
+        output[:, start:end] = segment
+        self._midi_clock += end - start
+        if self._telemetry_callbacks:
+            self._drain_telemetry()
+
+    def _take_note_id(self) -> int:
+        note_id = self._next_note_id
+        self._next_note_id = 1 if note_id == 0xFFFFFFFF else note_id + 1
+        return note_id
+
+    def _reset_midi(self) -> None:
+        """Clear held notes and controller state and restart the MIDI clock."""
+        for _, native_index in self._midi_nodes:
+            self._native.set_midi_events(native_index, _NO_MIDI_EVENTS, _MIDI_RESET)
+        self._midi_clock = 0
+        self._next_note_id = 1
 
     def _drain_telemetry(self) -> None:
         packet = self._native.read_telemetry()
@@ -790,6 +940,7 @@ class Stream:
                         effect.effect_type, effect.parameters
                     )
                 )
+            self._reset_midi()
         except Exception as error:
             raise EffeTuneRuntimeError("native DSP reset failed") from error
 

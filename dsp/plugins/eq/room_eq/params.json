@@ -1,6 +1,6 @@
 {
   "type": "RoomEqPlugin",
-  "parityReference": "native-room-eq-direct-double-v2",
+  "parityReference": "native-room-eq-direct-double-v3",
   "tolerance": { "abs": 0.0002, "policy": "per-sample" },
   "assets": [
     { "slot": 0, "format": "ET_ASSET_F32_MULTICH", "capacity": "32 MiB convolution cap" }

@@ -17,22 +17,24 @@ async function destinationFor(t) {
   return join(directory, 'source-cache', 'archive.tar.gz');
 }
 
-test('restarts a reset response body and caches only the verified archive', async t => {
+test('resumes a reset response body and caches only the verified archive', async t => {
   const destination = await destinationFor(t);
   const reset = new TypeError('terminated', {
     cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
   });
   let calls = 0;
-  t.mock.method(globalThis, 'fetch', async requestedUrl => {
+  t.mock.method(globalThis, 'fetch', async (requestedUrl, init) => {
     assert.equal(requestedUrl, url);
     await assert.rejects(stat(destination), { code: 'ENOENT' });
     if (++calls === 1) {
+      assert.equal(init, undefined);
       return new Response(new ReadableStream({
         start(controller) { controller.enqueue(archive.subarray(0, 4)); },
         pull(controller) { controller.error(reset); }
       }));
     }
-    return new Response(archive);
+    assert.deepEqual(init, { headers: { Range: 'bytes=4-' } });
+    return new Response(archive.subarray(4), { status: 206 });
   });
   t.mock.method(console, 'warn', () => {});
 

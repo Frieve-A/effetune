@@ -35,7 +35,7 @@ export const GRAPH_V1_CAPACITY = Object.freeze({
   maxWorkspaceBytes: 64 * 1024 * 1024
 });
 const maximumAssetBytes = 32 * 1024 * 1024;
-export const APP_ONLY_EFFECT_TYPES = Object.freeze(['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin']);
+export const APP_ONLY_EFFECT_TYPES = Object.freeze(['SFZNotePlayerPlugin']);
 const maximumUint32 = 0xffffffff;
 const digestPattern = /^[0-9a-f]{64}$/;
 
@@ -182,6 +182,7 @@ export const PUBLIC_EFFECT_TYPES = Object.freeze([
   'Tremolo',
   'WowFlutter',
   'Oscillator',
+  'SoundFontPlayer',
   'AdaptivePredictionEffect',
   'HornResonator',
   'HornResonatorPlus',
@@ -295,6 +296,7 @@ export const FROZEN_PARAM_DIRECTORIES = Object.freeze({
   TremoloPlugin: 'dsp/plugins/modulation/tremolo',
   WowFlutterPlugin: 'dsp/plugins/modulation/wow_flutter',
   OscillatorPlugin: 'dsp/plugins/others/oscillator',
+  SoundFontPlayerPlugin: 'dsp/plugins/others/soundfont_player',
   AdaptivePredictionEffectPlugin: 'dsp/plugins/resonator/adaptive_prediction_effect',
   HornResonatorPlugin: 'dsp/plugins/resonator/horn_resonator',
   HornResonatorPlusPlugin: 'dsp/plugins/resonator/horn_resonator_plus',
@@ -347,6 +349,12 @@ const effectOverlayKeys = new Set([
 const parameterOverlayKeys = new Set([
   'name', 'unit', 'transform', 'allowedValues', 'valueMap'
 ]);
+// Asset kind -> generated typed-assets interface. Bundle v1 carries impulse responses only;
+// soundFont assets are resolver-only and bundling them is rejected at runtime.
+const assetInterfaces = Object.freeze({
+  impulseResponse: 'IRReverbAssets',
+  soundFont: 'SoundFontPlayerAssets'
+});
 const convenienceManifestKeys = new Set(['version', 'exports']);
 const convenienceExportKeys = new Set(['type', 'class', 'factory']);
 const jsRootGeneratedValueExports = Object.freeze([
@@ -361,7 +369,7 @@ const jsRootGeneratedTypeExports = Object.freeze([
   'EffectClassByType',
   'EffectOptionsByType',
   'EffectType',
-  'IRReverbAssets'
+  ...Object.values(assetInterfaces)
 ]);
 const transformKinds = new Set(['naturalLog', 'log10', 'decibelsFromReference']);
 const latencyKinds = new Set(['dynamic', 'sampleRateDependent']);
@@ -762,7 +770,9 @@ export function validateEffectOverlay(effectOverlay, spec, source) {
         asset, new Set(['name', 'kind', 'slot', 'required']), `${label}.assets[${index}]`, source
       );
       requireIdentifier(asset.name, `${label}.assets[${index}].name`, source);
-      requireIdentifier(asset.kind, `${label}.assets[${index}].kind`, source);
+      if (!Object.hasOwn(assetInterfaces, asset.kind) || asset.name !== asset.kind) {
+        fail(`${label}.assets[${index}] must use a supported kind as its name`, source);
+      }
       if (!Number.isSafeInteger(asset.slot) || asset.slot < 0 || typeof asset.required !== 'boolean') {
         fail(`${label}.assets[${index}] must declare a non-negative slot and boolean required flag`, source);
       }
@@ -1345,7 +1355,7 @@ function bundleSchema() {
     $id: bundleSchemaId,
     title: 'EffeTune DSP Bundle v1',
     description:
-      'Manifest form for a canonical chain and bounded external impulse-response assets. Container and transport are outside this schema.',
+      'Manifest form for a canonical chain and bounded external impulse-response assets. SoundFont assets cannot be bundled in v1. Container and transport are outside this schema.',
     type: 'object',
     additionalProperties: false,
     required: ['version', 'chain', 'assets'],
@@ -1630,6 +1640,10 @@ function hasRequiredAssets(effect) {
   return effect.assets.some(asset => asset.required);
 }
 
+function assetsInterface(effect) {
+  return assetInterfaces[effect.assets[0].kind];
+}
+
 function pythonForCatalog(catalog) {
   const metadataLiteral = JSON.stringify(JSON.stringify(publicCatalog(catalog)));
   const implementationLiteral = JSON.stringify(JSON.stringify(privateCatalog(catalog).effects));
@@ -1727,8 +1741,8 @@ function pythonStubForCatalog(catalog) {
     'from typing import Literal, TypeAlias, TypedDict\n\n',
     'from ._base import Effect\n\n',
     `EffectChannel: TypeAlias = Literal[${channelType}]\n\n`,
-    'class IRReverbAssets(TypedDict):\n',
-    '    impulseResponse: str\n\n',
+    ...Object.entries(assetInterfaces).map(([kind, name]) =>
+      `class ${name}(TypedDict):\n    ${kind}: str\n\n`),
     'EFFECT_METADATA: dict[str, object]\n',
     '_EFFECT_IMPLEMENTATION: dict[str, dict[str, object]]\n\n'
   ];
@@ -1748,8 +1762,8 @@ function pythonStubForCatalog(catalog) {
     chunks.push('        channel: EffectChannel = ...,\n');
     if (effect.assets.length !== 0) {
       chunks.push(hasRequiredAssets(effect)
-        ? '        assets: IRReverbAssets,\n'
-        : '        assets: IRReverbAssets | None = ...,\n');
+        ? `        assets: ${assetsInterface(effect)},\n`
+        : `        assets: ${assetsInterface(effect)} | None = ...,\n`);
     }
     chunks.push('    ) -> None: ...\n\n');
   }
@@ -1838,9 +1852,8 @@ function tsForCatalog(catalog) {
     '  readonly enabled?: boolean;\n',
     '  readonly channel?: EffectChannel;\n',
     '}\n\n',
-    'export interface IRReverbAssets {\n',
-    '  readonly impulseResponse: string;\n',
-    '}\n\n'
+    ...Object.entries(assetInterfaces).map(([kind, name]) =>
+      `export interface ${name} {\n  readonly ${kind}: string;\n}\n\n`)
   ];
   for (const effect of catalog.effects) {
     chunks.push(`export interface ${effect.type}Options extends CommonEffectOptions {\n`);
@@ -1850,8 +1863,8 @@ function tsForCatalog(catalog) {
     chunks.push(effect.assets.length === 0
       ? '  readonly assets?: never;\n'
       : hasRequiredAssets(effect)
-        ? '  readonly assets: IRReverbAssets;\n'
-        : '  readonly assets?: IRReverbAssets;\n');
+        ? `  readonly assets: ${assetsInterface(effect)};\n`
+        : `  readonly assets?: ${assetsInterface(effect)};\n`);
     chunks.push('}\n\n');
     chunks.push(`export declare class ${effect.type} extends Effect {\n`);
     chunks.push(`  static readonly effectType: ${jsLiteral(effect.type)};\n`);

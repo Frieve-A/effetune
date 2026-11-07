@@ -367,7 +367,9 @@ contextBridge.exposeInMainWorld(
       clearSiteData: () => ipcRenderer.invoke('browser:clear-site-data'),
       onState: callback => addSingleArgIpcListener('browser:state', callback),
       onCommand: callback => addSingleArgIpcListener('browser:command', callback),
-      onFocusAddress: callback => addSingleArgIpcListener('browser:focus-address', callback)
+      onFocusAddress: callback => addSingleArgIpcListener('browser:focus-address', callback),
+      onMidi: callback => addSingleArgIpcListener('browser:midi', callback),
+      onMedia: callback => addSingleArgIpcListener('browser:media', callback)
     }),
 
     // File system operations

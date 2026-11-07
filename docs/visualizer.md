@@ -83,6 +83,8 @@ For **Title**, **Album**, and **Artist**, set font, size, horizontal/vertical al
 
 Add **Track information** to show the available tags and audio format for the current file or network track. For AirPlay, it also shows supplied sender information, the received codec, receiver PCM format, and sender volume. Unavailable fields are omitted. Use the same text styling controls as Title. **Title**, **Artist**, **Album**, and **Artwork** also show the information supplied by an AirPlay sender.
 
+In the desktop app, **Title**, **Artist**, **Album**, **Artwork**, and **Track information** can also show the song information that a page in the built-in browser provides to the operating system's media controls. The browser's information is shown while the browser is playing or when the Player has no track; otherwise the Player's track is shown. If the site provides no song information, **Title**, **Artist**, **Album**, and **Artwork** are blank. The first line of **Track information** reads "Browser - " followed by the site's host name.
+
 Add **Text** for a static label or room name (up to 4096 characters, multiline supported) using the same typography, outline, and shadow controls as Title.
 
 Add **Playback Control** to place a player button in your layout. Choose **Action**: **Play / Pause**, **Stop**, **Previous track**, **Next track**, **Shuffle**, or **Repeat**; add separate items for the buttons you want. Outside **Edit**, click or tap a button, or focus it with **Tab** and press **Enter** or **Space**. With the player open, unavailable controls are dimmed. Shuffle is unavailable while repeating one track.
@@ -94,11 +96,13 @@ Add **Seek Bar** for a horizontal playback-position control. Outside **Edit**, c
 
 - **Appearance** offers **Slim**, **Classic**, and **Bold** starting points. **Track color**, **Track opacity**, and **Track thickness** adjust the background bar; **Rounded ends** rounds its ends. The palette colors the played portion. **Show thumb** toggles the position marker, with **Thumb size** and **Thumb color** controlling its appearance. **Thumb shape** chooses **Circle**, **Square**, **Diamond**, or a vertical **Bar**. **Thumb border width** and **Thumb border color** add an outline; set the width to 0 to hide it. Existing item effects also apply.
 
-Playback Control and Seek Bar stay visible when the player is paused or stopped. When no player is open, both are hidden outside **Edit**, including in Clean Feed; you can still configure them in the editor.
+Playback Control and Seek Bar stay visible when the player is paused or stopped. When no player is open and the built-in browser has no song to show, both are hidden outside **Edit**, including in Clean Feed; you can still configure them in the editor.
 
 Add **Counter** to show the built-in player's current position, including pauses and seeking. With external input, it counts elapsed time from when the Counter is added or the layout is loaded in the current session, even while Visualizer is hidden. Outside **Edit**, click or tap it to reset that Counter's external elapsed time; this does not change player playback.
 
 During AirPlay, **Counter** and **Seek Bar** show the sender-reported track position when available; updates follow the sender’s reports. Seeking and unsupported playback actions are unavailable. **Stop** ends the current reception. See the [network music guide](openhome.md) for setup and audio-format details.
+
+For a page playing in the built-in browser, **Counter** and **Seek Bar** only display the position and length; seeking and **Playback Control** actions are unavailable, as with AirPlay.
 
 - **Playlist index**, **Hours**, **Minutes**, **Seconds**, and **Subseconds** independently show or hide each field. The default is `hh:mm:ss.mmm`, with the index off. The index starts at 1 for the player's playlist and shows 00 for external input. The highest visible whole-time field accumulates: hide Hours to show total minutes, or hide Hours and Minutes to show total seconds.
 - **Fraction digits** (1–4, default 3) sets decimal places; 3 shows milliseconds. **Separators** › **Time** (default `:`), **Subseconds** (default `.`), and **Index** (default a space) accept up to eight characters each, or can be empty.
@@ -190,7 +194,7 @@ For a subdued background behind lyrics, start with Saturation 60% and Brightness
 
 ## Presets, sharing, backup, and display settings
 
-Use the preset dialog to save, reload, rename, or delete named layouts; built-in presets stay available. **Settings > Backup / Restore** backs up saved Visualizer presets and their background images, but not the current working layout.
+Use the preset dialog to save, reload, rename, or delete named layouts; built-in presets stay available. When the list is long, type part of a name in the search box at the top of the dialog to narrow it. **Settings > Backup / Restore** backs up saved Visualizer presets and their background images, but not the current working layout.
 
 Select **Share** in the toolbar to copy a link to the current layout (background images are not included in links; use **Backup / Restore** for images). In the desktop app or browser extension, copy a share link and select **Import Link** or press **Ctrl+V** (**⌘V** on Mac) in Visualizer. An imported layout replaces the current one without asking; to go back, open **Edit** and select **Undo**.
 

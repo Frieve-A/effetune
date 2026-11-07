@@ -11,10 +11,13 @@ struct SoundFontPlayerPluginParams {
   float maxVoices;
   float outputGain;
   float sampleQuality;
-  static constexpr std::uint32_t kHash = 0x844a0998u;
-  static constexpr std::uint32_t kFloatCount = 4u;
+  float automaticFallback;
+  float previewMidi;
+  float previewChannel;
+  static constexpr std::uint32_t kHash = 0x7dca0295u;
+  static constexpr std::uint32_t kFloatCount = 7u;
 };
-static_assert(4u == 0u || sizeof(SoundFontPlayerPluginParams) == sizeof(float) * 4u);
+static_assert(7u == 0u || sizeof(SoundFontPlayerPluginParams) == sizeof(float) * 7u);
 
 } // namespace effetune::generated
 

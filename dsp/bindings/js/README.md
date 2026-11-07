@@ -3,8 +3,8 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.17.0 exposes all 111 catalog types through the generic Chain and
-`createEffect` APIs and 111 generated named convenience classes,
+Version 0.18.0 exposes all 112 catalog types through the generic Chain and
+`createEffect` APIs and 112 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 
@@ -36,7 +36,8 @@ const chain = await createChain({
   }]
 });
 const output = await chain.process(input, { sampleRate: 48000 });
-console.log(output.length, output[0].length, output[0][0]);
+const peak = output[0].reduce((max, sample) => Math.max(max, Math.abs(sample)), 0);
+console.log(output.length, output[0].length, peak);
 chain.close();
 ```
 
@@ -108,6 +109,19 @@ Use a stream when DSP state must continue across blocks or when parameters
 change at an exact frame:
 
 ```js
+import { createChain } from '@effetune/dsp';
+
+const chain = await createChain({
+  version: 1,
+  chain: [{
+    id: 'voice',
+    type: 'Compressor',
+    parameters: { threshold: -18, ratio: 4 }
+  }]
+});
+const left = new Float32Array(4800).fill(0.25);
+const right = new Float32Array(4800).fill(0.25);
+
 const stream = await chain.stream({
   sampleRate: 48000,
   channels: 2,
@@ -126,6 +140,7 @@ const output = await stream.process([left, right], {
 stream.setParam('voice', 'threshold', -20);
 stream.reset();
 stream.close();
+chain.close();
 ```
 
 Event frames are relative to the start of that `process()` input. They must be
@@ -141,12 +156,81 @@ current gain if another target arrives. See the executable
 [Volume automation examples](https://effetune.frieve.com/dsp/concepts/streaming-and-events/#volume-automation).
 
 `setParam()` and events cannot change parameters that require convolution
-assets to be staged again. Open a new stream after changing
+assets to be staged again. Open a new stream after changing any
+`BassManagement` parameter other than `bassGain`, `lfeGain`, and `headroom`, or
+after changing
 `IRReverb.channelMode`, `latency`, or `convolutionRate`;
 `FIRCrossover.bandCount`, `latencyMode`, or `filterDelaySamples`; or
-`latencyMode` / `filterDelaySamples` on `FiveBandFIRPEQ`, `GroupDelayEQ`,
-`GroupDelayPEQ`, or `RoomEQ`. The same restriction applies to
+`latencyMode` / `filterDelaySamples` on `CrosstalkCancellation`,
+`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or `RoomEQ`. The same
+restriction applies to
 `EffeTuneNode.setParam()`.
+
+### Play a SoundFont
+
+`SoundFontPlayer` plays an SF2, SF3, or SFZ instrument from MIDI messages.
+Prepare the instrument once with `prepareSoundFont()` and return the prepared
+bank from `assetResolver`. `prepareSoundFont()` requires Node.js 20.12 or later.
+It accepts the SF2 or SF3 file bytes, a path to an `.sf2`, `.sf3`, or `.sfz` file
+in Node.js, or `{ selectedPath, files }` for an SFZ file and its samples. Node.js cannot
+prepare SF3 files or SFZ files with Ogg samples; prepare those in a web browser. When an SFZ file uses samples
+outside its own folder, such as `../Samples/`, pass the library folder as
+`root`: `prepareSoundFont('Library/Programs/piano.sfz', { root: 'Library' })`
+(or `--root Library` with the `effetune-soundfont prepare` command). If any
+sample file cannot be found, preparation fails with an `AssetError` that lists
+the missing files. Save a
+prepared bank with `bank.toBytes()` and load it later with `SoundFontBank.fromBytes()` to skip
+preparation.
+
+For offline rendering, send MIDI messages as stream events and process silent
+input:
+
+```js
+import { createChain, midi, prepareSoundFont } from '@effetune/dsp';
+
+const bank = await prepareSoundFont('piano.sf2');
+const chain = await createChain({
+  version: 1,
+  chain: [{ id: 'piano', type: 'SoundFontPlayer', parameters: {}, assets: { soundFont: 'piano' } }]
+}, { assetResolver: () => bank });
+const stream = await chain.stream({ sampleRate: 48000, channels: 2 });
+const silence = [new Float32Array(48000), new Float32Array(48000)];
+const [left, right] = await stream.process(silence, {
+  events: [
+    { frame: 0, effectId: 'piano', midi: midi.noteOn(0, 60, 100) },
+    { frame: 24000, effectId: 'piano', midi: midi.noteOff(0, 60) }
+  ]
+});
+```
+
+An event carries either `parameters` or `midi`, and both kinds share one
+`events` array and its frame order. `midi` also provides `controlChange()`,
+`pitchBend()` (a 14-bit value with 8192 as the centre), and `programChange()`.
+Each block of `blockSize` frames accepts up to 4096 MIDI events per effect.
+`midi` can also hold raw MIDI bytes as an array or `Uint8Array`; aftertouch and
+system messages such as clock are ignored.
+
+For real-time playback, prepare the bank from the file's bytes, leave the node's
+input unconnected, and send MIDI messages as they arrive. Each message takes
+effect at the start of the next audio block:
+
+```js
+import { midi, prepareSoundFont } from '@effetune/dsp';
+import { EffeTuneNode } from '@effetune/dsp/worklet';
+
+const bank = await prepareSoundFont(new Uint8Array(await file.arrayBuffer()));
+const node = await EffeTuneNode.create(context, {
+  version: 1,
+  chain: [{ id: 'piano', type: 'SoundFontPlayer', parameters: {}, assets: { soundFont: 'piano' } }]
+}, { assetResolver: () => bank });
+node.connect(context.destination);
+node.sendMidi('piano', midi.noteOn(0, 60, 100));
+// Web MIDI messages from a MIDIInput can be passed as they are.
+midiInput.onmidimessage = event => node.sendMidi('piano', event.data);
+```
+
+Bundles cannot include SoundFont assets yet. Graphs and one-shot `process()`
+calls do not receive MIDI messages.
 
 Canonical presets use semantic long parameter names:
 
@@ -170,8 +254,14 @@ Convert a preset whose effects form one ordered serial path explicitly with
 `importLegacyPreset()` before calling `createChain()`. Branched and multi-bus
 routing is rejected because flattening it would change the acoustic result.
 Move or copy the desired effects into one serial path in the app and export it
-again, or reproduce the branching in the host around separate Chains.
-Unsupported fields produce a validation error.
+again, rebuild the branching with
+[Graph v1](https://effetune.frieve.com/dsp/reference/graph-v1/), or reproduce it
+in the host around separate Chains.
+Duplicate structural keys and display-only state written by the app are
+validated and discarded. Preset metadata is discarded and Sections are
+flattened silently, because `importLegacyPreset()` returns only the
+ChainDocument and no import report. Any other unknown field produces a
+validation error rather than being silently dropped.
 
 Effects whose catalog marks `impulseResponse` as required need an
 `assets.impulseResponse` reference and an `assetResolver`. FIR filter effects
@@ -181,7 +271,10 @@ for the required-asset effects and executable examples, and
 [Bass Management](https://effetune.frieve.com/dsp/effects/bass-management/)
 for its conditional Linear-mode asset requirement. Use the public
 `encodeEta1({ channels, sampleRate, topology, paths })`
-helper to encode raw planar float32 arrays for a resolver. Bundle manifests
+helper to encode raw planar float32 arrays for a resolver. Load a Bundle
+directory with `createChain(bundleJson, { assetResolver })`; the resolver
+receives each manifest reference, such as `assets/<sha256>.eta1`, relative to
+the Bundle directory. Bundle manifests
 verify exact byte length and SHA-256 before accepting an ETA1 payload. The
 complete payload and convolution footprint must fit the 32 MiB kernel cap.
 
@@ -307,12 +400,12 @@ these offsets.
 `EffeTuneNode.create()` waits until the package-owned worklet processor has
 instantiated the selected baseline or SIMD artifact and committed every
 required asset. Serve the package files from the same origin or provide
-explicit `processorUrl`, `wasmUrl`, and `simdWasmUrl` options.
+`processorUrl`, `wasmUrl`, `simdWasmUrl`, and `metaUrl` options for any file you
+move.
 
 The package does not decode or encode audio files. Provide planar float32 audio
 from Web Audio, WebCodecs, an audio-file library, or your own I/O layer.
 
 CrosstalkCancellation requires four prepared filter channels in trueStereo topology
 (LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
-channels. Automatic topology is accepted for this four-channel asset. Its
-latencyMode and filterDelaySamples parameters require opening a new stream.
+channels. Automatic topology is accepted for this four-channel asset.

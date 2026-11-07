@@ -1,7 +1,13 @@
 import { recognizeMidiSystemReset, recognizeMidiDrumMode } from './system-reset.js';
 
-// The controller manager owns Web MIDI access and port identity. This class
-// applies the same attached Music Player authority as audio source selection.
+// The controller manager owns Web MIDI access and port identity. A Music Player
+// shown to the user owns MIDI even while paused. The network renderer retains a
+// hidden player without UI while it waits for remote content; it creates the UI
+// before playing, so the hidden idle player must not block live input.
+export function musicPlayerOwnsMidi(powerController) {
+  return !!powerController?.player?.ui?.container;
+}
+
 export class MidiLiveInput {
   constructor({ manager, audioManager, powerController = audioManager?.powerPolicyController,
     onDiagnostic = error => console.warn('Live MIDI input:', error) }) {
@@ -28,7 +34,7 @@ export class MidiLiveInput {
 
   syncSource() {
     if (this.disposed) return;
-    const port = !this.powerController?.player && this.selectedKey
+    const port = !musicPlayerOwnsMidi(this.powerController) && this.selectedKey
       ? this.manager.findInput(this.selectedKey) : null;
     if (port === this.activePort && (port ? this.selectedKey : null) === this.activeSource) return;
     // A reconnect can reuse the same stable key but is a new source lifetime.

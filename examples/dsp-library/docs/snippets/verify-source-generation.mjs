@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createChain, getEffectCatalog } from '@effetune/dsp';
+import { createChain, getEffectCatalog, SoundFontBank } from '@effetune/dsp';
 import { assetSetup } from './asset-fixtures.mjs';
 
-const [fixturePath, publicCatalogPath, overlayPath] = process.argv.slice(2);
+const [fixturePath, publicCatalogPath, overlayPath, soundFontPath] = process.argv.slice(2);
 assert.ok(
-  fixturePath && publicCatalogPath && overlayPath,
-  'Usage: node verify-source-generation.mjs FIXTURE PUBLIC_CATALOG OVERLAY'
+  fixturePath && publicCatalogPath && overlayPath && soundFontPath,
+  'Usage: node verify-source-generation.mjs FIXTURE PUBLIC_CATALOG OVERLAY SOUNDFONT_ETSF'
 );
+const soundFontBank = SoundFontBank.fromBytes(fs.readFileSync(soundFontPath));
+const soundFontSetup = effect => ({
+  channels: 2,
+  references: { soundFont: `memory:${effect.type}:soundFont` },
+  assetResolver: () => soundFontBank
+});
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 const publicCatalog = JSON.parse(fs.readFileSync(publicCatalogPath, 'utf8'));
 const overlay = JSON.parse(fs.readFileSync(overlayPath, 'utf8'));
@@ -56,7 +62,9 @@ for (const effect of catalog.effects) {
   visited.push(effect.type);
   const member = members.get(effect.type);
   const sampleRate = member?.sampleRate ?? fixture.defaultSampleRate;
-  const setup = assetSetup(effect, sampleRate);
+  const setup = effect.assets.some(asset => asset.required && asset.kind === 'soundFont')
+    ? soundFontSetup(effect)
+    : assetSetup(effect, sampleRate);
   const chain = await createChain({
     version: 1,
     chain: [{

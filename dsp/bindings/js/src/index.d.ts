@@ -101,6 +101,8 @@ export type {
   RoomEQOptions,
   SaturationOptions,
   SimpleJitterOptions,
+  SoundFontPlayerAssets,
+  SoundFontPlayerOptions,
   SpatialMapperOptions,
   StereoBlendOptions,
   SubSynthOptions,
@@ -217,6 +219,7 @@ export {
   RoomEQ,
   Saturation,
   SimpleJitter,
+  SoundFontPlayer,
   SpatialMapper,
   StereoBlend,
   SubSynth,
@@ -329,6 +332,7 @@ export {
   createRoomEQ,
   createSaturation,
   createSimpleJitter,
+  createSoundFontPlayer,
   createSpatialMapper,
   createStereoBlend,
   createSubSynth,
@@ -350,6 +354,8 @@ export type { EffectDefinition } from './effect.js';
 
 import type { Effect } from './effect.js';
 import type { EffectChannel, EffectType } from './generated-effects.js';
+import type { EffectCatalogEntry } from './catalog-entry.js';
+export type { EffectCatalogEntry, EffectCatalogParameter } from './catalog-entry.js';
 
 export declare class EffeTuneError extends Error {
   readonly code?: string;
@@ -436,17 +442,63 @@ export interface BundleDocument {
   readonly assets: readonly BundleAsset[];
 }
 
+export interface SoundFontPage {
+  readonly sample: number;
+  readonly pageIndex: number;
+  readonly frames: number;
+  readonly channels: 1 | 2;
+  readonly pcm: Float32Array;
+}
+
+/** A SoundFont or SFZ instrument prepared for SoundFontPlayer. */
+export declare class SoundFontBank {
+  constructor(payload: ArrayBuffer, pages?: readonly SoundFontPage[]);
+  readonly payload: ArrayBuffer;
+  readonly pages: readonly SoundFontPage[];
+  /** Serializes the bank so it can be saved and loaded without preparing again. */
+  toBytes(): Uint8Array;
+  static fromBytes(bytes: ArrayBuffer | ArrayBufferView): SoundFontBank;
+}
+
+export interface PrepareSoundFontOptions {
+  /** Memory limit for the prepared bank in bytes (up to 1 GiB). */
+  readonly maxBytes?: number;
+  /**
+   * Folder whose files an .sfz path may use, such as a library folder holding
+   * sibling `Programs/` and `Samples/` folders. Defaults to the SFZ file's folder.
+   * Ignored for other sources.
+   */
+  readonly root?: string;
+}
+
+export declare function prepareSoundFont(
+  /** SF2 bytes, a .sf2/.sf3/.sfz path (Node.js), or an SFZ file set keyed by relative path. */
+  source: ArrayBuffer | ArrayBufferView | string |
+    { readonly selectedPath: string; readonly files: Map<string, Blob | Uint8Array> },
+  options?: PrepareSoundFontOptions
+): Promise<SoundFontBank>;
+
+export declare const midi: Readonly<{
+  noteOn(channel: number, note: number, velocity: number): [number, number, number];
+  noteOff(channel: number, note: number, velocity?: number): [number, number, number];
+  controlChange(channel: number, controller: number, value: number): [number, number, number];
+  /** value14 is 0..16383; 8192 is the centre. */
+  pitchBend(channel: number, value14: number): [number, number, number];
+  programChange(channel: number, program: number): [number, number, number];
+}>;
+
 export interface ResolvedAsset {
   readonly bytes?: ArrayBuffer | ArrayBufferView;
   readonly data?: ArrayBuffer | ArrayBufferView;
   readonly format?: ImpulseResponseFormat;
 }
 
+/** SoundFont assets resolve to a SoundFontBank or the bytes from SoundFontBank.toBytes(). */
 export type AssetResolver = (
   reference: string,
   manifest?: BundleAsset
-) => ResolvedAsset | ArrayBuffer | ArrayBufferView | Response | null |
-  Promise<ResolvedAsset | ArrayBuffer | ArrayBufferView | Response | null>;
+) => ResolvedAsset | SoundFontBank | ArrayBuffer | ArrayBufferView | Response | null |
+  Promise<ResolvedAsset | SoundFontBank | ArrayBuffer | ArrayBufferView | Response | null>;
 
 export interface ArtifactOptions {
   readonly variant?: 'auto' | 'baseline' | 'simd';
@@ -820,8 +872,23 @@ export interface ParameterEvent {
   readonly parameters: Readonly<Record<string, unknown>>;
 }
 
+/** A MIDI message for a MIDI-driven effect such as SoundFontPlayer. */
+export interface MidiEvent {
+  readonly frame: number;
+  readonly effectId: string;
+  readonly midi: MidiMessage;
+}
+
+/**
+ * Raw MIDI bytes, such as a `midi.*` helper result or a Web MIDI `MIDIMessageEvent.data`:
+ * [status, data1, data2], or [status, data1] for program change. Note on/off, control change,
+ * program change, and pitch bend are applied; aftertouch and system messages are ignored.
+ */
+export type MidiMessage = readonly number[] | Uint8Array;
+
 export interface StreamProcessOptions {
-  readonly events?: readonly ParameterEvent[];
+  /** Ordered by frame. Each event updates parameters or sends one MIDI message. */
+  readonly events?: readonly (ParameterEvent | MidiEvent)[];
 }
 
 export interface PrewarmOptions {
@@ -1102,7 +1169,7 @@ export declare function encodeEta1(options: Eta1EncodeOptions): ArrayBuffer;
 export declare function getEffectCatalog(): Readonly<{
   version: 1;
   channels: readonly EffectChannel[];
-  effects: readonly Readonly<Record<string, unknown>>[];
+  effects: readonly EffectCatalogEntry[];
 }>;
 export declare const EFFECT_CATALOG: ReturnType<typeof getEffectCatalog>;
 export declare function isBundleDocument(input: unknown): boolean;

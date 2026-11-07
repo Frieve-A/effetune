@@ -16,6 +16,7 @@ const privateCatalogPath = path.join(
   repoRoot, 'dsp', 'bindings', 'generated', 'effects-v1.private.json'
 );
 const outputRoot = path.join(repoRoot, 'docs', 'dsp');
+const githubBlobRoot = 'https://github.com/Frieve-A/effetune/blob/main/';
 const safeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const manifestSegmentPattern = /^[A-Za-z0-9._-]+$/;
 const publicSegmentPattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
@@ -656,16 +657,27 @@ function extractAppSections(catalog, overlay, mapping) {
       return !skipping;
     });
     const sourceKey = relativeSource.replaceAll('\\', '/');
+    // Library pages live at other paths, so relative links are rewritten: a link to
+    // a mapped app section becomes its library page, anything else a GitHub URL.
     const section = sectionLines.join('\n').trimEnd().replace(
-      /\]\(#([^)]+)\)/g,
-      (match, fragment) => {
+      /\]\(([^)\s]+)\)/g,
+      (match, target) => {
+        if (target.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(target)) return match;
+        const [file, fragment = ''] = target.split('#', 2);
+        const repoPath = file
+          ? path.posix.normalize(path.posix.join(path.posix.dirname(sourceKey), file))
+          : sourceKey;
+        if (repoPath.startsWith('../') || !fs.existsSync(path.join(repoRoot, repoPath))) {
+          fail(`${relativeSource}: link target ${target} does not exist.`);
+        }
         const destination = destinationBySourceFragment.get(
-          `${sourceKey}#${fragment.toLowerCase()}`
+          `${repoPath}#${fragment.toLowerCase()}`
         );
-        if (!destination) {
+        if (!file && !destination) {
           fail(`${relativeSource}: unresolved fragment-only link #${fragment}.`);
         }
-        return `](${destination})`;
+        return `](${destination ??
+          `${githubBlobRoot}${repoPath}${fragment ? `#${fragment}` : ''}`})`;
       }
     );
     sections.set(effect.type, section);
@@ -701,6 +713,85 @@ function parameterTable(effect) {
     );
   }
   return rows.join('\n');
+}
+
+const monoFirAsset = 'One coefficient channel in `mono` topology. The same filter runs on every selected channel.';
+const assetRequirements = Object.freeze({
+  CrosstalkCancellation: 'Four coefficient channels in `trueStereo` topology, ordered LL, LR, RL, RR. The selector must select exactly two channels.',
+  FIRCrossover: 'One coefficient channel per band (`bandCount` channels) in `matrix` topology. Select an even number of channels from 4 to 16, at least `2 × bandCount`. Put the stereo input in lanes 0 and 1. Band `b` leaves on lanes `2b` and `2b + 1`, and any remaining lanes are silent. In Python, give the matching paths (input 0 to lane `2b`, input 1 to lane `2b + 1`, both through IR channel `b`) and `input_count=2`.',
+  FiveBandFIRPEQ: monoFirAsset,
+  GroupDelayEQ: monoFirAsset,
+  GroupDelayPEQ: monoFirAsset,
+  IRReverb: '`channelMode` sets the topology. `mono` uses one IR channel for every selected channel. `independent` uses one IR channel per selected channel. `trueStereo` uses four IR channels (LL, LR, RL, RR) and exactly two selected channels. `matrix` uses explicit convolution paths. `automatic` chooses `mono` for a one-channel IR, `trueStereo` for a four-channel IR on two selected channels, and `independent` when the IR has one channel per selected channel; give other layouts explicitly as `matrix`.',
+  RoomEQ: 'One shared coefficient channel (`mono`) or one coefficient channel per selected channel (`independent`).'
+});
+
+const shelfQParameters = Object.freeze({
+  FifteenBandPEQ: ['qValues', 'filterTypes', '`lowShelf` or `highShelf`'],
+  FiveBandPEQ: ['qValues', 'filterTypes', '`lowShelf` or `highShelf`'],
+  TonalBalanceEQ: ['adjustQ', 'adjustType', '`ls` or `hs`']
+});
+
+function shelfQNote(type) {
+  const entry = shelfQParameters[type];
+  if (!entry) return '';
+  const [q, filterType, shelfValues] = entry;
+  return `### Shelf Q limit
+
+When \`${filterType}\` is ${shelfValues}, the effective \`${q}\` is limited to 2.0.
+Larger values are accepted and behave as 2.0, as in the EffeTune app.`;
+}
+
+function assetRequirementRate(type) {
+  return type === 'IRReverb'
+    ? 'The IR sample rate must equal the convolution rate that `convolutionRate` selects: `full` is the processing rate, `half` is half of it, and `quarter` is a quarter of it (processing rates of 176.4 kHz and higher only). `auto` selects `half` at processing rates of 88.2 kHz and higher and `full` below that. `latency` `0` always uses `full`. The library does not resample the IR.'
+    : 'The coefficient sample rate must equal the processing sample rate; the library does not resample coefficients.';
+}
+
+function assetRequirementSection(effect) {
+  const layout = assetRequirements[effect.type];
+  if (!layout) return '';
+  const lines = [
+    '### Asset requirements',
+    '',
+    `\`assets.impulseResponse\`: ${layout}`,
+    '',
+    assetRequirementRate(effect.type)
+  ];
+  if (effect.type !== 'IRReverb') {
+    lines.push(
+      '',
+      'The library does not design this filter from the app controls described below. ' +
+        'Supply finished coefficients, at most 131072 frames per channel.',
+      '',
+      '`latencyMode` is the convolution block size in samples. The filtered output is ' +
+        'delayed by exactly this amount, and `"0"` adds no delay.',
+      '',
+      '`filterDelaySamples` declares the delay already contained in the coefficients, ' +
+        'such as the center tap of a linear-phase FIR. The effect does not delay the ' +
+        'filtered signal by this amount; it reports `latencyMode + filterDelaySamples` ' +
+        'as its latency, and unselected channels are delayed by that total.' +
+        (effect.type === 'CrosstalkCancellation'
+          ? ' The dry part of the `strength` blend is also delayed by that total, so it ' +
+            'lines up with the filtered signal only when `filterDelaySamples` matches ' +
+            'the coefficients.'
+          : '') +
+        (effect.type === 'RoomEQ'
+          ? ' `channelDelay` (0 to 3840 samples, default 0) delays the output by that ' +
+            'many samples but is not included in the reported latency.'
+          : '')
+    );
+  }
+  return lines.join('\n');
+}
+
+function assetRequirementsTable() {
+  return [
+    '| Effect | `impulseResponse` layout |',
+    '|---|---|',
+    ...Object.entries(assetRequirements).map(([type, layout]) =>
+      `| [\`${type}\`](/dsp/effects/${slugForType(type)}/#asset-requirements) | ${layout} |`)
+  ].join('\n');
 }
 
 function effectContractDetails(effect) {
@@ -808,6 +899,33 @@ It pads the input to retain delayed output; offline processing otherwise returns
 the same number of frames as its input.
 
 ${codeBlock('python', read(path.join(docsDataRoot, 'snippets', 'bass-management-linear.py')))}`;
+  }
+  if (effect.type === 'SoundFontPlayer') {
+    return `### Playing MIDI
+
+\`assets.soundFont\` takes a bank prepared as described in
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks). Streams accept
+note, control change, program change, and pitch bend messages as
+[MIDI events](/dsp/concepts/streaming-and-events/#midi-events), and an
+\`EffeTuneNode\` accepts them in real time through \`sendMidi()\`. One-shot
+\`process()\` on an effect or Chain does not accept MIDI; there, \`previewMidi\` is the
+only way to make the player sound. Graphs cannot deliver MIDI, so a Graph that
+contains this effect, even a disabled one, raises \`ValidationError\` with
+\`GRAPH_UNSUPPORTED_CAPABILITY\` when it is created. The output is added to the input,
+so silent input yields the instrument alone. [MIDI to WAV](/dsp/cookbook/midi-to-wav/)
+renders a MIDI file.
+
+### Parameter values
+
+- \`midiChannel\`: \`0\` (default) follows all 16 MIDI channels; \`1\` to \`16\`
+  follows only that channel.
+- \`sampleQuality\`: \`0\` (default) is FIR (64 taps), \`1\` is FIR (32 taps), and \`2\`
+  is Cubic (4 points). The library default is FIR (64 taps), unlike the app's
+  FIR (32 taps) default described below.
+- \`previewMidi\`: \`-1\` (default) is off; \`0\` to \`127\` holds that MIDI note
+  until the value changes.
+- \`previewChannel\`: the zero-based MIDI channel of the preview note, so \`0\` is
+  MIDI channel 1 and \`15\` is channel 16.`;
   }
   if (effect.type === 'SpatialMapper') {
     return `### Spatial Mapper matrix layout and bus width
@@ -944,8 +1062,11 @@ function effectPage(effect, docsEntry, appSection) {
   const slug = docsEntry.slug ?? slugForType(effect.type);
   const conceptNotices = [];
   if (effect.assets.some(asset => asset.required)) {
+    const anchor = effect.assets.some(asset => asset.kind === 'soundFont')
+      ? 'soundfont-banks'
+      : 'asset-required-effects';
     conceptNotices.push(
-      'See [Assets and bundles](/dsp/concepts/assets-and-bundles/#asset-required-effects) before using this effect.'
+      `See [Assets and bundles](/dsp/concepts/assets-and-bundles/#${anchor}) before using this effect.`
     );
   } else if (effect.assets.length) {
     conceptNotices.push(
@@ -966,6 +1087,7 @@ function effectPage(effect, docsEntry, appSection) {
       'This type can intentionally generate output from zero input at an active setting. See [Processing model](/dsp/concepts/processing-model/#source-generating-effects).'
     );
   }
+  const extraSection = assetRequirementSection(effect) || shelfQNote(effect.type);
   const concept = conceptNotices.length
     ? `\n${conceptNotices.join('\n\n')}\n`
     : '';
@@ -988,11 +1110,16 @@ function effectPage(effect, docsEntry, appSection) {
     '',
     effectContractDetails(effect),
     '',
+    ...(extraSection ? [extraSection, ''] : []),
     '## EffeTune app documentation',
     '',
     '> The following section is reproduced from the English EffeTune app documentation. ' +
-      'Its parameter names and values describe the app UI and can differ from semantic API ' +
-      'parameters through transforms or value maps. The generated contract above is authoritative.',
+      'It describes the app UI, so it can mention controls, meters, and displays that the ' +
+      'library does not provide, and its parameter names and values can differ from the API ' +
+      'through transforms or value maps. Only the parameters in the Contract table above, ' +
+      'plus the telemetry described in [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry), ' +
+      'are part of the library API; the Contract is ' +
+      'authoritative. Some parameters take effect only when a related setting enables them.',
     '',
     appSection.replace(/(\S)([ \t]+)$/gm, (_match, content, trailing) =>
       trailing.length >= 2 ? `${content}<br>` : content),
@@ -1214,11 +1341,26 @@ function staticPages(sources) {
   const bundlePackSnippet = read(path.join(
     docsDataRoot, 'snippets', 'bundle-pack.py'
   ));
+  const bundleInteropSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'bundle-interop.mjs'
+  ));
   const visualGolden = read(path.join(
     docsDataRoot, 'fixtures', 'visual-editor-golden-v0.1.json'
   ));
   const mlSnippet = read(path.join(
     docsDataRoot, 'snippets', 'ml-data-augmentation.py'
+  ));
+  const soundFontPythonSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'soundfont-player.py'
+  ));
+  const soundFontJavascriptSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'soundfont-player.mjs'
+  ));
+  const midiToWavPythonSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'midi-to-wav.py'
+  ));
+  const midiToWavJavascriptSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'midi-to-wav.mjs'
   ));
   const pages = new Map();
   const byId = routeMap(routes);
@@ -1234,19 +1376,27 @@ function staticPages(sources) {
     );
   };
 
+  const pythonPlatforms = `Python wheels require CPython 3.10 or newer; the \`cp312-abi3\`
+wheel also covers newer CPython versions. Wheels are published for Windows x64
+(\`win_amd64\`), Linux x86-64 with glibc 2.27 or newer (\`manylinux_2_27\`), and
+macOS 15 or newer on Intel (\`x86_64\`) and Apple Silicon (\`arm64\`). There is no
+source distribution and no musllinux, Linux ARM, or 32-bit wheel, so on other
+systems pip reports \`No matching distribution found for effetune\`.`;
+
   add('python-start', `
 Use this path to process a planar NumPy array.
 
 ${codeBlock('console', 'pip install effetune')}
 
-Wheels target CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
-macOS Apple Silicon. musllinux is not provided. Input must be C-contiguous
+${pythonPlatforms} Input must be C-contiguous
 \`float32\` with shape \`(channels, frames)\`; the core does not resample.
 
 Generated effect constructors and \`create_effect()\` accept Python
 \`snake_case\` keywords:
 
-${codeBlock('python', `shift = et.PitchShifter(pitch_shift=3)
+${codeBlock('python', `import effetune as et
+
+shift = et.PitchShifter(pitch_shift=3)
 same_shift = et.create_effect("PitchShifter", pitch_shift=3)`)}
 
 Chain JSON and scheduled event parameter objects use the semantic catalog name
@@ -1359,6 +1509,9 @@ AudioWorklet path is tested in Chromium.
 returns an unsubscribe function; \`unsubscribe(callback)\` removes it. Callbacks run on
 the node side, never inside DSP processing. \`droppedTelemetryFrames\` reports loss.
 \`reset()\` clears state and \`close()\` releases the worklet-side instance.
+\`sendMidi(effectId, midi)\` sends one MIDI message to a
+[SoundFont Player](/dsp/effects/soundfont-player/) at the start of the next block
+(see [MIDI events](/dsp/concepts/streaming-and-events/#midi-events)).
 Scheduled frame events belong to Python/JavaScript streams, not this Worklet API.
 `);
 
@@ -1416,16 +1569,25 @@ Audio uses planar channels and an explicit sample rate. Chain effects run serial
 array order. The caller owns decode, encode, resampling, and buffers. Offline processing
 starts fresh; streams retain filter, delay, tail, and random history.
 
+The JavaScript and AudioWorklet WebAssembly build adds a tiny alternating ±1e-19 signal
+(about -380 dBFS) at the input of each enabled effect so that filters do not fall into
+slow denormal arithmetic, and treats input samples smaller than about 4e-15 as zero
+there. Silent input through an active effect therefore returns values near 1e-19 rather
+than exact zeros. An empty Chain, or one whose effects are all disabled, returns its input
+bit-exact. The native Python build flushes denormals instead and adds no such signal.
+
 Chain is serial only. Branching, merging, and automatic delay compensation are available
 through the opt-in [Graph v1](/dsp/reference/graph-v1/) model, which does not change
 Chain v1.
 
 Catalog latency badges are qualitative declarations. Python
 \`Stream.latency_samples\` and JavaScript \`ChainStream.latencySamples\` expose the same
-runtime aggregate. \`Chain.latency_samples()\` in Python and \`chain.latencySamples()\`
-in JavaScript report the same aggregate without opening a stream, so offline
+runtime aggregate. \`chain.latency_samples(sample_rate)\` in Python and
+\`await chain.latencySamples({ sampleRate })\` in JavaScript report the same aggregate
+without opening a stream, so offline
 \`process()\` output can be phase-aligned.
-\`graph.latency_samples()\` in Python and \`graph.latencySamples()\` in JavaScript report
+\`graph.latency_samples(sample_rate)\` in Python and
+\`await graph.latencySamples({ sampleRate })\` in JavaScript report
 the prepared common-max Graph aggregate without opening a stream, and
 \`GraphStream.latency_samples\` / \`GraphStream.latencySamples\` expose it on an open
 stream.
@@ -1468,17 +1630,27 @@ an effect parameter such as \`BitCrusher.seed\`, whose catalog default is 11 and
 ## Reproducible experiment
 
 The library has no standard experiment-manifest API. This source owns the complete experiment
-record: candidate wheel filename and twice-computed SHA-256, package and environment
+record: wheel filename and twice-computed SHA-256, package and environment
 versions, input construction and SHA-256, stream mode, parameters, seeds, each ordered
 open/process/close operation, exact process block spans, and every output hash. It uses
 \`SimpleJitter.rmsJitterNanoseconds = 100\`, stereo 48 kHz, 4096 frames, 256-frame
-blocks, execution seed 0 for identical runs and 1 for the variant. Save the emitted JSON
-and pass it back with \`--replay-record\`; the script reconstructs a new stream from that
+blocks, execution seed 0 for identical runs and 1 for the variant. Save the record
+with \`--save-record\` and pass it back with \`--replay-record\`; the script reconstructs a new stream from that
 record and requires identical input and output digests in the same environment.
 
 ${codeBlock('python', researchSnippet)}
 
-${codeBlock('console', `python research-experiment.py --wheel /path/to/effetune-${version}.whl`)}
+Save the script above as \`research-experiment.py\`. Install the same version with \`pip install effetune==${version}\`, then download its
+wheel file so the record can identify it. The wheel file name depends on your Python
+version and platform, following \`effetune-${version}-<python tag>-<abi tag>-<platform tag>.whl\`;
+for example, CPython 3.12 on Windows x64 downloads
+\`effetune-${version}-cp312-abi3-win_amd64.whl\`. Use the file name that pip reports.
+The first run saves the record with \`--save-record\`, which writes UTF-8 JSON
+regardless of the shell, and the second run replays it:
+
+${codeBlock('console', `pip download effetune==${version} --no-deps -d wheels
+python research-experiment.py --wheel wheels/effetune-${version}-cp312-abi3-win_amd64.whl --save-record record.json
+python research-experiment.py --wheel wheels/effetune-${version}-cp312-abi3-win_amd64.whl --replay-record record.json`)}
 `);
 
   add('chain-and-presets', `
@@ -1490,22 +1662,26 @@ different contract and require the explicit legacy importer.
 The importer accepts app presets whose effects form one ordered serial path. It rejects
 branched or multi-bus routing because flattening it into Chain v1 would change the
 acoustic result. To migrate such a preset, first move or copy the desired effects into
-one serial path in the app and export it again, or reproduce the branching in the host
-around separate Chains.
+one serial path in the app and export it again, or rebuild the branching with
+[Graph v1](/dsp/reference/graph-v1/), or reproduce it in the host around separate Chains.
 
-App presets containing \`FIR Crossover\`, \`5Band FIR PEQ\`, \`Group Delay EQ\`,
-\`Group Delay PEQ\`, \`Room EQ\`, or \`IR Reverb\` cannot be imported: the library
-drives these six effects from a caller-supplied precomputed impulse-response asset
-instead of the app's filter-design parameters, so those parameters have no conversion
-and the importer rejects the node with an \`EffectError\` naming the effect. Construct
+App presets containing an effect that the library drives from a required
+caller-supplied precomputed impulse-response asset cannot be imported: \`FIR Crossover\`,
+\`5Band FIR PEQ\`, \`Group Delay EQ\`, \`Group Delay PEQ\`, \`Room EQ\`, \`IR Reverb\`,
+and \`Crosstalk Cancellation\`. The app's filter-design parameters have no conversion,
+so the importer rejects the node with an \`EffectError\` naming the effect. Construct
 such an effect directly and supply its asset.
 
 ## Visual editor to code
 
 The example below imports an asset-free stereo app preset and
-processes a fixed stereo input through the canonical Chain. The import report identifies
-editor-only metadata that is intentionally discarded; unsupported fields are not
-silently dropped.
+processes a fixed stereo input through the canonical Chain. The importer validates and
+then discards the duplicate structural keys and display-only state that the app writes.
+In Python, the import report lists a warning when it discards preset metadata such as
+the name or timestamp, discards a few editor states such as compressor meter display, or
+flattens Section structure. JavaScript \`importLegacyPreset()\` returns only the
+ChainDocument, so it discards that metadata and flattens Sections without a warning. Any
+other unknown field is an error; it is never silently dropped.
 
 In the desktop app, build a pipeline containing only Volume at -6 dB, choose
 **File > Export Preset...**, and save it as \`listening.effetune_preset\` in your
@@ -1534,10 +1710,16 @@ current semantic values. Frames are zero-based within that \`process()\` input. 
 must be in non-decreasing frame order; events sharing a frame are merged in supplied
 order before that sample:
 
-${codeBlock('python', `output = stream.process(audio, events=[
-    {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
-    {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
-])`)}
+${codeBlock('python', `import numpy as np
+import effetune as et
+
+chain = et.Chain([et.Compressor(id="voice", threshold=-18, ratio=4)])
+audio = np.full((2, 4800), 0.25, dtype=np.float32)
+with chain.stream(48_000, channels=2) as stream:
+    output = stream.process(audio, events=[
+        {"frame": 0, "effectId": "voice", "parameters": {"threshold": -24}},
+        {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
+    ])`)}
 
 A scheduled event updates the semantic target at its frame; the event mechanism
 itself generates no ramp. Each effect's own smoothing can still delay the audible
@@ -1545,12 +1727,67 @@ transition to that target. Scheduling small events does not bypass that smoothin
 or guarantee an exact sample-by-sample automation curve.
 
 An open stream or AudioWorklet accepts only values the native parameter commit can
-apply immediately. Open a new stream after changing \`IRReverb.channelMode\`,
+apply immediately. Open a new stream after changing any \`BassManagement\` parameter
+other than \`bassGain\`, \`lfeGain\`, and \`headroom\` (including \`phase\`, \`taps\`, \`roles\`,
+\`routes\`, \`subs\`, \`frequencies\`, \`slopes\`, \`routeInversions\`, \`lfeLowpass\`,
+\`lfeFrequency\`, and \`lfeSlope\`), or after changing \`IRReverb.channelMode\`,
 \`latency\`, or \`convolutionRate\`; \`FIRCrossover.bandCount\`, \`latencyMode\`, or
 \`filterDelaySamples\`; or \`latencyMode\` / \`filterDelaySamples\` on
 \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`CrosstalkCancellation\`, or \`RoomEQ\`. Live updates to those
 asset-configuration parameters raise \`ValidationError\` before processing or posting
 a Worklet command.
+
+## MIDI events
+
+[SoundFont Player](/dsp/effects/soundfont-player/) plays MIDI events placed in the same
+\`events\` array. A MIDI event is \`{frame, effectId, midi: [status, data1, data2]}\`
+and carries \`midi\` instead of \`parameters\`. \`midi\` takes the raw message bytes:
+a JavaScript array or \`Uint8Array\`, or a Python list, tuple, \`bytes\`, or
+\`bytearray\`. The \`midi\` helpers (\`midi.noteOn()\` in JavaScript,
+\`effetune.midi.note_on()\` in Python, and so on) build these messages. Note on, note
+off, control change, program change (two or three bytes), and pitch bend are played.
+Aftertouch and system messages are ignored, so raw Web MIDI data can be passed
+unchanged; a malformed message raises \`ValidationError\`. The player's
+\`midiChannel\` parameter selects which MIDI channels it follows (\`0\` follows all of
+them). Each segment of \`blockSize\` frames (Python: \`block_size\`) accepts up to 4096 MIDI
+events per effect; if a segment has more, spread the events over more frames or use
+a smaller block size.
+
+This example plays middle C for half a second with the bank prepared in
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks):
+
+${codeBlock('python', soundFontPythonSnippet)}
+
+${codeBlock('js', soundFontJavascriptSnippet)}
+
+For real-time playback in a browser, send MIDI bytes to an open \`EffeTuneNode\`
+with \`sendMidi(effectId, midi)\`. The message is applied at the start of the next
+audio block, so its timing follows the block size rather than a frame position.
+This example loads a prepared bank served next to the page and forwards Web MIDI
+input to the player:
+
+${codeBlock('js', `import { SoundFontBank } from '@effetune/dsp';
+import { EffeTuneNode } from '@effetune/dsp/worklet';
+
+const context = new AudioContext();
+const response = await fetch('piano.etsf');
+const bank = SoundFontBank.fromBytes(await response.arrayBuffer());
+const node = await EffeTuneNode.create(context, {
+  version: 1,
+  chain: [{ id: 'piano', type: 'SoundFontPlayer', parameters: {}, assets: { soundFont: 'piano' } }]
+}, { assetResolver: () => bank });
+node.connect(context.destination);
+
+const access = await navigator.requestMIDIAccess();
+for (const input of access.inputs.values()) {
+  input.onmidimessage = message => node.sendMidi('piano', message.data);
+}
+// Browsers start audio only after a user gesture.
+document.addEventListener('click', () => context.resume(), { once: true });`)}
+
+Graph processing and one-shot \`Effect.process\` do not accept MIDI events; use a
+stream or an \`EffeTuneNode\`. To render a Standard MIDI File, see
+[MIDI to WAV](/dsp/cookbook/midi-to-wav/).
 
 ## Processing a file in blocks
 
@@ -1594,23 +1831,25 @@ ${codeBlock('js', volumeJavascriptSnippet)}
 ## Asset-required effects
 
 \`CrosstalkCancellation\`, \`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`IRReverb\`, and
-\`RoomEQ\` require \`assets.impulseResponse\`. FIR filter effects require prepared
-coefficients at the processing rate; IR Reverb accepts supported convolution
-topologies. The resolver returns Python \`AssetData\` or deterministic ETA1
-bytes/\`{bytes, format}\` in JavaScript. It never relies on repository fixtures.
+\`RoomEQ\` require \`assets.impulseResponse\`. The resolver returns Python \`AssetData\` or
+deterministic ETA1 bytes/\`{bytes, format}\` in JavaScript. It never relies on
+repository fixtures. \`SoundFontPlayer\` requires \`assets.soundFont\` instead; see
+[SoundFont banks](#soundfont-banks).
 
-Crosstalk Cancellation requires four prepared filter channels in trueStereo topology
-(LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
-channels. Automatic topology is accepted for this four-channel asset.
+${assetRequirementsTable()}
+
+FIR filter effects take finished coefficients at the processing sample rate; the
+library does not design filters or resample assets. IR Reverb takes an IR at the rate
+its \`convolutionRate\` selects. Each effect page lists the rate, latency, and
+\`filterDelaySamples\` rules under **Asset requirements**.
 
 [Bass Management](/dsp/effects/bass-management/) requires a low-pass asset only
 for configured Linear routing with Managed inputs or low-pass-filtered LFE inputs;
 see its effect page for the coefficient layout and an executable example.
 
 The examples below run each effect with two distinct caller-owned IRs and require
-finite, non-zero, different output. FIR Crossover uses two coefficient channels,
-accepts stereo in processing lanes 0 and 1, and routes its two bands to four output
-lanes.
+finite, non-zero, different output. The FIR Crossover example uses two bands, so it
+processes four lanes.
 
 Bundle v1 combines Chain JSON with external ETA1 manifests. Python
 \`Bundle.pack()\` writes a deterministic directory bundle, and
@@ -1623,13 +1862,18 @@ Programmatic and CLI bundle writing:
 
 ${codeBlock('python', bundlePackSnippet)}
 
-${codeBlock('console', `effetune bundle pack room-chain.json cli-bundle \\
-  --asset room-ir=room-ir.wav
+${codeBlock('console', `effetune bundle pack room-chain.json cli-bundle --asset room-ir=room-ir.wav
 effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT`)}
 
 \`--preset cli-bundle/bundle.json\` is equivalent to the Bundle-directory form above.
 For WAV output, omitting \`--subtype\` keeps SoundFile's PCM_16 default; use
 \`--subtype FLOAT\` when the rendered samples must remain 32-bit floating point.
+
+JavaScript loads the same directory by passing \`bundle.json\` to \`createChain()\` with an
+\`assetResolver\` that reads each manifest reference relative to the Bundle directory.
+This example reads the \`python-bundle\` directory written above:
+
+${codeBlock('js', bundleInteropSnippet)}
 
 Python \`AssetData\` examples for the required-asset effects listed above:
 
@@ -1642,17 +1886,78 @@ ${codeBlock('js', assetFixtureSnippet)}
 Then run the JavaScript resolver examples for the same effects:
 
 ${codeBlock('js', assetJavascriptSnippet)}
+
+## SoundFont banks
+
+[SoundFont Player](/dsp/effects/soundfont-player/) takes an instrument bank as
+\`assets.soundFont\`. Prepare an SF2 file, or an SFZ file with WAV, AIFF, or FLAC
+samples, into an ETSF1 bank once with the JavaScript package. Node.js cannot prepare
+SF3 files or SFZ files with Ogg samples; prepare those in a browser, where
+\`prepareSoundFont()\` decodes them with the browser's own audio decoder, so the browser
+must support Ogg Vorbis.
+
+${codeBlock('console', 'npx -p @effetune/dsp effetune-soundfont prepare piano.sf2 piano.etsf')}
+
+A bank larger than 256 MiB, such as a full General MIDI set, needs
+\`--max-bytes <bytes>\` (1 GiB at most).
+
+In JavaScript, \`prepareSoundFont(source, { maxBytes })\` accepts SF2 bytes, an
+\`.sf2\` or \`.sfz\` path in Node.js, or \`{ selectedPath, files }\` for an SFZ with its
+sample files. An SFZ path reads samples only from within the SFZ file's folder; for an
+SFZ that refers to samples such as \`../Samples/\`, pass a folder that contains both as
+\`{ root }\` (\`--root <folder>\` on the command line). If a sample file cannot be
+found, preparation fails with an \`AssetError\` that names it. \`bank.toBytes()\` writes
+ETSF1 and \`SoundFontBank.fromBytes()\` reads it back. Python reads ETSF1 only, with
+\`effetune.SoundFontBank.load(path_or_bytes)\`.
+
+The whole bank stays in memory while it is used, so playback never waits for
+sample data. A bank larger than \`maxBytes\` (256 MiB by default, 1 GiB at most) is
+rejected; raise \`maxBytes\` for a larger bank.
+
+Return the bank from the asset resolver, as with an impulse response. Bundle v1
+cannot contain SoundFont banks, so keep the ETSF1 file next to the Chain JSON and
+resolve it yourself. [MIDI events](/dsp/concepts/streaming-and-events/#midi-events)
+shows complete examples that play a prepared bank.
 `);
 
   add('ml-data-augmentation', `
 **Goal:** create repeatable seeded audio degradation without using the EffeTune app.
-Use a candidate or verified Python wheel and the canonical experiment fixture.
+Install the published package with \`pip install effetune\`; the example generates its
+own input signal.
 
 ${codeBlock('python', mlSnippet)}
 
 The same seed must produce byte-identical float32 output in the same installed artifact
 and environment. The different seed must change output. All output must remain finite
 and within [-1, 1].
+`);
+
+  add('midi-to-wav', `
+**Goal:** render a Standard MIDI File through a SoundFont bank into a WAV file.
+Prepare the bank first as described in
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks).
+
+Both examples convert the song into
+[MIDI events](/dsp/concepts/streaming-and-events/#midi-events) with sample frame
+positions, then stream silence through \`SoundFontPlayer\` one second at a time and
+hand each block the events that fall inside it. Three seconds of silence after the
+last event let the final notes release. Each block stays well under the limit of
+4096 MIDI events per effect in each \`blockSize\` (Python: \`block_size\`) frame segment;
+for a very dense song, use a smaller block size. The player is set to -6 dB
+(\`outputGain\`) for headroom because the WAV is written as 16-bit integers; lower
+\`outputGain\` further if the render clips.
+
+The Python example reads the song with [mido](https://mido.readthedocs.io/)
+(\`pip install effetune mido\`) and runs as
+\`python midi_to_wav.py song.mid piano.etsf song.wav\`:
+
+${codeBlock('python', midiToWavPythonSnippet)}
+
+The JavaScript example includes a small SMF reader; any MIDI parser that yields the
+same frame and byte pairs works. Run it as
+\`node midi-to-wav.mjs song.mid piano.etsf song.wav\`:
+
+${codeBlock('js', midiToWavJavascriptSnippet)}
 `);
 
   add('schema-driven-agent', `
@@ -1833,13 +2138,31 @@ stream.closed: bool
 stream.latency_samples: int
 stream.dropped_telemetry_frames: int`)}
 
-Event parameter objects are partial updates. Events use zero-based frames relative to
+Each event has \`frame\`, \`effectId\`, and either \`parameters\` or \`midi\`. Event
+parameter objects are partial updates. Events use zero-based frames relative to
 the current input, must be in non-decreasing frame order, and merge in supplied order
 when several share a frame. A Stream is a context manager; processing, resetting, or
 inspecting runtime properties after close raises \`StateError\`.
 Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) require a newly opened
 stream.
+
+\`midi\` events drive MIDI effects such as
+[SoundFont Player](/dsp/effects/soundfont-player/). The \`effetune.midi\` helpers build
+one message each; channels are zero-based (0 to 15):
+
+${codeBlock('python', `midi.note_on(channel: int, note: int, velocity: int) -> list[int]
+midi.note_off(channel: int, note: int, velocity: int = 0) -> list[int]
+midi.control_change(channel: int, controller: int, value: int) -> list[int]
+midi.pitch_bend(channel: int, value14: int) -> list[int]  # 8192 is the centre
+midi.program_change(channel: int, program: int) -> list[int]
+
+stream.process(audio, events=[
+    {"frame": 0, "effectId": "piano", "midi": midi.note_on(0, 60, 100)},
+])`)}
+
+A \`midi\` value can also be raw bytes as a list, tuple, \`bytes\`, or \`bytearray\`;
+see [MIDI events](/dsp/concepts/streaming-and-events/#midi-events).
 
 ## Assets and bundles
 
@@ -1861,11 +2184,21 @@ Bundle.pack(
 ) -> Bundle
 bundle.manifest: Mapping[str, Any]
 bundle.chain_document: Mapping[str, Any]
-bundle.resolver(reference: str) -> AssetData | None`)}
+bundle.resolver(reference: str) -> AssetData | None
+
+SoundFontBank.load(source: str | PathLike | bytes | bytearray | memoryview) -> SoundFontBank
+bank.payload: bytes
+bank.pages: tuple[SoundFontPage, ...]
+
+AssetResolver = Callable[[str], AssetData | SoundFontBank | Mapping[str, Any] | None]`)}
 
 \`AssetData.samples\` must be finite, planar, C-contiguous \`float32\`. Bundle methods
 raise \`ValidationError\` for documents/paths and \`AssetError\` for missing, malformed,
 oversized, or unverifiable IR assets.
+
+\`SoundFontBank.load()\` reads a prepared \`.etsf\` bank, not an SF2, SF3, or SFZ file;
+see [SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks). Return the
+bank from an asset resolver for a SoundFont Player's \`soundFont\` reference.
 
 ## Telemetry and catalog
 
@@ -1924,8 +2257,24 @@ class Chain {
 }`)}
 
 \`ProcessOptions\` requires \`sampleRate\` and optionally accepts \`seed\`,
-\`blockSize\`, and \`onTelemetry\`. \`CreateChainOptions\` accepts
-\`assetResolver\` plus baseline/SIMD artifact selection and URLs. Offline processing
+\`blockSize\`, and \`onTelemetry\`. \`CreateChainOptions\` and \`CreateGraphOptions\`
+accept \`assetResolver\` (see [Assets and bundles](/dsp/concepts/assets-and-bundles/))
+plus these \`ArtifactOptions\`, which choose and load the WebAssembly module. The
+defaults suit Node.js and a browser that serves the package's \`dist/\` directory
+unchanged; set the URLs when a bundler or CDN moves the \`assets/\` files.
+
+| Option | Default | Meaning |
+|---|---|---|
+| \`variant\` | \`'auto'\` | \`'auto'\` uses the SIMD module when the runtime supports WebAssembly SIMD and the baseline module otherwise. \`'baseline'\` always uses the baseline module. \`'simd'\` throws \`EffeTuneRuntimeError\` when SIMD is unsupported |
+| \`wasmUrl\` | Package \`assets/effetune-dsp.wasm\` | URL of the baseline module |
+| \`simdWasmUrl\` | Package \`assets/effetune-dsp.simd.wasm\` | URL of the SIMD module |
+| \`metaUrl\` | Package \`assets/effetune-dsp.meta.json\` | URL of the metadata file that must match the module |
+| \`fetch\` | \`globalThis.fetch\` | Function used to load \`http:\` and \`https:\` URLs; \`file:\` URLs are read from disk in Node.js |
+| \`webAssembly\` | \`globalThis.WebAssembly\` | WebAssembly implementation used to compile the module |
+| \`cache\` | \`true\` | Reuses a compiled module for the same variant and URLs within the page or process. \`false\`, a custom \`fetch\`, or a custom \`webAssembly\` disables reuse |
+
+Relative URLs resolve against the package module. Plain \`http:\` URLs are accepted only
+from the module's own origin or localhost; other origins require HTTPS. Offline processing
 returns newly owned channels with fresh state. All input channels must have equal
 length, and every sample must be finite; non-finite input raises \`ValidationError\`
 before native state is reached.
@@ -2044,18 +2393,71 @@ ${codeBlock('ts', `interface ChainStream {
   reset(): this
   process(
     audio: readonly Float32Array[],
-    options?: { events?: readonly ParameterEvent[] }
+    options?: StreamProcessOptions
   ): Promise<Float32Array[]>
   close(): void
-}`)}
+}
+
+interface StreamProcessOptions {
+  events?: readonly (ParameterEvent | MidiEvent)[]
+}
+interface ParameterEvent {
+  frame: number
+  effectId: string
+  parameters: Record<string, unknown>
+}
+interface MidiEvent {
+  frame: number
+  effectId: string
+  midi: MidiMessage
+}
+type MidiMessage = readonly number[] | Uint8Array`)}
 
 \`StreamOptions\` requires \`sampleRate\` and optionally accepts \`channels\`,
-\`seed\`, \`blockSize\`, and \`onTelemetry\`. Event parameter objects are partial
-updates applied in input order. Rejected non-finite blocks do not change stream state.
+\`seed\`, \`blockSize\`, and \`onTelemetry\`. Event frames are zero-based within the
+current block. Event parameter objects are partial updates applied in input order;
+\`midi\` events drive MIDI effects such as
+[SoundFont Player](/dsp/effects/soundfont-player/) (see
+[MIDI events](/dsp/concepts/streaming-and-events/#midi-events)). Rejected non-finite blocks do not change stream state.
 \`latencySamples\` is the live aggregate and is numerically symmetric with Python
 \`Stream.latency_samples\`. Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) require a newly opened
 stream and are rejected before processing.
+
+## SoundFont banks and MIDI
+
+${codeBlock('ts', `prepareSoundFont(
+  source: ArrayBuffer | ArrayBufferView | string |
+    { selectedPath: string; files: Map<string, Blob | Uint8Array> },
+  options?: {
+    maxBytes?: number // 256 MiB, at most 1 GiB
+    root?: string // SFZ path only; defaults to the SFZ file's folder
+  }
+): Promise<SoundFontBank>
+
+class SoundFontBank {
+  static fromBytes(bytes: ArrayBuffer | ArrayBufferView): SoundFontBank
+  toBytes(): Uint8Array
+  readonly payload: ArrayBuffer
+  readonly pages: readonly SoundFontPage[]
+}
+
+const midi: Readonly<{
+  noteOn(channel: number, note: number, velocity: number): [number, number, number]
+  noteOff(channel: number, note: number, velocity?: number): [number, number, number]
+  controlChange(channel: number, controller: number, value: number): [number, number, number]
+  pitchBend(channel: number, value14: number): [number, number, number] // 8192 is the centre
+  programChange(channel: number, program: number): [number, number, number]
+}>`)}
+
+\`prepareSoundFont()\` turns SoundFont file bytes, a \`.sf2\` or \`.sfz\` path (Node.js), or an SFZ file set keyed by relative path into a bank for
+[SoundFont Player](/dsp/effects/soundfont-player/). For an SFZ path, \`root\` is the
+folder its sample paths may reach; set it to a shared parent folder when the SFZ refers
+to samples such as \`../Samples/\`. \`toBytes()\` and \`fromBytes()\` save and reload a prepared bank without preparing it again. An \`assetResolver\` may
+return a \`SoundFontBank\` or the bytes from \`toBytes()\`; see
+[SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks), which also covers
+the Node.js limits. The \`midi\` helpers build \`MidiEvent\` messages; channels are
+zero-based (0 to 15).
 
 ## ETA1 and catalog
 
@@ -2069,7 +2471,7 @@ ${codeBlock('ts', `encodeEta1(options: {
 getEffectCatalog(): Readonly<{
   version: 1
   channels: readonly EffectChannel[]
-  effects: readonly Readonly<Record<string, unknown>>[]
+  effects: readonly EffectCatalogEntry[]
 }>
 const EFFECT_CATALOG: ReturnType<typeof getEffectCatalog>
 createEffect<T extends EffectType>(
@@ -2081,7 +2483,9 @@ createEffect<T extends EffectType>(
 
 \`encodeEta1()\` validates finite, equal-length planar channels and matrix paths.
 \`EFFECT_CATALOG\`, \`EFFECT_CLASSES\`, and all ${catalog.effects.length} root class/factory pairs cover the
-same semantic catalog as Python without private implementation data.
+same semantic catalog as Python without private implementation data. Each
+\`EffectCatalogEntry\` carries the effect \`type\`, its \`parameters\` (each an
+\`EffectCatalogParameter\`), and the catalog metadata for seeds and assets.
 
 ## AudioWorklet
 
@@ -2095,6 +2499,7 @@ ${codeBlock('ts', `EffeTuneNode.create(
 node.subscribe(callback: TelemetryCallback): () => void
 node.unsubscribe(callback: TelemetryCallback): boolean
 node.setParam(effectId: string, parameterName: string, value: unknown): Promise<void>
+node.sendMidi(effectId: string, midi: MidiMessage): void
 node.reset(): Promise<void>
 node.close(): void
 node.latencySamples: number
@@ -2130,11 +2535,31 @@ These synchronous Graph document builders never load the DSP artifact:
 backend failures, and \`StateError\` invalid lifecycle operations.
 `);
 
+  const channelSelectors = `## Channel selector
+
+Every effect item has a \`channel\` selector. It defaults to \`"all"\`.
+
+| Value | Processed channels |
+|---|---|
+| \`"all"\` | Every channel |
+| \`"stereo"\` | Channels 1 and 2 (channel 1 in mono audio) |
+| \`"left"\` / \`"right"\` | Channel 1 / channel 2 |
+| \`"1"\` through \`"16"\` | That one channel |
+| \`"34"\`, \`"56"\`, \`"78"\`, \`"910"\`, \`"1112"\`, \`"1314"\`, \`"1516"\` | That channel pair |
+
+Processing fails with \`ValidationError\` when the selected channel or pair does not exist
+in the audio. Channels the selector does not include pass through unprocessed, delayed by
+the effect's latency so that all channels stay aligned. Bass Management requires
+\`"all"\`, and Adaptive Prediction processes at most two channels, so it rejects \`"all"\`
+for audio with more than two channels.`;
+
   add('chain-v1', `
 The [raw schema](/dsp/schemas/chain-v1.schema.json) is authoritative. A document has
 \`version: 1\` and ordered \`chain\` items. IDs are unique when present; semantic types,
 parameters, channels, enabled state, and asset references reject unknown fields.
 Some asset and cross-field rules require runtime validation after schema validation.
+
+${channelSelectors}
 `);
 
   add('graph-v1', `
@@ -2203,6 +2628,16 @@ dormant without making the structural document invalid. An enabled node that sti
 an active outgoing route to the output runs with zero-filled input even if all incoming
 edges are suppressed, regardless of effect type. The presence of any such node prevents
 the silence shortcut.
+
+${channelSelectors}
+
+In a Graph, the unprocessed channels are part of each node's output. When parallel
+branches merge, every branch delivers its own copy of those channels, and the merge sums
+them like any other signal. For example, two branches that each lower only \`"left"\`
+by 6 dB and merge at the output return the right channel at twice its input level.
+Edge gain scales every channel, so it cannot remove only those copies. Use
+\`channel: "all"\` for effects inside parallel branches, or place a channel-limited
+effect on a serial route before the split or after the merge.
 
 ## APIs
 
@@ -2544,8 +2979,9 @@ processing. ZIP containers are outside v1.
 `);
 
   add('compatibility', `
-Python wheels cover CPython 3.10+ on manylinux x86-64, Windows AMD64, macOS Intel, and
-macOS Apple Silicon; musllinux is not provided. Node.js \`>=18\` is required. Chromium
+${pythonPlatforms}
+
+Node.js \`>=18\` is required. Chromium
 is acceptance-tested. Other evergreen browsers are designed for but unverified.
 AudioWorklet support requires HTTPS or localhost; direct \`file:\` loading is unsupported.
 The npm package is ESM-only; use \`.mjs\` or a consumer package with
@@ -2566,6 +3002,24 @@ subscriber enables it and the last unsubscribe disables it. Long renders drain a
 every processing block. Public frames identify the semantic effect and contain owned
 arrays; binary frame types, versions, tap IDs, payload bytes, and Worklet transport stay
 private. Unknown or malformed frames are discarded.
+
+The \`telemetry\` list in a catalog entry names the effect's internal observation
+streams; it is metadata, not a list of \`frame.kind\` values. Streams of the types above
+are decoded as follows, and every other catalog telemetry name, such as
+\`gainReduction\` or \`vinylStatus\`, is metadata only and delivers no frames:
+
+| Catalog telemetry | \`frame.kind\` |
+|---|---|
+| \`analogMeter\` | \`analogMeter\` |
+| \`levelMeter\` | \`level\` |
+| \`noteSpectrogram\`, \`noteTimbre\`, \`noteChordKey\` | Same name |
+| \`oscilloscope\` | \`oscilloscope\` |
+| \`pitch\` | \`pitch\` |
+| \`rhythmAnalyzer\` | \`rhythmAnalyzer\` |
+| \`spectrum\`, \`spectrumHq\` | Same name |
+| \`spectrogram\`, \`spectrogramHq\` | Same name |
+| \`stereoMeter\` | \`stereo\` |
+| \`tonalBalance\` | \`tonalBalance\` |
 
 Common metadata:
 
@@ -2745,9 +3199,27 @@ candidates, checks goldens, emits checksums, an SPDX SBOM, and provenance attest
 
 The registries hold the authoritative published versions. \`pip install effetune\` and
 \`npm install @effetune/dsp\` always resolve the latest release; these docs describe
-v${version}. Signed tarballs, wheels, checksums, and the SBOM for every tagged release
-are attached to the matching
+v${version}. The wheels, npm tarball, \`SHA256SUMS\`, and SPDX SBOM
+(\`SBOM.spdx.json\`) for every tagged release are attached to the matching
 [\`dsp-v\` GitHub Release](https://github.com/Frieve-A/effetune/releases?q=dsp-v).
+The files themselves are not signed. Instead, each wheel, the npm tarball, and every
+attached file has a GitHub build-provenance attestation (SLSA provenance signed through
+Sigstore). The npm package also carries npm registry signatures and provenance, and the
+PyPI wheels carry PyPI publish attestations.
+
+To check downloaded release files, run these commands in their directory. The first
+checks the files you downloaded against \`SHA256SUMS\`; the second requires the
+[GitHub CLI](https://cli.github.com/). In an npm project, \`npm audit signatures\`
+checks the registry signatures and provenance of the installed packages:
+
+${codeBlock('console', `sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify effetune-dsp-${version}.tgz -R Frieve-A/effetune
+npm audit signatures`)}
+
+\`sha256sum\` is not available in Windows PowerShell. There, print a file's hash with
+the command below and compare it with that file's line in \`SHA256SUMS\`:
+
+${codeBlock('powershell', `(Get-FileHash effetune-dsp-${version}.tgz -Algorithm SHA256).Hash.ToLower()`)}
 
 The [live demo build manifest](/dsp/demo/build-manifest.json) records the package
 name, version, DSP \`sourceDigest\`, and SHA-256 hashes of its served files. The

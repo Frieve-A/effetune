@@ -1,7 +1,8 @@
 import { loadDspArtifact } from './artifacts.js';
 import { isBundleDocument, resolveChainAssets, splitBundle } from './assets.js';
-import { createEngineSession } from './engine.js';
+import { createEngineSession, MIDI_EVENT_CAPACITY } from './engine.js';
 import { StateError, ValidationError } from './errors.js';
+import { normalizeMidiMessage } from './midi.js';
 import {
   normalizeChainDocument,
   canonicalizeEffectForProcessing,
@@ -14,7 +15,8 @@ import {
   validateSeed
 } from './semantics.js';
 
-const PARAMETER_EVENT_KEYS = new Set(['frame', 'effectId', 'parameters']);
+const EVENT_KEYS = new Set(['frame', 'effectId', 'parameters', 'midi']);
+const NO_MIDI_EFFECTS = new Map();
 
 function validateAudio(audio) {
   if (!Array.isArray(audio) || audio.length < 1 || audio.length > 16) {
@@ -108,8 +110,12 @@ function replaceEffect(document, index, effect) {
   return { version: 1, chain };
 }
 
-function validateParameterEvents(events, document, processingDocument, frameCount) {
-  if (events === undefined) return [];
+// Splits stream events into parameter updates and MIDI messages. midiEffects
+// holds the ids of the active effects that accept MIDI.
+function validateEvents(events, document, processingDocument, frameCount, midiEffects) {
+  const parameterEvents = [];
+  const midiEvents = [];
+  if (events === undefined) return { parameterEvents, midiEvents };
   if (!Array.isArray(events)) {
     throw new ValidationError('events must be an array.');
   }
@@ -117,12 +123,12 @@ function validateParameterEvents(events, document, processingDocument, frameCoun
   let workingProcessingDocument = cloneDocument(processingDocument);
   const pendingPatches = new Map();
   let previousFrame = -1;
-  return events.map((event, eventIndex) => {
+  for (const [eventIndex, event] of events.entries()) {
     if (!isRecord(event)) {
       throw new ValidationError(`Event ${eventIndex} must be an object.`);
     }
     for (const key of Object.keys(event)) {
-      if (!PARAMETER_EVENT_KEYS.has(key)) {
+      if (!EVENT_KEYS.has(key)) {
         throw new ValidationError(`Event ${eventIndex} has an unsupported field: ${key}`);
       }
     }
@@ -135,7 +141,18 @@ function validateParameterEvents(events, document, processingDocument, frameCoun
       throw new ValidationError('events must be ordered by non-decreasing frame.');
     }
     previousFrame = event.frame;
+    if (('parameters' in event) === ('midi' in event)) {
+      throw new ValidationError(`Event ${eventIndex} must contain either parameters or midi, but not both.`);
+    }
     const index = effectIndex(workingDocument, event.effectId);
+    if ('midi' in event) {
+      if (!midiEffects.has(event.effectId)) {
+        throw new ValidationError(`Effect ${event.effectId} does not accept MIDI events.`);
+      }
+      const message = normalizeMidiMessage(event.midi, `Event ${eventIndex}`);
+      if (message !== null) midiEvents.push({ frame: event.frame, effectId: event.effectId, midi: message });
+      continue;
+    }
     const effect = updateEffectParameters(workingDocument.chain[index], event.parameters);
     let pending = pendingPatches.get(event.effectId);
     if (!pending || pending.frame !== event.frame) {
@@ -157,14 +174,56 @@ function validateParameterEvents(events, document, processingDocument, frameCoun
       index,
       processingEffect
     );
-    return {
+    parameterEvents.push({
       frame: event.frame,
       effectId: event.effectId,
       effect,
       processingEffect,
       packed: packEffect(processingEffect)
-    };
-  });
+    });
+  }
+  return { parameterEvents, midiEvents };
+}
+
+// Cuts one process() call into native calls of at most blockSize frames that
+// also end at every parameter event, and hands each call the MIDI events that
+// fall inside it. Planning first rejects an over-capacity call before any audio
+// is processed.
+function planSegments(frames, blockSize, parameterEvents, midiEvents) {
+  const segments = [];
+  let parameterIndex = 0;
+  let midiIndex = 0;
+  for (let offset = 0; offset < frames;) {
+    const parameterStart = parameterIndex;
+    while (parameterEvents[parameterIndex]?.frame === offset) parameterIndex += 1;
+    const end = Math.min(offset + blockSize, parameterEvents[parameterIndex]?.frame ?? frames);
+    const midi = [];
+    while (midiEvents[midiIndex]?.frame < end) {
+      const event = midiEvents[midiIndex++];
+      midi.push({ effectId: event.effectId, offset: event.frame - offset, midi: event.midi });
+    }
+    if (midi.length > MIDI_EVENT_CAPACITY) {
+      const counts = new Map();
+      for (const { effectId } of midi) {
+        const count = (counts.get(effectId) ?? 0) + 1;
+        if (count > MIDI_EVENT_CAPACITY) {
+          throw new ValidationError(
+            `Effect ${effectId} has more than ${MIDI_EVENT_CAPACITY} MIDI events within ${end - offset} frames. ` +
+            'Spread the events over more frames or use a smaller blockSize.'
+          );
+        }
+        counts.set(effectId, count);
+      }
+    }
+    segments.push({
+      offset,
+      frameCount: end - offset,
+      parameterEvents: parameterEvents.slice(parameterStart, parameterIndex),
+      midi
+    });
+    offset = end;
+  }
+  return segments;
 }
 
 class ChainStream {
@@ -266,21 +325,20 @@ class ChainStream {
         `Audio has ${layout.channels} channel(s); this stream requires ${this._channels}.`
       );
     }
-    const parameterEvents = validateParameterEvents(
+    const { parameterEvents, midiEvents } = validateEvents(
       events,
       this._document,
       this._processingDocument,
-      layout.frames
+      layout.frames,
+      this._session?.midiNodes ?? NO_MIDI_EFFECTS
     );
     const output = audio.map(channel => new Float32Array(channel));
     if (layout.frames === 0) return output;
+    const segments = planSegments(layout.frames, this._blockSize, parameterEvents, midiEvents);
     this._pendingProcessingPatches.clear();
 
-    let offset = 0;
-    let eventIndex = 0;
-    while (offset < layout.frames) {
-      while (parameterEvents[eventIndex]?.frame === offset) {
-        const event = parameterEvents[eventIndex];
+    for (const segment of segments) {
+      for (const event of segment.parameterEvents) {
         this._session?.setPacked(
           event.effectId,
           event.packed.values,
@@ -294,23 +352,16 @@ class ChainStream {
           index,
           event.processingEffect
         );
-        eventIndex += 1;
       }
-      const nextEventFrame = parameterEvents[eventIndex]?.frame ?? layout.frames;
-      const frameCount = Math.min(
-        this._blockSize,
-        nextEventFrame - offset,
-        layout.frames - offset
-      );
       this._session?.process(
         audio,
         output,
-        offset,
-        frameCount,
+        segment.offset,
+        segment.frameCount,
         this._sampleRate,
-        this._processedFrames + offset
+        this._processedFrames + segment.offset,
+        segment.midi
       );
-      offset += frameCount;
     }
     this._processedFrames += layout.frames;
     return output;

@@ -69,6 +69,14 @@ def effect_metadata(effect_type: str) -> dict[str, Any]:
         ) from error
 
 
+def asset_kind(effect_type: str, name: str) -> str:
+    """Return the kind of one declared effect asset: impulseResponse or soundFont."""
+    for entry in effect_metadata(effect_type).get("assets", ()):
+        if entry["name"] == name:
+            return entry["kind"]
+    return "impulseResponse"
+
+
 def validate_seed(seed: Any) -> int:
     if isinstance(seed, bool) or not isinstance(seed, Integral):
         raise ValidationError("seed must be an integer from 0 to 4294967295")

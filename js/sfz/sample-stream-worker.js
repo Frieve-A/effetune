@@ -1,5 +1,6 @@
 import { SfzSampleStream, SFZ_SAMPLE_MAX_READ_BYTES } from './sample-stream.js';
 import { attachSfzWorkerSupply } from './sample-supply-port.js';
+import { SFZ_MAX_SAMPLES } from './limits.js';
 
 const failure = code => Object.assign(new Error('The instrument sample could not be prepared.'), { code });
 
@@ -49,7 +50,7 @@ export class SfzSampleStreamWorker {
     });
   }
   async open(sample, reader) {
-    if (!Number.isInteger(sample) || sample < 0 || sample >= 10000 || this.readers.has(sample) ||
+    if (!Number.isInteger(sample) || sample < 0 || sample >= SFZ_MAX_SAMPLES || this.readers.has(sample) ||
         !reader || !Number.isSafeInteger(reader.size) || typeof reader.readRange !== 'function') throw failure('sample-range');
     this.readers.set(sample, reader);
     try {
@@ -112,7 +113,7 @@ export function attachSfzSampleStreamWorker(endpoint) {
       try {
         let result;
         if (data.type === 'open') {
-          if (!Number.isInteger(data.sample) || data.sample < 0 || data.sample >= 10000 || streams.has(data.sample)) throw failure('sample-range');
+          if (!Number.isInteger(data.sample) || data.sample < 0 || data.sample >= SFZ_MAX_SAMPLES || streams.has(data.sample)) throw failure('sample-range');
           const stream = await SfzSampleStream.open((offset, length) => read(data.sample, offset, length), data.size, data.pcm);
           const bytes = 512 + (stream.metadata.seekPoints?.length || 0) * 24;
           if (metadataBytes + bytes > 16 * 1024 * 1024) throw failure('sample-capacity');

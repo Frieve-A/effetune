@@ -4,6 +4,7 @@ import type {
   BundleDocument,
   ChainDocumentInput,
   ChainEffectInput,
+  MidiMessage,
   TelemetryCallback
 } from './index.js';
 import type { Effect } from './effect.js';
@@ -28,6 +29,11 @@ export declare class EffeTuneNode extends AudioWorkletNode {
   subscribe(callback: TelemetryCallback): () => void;
   unsubscribe(callback: TelemetryCallback): boolean;
   setParam(effectId: string, parameterName: string, value: unknown): Promise<void>;
+  /**
+   * Sends one MIDI message, such as a Web MIDI `MIDIMessageEvent.data`; it takes effect at the
+   * start of the next audio block. Aftertouch and system messages are ignored.
+   */
+  sendMidi(effectId: string, midi: MidiMessage): void;
   reset(): Promise<void>;
   close(): void;
 }

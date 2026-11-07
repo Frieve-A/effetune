@@ -33,7 +33,7 @@ Para ver a letra em **Lyrics** no Visualizer, use a letra incorporada ao MIDI ou
 
 Para mostrar uma capa com MIDI ou MusicXML, coloque `cover.jpg` (prioritário) ou `folder.jpg` na mesma pasta. Na web, selecione ou arraste a imagem junto com o arquivo de música, a menos que a pasta esteja acessível pela Music Library.
 
-Se o SoundFont Player estiver ausente, nenhum instrumento estiver carregado ou o carregamento ainda estiver em andamento, o player mostra orientações e continua enviando MIDI no tempo da música, em silêncio, sem pular para a próxima faixa. A música termina normalmente. Você pode adicionar o SoundFont Player ou carregar um instrumento durante a reprodução: quando estiver pronto, ele responderá aos eventos MIDI que chegarem a partir desse momento, com os sons e ajustes de controle atuais de cada canal. As notas anteriores não são tocadas novamente, mesmo que ainda estejam sustentadas na música.
+Se o SoundFont Player estiver ausente, nenhum instrumento estiver carregado ou o carregamento ainda estiver em andamento, e nenhum [dispositivo de saída MIDI externo](#midi-output-device) estiver conectado, o player mostra orientações e continua enviando MIDI no tempo da música, em silêncio, sem pular para a próxima faixa. A música termina normalmente. Você pode adicionar o SoundFont Player ou carregar um instrumento durante a reprodução: quando estiver pronto, ele responderá aos eventos MIDI que chegarem a partir desse momento, com os sons e ajustes de controle atuais de cada canal. As notas anteriores não são tocadas novamente, mesmo que ainda estejam sustentadas na música.
 
 Use os controles habituais de reprodução, pausa, busca, repetição, ordem aleatória, velocidade, volume e silenciamento. A velocidade altera o andamento do MIDI sem mudar a altura das notas. **Manter o tom** não pode ser alterado durante a reprodução MIDI. Com uma coleção SF2/SF3, um único SoundFont Player segue Bank Select e Program Change de forma independente nos 16 canais, usando o banco de percussão no canal 10 por padrão. Use **MIDI Mixer** para ajustar o **Patch**, o nível e os outros controles de execução de cada canal. Essas alterações são temporárias, seguem as mensagens MIDI posteriores e são reiniciadas na próxima música. Instrumentos SFZ preservam seu próprio mapeamento.
 
@@ -41,9 +41,15 @@ Para salvar áudio, prepare o instrumento no SoundFont Player e selecione o MIDI
 
 São aceitos Standard MIDI File nos formatos 0 e 1. Converta arquivos de formato 2 ou RMID em um `.mid` padrão de formato 0 ou 1 antes de abri-los.
 
+### Reprodução em um dispositivo MIDI externo {#midi-output-device}
+
+Para tocar arquivos MIDI em um módulo de som ou sintetizador de hardware, ou em um sintetizador de software por uma porta MIDI virtual, selecione-o em **Dispositivo de saída MIDI** na **Configuração de Áudio**. O campo fica abaixo de **Dispositivo de entrada MIDI**, e **Atualizar dispositivos MIDI** atualiza as duas listas. O padrão é **Nenhum**. Na versão web, permita o acesso MIDI quando o navegador pedir, incluindo as mensagens System Exclusive (SysEx).
+
+Enquanto o dispositivo estiver conectado, a reprodução de MIDI e MusicXML envia a ele, no tempo da música, as mensagens MIDI do arquivo, incluindo as mensagens SysEx, acompanhando busca, pausa, parada e mudanças de velocidade. Letras e outros textos do arquivo não são enviados. Nesse caso, o EffeTune funciona como um simples player MIDI, e o SoundFont Player é opcional; se ele tiver um instrumento, os dois soam ao mesmo tempo. O som do dispositivo externo não passa pelos efeitos do EffeTune, e o controle de volume e o botão de silenciar do reprodutor não o afetam; use o volume do próprio dispositivo. Salvar como áudio, descrito acima, continua usando apenas o SoundFont Player.
+
 ## Arquivos MusicXML {#musicxml-files}
 
-Abra arquivos `.musicxml`, `.xml` ou `.mxl` compactados como arquivos MIDI. Para ouvi-los, adicione **SoundFont Player** e carregue um instrumento. Eles usam os controles MIDI descritos acima, mas a partitura não é exibida. Você também pode incluí-los na Music Library.
+Abra arquivos `.musicxml`, `.xml` ou `.mxl` compactados como arquivos MIDI. Para ouvi-los, adicione **SoundFont Player** e carregue um instrumento, ou use um [dispositivo de saída MIDI externo](#midi-output-device). Eles usam os controles MIDI descritos acima, mas a partitura não é exibida. Você também pode incluí-los na Music Library.
 A letra do MusicXML pode aparecer em **Lyrics** no Visualizer durante a reprodução. Escolha **Parte** e **Verso** se houver mais de uma opção, ou mantenha **Automático**.
 
 Notas, pausas, acordes, vozes, ligaduras de prolongamento, mudanças de andamento e repetições comuns com finais alternativos são reproduzidos. Alguns detalhes da notação, como ornamentos e notas de apojatura, não são reproduzidos. Se a partitura tiver repetições aninhadas, sinais de repetição de compassos ou notas microtonais, ou depender de D.C., D.S., Coda ou Fine, ou se o arquivo for uma coletânea opus com várias partituras, exporte-a como MIDI padrão em um aplicativo de partituras e abra o arquivo resultante.

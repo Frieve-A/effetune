@@ -128,8 +128,8 @@ struct SFZBank final : PreparedAsset {
     if (header(15) != (layout.sf2       ? 0x10001u
                        : layout.loading ? 2u
                                         : 1u) ||
-        !layout.sampleCount || layout.sampleCount > 10000u || !header(14) || header(14) > 32768u ||
-        layout.sampleOffset != sectionEnd || sampleEnd > layout.poolOffset ||
+        !layout.sampleCount || layout.sampleCount > SamplePageCache::kMaxSamples || !header(14) ||
+        header(14) > 32768u || layout.sampleOffset != sectionEnd || sampleEnd > layout.poolOffset ||
         layout.poolOffset != info.frames ||
         (!layout.sf2 && !layout.loading && sampleEnd != layout.poolOffset))
       return ET_ERR_ARGS;
@@ -435,6 +435,7 @@ struct SFZBank final : PreparedAsset {
                 resident_interval_ = 0;
   std::uint64_t resident_page_ = UINT64_MAX;
   std::uint32_t trigger_mask_ = 0;
+  std::array<std::uint64_t, 2> start_controllers_{};
   std::uint32_t header_words_ = kHeader, version_ = kVersion, sample_count_ = 0, cache_slots_ = 0,
                 modulation_offset_ = 0, modulation_words_ = 0, control_end_ = 0, preset_offset_ = 0,
                 preset_count_ = 0;
@@ -677,6 +678,8 @@ struct SFZBank final : PreparedAsset {
     return index == 0u || index == 2u || index == 3u || index == 10u || index == 13u ||
            index == 14u || index == 16u;
   }
+  // Matches SF2_MAX_ROUTES in js/sf2/modulation.js.
+  static constexpr std::uint32_t kMaxSf2Routes = 4194304u;
   bool validSf2Modulation(std::uint32_t regionCount) const noexcept {
     if (modulation_words_ < 10u)
       return false;
@@ -686,7 +689,7 @@ struct SFZBank final : PreparedAsset {
     };
     const auto routes = word(3), records = word(6), generators = word(8);
     if (word(0) != 0x31525453u || word(1) != 2u || word(2) != regionCount || word(4) != 0u ||
-        word(5) != 10u || routes > 1048576u ||
+        word(5) != 10u || routes > kMaxSf2Routes ||
         records != 10u + static_cast<std::uint64_t>(regionCount) * 4u ||
         generators != records + static_cast<std::uint64_t>(routes) * 10u || word(7) != generators ||
         word(9) != static_cast<std::uint64_t>(regionCount) * 61u ||
@@ -868,6 +871,27 @@ struct SFZBank final : PreparedAsset {
     }
     return next == routes;
   }
+  // Controllers that can start a region; other CC messages skip the region search.
+  bool startController(std::uint32_t cc) const noexcept {
+    return start_controllers_[cc >> 6u] & (std::uint64_t{1} << (cc & 63u));
+  }
+  void addStartController(std::uint32_t cc) noexcept {
+    if (cc < 128u)
+      start_controllers_[cc >> 6u] |= std::uint64_t{1} << (cc & 63u);
+  }
+  void addStartControllers(const float *r, std::uint32_t index) noexcept {
+    const auto count = indexValue(r, ControlCount), offset = indexValue(r, ControlOffset);
+    for (auto i = 0u; i < count; ++i) {
+      const auto id = std::bit_cast<std::uint32_t>(payload_.data()[8u + offset + i * 2u]);
+      if (id / 512u == OnLowCC || id / 512u == OnHighCC)
+        addStartController(id % 512u);
+    }
+    if (modulation_) {
+      const auto view = modulation_->region(index);
+      for (const auto node : modulation_->plan(index).conditions[1])
+        addStartController(view.instances[node].authoredIndex);
+    }
+  }
   float controller(const float *r, std::uint32_t family, std::uint32_t cc) const noexcept {
     const auto count = indexValue(r, ControlCount), offset = indexValue(r, ControlOffset);
     const auto wanted = family * 512u + cc;
@@ -1039,6 +1063,7 @@ struct SFZBank final : PreparedAsset {
           if (!sf2_)
             keyswitches_.add(r);
           trigger_mask_ |= 1u << static_cast<std::uint32_t>(r[Trigger]);
+          addStartControllers(r, cursor_ - 1u);
           for (auto key = static_cast<std::uint32_t>(r[LowKey]);
                key <= static_cast<std::uint32_t>(r[HighKey]); ++key)
             ++indices_.data()[key + 1u];

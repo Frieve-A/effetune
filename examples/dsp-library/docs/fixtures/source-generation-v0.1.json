@@ -36,6 +36,7 @@
     { "type": "HumGenerator", "parameters": { "level": -20 } },
     { "type": "NoiseBlender", "parameters": { "level": -20 } },
     { "type": "Oscillator", "parameters": { "volume": -12 } },
+    { "type": "SoundFontPlayer", "parameters": { "previewMidi": 83 } },
     { "type": "SWRadioSimulator", "parameters": {} },
     { "type": "TapeArtifacts", "parameters": { "hiss": -45 } },
     { "type": "TVAudioSimulator", "parameters": { "buzz": -20 } },

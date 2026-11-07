@@ -25,7 +25,7 @@ export const audioManagerSfzRuntimeMethods = {
         }
     },
 
-    async sendSoundFontMixerAction(plugin, action) {
+    async sendSoundFontMixerAction(plugin, action, reportAppliedFrame = false) {
         const node = [...this._getActiveDspWorklets()].find(node => this._getSfzRuntimePlugin(node, plugin?.id) === plugin);
         const identity = node && this._getSfzRuntimeAssetIdentity(node, plugin.id);
         const graph = this._audioGraphGeneration;
@@ -44,7 +44,7 @@ export const audioManagerSfzRuntimeMethods = {
             answer.checkpoints?.length && !this.storeSfzRuntimeCheckpoints(node, answer.checkpoints)) {
             throw new Error('The channel could not be updated. Wait until the SoundFont is ready and try again.');
         }
-        return true;
+        return reportAppliedFrame ? answer.appliedFrame : true;
     },
 
     getNativeMixerMetadata(plugin, node = null) {

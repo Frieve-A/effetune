@@ -45,6 +45,7 @@ class FakeElement {
     this.tagName = tagName.toUpperCase();
     this.ownerDocument = documentRef;
     this.children = [];
+    this.offsetTop = 0;
     this.parentNode = null;
     this.listeners = new Map();
     this.style = {};
@@ -94,6 +95,10 @@ class FakeElement {
     };
     visit(this);
     return matches;
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] ?? null;
   }
 
   remove() {
@@ -615,6 +620,172 @@ test('arrow keys apply adjacent presets, wrap at the ends, and keep navigation f
       target: findByClass(dialog, 'preset-dialog-name-input')
     });
     assert.equal(applied.length, callCount);
+  });
+});
+
+function createOverflowingCore(overflow) {
+  const core = createCore([]);
+  core.routingDialog.positionDialog = dialog => {
+    const content = findByClass(dialog, 'preset-dialog-content');
+    content.clientHeight = 100;
+    content.scrollHeight = overflow.value ? 200 : 100;
+  };
+  return core;
+}
+
+async function search(dialog, value) {
+  const input = findByClass(dialog, 'preset-dialog-search-input');
+  input.value = value;
+  await input.dispatch('input');
+  return input;
+}
+
+function shownLabels(dialog, className) {
+  return findAllByClass(dialog, className)
+    .filter(element => !element.hidden && !element.parentNode.hidden)
+    .map(element => element.textContent);
+}
+
+test('preset search filters names and group headings and hides empty groups and the system section', async () => {
+  await withDialogGlobals(async ({ documentRef }) => {
+    const deleted = [];
+    const provider = {
+      getTitleKey: () => 'title',
+      getSystemPresetGroups: () => [
+        { label: 'Warm Tones', presets: [{ id: 'tube', label: 'Tube' }, { id: 'tape', label: 'Tape' }] },
+        { label: 'Bright', presets: [{ id: 'air', label: 'Air' }, { id: 'sparkle', label: 'Sparkle' }] },
+        { presets: [{ id: 'neutral', label: 'Neutral' }] }
+      ],
+      getDefaultSaveName: () => '',
+      listUserPresetNames: async () => ['Warm Night', 'Daily'],
+      saveUserPreset: async () => true,
+      deleteUserPresets: async names => { deleted.push(names); return true; },
+      errorKeys: { save: 'save', delete: 'delete' }
+    };
+    const controller = new PluginPresetDialog(createOverflowingCore({ value: true }));
+    const dialog = await controller.show(provider, documentRef.createElement('button'));
+    const input = findByClass(dialog, 'preset-dialog-search-input');
+    assert.equal(dialog.children[1], input);
+    assert.equal(input.placeholder, 't:ui.pluginPresets.searchPlaceholder');
+    assert.equal(input.getAttribute('aria-label'), 't:ui.pluginPresets.searchPlaceholder');
+    assert.notEqual(documentRef.activeElement, input);
+
+    const daily = findAllByClass(dialog, 'preset-dialog-user-row')
+      .find(row => row.children[1].textContent === 'Daily');
+    daily.children[0].checked = true;
+    await daily.children[0].dispatch('change');
+
+    await search(dialog, '  WARM ');
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-group-title'), ['Warm Tones']);
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-system-preset'), ['Tube', 'Tape']);
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-user-preset'), ['Warm Night']);
+
+    await search(dialog, 'spark');
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-group-title'), ['Bright']);
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-system-preset'), ['Sparkle']);
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-user-preset'), []);
+
+    const assertNoMatches = () => {
+      const [systemSection, userSection] = findAllByClass(dialog, 'preset-dialog-section');
+      assert.equal(systemSection.hidden, true);
+      assert.ok(!userSection.hidden);
+      assert.ok(!findByClass(dialog, 'preset-dialog-save-row').hidden);
+      assert.ok(!findByClass(dialog, 'preset-dialog-delete-button').hidden);
+      assert.equal(findByClass(dialog, 'preset-dialog-empty'), null);
+    };
+    await search(dialog, 'zzz');
+    assertNoMatches();
+
+    // Hidden selections stay deletable, and the re-render keeps the query applied.
+    await findByClass(dialog, 'preset-dialog-delete-button').dispatch('click');
+    assert.deepEqual(deleted, [['Daily']]);
+    assertNoMatches();
+
+    await search(dialog, '');
+    assert.equal(findAllByClass(dialog, 'preset-dialog-section')[0].hidden, false);
+    assert.equal(shownLabels(dialog, 'preset-dialog-system-preset').length, 5);
+    assert.equal(shownLabels(dialog, 'preset-dialog-group-title').length, 2);
+    assert.equal(shownLabels(dialog, 'preset-dialog-user-preset').length, 2);
+  });
+});
+
+test('preset search shows only for scrolling lists or a query and resets on each show', async () => {
+  await withDialogGlobals(async ({ documentRef }) => {
+    const overflow = { value: false };
+    const provider = {
+      getTitleKey: () => 'title',
+      getSystemPresetGroups: () => [{ presets: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }],
+      listUserPresetNames: async () => []
+    };
+    const controller = new PluginPresetDialog(createOverflowingCore(overflow));
+    let dialog = await controller.show(provider, documentRef.createElement('button'));
+    assert.equal(findByClass(dialog, 'preset-dialog-search-input').hidden, true);
+
+    overflow.value = true;
+    dialog = await controller.show(provider, documentRef.createElement('button'));
+    const content = findByClass(dialog, 'preset-dialog-content');
+    const input = findByClass(dialog, 'preset-dialog-search-input');
+    assert.equal(input.hidden, false);
+    await search(dialog, 'one');
+    content.scrollHeight = content.clientHeight;
+    await search(dialog, 'on');
+    assert.equal(input.hidden, false);
+
+    // Measure with the search row's height added back; hiding it would drop focus from the input.
+    const hiddenWrites = [];
+    let hidden = input.hidden;
+    Object.defineProperty(input, 'hidden', {
+      get: () => hidden,
+      set: value => { hidden = value; hiddenWrites.push(value); }
+    });
+    content.offsetTop = 40;
+    content.scrollHeight = 150;
+    await search(dialog, '');
+    assert.equal(input.hidden, false);
+    assert.ok(!hiddenWrites.includes(true));
+    content.scrollHeight = 130;
+    await search(dialog, '');
+    assert.equal(input.hidden, true);
+
+    await search(dialog, 'one');
+    dialog = await controller.show(provider, documentRef.createElement('button'));
+    assert.equal(findByClass(dialog, 'preset-dialog-search-input').value, '');
+    assert.deepEqual(shownLabels(dialog, 'preset-dialog-system-preset'), ['One', 'Two']);
+  });
+});
+
+test('arrow keys and re-renders follow the active preset search', async () => {
+  await withDialogGlobals(async ({ documentRef }) => {
+    const applied = [];
+    let activeId = 'red';
+    const provider = {
+      getTitleKey: () => 'title',
+      getSystemPresetGroups: () => [{
+        presets: [
+          { id: 'red', label: 'Red' },
+          { id: 'blue', label: 'Blue' },
+          { id: 'green', label: 'Green' }
+        ]
+      }],
+      getActiveSystemPresetId: () => activeId,
+      listUserPresetNames: async () => ['Bob', 'Reed'],
+      applySystemPreset: async id => { applied.push(id); activeId = id; },
+      applyUserPreset: async name => { applied.push(name); activeId = ''; }
+    };
+    const controller = new PluginPresetDialog(createOverflowingCore({ value: true }));
+    const dialog = await controller.show(provider, documentRef.createElement('button'));
+    assert.equal(documentRef.activeElement.textContent, 'Red');
+    await search(dialog, 're');
+
+    for (const expected of ['green', 'Reed', 'red']) {
+      await dialog.dispatch('keydown', { key: 'ArrowDown', target: documentRef.activeElement });
+      assert.equal(applied.at(-1), expected);
+      assert.deepEqual(shownLabels(dialog, 'preset-dialog-system-preset'), ['Red', 'Green']);
+      assert.deepEqual(shownLabels(dialog, 'preset-dialog-user-preset'), ['Reed']);
+    }
+    await dialog.dispatch('keydown', { key: 'ArrowUp', target: documentRef.activeElement });
+    assert.equal(applied.at(-1), 'Reed');
+    assert.equal(documentRef.activeElement.textContent, 'Reed');
   });
 });
 

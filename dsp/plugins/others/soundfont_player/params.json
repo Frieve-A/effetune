@@ -46,6 +46,28 @@
       "min": 0,
       "max": 2,
       "default": 0
+    },
+    {
+      "name": "automaticFallback",
+      "key": "af",
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "name": "previewMidi",
+      "key": "pm",
+      "kind": "int",
+      "min": -1,
+      "max": 127,
+      "default": -1
+    },
+    {
+      "name": "previewChannel",
+      "key": "pc",
+      "kind": "int",
+      "min": 0,
+      "max": 15,
+      "default": 0
     }
   ]
 }

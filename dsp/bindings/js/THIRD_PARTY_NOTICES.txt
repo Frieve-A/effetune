@@ -11,3 +11,11 @@ PFFFT is distributed under a permissive BSD-style license. The complete
 upstream notice and fdlibm notice are included in
 dist/assets/NOTICE.txt. Preserve these notices when redistributing the DSP
 assets.
+
+The SoundFont preparation modules include mediabunny 1.65.2 and
+@mediabunny/flac-encoder 1.65.2 (https://github.com/Vanilagy/mediabunny),
+distributed under the Mozilla Public License 2.0, in
+dist/internal/js/vendor/offline-audio-encoders.mjs. The license text and
+source references are included in
+dist/internal/js/vendor/offline-audio-encoders.NOTICE.txt. Preserve that
+notice when redistributing the file.

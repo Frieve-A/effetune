@@ -148,7 +148,7 @@
       "assets": [],
       "displayName": "Level Meter",
       "category": "analyzer",
-      "summary": "Passes audio through while the host-side EffeTune app can display peak and RMS levels.",
+      "summary": "Passes audio through while exposing per-channel peak level, RMS level, and clipping.",
       "sourceGenerating": false
     },
     {
@@ -276,7 +276,7 @@
       "assets": [],
       "displayName": "Oscilloscope",
       "category": "analyzer",
-      "summary": "Passes audio through while the host-side EffeTune app can display its waveform.",
+      "summary": "Passes audio through while exposing triggered or rolling waveform captures as sample points or minimum/maximum envelopes.",
       "sourceGenerating": false
     },
     {
@@ -366,7 +366,7 @@
       "assets": [],
       "displayName": "Rhythm Analyzer",
       "category": "analyzer",
-      "summary": "Passes audio through while exposing detected tempo, a per-cycle beat raster of hits, swing, and per-band timing offsets.",
+      "summary": "Passes audio through while exposing detected tempo, beat and onset events, a tempogram, and drum hits.",
       "sourceGenerating": false
     },
     {
@@ -407,7 +407,7 @@
       "assets": [],
       "displayName": "Spectrogram",
       "category": "analyzer",
-      "summary": "Passes audio through while the host-side EffeTune app can display frequency content over time.",
+      "summary": "Passes audio through while exposing log-frequency display intensities for each analysis step of a spectrogram.",
       "sourceGenerating": false
     },
     {
@@ -448,7 +448,7 @@
       "assets": [],
       "displayName": "Spectrum Analyzer",
       "category": "analyzer",
-      "summary": "Passes audio through while the host-side EffeTune app can display its frequency spectrum.",
+      "summary": "Passes audio through while exposing the spectrum as dBFS levels per frequency bin, with peak hold.",
       "sourceGenerating": false
     },
     {
@@ -474,7 +474,7 @@
       "assets": [],
       "displayName": "Stereo Meter",
       "category": "analyzer",
-      "summary": "Passes audio through while the host-side EffeTune app can display stereo level and phase relationships.",
+      "summary": "Passes audio through while exposing stereo side/mid samples, a polar envelope, correlation, left-right balance, and per-side peaks.",
       "sourceGenerating": false
     },
     {
@@ -2198,8 +2198,13 @@
           "count": 1,
           "default": -24,
           "unit": "dB/oct",
-          "minimum": -48,
-          "maximum": 0
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48
+          ]
         },
         {
           "name": "lowPassSlope",
@@ -2207,8 +2212,13 @@
           "count": 1,
           "default": -24,
           "unit": "dB/oct",
-          "minimum": -48,
-          "maximum": 0
+          "values": [
+            0,
+            -12,
+            -24,
+            -36,
+            -48
+          ]
         }
       ],
       "seeded": false,
@@ -6585,6 +6595,83 @@
       "sourceGenerating": true
     },
     {
+      "type": "SoundFontPlayer",
+      "parameters": [
+        {
+          "name": "midiChannel",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 16
+        },
+        {
+          "name": "maxVoices",
+          "type": "integer",
+          "count": 1,
+          "default": 64,
+          "minimum": 1,
+          "maximum": 1024
+        },
+        {
+          "name": "outputGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -60,
+          "maximum": 12
+        },
+        {
+          "name": "sampleQuality",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        {
+          "name": "automaticFallback",
+          "type": "boolean",
+          "count": 1,
+          "default": true
+        },
+        {
+          "name": "previewMidi",
+          "type": "integer",
+          "count": 1,
+          "default": -1,
+          "minimum": -1,
+          "maximum": 127
+        },
+        {
+          "name": "previewChannel",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 15
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": [
+        {
+          "name": "soundFont",
+          "kind": "soundFont",
+          "required": true
+        }
+      ],
+      "displayName": "SoundFont Player",
+      "category": "others",
+      "summary": "Plays MIDI events with a prepared SF2, SF3, or SFZ instrument bank and adds the result to the input.",
+      "sourceGenerating": true,
+      "slug": "soundfont-player"
+    },
+    {
       "type": "AdaptivePredictionEffect",
       "parameters": [
         {
@@ -9845,7 +9932,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "8d144305f71d69d15d61b61840c9d2a0f9b7dfe809bc70239e64aef6dbf4d307",
-    "privateLayoutSha256": "a71ea2079d079c7eb144627e7ccc7586e33f51235f84420ee46c85fbc80a353f"
+    "publicCatalogSha256": "4d5c64a5dcb8a4405af443a159808dc24fb4fdae530b2a349c823e3540d00f8b",
+    "privateLayoutSha256": "8b8f917cd5c8786d112ee88e8d0d3572e43473004c90a70d1a08eeee29426d45"
   }
 }

@@ -6,7 +6,10 @@ lang: en
 
 # Version History
 
-### Version 2.17.0 (Nov 7, 2026)
+### Version 2.18.0 (TBD, 2026)
+- Various minor improvements
+
+### Version 2.17.0 (Nov 6, 2026)
 - Supports DSD playback (DSF [.dsf] and DSDIFF [.dff] formats)
 - Added MIDI (.mid, .midi, .kar) and MusicXML (.musicxml, .xml, compressed .mxl) playback, with karaoke lyrics and matching .wrd lyric files
 - Added SoundFont Player with SF2/SF3/SFZ instruments, 16-channel SF2/SF3 playback and real-time MIDI input from keyboards and virtual ports

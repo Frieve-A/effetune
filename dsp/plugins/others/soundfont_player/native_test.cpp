@@ -174,11 +174,12 @@ struct Player {
   unsigned sampleRate = 48000;
   Player(std::vector<Region> regions = {region()}, bool ramp = false, bool condition = false,
          Controls controls = {}, bool sine = false, std::span<const std::uint8_t> script = {},
-         unsigned rate = 48000, unsigned initialMidiGeneration = 1) {
+         unsigned rate = 48000, unsigned initialMidiGeneration = 1, bool stageDefaults = true) {
     sampleRate = rate;
     kernel->prepare({static_cast<float>(rate), 2, 128});
     CHECK(kernel->preparedSuccessfully());
-    configure(0);
+    if (stageDefaults)
+      configure(0);
     Bank bank(regions, 1024, condition, std::move(controls), script);
     if (ramp)
       for (auto frame = 0u; frame < 1024u; ++frame)
@@ -252,9 +253,15 @@ struct Player {
     CHECK(events({}, ET_MIDI_RESET, 2) == ET_OK);
     return true;
   }
-  void configure(unsigned channel, float gain = 0, unsigned voices = 64, unsigned quality = 0) {
-    generated::SoundFontPlayerPluginParams params{
-        static_cast<float>(channel), static_cast<float>(voices), gain, static_cast<float>(quality)};
+  void configure(unsigned channel, float gain = 0, unsigned voices = 64, unsigned quality = 0,
+                 bool fallback = true, int previewMidi = -1, unsigned previewChannel = 0) {
+    generated::SoundFontPlayerPluginParams params{static_cast<float>(channel),
+                                                  static_cast<float>(voices),
+                                                  gain,
+                                                  static_cast<float>(quality),
+                                                  fallback ? 1.0F : 0.0F,
+                                                  static_cast<float>(previewMidi),
+                                                  static_cast<float>(previewChannel)};
     CHECK(kernel->stageParameters(reinterpret_cast<const float *>(&params),
                                   descriptor->paramsFloatCount, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -2592,6 +2599,91 @@ void midiHeldKeyTelemetry() {
   CHECK(silent.events({}, ET_MIDI_RESET, 2) == ET_OK);
   CHECK(!held(silent, 72));
 }
+void previewVoiceOwnership() {
+  const auto voices = [](Player &player, unsigned channel) {
+    return mixerU16(readMixer(*player.kernel).data() + 8u + channel * 32u + 12u);
+  };
+  const auto sounding = [&](Player &player, unsigned channel) {
+    return player.peak() > .01F && voices(player, channel) == 1u;
+  };
+  const auto silent = [&](Player &player, unsigned channel) {
+    for (auto block = 0; block < 3; ++block)
+      player.process();
+    return player.peak() == 0 && voices(player, channel) == 0u;
+  };
+  const auto resume = [](Player &player, unsigned generation) {
+    const auto clock = static_cast<unsigned>(player.kernel->midiClock());
+    CHECK(player.events({}, ET_MIDI_RESUME, generation) == ET_OK);
+    CHECK(player.events({{0, 0, 0, ET_MIDI_RESUME, clock, 0}}, 0, generation) == ET_OK);
+  };
+  Player player({region()}, false, false, {}, false, {}, 48000u, 1u, false);
+  CHECK(player.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
+  CHECK(silent(player, 0));
+  player.configure(0, 0, 64, 0, true, 60, 3);
+  player.process();
+  CHECK(sounding(player, 3) && voices(player, 0) == 0u);
+  const auto state = readMixer(*player.kernel);
+  CHECK((state[8u + 3u * 32u + 16u + 60u / 8u] & (1u << (60u % 8u))) == 0); // Not an input key.
+  // Song note-offs and bulk releases on the preview channel leave the preview voice alone.
+  CHECK(player.events({event(0, 0x83, 60, 0), event(0, 0xb3, 123, 0), event(0, 0xb3, 120, 0)}) ==
+        ET_OK);
+  player.process();
+  player.process();
+  CHECK(sounding(player, 3));
+  // A held preview sounds through pause and resume.
+  CHECK(player.events({}, ET_MIDI_PAUSE, 2) == ET_OK);
+  player.process();
+  CHECK(sounding(player, 3));
+  resume(player, 3);
+  // The resume marker clears the voices inside the block, so the preview reattacks in the next one.
+  player.process();
+  player.process();
+  CHECK(sounding(player, 3));
+  // Releasing it while paused stays silent after resume.
+  CHECK(player.events({}, ET_MIDI_PAUSE, 4) == ET_OK);
+  player.configure(0, 0, 64, 0, true, -1, 3);
+  CHECK(silent(player, 3));
+  resume(player, 5);
+  CHECK(silent(player, 3));
+  // Moving to another key is a note-off, so the previous note's release overlaps the new one.
+  player.configure(0, 0, 64, 0, true, 60, 5);
+  player.process();
+  CHECK(sounding(player, 5));
+  player.configure(0, 0, 64, 0, true, 64, 5);
+  player.process();
+  CHECK(voices(player, 5) == 2u);
+  player.process();
+  player.process();
+  CHECK(sounding(player, 5));
+  // Moving the preview to another channel releases the previous voice.
+  player.configure(0, 0, 64, 0, true, 64, 7);
+  for (auto block = 0; block < 3; ++block)
+    player.process();
+  CHECK(sounding(player, 7) && voices(player, 5) == 0u);
+  // A checkpoint restore reattacks a held preview, and releasing it is final.
+  CHECK(player.events({}, ET_MIDI_PAUSE, 6) == ET_OK);
+  std::vector<std::uint8_t> checkpoint(player.kernel->midiCheckpointSize());
+  CHECK(!checkpoint.empty());
+  CHECK(player.kernel->writeMidiCheckpoint(checkpoint.data(),
+                                           static_cast<unsigned>(checkpoint.size())) == ET_OK);
+  CHECK(player.kernel->readMidiCheckpoint(checkpoint.data(),
+                                          static_cast<unsigned>(checkpoint.size())) == ET_OK);
+  player.process();
+  CHECK(sounding(player, 7));
+  player.configure(0, 0, 64, 0, true, -1, 7);
+  CHECK(silent(player, 7));
+  resume(player, 7);
+  CHECK(silent(player, 7));
+  // The natural song end does not release the preview either.
+  player.configure(0, 0, 64, 0, true, 60, 3);
+  player.process();
+  CHECK(player.events({}, ET_MIDI_NATURAL_END, 7) == ET_OK);
+  player.process();
+  player.process();
+  CHECK(sounding(player, 3));
+  player.configure(0, 0, 64, 0, true, -1, 3);
+  CHECK(silent(player, 3));
+}
 void sf2InitialAndFallbackPresets() {
   Player initial({region()}, false, false, {}, false, {}, 48000u, 0u);
   initial.loadSf2({}, false, false, true, 0u);
@@ -2642,7 +2734,7 @@ void sf2InitialAndFallbackPresets() {
 
   for (const auto &request : std::array<std::array<unsigned, 5>, 3>{
            {{0u, 77u, 1u, 0u, 1u}, {0u, 77u, 99u, 0u, 0u}, {9u, 77u, 99u, 128u, 0u}}}) {
-    Player fallback, explicitPreset;
+    Player fallback({region()}, false, false, {}, false, {}, 48000u, 1u, false), explicitPreset;
     for (auto *player : {&fallback, &explicitPreset})
       player->loadSf2({}, false);
     const auto channel = request[0];
@@ -2660,6 +2752,17 @@ void sf2InitialAndFallbackPresets() {
       CHECK(fallback.audio == explicitPreset.audio);
     }
     CHECK(fallback.peak() > 0);
+    // With automatic fallback off, the same missing preset stays silent.
+    Player strict;
+    strict.loadSf2({}, false);
+    strict.configure(0u, 0, 64u, 0u, false);
+    CHECK(strict.events({event(0u, 0xb0u | channel, 0u, request[1]),
+                         event(0u, 0xc0u | channel, request[2], 0u),
+                         event(0u, 0x90u | channel, 72u, 127u)},
+                        0u, 2u) == ET_OK);
+    for (auto block = 0u; block < 4u; ++block)
+      strict.process();
+    CHECK(strict.peak() == 0);
   }
 
   Player edited;
@@ -3455,15 +3558,15 @@ void extendedVoiceCapacity() {
   }
 }
 void selectableSampleQuality() {
-  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 4u);
+  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 7u);
   auto r = region();
   r[LoopStart] = r[Offset] = 37;
   r[LoopEnd] = 1006;
   r[KeyCenter] = 55;
   Player current({r}, false, false, {}, true);
-  CHECK(current.descriptor->paramsFloatCount == 4u);
+  CHECK(current.descriptor->paramsFloatCount == 7u);
   CHECK(current.descriptor->paramsHash == generated::SoundFontPlayerPluginParams::kHash);
-  const std::array<float, 4> defaults{0, 64, 0, 0};
+  const std::array<float, 7> defaults{0, 64, 0, 0, 1, -1, 0};
   CHECK(current.kernel->stageParameters(defaults.data(), 3, current.descriptor->paramsHash) ==
         ET_ERR_ARGS);
   CHECK(current.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
@@ -3787,6 +3890,7 @@ int main() {
   sf2UnchangedFilterEvent();
   midiChannelAudioMeters();
   midiHeldKeyTelemetry();
+  previewVoiceOwnership();
   scriptBoundedMessages();
   scriptTerminalFailure();
   scriptCurrentEventAndDomains();

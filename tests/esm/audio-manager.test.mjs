@@ -1768,6 +1768,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       stored: {
         ...silentWithEquivalentDefaults,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -1789,6 +1790,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       {
         ...silentWithEquivalentDefaults,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -1855,6 +1857,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       {
         ...silentFromDefault,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         outputDeviceId: 'default',
         outputDeviceLabel: '',
         sampleRate: 96000,
@@ -1893,6 +1896,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(JSON.parse(storedAtRequest), {
       ...silentWithEquivalentDefaults,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       outputDeviceId: 'default',
       sampleRate: 96000,
       useInputWithPlayer: false,
@@ -1905,6 +1909,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(storageValues.get('effetune_audio_preferences'), JSON.stringify({
       ...storedMicrophone,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1915,6 +1920,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(windowObject.audioPreferences, {
       ...storedMicrophone,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1925,6 +1931,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(windowObject.electronIntegration.audioPreferences, {
       ...storedMicrophone,
       midiInputDeviceKey: '',
+      midiOutputDeviceKey: '',
       sampleRate: 96000,
       useInputWithPlayer: false,
       useWasmDsp: true,
@@ -1954,6 +1961,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
       {
         ...silentWithEquivalentDefaults,
         midiInputDeviceKey: '',
+        midiOutputDeviceKey: '',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,

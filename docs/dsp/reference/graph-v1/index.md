@@ -75,6 +75,32 @@ an active outgoing route to the output runs with zero-filled input even if all i
 edges are suppressed, regardless of effect type. The presence of any such node prevents
 the silence shortcut.
 
+## Channel selector
+
+Every effect item has a `channel` selector. It defaults to `"all"`.
+
+| Value | Processed channels |
+|---|---|
+| `"all"` | Every channel |
+| `"stereo"` | Channels 1 and 2 (channel 1 in mono audio) |
+| `"left"` / `"right"` | Channel 1 / channel 2 |
+| `"1"` through `"16"` | That one channel |
+| `"34"`, `"56"`, `"78"`, `"910"`, `"1112"`, `"1314"`, `"1516"` | That channel pair |
+
+Processing fails with `ValidationError` when the selected channel or pair does not exist
+in the audio. Channels the selector does not include pass through unprocessed, delayed by
+the effect's latency so that all channels stay aligned. Bass Management requires
+`"all"`, and Adaptive Prediction processes at most two channels, so it rejects `"all"`
+for audio with more than two channels.
+
+In a Graph, the unprocessed channels are part of each node's output. When parallel
+branches merge, every branch delivers its own copy of those channels, and the merge sums
+them like any other signal. For example, two branches that each lower only `"left"`
+by 6 dB and merge at the output return the right channel at twice its input level.
+Edge gain scales every channel, so it cannot remove only those copies. Use
+`channel: "all"` for effects inside parallel branches, or place a channel-limited
+effect on a serial route before the split or after the merge.
+
 ## APIs
 
 JavaScript exposes the asynchronous `createGraph()`, `Graph`, and `GraphStream`

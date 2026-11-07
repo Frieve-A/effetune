@@ -13,6 +13,7 @@ import { packSoundFontPlayerPluginParams } from '../../js/audio/dsp-params.gener
 
 const instrumentSource = fs.readFileSync(new URL('../../plugins/sfz-instrument.js', import.meta.url), 'utf8');
 const playerSource = fs.readFileSync(new URL('../../plugins/others/soundfont_player.js', import.meta.url), 'utf8');
+const axisSource = fs.readFileSync(new URL('../../plugins/frequency-axis.js', import.meta.url), 'utf8');
 const playerCss = fs.readFileSync(new URL('../../plugins/others/soundfont_player.css', import.meta.url), 'utf8');
 
 function player(options = {}) {
@@ -43,6 +44,12 @@ function player(options = {}) {
     parseFiniteNumber(value, min, max, fallback) { return Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Number(value))) : fallback; }
     createParameterControl(...args) {
       const row = document.createElement('div'); row.controlArgs = args; return row;
+    }
+    createCheckboxControl(label, checked, setter) {
+      const row = document.createElement('div'), checkbox = document.createElement('input');
+      checkbox.type = 'checkbox'; checkbox.checked = !!checked; checkbox.setAttribute('aria-label', label);
+      checkbox.addEventListener('change', event => setter(event.target.checked));
+      row.appendChild(checkbox); return row;
     }
     createRadioGroup(label, options, value, setter) {
       const row = document.createElement('div');
@@ -92,6 +99,19 @@ test('SoundFont Player defaults and resets to FIR32 while preserving saved inter
   }, plugin);
   assert.equal(plugin.getParameters().sq, 1);
   assert.equal(packSoundFontPlayerPluginParams(plugin.getWorkletPluginData().parameters)[3], 1);
+});
+
+test('SoundFont Player enables automatic fallback by default and saves the choice', () => {
+  const manager = new PluginManager();
+  manager.pluginClasses['SoundFont Player'] = player().constructor;
+  const plugin = manager.createPlugin('SoundFont Player');
+  assert.equal(plugin.getParameters().af, true);
+  assert.equal(packSoundFontPlayerPluginParams(plugin.getWorkletPluginData().parameters)[4], 1);
+  plugin.setParameters({ af: false });
+  const restored = manager.createPlugin('SoundFont Player');
+  restored.setParameters(JSON.parse(JSON.stringify(plugin.getParameters())));
+  assert.equal(restored.getParameters().af, false);
+  assert.equal(packSoundFontPlayerPluginParams(restored.getWorkletPluginData().parameters)[4], 0);
 });
 
 function telemetry({ voices = 2, limit = 64, bank = 0, program = 0, note = 60, flags = 0, peak = 0 } = {}) {
@@ -508,6 +528,145 @@ test('SoundFont Player mixer controls send transient actions and accept subseque
   assert.equal(plugin._mixerRows[1].knobs[0].getAttribute('aria-disabled'), 'true');
   plugin.sf = ''; plugin._renderMixer();
   assert.equal(row.knobs[0].getAttribute('aria-disabled'), 'true');
+});
+
+test('SoundFont volume follows the drag until telemetry reaches its last applied command', async () => {
+  const actions = [], port = {};
+  let now = 100;
+  const hub = new TelemetryHub({ port, now: () => now, schedule: () => 1, cancel() {} });
+  hub.setVisualSyncResolver((_tap, endFrame) => endFrame);
+  const plugin = player({ hasLocalAudio: true, window: { dspTelemetryHub: hub, audioManager: {
+    sendSoundFontMixerAction(_plugin, action, reportAppliedFrame) {
+      assert.equal(reportAppliedFrame, true);
+      const reply = Promise.withResolvers();
+      actions.push({ ...action, reply });
+      return reply.promise;
+    }
+  } } });
+  plugin._refreshBanks = async () => {};
+  plugin.id = 7;
+  plugin.sf = 'a'.repeat(24);
+  plugin._wasmAssetStates.set(0, 3);
+  plugin.createUI();
+  plugin.validatePreparedSfzBank(bank([{ bank: 0, program: 0, name: 'Piano' }]));
+  const [volume, pan] = plugin._mixerRows[0].knobs;
+  Object.assign(volume, { focus() {}, setPointerCapture(id) { this.captured = id; },
+    hasPointerCapture(id) { return this.captured === id; }, releasePointerCapture() { this.captured = null; } });
+  const pointer = (type, clientY = 50) => volume.dispatchEvent(type, { pointerId: 1, button: 0, clientY, preventDefault() {} });
+  const value = knob => knob.getAttribute('aria-valuenow');
+  const send = (endFrame, volume, pan, mixerEndFrame = endFrame) => {
+    const { payload } = telemetry(), packet = new ArrayBuffer(600), header = new DataView(packet);
+    payload.setUint8(11, volume); payload.setUint8(12, pan);
+    header.setUint16(0, 35, true); header.setUint16(2, 2, true); header.setUint32(4, 7, true);
+    header.setUint16(12, 584, true); new Uint8Array(packet, 16).set(new Uint8Array(payload.buffer));
+    hub.handleMessage({ type: 'dspTelemetry', packet, bytes: 600, endFrame, mixerEndFrame, recycle: false });
+    now = endFrame;
+    hub._dispatchDueVisualSync(now);
+  };
+
+  send(100, 100, 64);
+  await pointer('pointerdown');
+  const first = pointer('pointermove', 35);
+  send(200, 100, 65);
+  assert.deepEqual([value(volume), value(pan)], ['115', '65'], 'only the dragged knob ignores old telemetry');
+  const last = pointer('pointermove', 30);
+  await pointer('pointerup');
+  await pointer('lostpointercapture');
+  assert.deepEqual(actions.map(action => action.value), [115, 120]);
+  send(250, 115, 66);
+  assert.deepEqual([value(volume), value(pan)], ['120', '66']);
+  actions[1].reply.resolve(300);
+  actions[0].reply.resolve(200);
+  await Promise.all([first, last]);
+  send(400, 115, 67, 300);
+  assert.deepEqual([value(volume), value(pan)], ['120', '67'], 'a deferred snapshot is older than the final command');
+  send(410, 78, 67);
+  assert.equal(value(volume), '78', 'a fresh external update need not echo the command value');
+
+  await pointer('pointerdown');
+  const cancelled = pointer('pointermove', 35);
+  await pointer('pointercancel');
+  assert.equal(value(volume), '78');
+  actions[2].reply.resolve(420);
+  await cancelled;
+  send(430, 90, 67);
+  assert.equal(value(volume), '90');
+  plugin.cleanup();
+});
+
+test('SoundFont Player mixer keyboards preview the dragged key on the row channel', async () => {
+  const sent = [], leases = [], listeners = new Map(), overlays = [];
+  const window = { dspTelemetryHub: { subscribe: () => () => {} }, workletNode: { port: { postMessage() {} } },
+    ThemePalette: { get: name => name === 'graph-trace' ? 'trace' : 'gray' },
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener: type => listeners.delete(type),
+    audioManager: { sendSoundFontMixerAction() {}, getSfzSamplePreparation: () => null, hasNativePluginAsset: () => true,
+      commitPowerTopologyMutation: message => sent.push([message.plugin.parameters.pm, message.plugin.parameters.pc]),
+      powerPolicyController: { started: true, acquireLease: (reason, { mode }) => {
+        leases.push([reason, mode]); return () => leases.push('released');
+      } } } };
+  vm.runInNewContext(axisSource, { window });
+  const plugin = player({ hasLocalAudio: true, window });
+  plugin._refreshBanks = async () => {};
+  plugin.id = 7;
+  plugin.sf = 'a'.repeat(24);
+  plugin._wasmAssetStates.set(0, 3);
+  plugin.createUI();
+  plugin.validatePreparedSfzBank(bank([{ bank: 0, program: 0, name: 'Piano' }]));
+  for (const { keyboard } of plugin._mixerRows) {
+    const context = { clearRect() {}, strokeRect() {}, fillText() {}, measureText: () => ({ width: 8 }), globalAlpha: 1,
+      fillRect(x) { if (this.globalAlpha !== 1) overlays.push([keyboard.dataset.channel, this.fillStyle, x]); } };
+    Object.assign(keyboard, { getContext: () => context, getBoundingClientRect: () => ({ left: 0, top: 0, width: 384, height: 24 }),
+      setPointerCapture(id) { this.captured = id; }, hasPointerCapture(id) { return this.captured === id; },
+      releasePointerCapture() { this.captured = null; } });
+  }
+  plugin.handleMixerTelemetry(telemetry({ note: -1 }));
+  assert.equal(plugin._mixerRows[2].keyboard.style.touchAction, 'pan-y');
+  const keys = window.FrequencyAxis.noteAxisKeys(0, 127, 384);
+  const at = (midi, extra = {}) => {
+    const key = keys.find(candidate => candidate.midi === midi);
+    return { pointerId: 1, button: 0, clientX: (key.whiteStart + key.whiteEnd) / 2, clientY: 20, preventDefault() {}, ...extra };
+  };
+  const keyboard = plugin._mixerRows[2].keyboard;
+  await keyboard.dispatchEvent('pointerdown', at(60));
+  assert.deepEqual(sent, [[60, 2]]);
+  assert.deepEqual(leases, [['sfz-note-preview', 'force-active']]);
+  assert.equal(plugin.getWorkletPluginData().parameters.pm, 60);
+  assert.deepEqual(overlays.at(-1).slice(0, 2), ['3', 'trace'], 'the pressed key is highlighted on its own row');
+  await keyboard.dispatchEvent('pointermove', at(60, { clientX: at(60).clientX + 1 }));
+  await keyboard.dispatchEvent('pointermove', at(62));
+  await keyboard.dispatchEvent('pointermove', at(62, { pointerId: 2 }));
+  assert.deepEqual(sent, [[60, 2], [62, 2]], 'only key changes from the captured pointer resend the preview');
+  await keyboard.dispatchEvent('pointerup', at(62));
+  assert.deepEqual(sent.at(-1), [-1, 2]);
+  assert.deepEqual(leases, [['sfz-note-preview', 'force-active'], 'released']);
+  assert.equal(listeners.size, 0, 'window listeners only live while a preview is held');
+  assert.equal('pm' in plugin.getParameters(), false, 'preview state is never saved');
+
+  await plugin._mixerRows[4].keyboard.dispatchEvent('pointerdown', at(64));
+  assert.deepEqual(sent.at(-1), [64, 4]);
+  await plugin._mixerRows[4].keyboard.dispatchEvent('pointercancel', at(64));
+  assert.deepEqual(sent.at(-1), [-1, 4]);
+  await keyboard.dispatchEvent('pointerdown', at(60));
+  listeners.get('blur')();
+  assert.deepEqual(sent.slice(-2), [[60, 2], [-1, 2]]);
+  await keyboard.dispatchEvent('pointerdown', at(60));
+  plugin.setParameters({ mc: 3 });
+  assert.deepEqual(sent.slice(-2), [[60, 2], [-1, 2]], 'changing the channel filter stops the preview');
+
+  const count = sent.length;
+  await plugin._mixerRows[0].keyboard.dispatchEvent('pointerdown', at(60));
+  assert.equal(sent.length, count, 'filtered rows do not start a preview');
+  plugin.setParameters({ mc: 0, enabled: false });
+  await keyboard.dispatchEvent('pointerdown', at(60));
+  assert.equal(sent.length, count, 'a disabled plugin does not start a preview');
+  plugin.setParameters({ enabled: true });
+  await keyboard.dispatchEvent('pointerdown', at(60, { button: 2 }));
+  assert.equal(sent.length, count);
+  const old = keyboard;
+  plugin.createUI();
+  await old.dispatchEvent('pointerdown', at(60));
+  assert.equal(sent.length, count, 'replaced keyboards are unbound');
 });
 
 test('SoundFont Player shows sounding voices only from valid current telemetry', () => {

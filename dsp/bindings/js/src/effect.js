@@ -16,7 +16,8 @@ const ASSET_NAMES_BY_EFFECT = new Map([
   ['GroupDelayEQ', ['impulseResponse']],
   ['GroupDelayPEQ', ['impulseResponse']],
   ['IRReverb', ['impulseResponse']],
-  ['RoomEQ', ['impulseResponse']]
+  ['RoomEQ', ['impulseResponse']],
+  ['SoundFontPlayer', ['soundFont']]
 ]);
 
 function isRecord(value) {

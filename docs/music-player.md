@@ -33,7 +33,7 @@ To show lyrics in **Lyrics** in Visualizer, use lyrics embedded in the MIDI file
 
 For MIDI and MusicXML cover artwork, place `cover.jpg` (preferred) or `folder.jpg` in the same folder. On the web, select or drop the image with the music file unless the folder is accessible through Music Library.
 
-If SoundFont Player is missing, or no instrument is loaded or it is still loading, the player shows guidance and continues sending MIDI in time, silently, without skipping to the next song. The song still ends normally. You can add SoundFont Player or load an instrument during playback: once ready, it responds to subsequent MIDI events, using the song's current channel sounds and controller settings. Earlier notes are not replayed, even if the song still holds them.
+If SoundFont Player is missing, or no instrument is loaded or it is still loading, and no [external MIDI output device](#midi-output-device) is connected, the player shows guidance and continues sending MIDI in time, silently, without skipping to the next song. The song still ends normally. You can add SoundFont Player or load an instrument during playback: once ready, it responds to subsequent MIDI events, using the song's current channel sounds and controller settings. Earlier notes are not replayed, even if the song still holds them.
 
 Use the usual play, pause, seek, repeat, shuffle, speed, volume, and mute controls. Speed changes MIDI timing without changing note pitches; **Preserve Pitch** is unavailable for MIDI. With an SF2/SF3 collection, one SoundFont Player follows Bank Select and Program Change independently on all 16 channels, with channel 10 using the drum bank by default. Use **MIDI Mixer** to adjust a channel’s **Patch**, level, or other performance controls. These changes are temporary, follow subsequent MIDI messages, and reset for the next song. SFZ instruments keep their own sound mappings.
 
@@ -41,9 +41,15 @@ To save a MIDI song as audio, select it in offline file processing with SoundFon
 
 Standard MIDI File formats 0 and 1 are supported. Convert format 2 or RMID to a standard format 0 or 1 `.mid` file before opening it.
 
+### Playing through an external MIDI device {#midi-output-device}
+
+To play MIDI files on a hardware sound module or synthesizer, or on a software synthesizer through a virtual MIDI port, select it as **MIDI Output Device** in **Audio Configuration**. It is below **MIDI Input Device**, and **Refresh MIDI Devices** updates both lists. The default is **None**. In the web version, allow MIDI access when the browser asks, including system-exclusive messages.
+
+While the device is connected, MIDI and MusicXML playback sends the file's MIDI messages, including system-exclusive messages, to it in time, following seek, pause, stop, and speed changes. Lyrics and other text in the file are not sent. EffeTune then works as a plain MIDI player, and SoundFont Player is optional; if it has an instrument, both sound at the same time. The external device's sound does not pass through EffeTune's effects, and the Player's volume slider and mute button do not affect it, so use the device's own volume control. Saving as audio, described above, still uses SoundFont Player only.
+
 ## MusicXML files {#musicxml-files}
 
-Open `.musicxml`, `.xml`, or compressed `.mxl` files like MIDI files. Add **SoundFont Player** and load an instrument to hear them. MusicXML playback uses the MIDI controls described above; it does not display sheet music. Music Library can also index these files.
+Open `.musicxml`, `.xml`, or compressed `.mxl` files like MIDI files. Add **SoundFont Player** and load an instrument to hear them, or use an [external MIDI output device](#midi-output-device). MusicXML playback uses the MIDI controls described above; it does not display sheet music. Music Library can also index these files.
 MusicXML lyrics can appear in Visualizer’s **Lyrics** item during playback. Select a **Part** and **Verse** there when a score has more than one, or keep **Automatic**.
 
 Notes, rests, chords, voices, ties, tempo changes, and standard repeats with alternate endings are supported. Some notation details, such as ornaments and grace notes, are not reproduced. For scores with nested repeats, measure-repeat symbols, microtonal notes, or D.C., D.S., Coda, or Fine, and for opus collections with multiple scores, export a standard MIDI file from a notation app and open that instead.

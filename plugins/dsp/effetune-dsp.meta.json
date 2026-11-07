@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:6f9d356a63409fcbd76ae80e9f69e2d5e89b8455a636dd4a412b332e92bf4644",
+  "sourceDigest": "sha256:a424e6b6298df6e1348cecf22a3cc56eed069cfdfa23e0114833d3bfae21c1dd",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:ecb0c671f8ca6a59b459605878fb6f95fe940b7a0183a2925c4d1725735078f9",
+    "digest": "sha256:05b718f2e345923b0fe5c6333c2b2449ce99691e52ebbb6c63e733ab3b097d19",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -130,7 +130,7 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:12d08b9008dfefa928e21597634eac72f7e750aa187cb2e36a2acdeae45d8ba8"
+        "sha256": "sha256:ae56e0fb88031495c1bbe1df837037f932c6dda58c6f6683a2a01c3fba0040eb"
       },
       {
         "id": "production-build#g726-resolved-authority",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:e8aefc890a9439f36b030ae62e079554b0a4c12ceeeb5e603026b09343c59769"
+        "sha256": "sha256:055ecf6e45733c2f7db48bf53c3901b8461ace722705eb1d6a4311b2127e8e0e"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -940,7 +940,7 @@
     },
     {
       "name": "SoundFontPlayerPlugin",
-      "hash": 2219444632,
+      "hash": 2110390933,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1141,7 +1141,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4905383,
-    "simd": 5125114
+    "baseline": 4909853,
+    "simd": 5129166
   }
 }

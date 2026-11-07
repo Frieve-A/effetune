@@ -1,10 +1,44 @@
 const { validateRules } = require('../js/browser/url-rules.js');
 const { browserShortcut } = require('../js/browser/shortcuts.js');
+const { PLAYBACK_AUDIO_EXTENSIONS } = require('./file-handlers.js');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const PARTITION = 'persist:effetune-browser';
 const CAPTURE_TIMEOUT_MS = 30000;
+const MAX_MIDI_EVENTS = 256;
+const MAX_MIDI_DELAY_MS = 60000;
+const MAX_SYSEX_BYTES = 256;
+const MAX_MIDI_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_MUSIC_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_MUSIC_FILE_DIRS = 4;
+const MIDI_FILE_PATTERN = /\.(mid|midi|kar)$/i;
+// Music Player formats, except plain .xml, which downloads are rarely music.
+const MUSIC_DOWNLOAD_PATTERN = new RegExp(
+  `\\.(${PLAYBACK_AUDIO_EXTENSIONS.filter(extension => extension !== 'xml').join('|')})$`, 'i');
+const MUSIC_FILE_DIR_PREFIX = 'effetune-browser-music-';
+const MUSIC_FILE_DIR_OWNER = /^([1-9]\d*)-[A-Za-z0-9]{6}$/;
+const MAX_MEDIA_TEXT = 512;
+const MAX_MEDIA_ARTWORK = 32;
+const MAX_MEDIA_ARTWORK_BYTES = 4 * 1024 * 1024;
+const MEDIA_FRAME_CHECK_MS = 1000;
 const { name: APP_NAME, version: APP_VERSION } = require('../package.json');
+
+function staleMusicFileDir(entry) {
+  if (!entry.isDirectory() || !entry.name.startsWith(MUSIC_FILE_DIR_PREFIX)) return false;
+  const owner = MUSIC_FILE_DIR_OWNER.exec(entry.name.slice(MUSIC_FILE_DIR_PREFIX.length));
+  const pid = Number(owner?.[1]);
+  if (!Number.isInteger(pid) || pid > 0x7fffffff || pid === process.pid) return false;
+  try { process.kill(pid, 0); }
+  catch (failure) { return failure?.code === 'ESRCH'; }
+  return false;
+}
+
+function createMusicFilePage() {
+  return { lastHash: null, muted: false, pendingMidi: null, midiSequence: 0, latestOpen: 0 };
+}
 
 // User-origin normal declarations let site styles take precedence.
 function browserScrollbarCSS({ windowBackground, windowForeground }) {
@@ -45,6 +79,81 @@ function validUserAgent(value) {
   return typeof value === 'string' && value.length <= 1024 && !/[^\x20-\x7e\x80-\xff]/.test(value);
 }
 
+// Accepts one channel voice message or one complete SysEx message.
+function validMidiData(data) {
+  if (!Array.isArray(data) || data.length < 2 || !Number.isInteger(data[0])) return false;
+  const [status] = data;
+  const length = status >= 0x80 && status < 0xf0 ? ((status & 0xe0) === 0xc0 ? 2 : 3) : 0;
+  if (length) return data.length === length && data.slice(1).every(validDataByte);
+  return status === 0xf0 && data.length <= MAX_SYSEX_BYTES && data.at(-1) === 0xf7 &&
+    data.slice(1, -1).every(validDataByte);
+}
+
+function validDataByte(value) {
+  return Number.isInteger(value) && value >= 0 && value < 0x80;
+}
+
+function validMidiEvents(value) {
+  if (!Array.isArray(value) || value.length > MAX_MIDI_EVENTS) return [];
+  return value.filter(event => validMidiData(event?.data) && Number.isFinite(event.delay) &&
+    event.delay >= 0 && event.delay <= MAX_MIDI_DELAY_MS)
+    .map(event => ({ data: [...event.data], delay: event.delay }));
+}
+
+// Accepts a Standard MIDI File: an "MThd" chunk with its fixed 6-byte header length.
+function validMidiFile(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 14 || bytes.length > MAX_MIDI_FILE_BYTES) return false;
+  const header = Buffer.from(bytes.buffer, bytes.byteOffset, 8);
+  return header.toString('latin1', 0, 4) === 'MThd' && header.readUInt32BE(4) === 6;
+}
+
+// Keeps a page-supplied name usable as a file name the Music Player accepts.
+function playerFileName(value, pattern = MIDI_FILE_PATTERN, extension = '.mid') {
+  // eslint-disable-next-line no-control-regex -- replacing control characters is the intent
+  const name = (typeof value === 'string' ? value : '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .slice(0, 120).trim().replace(/[. ]+$/, '');
+  return pattern.test(name) ? name : `${name || 'Browser MIDI'}${extension}`;
+}
+
+function mediaText(value) {
+  return typeof value === 'string' ? value.trim().slice(0, MAX_MEDIA_TEXT) : '';
+}
+
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+// Picks the largest declared artwork with a Web address; blob: and data: images are dropped.
+function mediaArtworkURL(artwork) {
+  let url = '';
+  let bestArea = -1;
+  for (const item of Array.isArray(artwork) ? artwork.slice(0, MAX_MEDIA_ARTWORK) : []) {
+    let area = 0;
+    for (const [, width, height] of mediaText(item?.sizes).matchAll(/(\d+)x(\d+)/gi)) {
+      if (width * height > area) area = width * height;
+    }
+    if (area > bestArea && validNavigationURL(item?.src)) {
+      url = normalizeBrowserURL(item.src);
+      bestArea = area;
+    }
+  }
+  return url;
+}
+
+// Converts a page's now-playing report into the app's payload; anything else clears it.
+function normalizeMedia(value, pageURL) {
+  if (!value || typeof value !== 'object') return null;
+  let site = '';
+  try { site = new URL(pageURL).hostname; } catch { /* The page has no address. */ }
+  const duration = finiteOrNull(value.duration);
+  return {
+    title: mediaText(value.title), artist: mediaText(value.artist), album: mediaText(value.album),
+    artworkUrl: mediaArtworkURL(value.artwork), site, playing: value.playing === true,
+    position: finiteOrNull(value.position), duration: duration > 0 ? duration : null,
+    rate: finiteOrNull(value.rate) ?? 1
+  };
+}
+
 function normalizeBrowserSettings(value) {
   const bookmarks = [];
   for (const item of Array.isArray(value?.bookmarks) ? value.bookmarks.slice(0, 100) : []) {
@@ -60,11 +169,12 @@ function normalizeBrowserSettings(value) {
     bookmarks,
     startPage: normalizeBrowserURL(value?.startPage) || '',
     userAgent: validUserAgent(value?.userAgent) && value.userAgent.trim() !== 'EffeTune' ? value.userAgent.trim() : '',
-    openTabsExternally: value?.openTabsExternally !== false
+    openTabsExternally: value?.openTabsExternally !== false,
+    openMusicFilesInPlayer: value?.openMusicFilesInPlayer === true
   };
 }
 
-function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, themePreset, allowStartupCapture = false }) {
+function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, openMusicFiles, themePreset, allowStartupCapture = false }) {
   const trusted = mainWindow.webContents;
   const chromiumUserAgent = trusted.getUserAgent().replace(/\sElectron\/\S+/g, '').trim();
   const defaultUserAgent = chromiumUserAgent.toLowerCase().includes(`${APP_NAME.toLowerCase()}/`) ?
@@ -86,6 +196,30 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   let disposed = false;
   let clearing = false;
   let htmlFullscreen = false;
+  // Music files handed to the Music Player from the current top-level page: the last
+  // admitted MIDI hash and the page mute.
+  let musicFilePage = createMusicFilePage();
+  // Temp dirs kept for the player, oldest first; unlike the page state it survives navigation.
+  const musicFileQueue = [];
+  const musicFileDirs = new Set();
+  // The page's latest now-playing report, the frame that owns it and when it arrived. Kept
+  // while capture is inactive so that activation can send it; pages report only changes.
+  // Its artworkUrl holds the page's image address until mediaPayload() resolves it.
+  let media = null;
+  // The latest artwork fetched through the page's session, as a data: URL ('' while pending
+  // or failed), so that the app can draw it without cross-origin restrictions.
+  let artwork = { src: '', url: '' };
+  // The artworkUrl last sent to the app (null when none), so that reports leave the large
+  // image out while it is unchanged; the app keeps the previous one.
+  let sentArtwork = null;
+  // Polls a subframe owner, since frame removal raises no event.
+  let mediaFrameCheck = null;
+  // Best effort: remove files only when the owning app process has exited.
+  const musicTempRoot = os.tmpdir();
+  fs.promises.readdir(musicTempRoot, { withFileTypes: true }).then(entries => Promise.all(entries
+    .filter(staleMusicFileDir)
+    .map(entry => fs.promises.rm(path.join(musicTempRoot, entry.name), { recursive: true, force: true }))))
+    .catch(failure => console.debug('Stale Browser music file cleanup failed:', failure?.code || failure?.name || 'Error'));
   let presentation = { visible: false, zoomFactor: 1, bounds: { x: 0, y: 0, width: 0, height: 0 } };
   const listeners = [];
   const channels = [];
@@ -129,7 +263,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       title: live ? wc.getTitle().slice(0, 512) : '', loading: Boolean(live && wc.isLoading()),
       canGoBack: Boolean(live && wc.navigationHistory.canGoBack()),
       canGoForward: Boolean(live && wc.navigationHistory.canGoForward()),
-      captureGeneration: generation, captureActive, error,
+      captureGeneration: generation, captureActive, pageAudioMuted: musicFilePage.muted, error,
       auxiliaryURL: auxiliary && !auxiliary.isDestroyed() ? auxiliary.webContents.getURL() : '',
       settings: normalizeBrowserSettings(getSettings()), defaultUserAgent
     };
@@ -139,15 +273,202 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     if (!disposed && !trusted.isDestroyed()) trusted.send('browser:state', state());
   }
 
+  // Lets the app release notes held by a page that cleared, navigated or ended.
+  function resetMidi() {
+    if (!disposed && !trusted.isDestroyed()) trusted.send('browser:midi', { reset: true });
+  }
+
+  // Page audio is heard only through an active capture, unless a loaded MIDI file took over
+  // playback. Muting does not silence the loopback capture; the app silences it from
+  // the published pageAudioMuted state.
+  function applyAudioMute() {
+    const wc = view?.webContents;
+    if (wc && !wc.isDestroyed()) wc.setAudioMuted(!captureActive || musicFilePage.muted);
+  }
+
+  // Like live MIDI, now-playing info reaches the app only while capture is active.
+  // A report without artworkUrl keeps the image the app already has.
+  function sendMedia(value) {
+    if (!captureActive || disposed || trusted.isDestroyed()) return;
+    if (value && value.artworkUrl === sentArtwork) {
+      const { artworkUrl: _unchanged, ...rest } = value;
+      value = rest;
+    } else {
+      sentArtwork = value ? value.artworkUrl : null;
+    }
+    trusted.send('browser:media', value);
+  }
+
+  // The cached report as of now: a playing position advances from its arrival time.
+  function mediaPayload() {
+    const { value, time } = media;
+    let { position } = value;
+    if (value.playing && position !== null) {
+      position += (Date.now() - time) / 1000 * value.rate;
+      if (value.duration !== null && position > value.duration) position = value.duration;
+    }
+    return { ...value, position, artworkUrl: value.artworkUrl && artwork.src === value.artworkUrl ? artwork.url : '' };
+  }
+
+  function forgetMedia() {
+    if (media) sendMedia(null);
+    media = null;
+    artwork = { src: '', url: '' };
+    watchMediaFrame();
+  }
+
+  function watchMediaFrame() {
+    const needed = captureActive && Boolean(media) && media.frame !== view?.webContents.mainFrame;
+    if (needed && !mediaFrameCheck) {
+      mediaFrameCheck = setInterval(() => { if (media?.frame.detached) forgetMedia(); }, MEDIA_FRAME_CHECK_MS);
+      mediaFrameCheck.unref?.();
+    } else if (!needed && mediaFrameCheck) {
+      clearInterval(mediaFrameCheck);
+      mediaFrameCheck = null;
+    }
+  }
+
+  async function readArtwork(src, pageURL) {
+    const response = await partition.fetch(src, { credentials: 'include', referrer: pageURL });
+    const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!response.ok || !/^image\/[\w.+-]+$/.test(type) ||
+      Number(response.headers.get('content-length')) > MAX_MEDIA_ARTWORK_BYTES) {
+      await response.body?.cancel();
+      return '';
+    }
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of response.body ?? []) {
+      size += chunk.length;
+      if (size > MAX_MEDIA_ARTWORK_BYTES) return '';
+      chunks.push(chunk);
+    }
+    return size ? `data:${type};base64,${Buffer.concat(chunks).toString('base64')}` : '';
+  }
+
+  // Fetches a new artwork address once and sends the result if it is still the current one.
+  function resolveArtwork(src, pageURL) {
+    if (!src || artwork.src === src) return;
+    const entry = { src, url: '' };
+    artwork = entry;
+    readArtwork(src, pageURL).then(url => {
+      entry.url = url;
+    }, failure => {
+      console.debug('Browser media artwork could not be loaded:', failure?.name || 'Error');
+    }).then(() => {
+      if (entry.url && !disposed && artwork === entry && media?.value.artworkUrl === src) sendMedia(mediaPayload());
+    });
+  }
+
+  function resetPage() {
+    resetMidi();
+    forgetMedia();
+    musicFilePage = createMusicFilePage();
+    applyAudioMute();
+  }
+
+  function musicFilesEnabled(wc) {
+    return !disposed && !clearing && Boolean(view) && wc === view.webContents && !wc.isDestroyed() &&
+      normalizeBrowserSettings(getSettings()).openMusicFilesInPlayer;
+  }
+
+  function removeMusicFileDir(dir) {
+    musicFileDirs.delete(dir);
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+    catch (failure) { console.error('Browser music file cleanup failed:', failure?.code || failure?.name || 'Error'); }
+  }
+
+  function createMusicFileDir() {
+    const dir = fs.mkdtempSync(path.join(musicTempRoot, `${MUSIC_FILE_DIR_PREFIX}${process.pid}-`));
+    musicFileDirs.add(dir);
+    return dir;
+  }
+
+  // Keeps the newest files across pages; each opened file replaces the playlist, so the
+  // oldest dir is no longer referenced when the limit is exceeded.
+  async function openInPlayer(filePath, canOpen) {
+    const dir = path.dirname(filePath);
+    let opened = false;
+    try {
+      opened = canOpen() && await openMusicFiles([filePath], canOpen);
+      if (opened) {
+        musicFileQueue.push(dir);
+        if (musicFileQueue.length > MAX_MUSIC_FILE_DIRS) removeMusicFileDir(musicFileQueue.shift());
+      }
+    } catch (failure) {
+      if (canOpen()) console.error('Browser music file could not be opened:', failure?.code || failure?.name || 'Error');
+    } finally {
+      if (!opened) removeMusicFileDir(dir);
+    }
+    return opened;
+  }
+
+  async function receiveMidiFile(wc, frame, value) {
+    if (!captureActive || !musicFilesEnabled(wc) || !validMidiFile(value?.bytes)) return;
+    const page = musicFilePage;
+    const captureGeneration = generation;
+    const hash = crypto.createHash('sha256').update(value.bytes).digest('hex');
+    if (hash === (page.pendingMidi?.hash ?? page.lastHash)) return;
+    const request = { hash, sequence: ++page.midiSequence };
+    page.pendingMidi = request;
+    const canOpen = () => page === musicFilePage && captureActive && generation === captureGeneration &&
+      !frame.detached && musicFilesEnabled(wc) && request.sequence >= page.latestOpen;
+    let dir;
+    try {
+      dir = createMusicFileDir();
+      const filePath = path.join(dir, playerFileName(value.name));
+      await fs.promises.writeFile(filePath, value.bytes);
+      // A slower write must not supersede a newer file already entering the Music Player.
+      if (canOpen()) page.latestOpen = request.sequence;
+      if (await openInPlayer(filePath, canOpen) && canOpen()) {
+        page.lastHash = hash;
+        if (!page.muted) { page.muted = true; applyAudioMute(); publish(); }
+      }
+    } catch (failure) {
+      if (dir) removeMusicFileDir(dir);
+      console.error('Browser MIDI file could not be saved:', failure?.code || failure?.name || 'Error');
+    } finally {
+      if (page.pendingMidi === request) page.pendingMidi = null;
+    }
+  }
+
+  // Downloads use the normal Save dialog, except music files that the setting opens in the
+  // Music Player. Downloads are user actions, so they neither need capture nor mute the page.
+  function handleDownload(event, item, wc) {
+    const filename = item?.getFilename();
+    if (!musicFilesEnabled(wc) || !MUSIC_DOWNLOAD_PATTERN.test(filename)) return;
+    if (item.getTotalBytes() > MAX_MUSIC_DOWNLOAD_BYTES) return;
+    let dir;
+    try { dir = createMusicFileDir(); }
+    catch (failure) {
+      console.error('Browser music download could not be prepared:', failure?.code || failure?.name || 'Error');
+      return;
+    }
+    const filePath = path.join(dir, playerFileName(filename, MUSIC_DOWNLOAD_PATTERN, path.extname(filename)));
+    item.setSavePath(filePath);
+    item.on('updated', () => { if (item.getReceivedBytes() > MAX_MUSIC_DOWNLOAD_BYTES) item.cancel(); });
+    item.once('done', async (_event, result) => {
+      const page = musicFilePage;
+      if (result === 'completed') await openInPlayer(filePath, () => page === musicFilePage && musicFilesEnabled(wc));
+      else removeMusicFileDir(dir);
+    });
+  }
+
   function cancelReservation() {
     if (reservation) clearTimeout(reservation.timer);
     reservation = null;
   }
 
+  // Browser MIDI follows Browser audio processing: ending capture releases the page's live MIDI input.
   function muteCapture(reason = null) {
     if (view && !view.webContents.isDestroyed()) view.webContents.setAudioMuted(true);
     cancelReservation();
+    if (captureActive) resetMidi();
+    if (media) sendMedia(null);
     captureActive = false;
+    musicFilePage.pendingMidi = null;
+    sentArtwork = null;
+    watchMediaFrame();
     captureGranted = false;
     generation += 1;
     error = reason;
@@ -164,11 +485,13 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
 
   function destroyView(reason = null) {
     viewRevision += 1;
+    forgetMedia();
     muteCapture(reason);
     closeAuxiliary();
     const old = view;
     view = null;
     htmlFullscreen = false;
+    resetMidi();
     if (old) {
       if (!mainWindow.isDestroyed()) mainWindow.contentView.removeChildView(old);
       if (!old.webContents.isDestroyed()) old.webContents.close({ waitForBeforeUnload: false });
@@ -229,6 +552,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       wc.setAudioMuted(true);
       return;
     }
+    wc.on('did-navigate', resetPage);
     wc.on('enter-html-full-screen', () => { htmlFullscreen = true; applyPresentation(); });
     wc.on('leave-html-full-screen', () => { htmlFullscreen = false; applyPresentation(); });
     wc.setWindowOpenHandler(details => {
@@ -279,14 +603,15 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     });
     wc.on('render-process-gone', () => destroyView('captureEnded'));
     wc.on('destroyed', () => {
-      if (view?.webContents === wc) { view = null; htmlFullscreen = false; muteCapture('captureEnded'); }
+      if (view?.webContents === wc) { view = null; htmlFullscreen = false; resetMidi(); forgetMedia(); muteCapture('captureEnded'); }
     });
   }
 
-  function remotePreferences() {
+  // Subframe preloads give embedded players the virtual MIDI output; popups are not covered.
+  function remotePreferences(subFrames = false) {
     return {
-      partition: PARTITION, nodeIntegration: false, nodeIntegrationInSubFrames: false,
-      preload: path.join(__dirname, 'browser-fullscreen-preload.js'),
+      partition: PARTITION, nodeIntegration: false, nodeIntegrationInSubFrames: subFrames,
+      preload: path.join(__dirname, 'browser-preload.js'),
       zoomFactor: presentation.zoomFactor, zoomMode: 'isolated',
       contextIsolation: true, sandbox: true, webSecurity: true,
       allowRunningInsecureContent: false, backgroundThrottling: false
@@ -305,9 +630,9 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       partition.setPermissionRequestHandler((wc, permission, callback, details) => {
         callback(permitted(wc, permission, details.requestingUrl || wc?.getURL()));
       });
-      partition.on('will-download', cancelDownload);
+      partition.on('will-download', handleDownload);
     }
-    view = new WebContentsView({ webPreferences: remotePreferences() });
+    view = new WebContentsView({ webPreferences: remotePreferences(true) });
     view.webContents.setAudioMuted(true);
     guardPage(view.webContents);
     mainWindow.contentView.addChildView(view);
@@ -315,8 +640,6 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     ready = view.webContents.loadURL('about:blank').catch(() => {});
     return view;
   }
-
-  function cancelDownload(event) { event.preventDefault(); }
 
   function showContextMenu(wc, params, popup) {
     if (disposed || clearing || wc.isDestroyed() || (!popup && !presentation.visible)) return;
@@ -437,6 +760,46 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   };
   ipcMain.on('browser:prepare-capture', syncPrepare);
 
+  // Page IPC counts only from a live document of the current Browser view. After a
+  // cross-site navigation the unloading document's frame is detached, so its late
+  // messages cannot reach the next page after its reset.
+  function pageEvent(event) {
+    return Boolean(view) && event.sender === view.webContents && Boolean(event.senderFrame) &&
+      !event.senderFrame.detached;
+  }
+
+  const relayMidi = (event, value) => {
+    if (disposed || clearing || !captureActive || !pageEvent(event) || trusted.isDestroyed()) return;
+    if (value?.clear === true && !Array.isArray(value)) { resetMidi(); return; }
+    const events = validMidiEvents(value);
+    if (events.length) trusted.send('browser:midi', { events });
+  };
+  ipcMain.on('browser:midi', relayMidi);
+
+  // Page preloads ask once per document whether to hand loaded MIDI files to the app.
+  const syncMidiFilesEnabled = event => { event.returnValue = pageEvent(event) && musicFilesEnabled(event.sender); };
+  ipcMain.on('browser:midi-files-enabled', syncMidiFilesEnabled);
+  const relayMidiFile = (event, value) => {
+    if (pageEvent(event)) void receiveMidiFile(event.sender, event.senderFrame, value);
+  };
+  ipcMain.on('browser:midi-file', relayMidiFile);
+
+  // The frame that reported last owns the info; another frame takes over only while it is
+  // playing or once the owner's document is gone.
+  const relayMedia = (event, value) => {
+    if (disposed || clearing || !pageEvent(event)) return;
+    const frame = event.senderFrame;
+    const pageURL = view.webContents.getURL();
+    const next = normalizeMedia(value, pageURL);
+    if (media && media.frame !== frame && !media.frame.detached && !next?.playing) return;
+    if (!next) { forgetMedia(); return; }
+    media = { frame, value: next, time: Date.now() };
+    resolveArtwork(next.artworkUrl, pageURL);
+    sendMedia(mediaPayload());
+    watchMediaFrame();
+  };
+  ipcMain.on('browser:media', relayMedia);
+
   function handle(name, action) {
     const channel = `browser:${name}`;
     channels.push(channel);
@@ -492,7 +855,10 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     cancelReservation();
     captureActive = true;
     error = null;
-    view.webContents.setAudioMuted(false);
+    applyAudioMute();
+    if (media?.frame.detached) media = null;
+    if (media) sendMedia(mediaPayload());
+    watchMediaFrame();
     publish();
     return state();
   });
@@ -503,7 +869,8 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
           typeof item.url !== 'string' || item.url.length > 8192))) ||
       ('startPage' in value && (typeof value.startPage !== 'string' || value.startPage.length > 8192)) ||
       ('userAgent' in value && !validUserAgent(value.userAgent)) ||
-      ('openTabsExternally' in value && typeof value.openTabsExternally !== 'boolean')) return { ok: false, error: 'invalidRequest' };
+      ('openTabsExternally' in value && typeof value.openTabsExternally !== 'boolean') ||
+      ('openMusicFilesInPlayer' in value && typeof value.openMusicFilesInPlayer !== 'boolean')) return { ok: false, error: 'invalidRequest' };
     if ('urlRules' in value) {
       try { validateRules(value.urlRules); } catch { return { ok: false, error: 'invalidRules' }; }
     }
@@ -548,8 +915,13 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     for (const remove of listeners) remove();
     for (const channel of channels) ipcMain.removeHandler(channel);
     ipcMain.removeListener('browser:prepare-capture', syncPrepare);
+    ipcMain.removeListener('browser:midi', relayMidi);
+    ipcMain.removeListener('browser:midi-files-enabled', syncMidiFilesEnabled);
+    ipcMain.removeListener('browser:midi-file', relayMidiFile);
+    ipcMain.removeListener('browser:media', relayMedia);
     captureSession.setDisplayMediaRequestHandler(null);
-    if (partition) partition.removeListener('will-download', cancelDownload);
+    if (partition) partition.removeListener('will-download', handleDownload);
+    for (const dir of [...musicFileDirs]) removeMusicFileDir(dir);
   }
   listen(mainWindow, 'closed', dispose);
   return { dispose, getState: state, updateTheme };

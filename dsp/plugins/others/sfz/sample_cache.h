@@ -35,6 +35,8 @@ enum class SampleReadStatus { Ready, Unavailable, Invalid, Overflow };
 class SamplePageCache {
 public:
   static constexpr std::uint32_t kPageFrames = schema::kStorageCachePageFrames;
+  // Matches the SF2 sample-header table limit and SFZ_MAX_SAMPLES in js/sfz/limits.js.
+  static constexpr std::size_t kMaxSamples = 65536;
   static constexpr std::size_t kMaxRequests = schema::kStorageCacheRequestCapacity;
 
   // CONTROL planning data, independent of voice/VM/checkpoint state. Keys use
@@ -68,7 +70,7 @@ public:
                                   std::uint32_t channels, StorageRequirements &storage,
                                   bool modeAware = false) noexcept {
     storage = {};
-    if (!sampleCount || sampleCount > 10000u || !slots || slots > 32768u || slots16 > slots ||
+    if (!sampleCount || sampleCount > kMaxSamples || !slots || slots > 32768u || slots16 > slots ||
         channels < 1u || channels > 2u)
       return false;
     storage.buckets = 1;
@@ -88,7 +90,7 @@ public:
   bool configure(std::uint64_t generation, const SampleMetadata *samples, std::size_t count,
                  std::size_t slots, std::size_t slots16 = 0,
                  const std::uint8_t *storageModes = nullptr) noexcept {
-    if (!generation || !samples || !count || count > 10000 || !slots || slots > 32768 ||
+    if (!generation || !samples || !count || count > kMaxSamples || !slots || slots > 32768 ||
         slots16 > slots)
       return false;
     std::uint32_t channels = 1;

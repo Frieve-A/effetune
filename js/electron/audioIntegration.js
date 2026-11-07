@@ -8,13 +8,13 @@ import {
 } from './webSettingsStorage.js';
 import {
   isGaplessPlaybackOnlyChange,
-  isMidiInputOnlyChange,
+  isMidiDeviceOnlyChange,
   loadAudioPreferences,
   saveAudioPreferences
 } from './audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
-import { bindMidiInputSettings } from '../midi/input-settings.js';
+import { bindMidiDeviceSettings } from '../midi/device-settings.js';
 export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
@@ -170,6 +170,11 @@ function replaceValueOptions(select, values, selectedValue, labelForValue) {
   select.value = values.some(value => String(value) === selectedValueString) ? selectedValueString : String(values[0] || '');
 }
 
+async function applyMidiDevicePreferences(preferences) {
+  await window.app?.applyMidiInputPreference?.(preferences.midiInputDeviceKey);
+  await window.app?.applyMidiOutputPreference?.(preferences.midiOutputDeviceKey);
+}
+
 /**
  * Show audio configuration dialog
  * @param {boolean} isElectron - Whether running in Electron environment
@@ -239,8 +244,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         ${!androidHost ? `<div class="device-section">
           <label for="midi-input-device">${t('dialog.audioConfig.midiInput')}</label>
           <select id="midi-input-device"></select>
-          <button type="button" id="refresh-midi-input">${t('dialog.audioConfig.midiInput.refresh')}</button>
-          <div class="device-help" id="midi-input-help"></div>
+          <label for="midi-output-device">${t('dialog.audioConfig.midiOutput')}</label>
+          <select id="midi-output-device"></select>
+          <button type="button" id="refresh-midi-devices">${t('dialog.audioConfig.midiDevices.refresh')}</button>
+          <div class="device-help" id="midi-device-help"></div>
         </div>` : ''}
         <div class="device-section">
           <label for="output-device">${t('dialog.audioConfig.outputDevice')}</label>
@@ -313,6 +320,9 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         display: block;
         margin-bottom: 5px;
       }
+      .device-section select + label {
+        margin-top: 10px;
+      }
       .device-section select {
         width: 100%;
         padding: 8px;
@@ -327,6 +337,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         line-height: 1.35;
         margin-top: 6px;
         min-height: 16px;
+        white-space: pre-line;
       }
       .checkbox-container {
         margin-top: 8px;
@@ -422,12 +433,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     if (!androidHost) {
       const midiManager = await window.app?.ensureMidiControllerManager?.();
       if (dialogClosed) return;
-      cleanupMidiSettings = bindMidiInputSettings({
+      cleanupMidiSettings = bindMidiDeviceSettings({
         manager: midiManager,
-        select: document.getElementById('midi-input-device'),
-        refreshButton: document.getElementById('refresh-midi-input'),
-        status: document.getElementById('midi-input-help'),
-        selectedKey: audioPreferences.midiInputDeviceKey || '', t
+        inputSelect: document.getElementById('midi-input-device'),
+        outputSelect: document.getElementById('midi-output-device'),
+        refreshButton: document.getElementById('refresh-midi-devices'),
+        status: document.getElementById('midi-device-help'),
+        selectedInputKey: audioPreferences.midiInputDeviceKey || '',
+        selectedOutputKey: audioPreferences.midiOutputDeviceKey || '', t
       });
     }
     applyInProgress = false;
@@ -510,7 +523,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       // Save preferences
       const preferences = {
-        ...(!androidHost ? { midiInputDeviceKey: document.getElementById('midi-input-device').value } : {}),
+        ...(!androidHost ? {
+          midiInputDeviceKey: document.getElementById('midi-input-device').value,
+          midiOutputDeviceKey: document.getElementById('midi-output-device').value
+        } : {}),
         inputDeviceId: inputDeviceSelect.value,
         outputDeviceId: selectedOutputDeviceId,
         inputDeviceLabel: inputDevice?.label || '',
@@ -524,17 +540,18 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       };
       
       const effectivePreferences = mergeWebAudioPreferences(audioPreferences, preferences);
-      if (!androidHost && isMidiInputOnlyChange(audioPreferences, effectivePreferences)) {
+      if (!androidHost && isMidiDeviceOnlyChange(audioPreferences, effectivePreferences)) {
         const saved = await saveAudioPreferences(isElectron, {
-          midiInputDeviceKey: effectivePreferences.midiInputDeviceKey
-        }, { applyInPlace: 'midi-input' });
+          midiInputDeviceKey: effectivePreferences.midiInputDeviceKey,
+          midiOutputDeviceKey: effectivePreferences.midiOutputDeviceKey
+        }, { applyInPlace: 'midi-devices' });
         if (!saved) {
           window.uiManager?.setError?.('error.audioSettingsSaveFailed', true);
           return;
         }
         window.audioPreferences = effectivePreferences;
         if (window.electronIntegration) window.electronIntegration.audioPreferences = effectivePreferences;
-        await window.app?.applyMidiInputPreference?.(effectivePreferences.midiInputDeviceKey);
+        await applyMidiDevicePreferences(effectivePreferences);
         closeDialog();
         callback?.(effectivePreferences);
         return;
@@ -598,7 +615,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         if (callback) {
           callback(preferences);
         }
-        if (!resetResult && !androidHost) await window.app?.applyMidiInputPreference?.(preferences.midiInputDeviceKey);
+        if (!resetResult && !androidHost) await applyMidiDevicePreferences(preferences);
         return;
       }
 

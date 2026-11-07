@@ -13,7 +13,7 @@ pip install effetune
 
 These signatures summarize the typed public surface. The installed `py.typed`
 package and generated effect stubs remain authoritative for individual effect options;
-the 111 effect signatures are not repeated here.
+the 112 effect signatures are not repeated here.
 
 ## Effect names and constructor keywords
 
@@ -180,13 +180,33 @@ stream.latency_samples: int
 stream.dropped_telemetry_frames: int
 ```
 
-Event parameter objects are partial updates. Events use zero-based frames relative to
+Each event has `frame`, `effectId`, and either `parameters` or `midi`. Event
+parameter objects are partial updates. Events use zero-based frames relative to
 the current input, must be in non-decreasing frame order, and merge in supplied order
 when several share a frame. A Stream is a context manager; processing, resetting, or
 inspecting runtime properties after close raises `StateError`.
 Asset-configuration parameters listed under
 [Streaming and events](/dsp/concepts/streaming-and-events/) require a newly opened
 stream.
+
+`midi` events drive MIDI effects such as
+[SoundFont Player](/dsp/effects/soundfont-player/). The `effetune.midi` helpers build
+one message each; channels are zero-based (0 to 15):
+
+```python
+midi.note_on(channel: int, note: int, velocity: int) -> list[int]
+midi.note_off(channel: int, note: int, velocity: int = 0) -> list[int]
+midi.control_change(channel: int, controller: int, value: int) -> list[int]
+midi.pitch_bend(channel: int, value14: int) -> list[int]  # 8192 is the centre
+midi.program_change(channel: int, program: int) -> list[int]
+
+stream.process(audio, events=[
+    {"frame": 0, "effectId": "piano", "midi": midi.note_on(0, 60, 100)},
+])
+```
+
+A `midi` value can also be raw bytes as a list, tuple, `bytes`, or `bytearray`;
+see [MIDI events](/dsp/concepts/streaming-and-events/#midi-events).
 
 ## Assets and bundles
 
@@ -210,11 +230,21 @@ Bundle.pack(
 bundle.manifest: Mapping[str, Any]
 bundle.chain_document: Mapping[str, Any]
 bundle.resolver(reference: str) -> AssetData | None
+
+SoundFontBank.load(source: str | PathLike | bytes | bytearray | memoryview) -> SoundFontBank
+bank.payload: bytes
+bank.pages: tuple[SoundFontPage, ...]
+
+AssetResolver = Callable[[str], AssetData | SoundFontBank | Mapping[str, Any] | None]
 ```
 
 `AssetData.samples` must be finite, planar, C-contiguous `float32`. Bundle methods
 raise `ValidationError` for documents/paths and `AssetError` for missing, malformed,
 oversized, or unverifiable IR assets.
+
+`SoundFontBank.load()` reads a prepared `.etsf` bank, not an SF2, SF3, or SFZ file;
+see [SoundFont banks](/dsp/concepts/assets-and-bundles/#soundfont-banks). Return the
+bank from an asset resolver for a SoundFont Player's `soundFont` reference.
 
 ## Telemetry and catalog
 
@@ -223,7 +253,7 @@ on_telemetry=callback)`, and Stream subscriptions deliver decoded
 `TelemetryFrame` subclasses. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry)
 for exact frame fields.
 
-`EFFECT_METADATA` is the machine-readable catalog, `EFFECT_CLASSES` maps all 111
+`EFFECT_METADATA` is the machine-readable catalog, `EFFECT_CLASSES` maps all 112
 semantic names to their classes, and
 `create_effect(effect_type: str, **options: object) -> Effect` is the generic
 constructor. `Stream.latency_samples` is the live aggregate, distinct from catalog

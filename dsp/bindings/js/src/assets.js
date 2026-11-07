@@ -9,6 +9,7 @@ import {
   IR_KERNEL_ASSET_CAPACITY_BYTES,
   resolveIrProcessingConfig
 } from './internal/ir-plugin-contract.js';
+import { getEffectDefinition } from './catalog.js';
 import { AssetError, ValidationError } from './errors.js';
 import { channelRange, channelToEngine, requireResolvedAsset } from './semantics.js';
 
@@ -182,18 +183,21 @@ function inferEta1Format(bytes, reference) {
   };
 }
 
-async function resolverResult(resolver, reference, descriptor, effectId) {
+async function callResolver(resolver, reference, descriptor, effectId) {
   const resolve = typeof resolver === 'function' ? resolver : resolver?.resolve?.bind(resolver);
   if (typeof resolve !== 'function') {
     throw new AssetError(`${effectId} requires an assetResolver.`);
   }
-  let result;
-  let ownsBytes = false;
   try {
-    result = await resolve(reference, descriptor);
+    return await resolve(reference, descriptor);
   } catch (error) {
     throw new AssetError(`${effectId} could not resolve asset ${reference}.`, { cause: error });
   }
+}
+
+async function resolverResult(resolver, reference, descriptor, effectId) {
+  let result = await callResolver(resolver, reference, descriptor, effectId);
+  let ownsBytes = false;
   if (result?.arrayBuffer && typeof result.arrayBuffer === 'function') {
     if (result.ok === false) throw new AssetError(`${effectId} could not read asset ${reference}.`);
     result = {
@@ -479,6 +483,36 @@ export function splitBundle(input) {
   return { chain: input.chain, manifest };
 }
 
+// A resolver returns a SoundFontBank from prepareSoundFont() or the bytes of
+// a saved bank (SoundFontBank.toBytes()), optionally as a fetch Response.
+async function resolveSoundFont(resolver, reference, effectId) {
+  let result = await callResolver(resolver, reference, undefined, effectId);
+  if (result?.payload instanceof ArrayBuffer && Array.isArray(result.pages)) return result;
+  if (result?.arrayBuffer && typeof result.arrayBuffer === 'function') {
+    if (result.ok === false) throw new AssetError(`${effectId} could not read SoundFont ${reference}.`);
+    result = await result.arrayBuffer();
+  }
+  const notPrepared = (cause) =>
+    new AssetError(
+      `${effectId} SoundFont ${reference} is not a prepared SoundFont bank. Use prepareSoundFont() or the effetune-soundfont command to convert an SF2 or SFZ file.`,
+      cause && { cause }
+    );
+  if (!(result instanceof ArrayBuffer) && !ArrayBuffer.isView(result)) throw notPrepared();
+  // Loaded on demand so chains without SoundFonts never load the SoundFont preparation code.
+  const { SoundFontBank } = await import('./soundfont.js');
+  try {
+    return SoundFontBank.fromBytes(result);
+  } catch (error) {
+    throw error instanceof AssetError ? notPrepared(error) : error;
+  }
+}
+
+export function soundFontAssetNames(effectType) {
+  return new Set(getEffectDefinition(effectType).assets
+    .filter(asset => asset.kind === 'soundFont')
+    .map(asset => asset.name));
+}
+
 export async function resolveChainAssets(chainDocument, {
   assetResolver,
   manifest = null
@@ -486,6 +520,11 @@ export async function resolveChainAssets(chainDocument, {
   const resolved = new Map();
   if (manifest) {
     for (const effect of chainDocument.chain) {
+      if (effect.assets && soundFontAssetNames(effect.type).size > 0) {
+        throw new AssetError(
+          `${effect.id} uses a SoundFont, which bundles cannot include yet. Load the chain without a bundle and provide the SoundFont through assetResolver.`
+        );
+      }
       for (const reference of Object.values(effect.assets ?? {})) {
         if (!manifest.has(reference)) {
           throw new AssetError(`${effect.id} references missing bundle asset ${reference}.`);
@@ -496,7 +535,13 @@ export async function resolveChainAssets(chainDocument, {
   for (const effect of chainDocument.chain) {
     if (!effect.enabled || !effect.assets) continue;
     const effectAssets = {};
+    const soundFontNames = soundFontAssetNames(effect.type);
     for (const [name, reference] of Object.entries(effect.assets)) {
+      if (soundFontNames.has(name)) {
+        const bank = await resolveSoundFont(assetResolver, reference, effect.id);
+        effectAssets[name] = Object.freeze({ bank, reference });
+        continue;
+      }
       const descriptor = manifest?.get(reference);
       const result = await resolverResult(
         assetResolver,

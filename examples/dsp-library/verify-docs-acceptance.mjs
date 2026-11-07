@@ -17,6 +17,18 @@ const repoRoot = path.resolve(sourceRoot, '..', '..');
 const docsRoot = path.join(sourceRoot, 'docs');
 const snippetsRoot = path.join(docsRoot, 'snippets');
 const fixturesRoot = path.join(docsRoot, 'fixtures');
+const soundFontBankPath = path.join(
+  repoRoot, 'dsp', 'bindings', 'common', 'soundfont-sine-v1.etsf'
+);
+// One SMF track: tempo 120 BPM, program change, then middle C for 480 ticks (0.5 s).
+const testSongTrack = Uint8Array.of(
+  0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20,
+  0x00, 0xf0, 0x05, 0x7e, 0x7f, 0x09, 0x01, 0xf7,
+  0x00, 0xc0, 0x00,
+  0x00, 0x90, 0x3c, 0x64,
+  0x83, 0x60, 0x80, 0x3c, 0x00,
+  0x00, 0xff, 0x2f, 0x00
+);
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -273,7 +285,7 @@ self.addEventListener('fetch', event => {
 import { createVolumeGraph } from './audioworklet-start.mjs';
 import { getEffectCatalog } from '@effetune/dsp';
 import { EffeTuneNode } from '@effetune/dsp/worklet';
-import { assetSetup } from './asset-fixtures.mjs';
+import { assetSetup, requiresImpulseResponse } from './asset-fixtures.mjs';
 document.querySelector('#numeric').addEventListener('click', async () => {
  try {
   const secure = isSecureContext;
@@ -463,9 +475,7 @@ document.querySelector('#numeric').addEventListener('click', async () => {
   }
 
   const convolution = [];
-  const convolutionEffects = getEffectCatalog().effects.filter(
-    effect => effect.assets.some(asset => asset.required)
-  );
+  const convolutionEffects = getEffectCatalog().effects.filter(requiresImpulseResponse);
   for (const variant of ['baseline', 'simd']) {
     for (const effect of convolutionEffects) {
       const first = await renderConvolution(effect, variant, 'a');
@@ -895,6 +905,27 @@ function verifyCrossLanguageContract(python, npmRoot) {
   }
 }
 
+function verifySoundFontSnippets(runSnippet) {
+  runSnippet('soundfont-player', [soundFontBankPath]);
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-docs-soundfont-'));
+  try {
+    const song = path.join(temporary, 'song.mid');
+    fs.writeFileSync(song, Buffer.concat([
+      Buffer.from([0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xe0]),
+      Buffer.from([0x4d, 0x54, 0x72, 0x6b, 0, 0, 0, testSongTrack.length]),
+      testSongTrack
+    ]));
+    const wav = path.join(temporary, 'song.wav');
+    runSnippet('midi-to-wav', [song, soundFontBankPath, wav]);
+    const bytes = fs.readFileSync(wav);
+    // 0.5 s of song plus the 3 s tail as 16-bit stereo at 48 kHz.
+    assert.equal(bytes.length, 44 + (24000 + 144000) * 4);
+    assert.ok(bytes.subarray(44).some(byte => byte !== 0));
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 export async function verifyDocsAcceptance({
   python = 'python',
   npmRoot,
@@ -908,6 +939,8 @@ export async function verifyDocsAcceptance({
   runPython(python, 'bass-management-stereo-sub.py');
   runPython(python, 'bass-management-linear.py');
   runPython(python, 'spatial-mapper-center.py');
+  verifySoundFontSnippets((name, args) =>
+    run(python, [path.join(snippetsRoot, `${name}.py`), ...args]));
   runPythonCli(python, ['chain', 'validate', path.join(snippetsRoot, 'bass-management-stereo-sub.json')]);
   verifyReadmeBlocks(python, npmRoot);
   verifyVisualFixture(python);
@@ -989,9 +1022,12 @@ export async function verifyJavascriptAcceptance(npmRoot) {
     [
       path.join(fixturesRoot, 'source-generation-v0.1.json'),
       path.join(repoRoot, 'docs', 'dsp', 'catalog', 'effects-v1.json'),
-      path.join(docsRoot, 'effects-v1.docs.json')
+      path.join(docsRoot, 'effects-v1.docs.json'),
+      soundFontBankPath
     ]
   );
+  verifySoundFontSnippets((name, args) =>
+    runNpmSnippet(npmRoot, `${name}.mjs`, {}, args));
   await verifyWorklet(npmRoot);
 }
 
