@@ -203,8 +203,14 @@ struct RenderState {
   bool midi_state_only_ = false, midi_reattack_ = false, midi_first_ = true;
   float midi_gain_ = 1.0F;
   std::uint32_t midi_revision_ = 1u, midi_identity_ = 0u;
+  // Channel events also bump midi_revision_; their per-channel split lets SF2 voices skip
+  // refreshes caused by other channels.
+  std::uint32_t channel_event_count_ = 0u;
+  std::array<std::uint32_t, 16> channel_revision_{};
   std::array<int, 16> sf2_override_cache_{};
   bool sf2_fallback_cache_ = true;
+  // Compatibility mode applied to sounding voices; a change refreshes their modulation.
+  bool sf2_strict_applied_ = false;
   std::uint32_t sf2_frame_ = 0, sf2_block_frames_ = 0, sf2_fx_position_ = 0,
                 sf2_timing_fade_start_ = 0;
   bool sf2_has_sends_ = false;
@@ -225,6 +231,8 @@ struct RenderState {
   std::uint32_t dry_delay_ = 0u, old_dry_delay_ = 0u, wet_delay_ = 0u, old_wet_delay_ = 0u,
                 timing_fade_ = 0u, selection_mask_ = 7u;
   std::uint32_t voice_limit_ = 32u, voice_extent_ = 0u, seed_ = 1u, salt_ = 0u, random_ = 1u;
+  // Paused slots stay default until a pause or checkpoint read writes them.
+  bool paused_voices_dirty_ = false;
   std::uint64_t age_ = 0u;
   int preview_midi_ = -1;
   std::uint32_t preview_channel_ = 0u;
@@ -468,8 +476,7 @@ public:
     midi_cursor_ = 0;
     midi_running_ = midi_paused_ = midi_ended_ = midi_history_pending_ = midi_history_requested_ =
         false;
-    if (paused_voices_)
-      paused_voices_->fill({});
+    clearPausedVoices();
     dry_.clear();
     wet_.clear();
     sf2_fx_delay_.clear();
@@ -524,7 +531,7 @@ public:
       static_cast<SFZBank *>(asset.get())->scriptSession_.swap(script_session_);
     if (bank())
       script_session_.swap(bank()->scriptSession_);
-    paused_voices_->fill({});
+    clearPausedVoices();
     midi_running_ = midi_paused_ = midi_history_requested_ = midi_history_pending_ = false;
     midi_clock_ = midi_history_target_ = 0;
     // Drop old voice references before the next playback access, without touching PCM here.
@@ -540,7 +547,7 @@ public:
     offline_trial_.reset();
     clearNotes();
     script_session_.reset();
-    paused_voices_->fill({});
+    clearPausedVoices();
     midi_paused_ = midi_running_ = false;
     bank_ = std::move(next);
     return reinterpret_cast<std::uint8_t *>(bank()->payload_.data());
@@ -584,8 +591,7 @@ public:
     clearNotes();
     bank_.reset();
     script_session_.reset();
-    if (paused_voices_)
-      paused_voices_->fill({});
+    clearPausedVoices();
     midi_running_ = midi_paused_ = false;
   }
   std::uint32_t assetState(std::uint32_t slot) const noexcept override {
@@ -634,10 +640,10 @@ public:
         return ET_ERR_STATE;
       *forecast_channels_ = *midi_channels_;
       forecast_valid_ = true;
-      for (const auto &voice : *voices_)
+      for (const auto &voice : liveVoices())
         if (voice.region)
           requestVoiceSamples(voice, window);
-      for (const auto &voice : *paused_voices_)
+      for (const auto &voice : pausedVoices())
         if (voice.region) {
           auto reattack = voice;
           reconstructReattack(reattack, true);
@@ -1181,14 +1187,14 @@ public:
         midi_clock_ = midi_history_target_ = 0;
         midi_paused_ = midi_running_ = midi_ended_ = midi_history_pending_ =
             midi_history_requested_ = false;
-        paused_voices_->fill({});
+        clearPausedVoices();
       }
       if (notes_reset_pending_) {
         clearNotes();
         resetMidi();
       }
       if constexpr (Midi)
-        setVoiceLimit(static_cast<std::uint32_t>(bounded(params_.maxVoices, 1, kVoices, 64)));
+        setVoiceLimit(static_cast<std::uint32_t>(bounded(params_.maxVoices, 1, kVoices, 256)));
       if (flags & ET_MIDI_PAUSE)
         pauseMidi();
       if (flags & ET_MIDI_NATURAL_END) {
@@ -1330,8 +1336,8 @@ private:
                           std::uint32_t velocity, sf2::Resolved &resolved) noexcept {
     const auto *r = bank()->region(index);
     const sf2::Inputs input{
-        channel.cc.data(),  musicalKey,   velocity,         channel.pressure[physicalKey],
-        channel.aftertouch, channel.bend, channel.bendRange};
+        channel.cc.data(),  musicalKey,   velocity,          channel.pressure[physicalKey],
+        channel.aftertouch, channel.bend, channel.bendRange, sf2StrictSpec()};
     return sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(index), 61),
                          sf2ForecastRoutes(index), input,
                          {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -1412,20 +1418,9 @@ private:
     // Selected-preset prefixes request only region geometry and maximum step.
     // Resolve every channel first, then union identical prefixes across channels;
     // live/paused origins and known MIDI retain their channel dependencies.
-    const bool selectedPrefix =
-        forecast_scope_ == ET_STREAM_SCOPE_SELECTED_PRESETS && (candidate.flags & 4u) != 0u;
-    for (auto &source : bank()->cache_.forecastSources())
-      if (source.region == candidate.region &&
-          (source.channel == candidate.channel || selectedPrefix) &&
-          source.physicalKey == candidate.physicalKey &&
-          source.musicalKey == candidate.musicalKey && source.velocity == candidate.velocity &&
-          source.position == candidate.position && source.flags == candidate.flags) {
-        source.onset = std::min(source.onset, candidate.onset);
-        source.maximumStep = std::max(source.maximumStep, candidate.maximumStep);
-        return;
-      }
-    if (auto *source = bank()->cache_.addForecastSource())
-      *source = candidate;
+    bank()->cache_.collectForecastSource(candidate,
+                                         forecast_scope_ == ET_STREAM_SCOPE_SELECTED_PRESETS &&
+                                             (candidate.flags & 4u) != 0u);
   }
   void forecastReleasedSources(std::uint32_t channel, std::uint32_t key,
                                std::uint32_t offset) noexcept {
@@ -1500,10 +1495,10 @@ private:
         else
           requestVoiceSamples(voice, window);
       };
-      for (const auto &voice : *voices_)
+      for (const auto &voice : liveVoices())
         if (voice.region)
           collectVoice(voice);
-      for (const auto &voice : *paused_voices_)
+      for (const auto &voice : pausedVoices())
         if (voice.region) {
           auto reattack = voice;
           reconstructReattack(reattack, true);
@@ -1704,8 +1699,8 @@ private:
       const auto count = std::bit_cast<std::uint32_t>(section[directory + index * 4u + 1u]);
       sf2::Resolved resolved;
       const sf2::Inputs input{
-          channel.cc.data(),  musicalKey,   velocity,         channel.pressure[physicalKey],
-          channel.aftertouch, channel.bend, channel.bendRange};
+          channel.cc.data(),  musicalKey,   velocity,          channel.pressure[physicalKey],
+          channel.aftertouch, channel.bend, channel.bendRange, sf2StrictSpec()};
       if (!sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(index), 61),
                          {section + records + first * 10u, count}, input,
                          {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -1758,6 +1753,24 @@ private:
       requestRegionSamples(r, r[Direction] == 1.0F ? indexValue(r, End) : indexValue(r, Offset),
                            step, window, false);
   }
+  // Key-list slice [begin, end) for a sample key. SF2 presets own contiguous region ranges and
+  // key lists are region-ordered, so an SF2 lookup narrows to the preset's slice.
+  std::pair<std::uint32_t, std::uint32_t> keyRegions(std::uint32_t key,
+                                                     std::uint32_t preset) const noexcept {
+    const auto *indices = bank()->indices_.data();
+    auto begin = indices[key], end = indices[key + 1u];
+    if (!bank()->sf2_)
+      return {begin, end};
+    if (preset == UINT32_MAX)
+      return {0u, 0u};
+    const auto *keys = indices + 129u + 2u * bank()->group_count_;
+    const auto range = bank()->preset(preset);
+    begin = static_cast<std::uint32_t>(
+        std::lower_bound(keys + begin, keys + end, range.firstRegion) - keys);
+    end = static_cast<std::uint32_t>(
+        std::lower_bound(keys + begin, keys + end, range.firstRegion + range.regionCount) - keys);
+    return {begin, end};
+  }
   void forecastNoteSamples(const std::array<MidiChannel, 16> &channels, std::uint32_t channel,
                            std::uint32_t key, std::uint32_t velocity,
                            std::uint32_t window) noexcept {
@@ -1775,13 +1788,11 @@ private:
         return;
     }
     const auto *keys = bank()->indices_.data() + 129u + 2u * bank()->group_count_;
-    for (auto at = bank()->indices_.data()[sampleKey]; at < bank()->indices_.data()[sampleKey + 1u];
-         ++at) {
+    const auto [begin, end] = keyRegions(static_cast<std::uint32_t>(sampleKey), selected);
+    for (auto at = begin; at < end; ++at) {
       const auto index = keys[at];
       const auto *r = bank()->region(index);
       if (velocity < r[LowVelocity] || velocity > r[HighVelocity])
-        continue;
-      if (bank()->sf2_ && bank()->presetForRegion(index) != selected)
         continue;
       forecastRegionSamples(index, state, key, static_cast<std::uint32_t>(musicalKey), velocity,
                             window, channel);
@@ -2117,6 +2128,8 @@ private:
           (state.preset != UINT32_MAX && (!bank()->sf2_ || state.preset >= bank()->preset_count_)))
         io.ok = false;
     }
+    if constexpr (Reading)
+      paused_voices_dirty_ = true;
     for (auto &voice : *paused_voices_) {
       auto index = voice.region
                        ? static_cast<std::uint32_t>((voice.region - bank()->region(0)) / kStride)
@@ -2336,7 +2349,7 @@ private:
       control = {change.value, 1u | (change.absolute ? 2u : 0u) | (change.final ? 4u : 0u)};
     } else
       return note.automation.apply(change, frame, rate_, birth);
-    for (auto &voice : *voices_)
+    for (auto &voice : activeVoices())
       if (voice.region && !voice.retired && voice.noteId == note.id) {
         if (change.target == T::PlayPosition)
           voice.position = change.value * voice.region[Rate];
@@ -2436,7 +2449,7 @@ private:
       if (!note.id || note.keyDown || note.physicalDown)
         continue;
       bool retained = false;
-      for (const auto &voice : *voices_)
+      for (const auto &voice : liveVoices())
         if (voice.region && voice.noteId == note.id && !voice.retired) {
           retained = true;
           break;
@@ -2463,11 +2476,12 @@ private:
     if (midi_paused_)
       return;
     clearSampleForecast();
-    paused_voices_->fill({});
+    clearPausedVoices();
     auto next = 0u;
     for (const auto &voice : *voices_)
       if (voice.region && !voice.retired && !voice.preview && heldSourceVoice(voice))
         (*paused_voices_)[next++] = voice;
+    paused_voices_dirty_ = next != 0u;
     retireMidi();
     midi_running_ = false;
     midi_paused_ = true;
@@ -2487,7 +2501,7 @@ private:
       }
     midi_paused_ = false;
     reattackMidi();
-    paused_voices_->fill({});
+    clearPausedVoices();
   }
   void finishMidi() noexcept {
     if (midi_ended_)
@@ -2506,7 +2520,7 @@ private:
           midiEvent(off, 0);
         }
     }
-    for (auto &voice : *voices_)
+    for (auto &voice : activeVoices())
       if (voice.region && !voice.retired && !voice.preview) {
         voice.sostenuto = false;
         const auto *note = script_session_ ? script_session_->find(voice.noteId) : nullptr;
@@ -2723,7 +2737,7 @@ private:
       return;
     if (auto *note = script_session_->find(id))
       note->keyDown = false;
-    for (auto &voice : *voices_)
+    for (auto &voice : activeVoices())
       if (voice.region && voice.noteId == id) {
         voice.keyDown = false;
         if ((*midi_channels_)[voice.channel].cc[64] < 64u && !voice.sostenuto)
@@ -2753,7 +2767,7 @@ private:
     note.queued = false;
     if (note.wholeSample) {
       std::uint64_t frames = 0;
-      for (const auto &voice : *voices_)
+      for (const auto &voice : liveVoices())
         if (voice.region && voice.noteId == note.id) {
           const auto distance = voice.region[Direction] == 1.0F
                                     ? voice.position - indexValue(voice.region, Offset) + 1.0
@@ -3315,7 +3329,7 @@ private:
   }
   void retireMidi(bool preserveRelease = false) noexcept {
     if (voices_)
-      for (auto &v : *voices_)
+      for (auto &v : activeVoices())
         if (v.region && !v.preview) {
           if (v.historyOnly || pendingVoiceStart(v)) {
             v.region = nullptr;
@@ -3331,7 +3345,7 @@ private:
             v.retiredSourceElapsed = v.elapsed;
           }
           if (preserveRelease && naturalVoiceTail(v)) {
-            if (v.modulationRevision != midi_revision_)
+            if (!modulationCurrent(v))
               refreshMidiModulation(v);
             v.retired = true;
             continue;
@@ -3437,7 +3451,7 @@ private:
     if (!bank()->modulation_)
       return;
     const auto &channel = (*midi_channels_)[midi_channel_];
-    for (auto &voice : *voices_)
+    for (auto &voice : activeVoices())
       if (voice.region && !voice.retired && voice.channel == midi_channel_) {
         const auto index = modulationRegionIndex(voice);
         const auto view = bank()->modulation_->region(index);
@@ -3475,19 +3489,22 @@ private:
         : trigger == 4u ? midi_trigger_ != 0u || midi_first_
                         : trigger != midi_trigger_)
       return false;
-    int last = static_cast<int>(r[SwitchDefault]);
-    std::uint32_t serial = 0u;
-    const auto low = r[SwitchLow] < 0 ? 0u : static_cast<std::uint32_t>(r[SwitchLow]);
-    const auto high = r[SwitchHigh] < 0 ? 127u : static_cast<std::uint32_t>(r[SwitchHigh]);
-    for (auto note = low; note <= high && note < 128u; ++note)
-      if (c.keySerial[note] > serial) {
-        serial = c.keySerial[note];
-        last = static_cast<int>(note);
-      }
-    if ((r[SwitchLast] >= 0 && last != r[SwitchLast]) ||
-        (r[SwitchLowLast] >= 0 && last < r[SwitchLowLast]) ||
-        (r[SwitchHighLast] >= 0 && last > r[SwitchHighLast]) ||
-        (r[SwitchPrevious] >= 0 && c.previous != r[SwitchPrevious]))
+    if (r[SwitchLast] >= 0 || r[SwitchLowLast] >= 0 || r[SwitchHighLast] >= 0) {
+      int last = static_cast<int>(r[SwitchDefault]);
+      std::uint32_t serial = 0u;
+      const auto low = r[SwitchLow] < 0 ? 0u : static_cast<std::uint32_t>(r[SwitchLow]);
+      const auto high = r[SwitchHigh] < 0 ? 127u : static_cast<std::uint32_t>(r[SwitchHigh]);
+      for (auto note = low; note <= high && note < 128u; ++note)
+        if (c.keySerial[note] > serial) {
+          serial = c.keySerial[note];
+          last = static_cast<int>(note);
+        }
+      if ((r[SwitchLast] >= 0 && last != r[SwitchLast]) ||
+          (r[SwitchLowLast] >= 0 && last < r[SwitchLowLast]) ||
+          (r[SwitchHighLast] >= 0 && last > r[SwitchHighLast]))
+        return false;
+    }
+    if (r[SwitchPrevious] >= 0 && c.previous != r[SwitchPrevious])
       return false;
     if (r[SwitchDown] >= 0) {
       const auto physical = physicalSwitchKey(static_cast<int>(r[SwitchDown]));
@@ -3499,11 +3516,8 @@ private:
       if (physical >= 0 && c.keys[static_cast<unsigned>(physical)])
         return false;
     }
-    for (auto cc = 0u; cc < 128u; ++cc) {
-      if (c.cc[cc] < bank()->controller(r, LowCC, cc) ||
-          c.cc[cc] > bank()->controller(r, HighCC, cc))
-        return false;
-    }
+    if (!bank()->controllerRangesMatch(r, c.cc))
+      return false;
     if (bank()->modulation_) {
       const auto index = static_cast<std::uint32_t>((r - bank()->region(0)) / kStride);
       const auto view = bank()->modulation_->region(index);
@@ -3553,7 +3567,7 @@ private:
     return true;
   }
   void reattackMidi() noexcept {
-    for (auto &voice : *voices_)
+    for (auto &voice : activeVoices())
       if (voice.region && voice.historyOnly) {
         if (!heldSourceVoice(voice)) {
           voice.region = nullptr;
@@ -3605,8 +3619,7 @@ private:
       if (event.flags == ET_MIDI_SYSTEM_RESET) {
         const auto mute = mixer_mute_, solo = mixer_solo_;
         clearNotes();
-        if (paused_voices_)
-          paused_voices_->fill({});
+        clearPausedVoices();
         resetMidi(true);
         invalidateForecastReceipt(true);
         if (flags & ET_MIDI_STATE_ONLY) {
@@ -3641,6 +3654,8 @@ private:
       if (midi_selected_channel_ != 0u && midi_selected_channel_ != (event.message & 15u) + 1u)
         return;
     ++midi_revision_;
+    ++channel_event_count_;
+    ++channel_revision_[event.message & 15u];
     midi_state_only_ = (flags & ET_MIDI_STATE_ONLY) != 0u;
     invalidateForecastReceipt(true);
     const bool applySource = (flags & kScriptSourceApply) != 0;
@@ -3709,14 +3724,14 @@ private:
         return;
       const auto releaseId = scriptNote ? scriptNote->id : event.note_id;
       Voice *oldest = nullptr;
-      for (auto &v : *voices_)
+      for (auto &v : activeVoices())
         if (v.region && !v.preview && v.channel == midi_channel_ && v.midi == key && v.keyDown &&
             (!releaseId || v.noteId == releaseId) && (!oldest || v.age < oldest->age))
           oldest = &v;
       const bool held = oldest ? voiceSustain(*oldest) || oldest->sostenuto : c.cc[64] >= 64u;
       if (oldest) {
         const auto identity = oldest->noteId;
-        for (auto &v : *voices_)
+        for (auto &v : activeVoices())
           if (v.region && !v.preview && v.channel == midi_channel_ && v.midi == key &&
               v.noteId == identity) {
             v.keyDown = false;
@@ -3748,7 +3763,7 @@ private:
         return;
       }
       bool pedalEvent = key == 64u || key == 66u;
-      for (auto &v : *voices_)
+      for (auto &v : activeVoices())
         if (v.region && v.channel == midi_channel_ && keyDrivenRegion(v.region)) {
           const auto *settings = playbackPlan(v.region);
           const auto sustainCC = settings ? settings->sustainCC : 64u;
@@ -3773,7 +3788,7 @@ private:
         c.keys.fill(0u);
         if (key == 120u)
           c.pendingRelease.fill(0u);
-        for (auto &v : *voices_)
+        for (auto &v : activeVoices())
           if (v.channel == midi_channel_ && v.region && !v.preview) {
             if (key != 120u && !keyDrivenRegion(v.region))
               continue;
@@ -3796,7 +3811,7 @@ private:
       }
       if (key == 121u) {
         flushMidiReleases(c);
-        for (auto &v : *voices_)
+        for (auto &v : activeVoices())
           if (v.region && !v.preview && v.channel == midi_channel_ && keyDrivenRegion(v.region)) {
             v.sostenuto = false;
             if (!v.keyDown)
@@ -3852,23 +3867,34 @@ private:
     midi_controller_ = -1;
   }
   void flushMidiReleases(MidiChannel &channel) noexcept {
-    for (auto key = 0u; key < 128u; ++key) {
-      bool held = false, source = false;
-      for (const auto &v : *voices_)
-        if (v.region && v.channel == midi_channel_ && v.midi == key && keyDrivenRegion(v.region)) {
-          source = true;
-          held = held || v.sostenuto || voiceSustain(v);
+    // One voice pass builds per-key source and held masks. A started release voice may steal a
+    // slot, so the masks are rebuilt after every start.
+    std::array<std::uint64_t, 2> source{}, held{};
+    const auto scan = [&] {
+      source = held = {};
+      for (const auto &v : liveVoices())
+        if (v.region && v.channel == midi_channel_ && v.midi < 128u && keyDrivenRegion(v.region)) {
+          const auto bit = std::uint64_t{1} << (v.midi & 63u);
+          source[v.midi >> 6u] |= bit;
+          if (v.sostenuto || voiceSustain(v))
+            held[v.midi >> 6u] |= bit;
         }
-      held = held || (!source && channel.cc[64] >= 64u);
-      if (held)
+    };
+    scan();
+    for (auto key = 0u; key < 128u; ++key) {
+      const auto bit = std::uint64_t{1} << (key & 63u);
+      if ((held[key >> 6u] & bit) || (!(source[key >> 6u] & bit) && channel.cc[64] >= 64u))
         continue;
       auto count = std::min<std::uint32_t>(channel.pendingRelease[key], kVoices);
       channel.pendingRelease[key] = 0u;
       midi_trigger_ = 1u;
       midi_controller_ = -1;
+      if (!count)
+        continue;
       while (count--)
         if (bank() && bank()->state_ == ET_ASSET_STATE_ACTIVE)
           startVoices(key, logicalNoteKey(key), channel.velocity[key], false);
+      scan();
     }
   }
   void releaseMidiVoice(Voice &v, bool force = false) noexcept {
@@ -3899,7 +3925,7 @@ private:
     v.releaseElapsed = 0u;
     v.released = true;
     v.forcedRelease = force;
-    if (v.modulationRevision != midi_revision_)
+    if (!modulationCurrent(v))
       refreshMidiModulation(v);
     if (bank()->sf2_) {
       v.sf2VolumeEnvelope.release(v.sf2Parameters.volEnv);
@@ -3914,14 +3940,14 @@ private:
     Sf2SpanFacts facts;
     if (!voice.region || voice.historyOnly)
       return facts;
-    if (!voice.retired && voice.modulationRevision != midi_revision_)
+    if (!voice.retired && !modulationCurrent(voice))
       refreshSf2Modulation(voice);
     if (!voice.region)
       return facts;
     const auto &parameters = voice.sf2Parameters;
     const auto &g = parameters.generators;
-    facts.panLeft = std::sqrt((1.0F - parameters.pan) * .5F);
-    facts.panRight = std::sqrt((1.0F + parameters.pan) * .5F);
+    facts.panLeft = parameters.panLeft;
+    facts.panRight = parameters.panRight;
     facts.volumeSustain = voice.sf2VolumeEnvelope.sustained();
     if (facts.volumeSustain)
       voice.envelope = voice.sf2VolumeEnvelope.next(parameters.volEnv);
@@ -3937,9 +3963,26 @@ private:
     facts.fixedFilter = g[10] == 0 && g[11] == 0;
     if (facts.fixedVolume)
       facts.attenuation = std::pow(10.0F, -parameters.attenuationCb * .005F);
-    if (!bank()->streamed_ || voice.region[Channels] != 1 || voice.region[Direction] != 0 ||
-        voice.loopMeanOnly || voice.position < 0)
+    if (voice.region[Channels] != 1 || voice.region[Direction] != 0 || voice.loopMeanOnly ||
+        voice.position < 0)
       return facts;
+    if (!bank()->streamed_) {
+      // Resident PCM is always ready. The view spans the frames the scalar reader
+      // maps to themselves, so loop wrapping stays with that reader.
+      const auto first = static_cast<std::uint64_t>(
+          looping(voice) && voice.looped ? boundary(voice, LoopStart) : 0.0);
+      const auto end = boundary(voice, End);
+      const auto loopEnd = looping(voice) ? boundary(voice, LoopEnd) : end;
+      const auto last = static_cast<std::uint64_t>(loopEnd < end ? loopEnd : end);
+      if (first > last)
+        return facts;
+      facts.source.first = static_cast<std::int64_t>(first);
+      facts.source.count = static_cast<std::uint32_t>(last - first + 1u);
+      facts.source.data = bank()->payload_.data() + 8u + bank()->pool_offset_ +
+                          indexValue(voice.region, Sample) + first;
+      facts.source.status = SampleReadStatus::Ready;
+      return facts;
+    }
     // Borrow only an already-ready part of the current page. This is not an
     // availability forecast: later page/loop crossings keep the scalar reader.
     const auto position = static_cast<std::uint64_t>(voice.position);
@@ -4023,6 +4066,226 @@ private:
       finishVoiceSample(voice, effectRegion, l, r, left[frame], right[frame]);
     }
   }
+  // Block form of renderSf2VoiceFrames for the common voice: plain forward
+  // playback with current modulation and no fade, retirement or SFZ routing.
+  // Envelopes are rendered per chunk and the per-frame mix runs as a separate
+  // pass; every statement keeps the scalar path's expression, so the output is
+  // bit-identical. Returns the first frame left to the generic path.
+  std::uint32_t renderSf2SteadyFrames(Voice &voice, const Sf2SpanFacts &facts, std::uint32_t first,
+                                      std::uint32_t end, double blockTime, const float *resampled,
+                                      std::uint32_t resampledCount, float *left,
+                                      float *right) noexcept {
+    const auto *region = voice.region;
+    if (!region || voice.historyOnly || voice.playbackEnabled || voice.loopMeanOnly ||
+        voice.retireFrames || voice.fade || region[Direction] != 0.0F || sfz_quantum_started_ ||
+        (!voice.retired && !modulationCurrent(voice)))
+      return first;
+    const auto &parameters = voice.sf2Parameters;
+    const auto &g = parameters.generators;
+    const bool mono = region[Channels] == 1.0F;
+    auto &lowpass = voice.sf2Lowpass;
+    // A mono voice feeds both lowpass channels the same input, so equal states
+    // stay equal and channel 1 is restored from channel 0 on exit.
+    const bool sharedLowpass =
+        mono &&
+        std::bit_cast<std::uint64_t>(lowpass.z1[0]) ==
+            std::bit_cast<std::uint64_t>(lowpass.z1[1]) &&
+        std::bit_cast<std::uint64_t>(lowpass.z2[0]) == std::bit_cast<std::uint64_t>(lowpass.z2[1]);
+    bool muted = false;
+    if constexpr (Midi) {
+      const auto channel = 1u << voice.channel;
+      muted = (mixer_mute_ & channel) || (mixer_solo_ && !(mixer_solo_ & channel));
+    }
+    const bool sends = bank()->sf2_;
+    const auto chorus = parameters.chorusSend, reverb = parameters.reverbSend;
+    const auto endLimit = boundary(voice, End) + 1.0;
+    const bool cubic =
+        sampleQuality(voice) == 2u && region[LoopCrossfade] <= 0.0F && facts.source.data != nullptr;
+    const auto *view = &facts.source;
+    // Frames sample() maps to themselves and finds inside the ready view.
+    std::int64_t lo = 0, hi = -1;
+    bool loop = false;
+    double loopStart = 0, loopEnd = 0;
+    const auto mapping = [&] {
+      loop = looping(voice);
+      loopStart = indexValue(region, LoopStart);
+      loopEnd = indexValue(region, LoopEnd) + 1.0;
+      if (!cubic)
+        return;
+      const auto start = loop && voice.looped
+                             ? static_cast<std::int64_t>(boundary(voice, LoopStart))
+                             : std::int64_t{0};
+      auto last = static_cast<std::int64_t>(boundary(voice, End));
+      if (loop) {
+        const auto loopLast = static_cast<std::int64_t>(boundary(voice, LoopEnd));
+        last = loopLast < last ? loopLast : last;
+      }
+      const auto viewLast = view->first + static_cast<std::int64_t>(view->count) - 1;
+      lo = start > view->first ? start : view->first;
+      hi = last < viewLast ? last : viewLast;
+    };
+    mapping();
+    constexpr std::uint32_t kChunk = 64u;
+    float volume[kChunk], modulationEnvelope[kChunk], outLeft[kChunk], outRight[kChunk];
+    // Exponentials of the last modulation arguments; a held argument reuses them.
+    struct {
+      float pitch, pitchRatio, cents, cutoff, level, amplitude;
+    } cache{NAN, 1, NAN, 0, NAN, 0};
+    auto frame = first;
+    while (frame < end) {
+      const auto n = end - frame < kChunk ? end - frame : kChunk;
+      const auto volumeSnapshot = voice.sf2VolumeEnvelope;
+      const auto modSnapshot = voice.sf2ModEnvelope;
+      auto available = n, volumeCalls = 0u, modCalls = 0u;
+      if (!facts.volumeSustain) {
+        available = voice.sf2VolumeEnvelope.render(parameters.volEnv, volume, n);
+        volumeCalls = available < n ? available + 1u : n;
+      }
+      if (!facts.modSustain) {
+        const auto rendered =
+            voice.sf2ModEnvelope.render(parameters.modEnv, modulationEnvelope, available);
+        modCalls = rendered < available ? rendered + 1u : available;
+        std::fill(modulationEnvelope + rendered, modulationEnvelope + available, 0.0F);
+      }
+      auto processed = 0u;
+      bool stopped = false;
+      while (processed < available) {
+        const auto i = processed++;
+        const auto f = frame + i;
+        sf2_frame_ = f;
+        if (!facts.volumeSustain)
+          voice.envelope = volume[i];
+        const auto modEnvelope = facts.modSustain ? facts.modEnvelope : modulationEnvelope[i];
+        const auto elapsed = facts.silentModLfo && facts.silentVibLfo
+                                 ? 0.0
+                                 : static_cast<double>(voice.elapsed) / rate_;
+        const auto modLfo = facts.silentModLfo
+                                ? 0.0F
+                                : voice.sf2ModLfo.next(rate_, parameters.modLfo.frequency,
+                                                       parameters.modLfo.delay, elapsed);
+        const auto vibLfo = facts.silentVibLfo
+                                ? 0.0F
+                                : voice.sf2VibLfo.next(rate_, parameters.vibLfo.frequency,
+                                                       parameters.vibLfo.delay, elapsed);
+        if (!facts.fixedPitch) {
+          const auto pitch = modLfo * g[5] + vibLfo * g[6] + modEnvelope * g[7];
+          if (!(pitch == cache.pitch)) {
+            cache.pitch = pitch;
+            cache.pitchRatio = std::exp2(pitch / 1200.0F);
+          }
+          voice.step = voice.controllerStep * cache.pitchRatio;
+        } else
+          voice.step = voice.controllerStep;
+        if ((voice.elapsed & 15u) == 0u && !facts.fixedFilter) {
+          const auto cents = modLfo * g[10] + modEnvelope * g[11];
+          if (!(cents == cache.cents)) {
+            cache.cents = cents;
+            cache.cutoff = parameters.cutoffHz * std::exp2(cents / 1200.0F);
+          }
+          configureSf2Lowpass(voice, cache.cutoff, parameters.resonanceDb);
+        }
+        if (!facts.fixedVolume) {
+          const auto level = sf2VolumeLevel(parameters, modLfo);
+          if (!(level == cache.level)) {
+            cache.level = level;
+            cache.amplitude = std::pow(10.0F, level);
+          }
+        }
+        const auto amplitude = facts.fixedVolume ? facts.attenuation : cache.amplitude;
+        float sampleLeft;
+        const auto at = f - first;
+        if (at < resampledCount)
+          sampleLeft = resampled[at];
+        else {
+          const auto p = static_cast<std::int64_t>(voice.position);
+          if (cubic && p - 1 >= lo && p + 2 <= hi) {
+            const auto *s = view->data + (p - 1 - view->first);
+            sampleLeft =
+                cubicSample(s[0], s[1], s[2], s[3], static_cast<float>(voice.position - p));
+          } else
+            sampleLeft = interpolate(voice, 0u, view);
+        }
+        auto sampleRight = mono ? sampleLeft : interpolate(voice, 1u, view);
+        sampleLeft = lowpass.processUnflushed(sampleLeft, 0);
+        sampleRight = sharedLowpass ? sampleLeft : lowpass.processUnflushed(sampleRight, 1);
+        const auto gain = voice.envelope * amplitude;
+        outLeft[i] = sampleLeft * gain * facts.panLeft;
+        outRight[i] = sampleRight * gain * facts.panRight;
+        if (voice.filterTransition != 0u)
+          --voice.filterTransition;
+        ++voice.elapsed;
+        if (voice.released)
+          ++voice.releaseElapsed;
+        voice.position += voice.step;
+        if (loop && voice.position >= loopEnd) {
+          voice.looped = true;
+          voice.position = loopStart + std::fmod(voice.position - loopStart, loopEnd - loopStart);
+          ++voice.loopRepeats;
+          mapping();
+        }
+        if (voice.position >= endLimit || (voice.released && voice.envelope <= 0.0F)) {
+          voice.region = nullptr;
+          stopped = true;
+          break;
+        }
+      }
+      lowpass.flushState();
+      // A stop before the chunk end leaves envelope calls the scalar path has
+      // not made yet; replay exactly the consumed ones.
+      if (processed < volumeCalls) {
+        voice.sf2VolumeEnvelope = volumeSnapshot;
+        for (auto i = 0u; i < processed; ++i)
+          voice.sf2VolumeEnvelope.next(parameters.volEnv);
+      }
+      if (processed < modCalls) {
+        voice.sf2ModEnvelope = modSnapshot;
+        for (auto i = 0u; i < processed; ++i)
+          voice.sf2ModEnvelope.next(parameters.modEnv);
+      }
+      if (muted)
+        for (auto i = 0u; i < processed; ++i)
+          outLeft[i] = outRight[i] = 0.0F;
+      if (sends && frame < sf2_block_frames_) {
+        const auto frames = sf2_block_frames_;
+        const auto count = frame + processed <= frames ? processed : frames - frame;
+        auto *send = sf2_sends_.data() + frame;
+        bool audible = false;
+        for (auto i = 0u; i < count; ++i) {
+          const auto l = outLeft[i], r = outRight[i];
+          send[i] += l * chorus;
+          send[frames + i] += r * chorus;
+          send[2u * frames + i] += l * reverb;
+          send[3u * frames + i] += r * reverb;
+          audible = audible || l != 0.0F || r != 0.0F;
+        }
+        sf2_has_sends_ = sf2_has_sends_ || (audible && (chorus > 0 || reverb > 0));
+      }
+      if (processed) {
+        voice.lastLeft = outLeft[processed - 1u];
+        voice.lastRight = outRight[processed - 1u];
+      }
+      if constexpr (Midi)
+        if (midi_meters_.enabled())
+          for (auto i = 0u; i < processed; ++i)
+            midi_meters_.add(voice.channel, frame + i, outLeft[i], outRight[i]);
+      for (auto i = 0u; i < processed; ++i) {
+        left[frame + i] += outLeft[i];
+        right[frame + i] += outRight[i];
+      }
+      frame += processed;
+      if (stopped || processed < n)
+        break;
+    }
+    if (sharedLowpass) {
+      lowpass.z1[1] = lowpass.z1[0];
+      lowpass.z2[1] = lowpass.z2[0];
+    }
+    if (frame != first) {
+      modulation_block_frame_ = sf2_frame_ = frame - 1u;
+      modulation_host_time_ = blockTime + static_cast<double>(frame - 1u) / rate_;
+    }
+    return frame;
+  }
   void renderSf2VoiceSpan(Voice &voice, std::uint32_t first, std::uint32_t end, double blockTime,
                           float *left, float *right) noexcept {
     if (!voice.region && !hasStolenTail(voice)) {
@@ -4035,9 +4298,14 @@ private:
     // Instance-owned CONTROL storage: one additional maxFrames mono plane.
     auto *resampled = sf2_sends_.data() + 6u * max_frames_;
     const auto count = resampleSf2Interior(voice, facts, end - first, resampled);
-    renderSf2VoiceFrames<true>(voice, facts, first, first + count, blockTime, resampled, left,
-                               right);
-    renderSf2VoiceFrames<false>(voice, facts, first + count, end, blockTime, nullptr, left, right);
+    auto frame =
+        renderSf2SteadyFrames(voice, facts, first, end, blockTime, resampled, count, left, right);
+    if (frame < first + count) {
+      renderSf2VoiceFrames<true>(voice, facts, frame, first + count, blockTime,
+                                 resampled + (frame - first), left, right);
+      frame = first + count;
+    }
+    renderSf2VoiceFrames<false>(voice, facts, frame, end, blockTime, nullptr, left, right);
     const auto rendered = static_cast<std::uint32_t>(voice.elapsed - firstElapsed);
     const auto &parameters = voice.sf2Parameters;
     if (facts.silentModLfo)
@@ -4135,7 +4403,11 @@ private:
       if (bank()->state_ == ET_ASSET_STATE_ACTIVE)
         resetMidi();
     }
-    setVoiceLimit(static_cast<std::uint32_t>(bounded(params_.maxVoices, 1, kVoices, 64)));
+    setVoiceLimit(static_cast<std::uint32_t>(bounded(params_.maxVoices, 1, kVoices, 256)));
+    if (sf2StrictSpec() != sf2_strict_applied_) {
+      sf2_strict_applied_ = !sf2_strict_applied_;
+      ++midi_revision_;
+    }
     const auto gain = midi_gain_ * std::pow(10.0F, bounded(params_.outputGain, -60, 12, 0) * .05F);
     if (midi_meters_.enabled())
       midi_meters_.begin(frames, gain);
@@ -4221,7 +4493,7 @@ private:
     const bool scriptFailure = script_session_ && script_session_->failed;
     clearNotes();
     clearSampleForecast();
-    paused_voices_->fill({});
+    clearPausedVoices();
     midi_channels_->fill({});
     midi_count_ = midi_cursor_ = midi_flags_ = 0;
     midi_running_ = midi_paused_ = midi_history_requested_ = midi_history_pending_ = false;
@@ -4267,6 +4539,16 @@ private:
   static bool hasStolenTail(const Voice &voice) noexcept {
     return voice.fade && (voice.stolenLeft != 0.0F || voice.stolenRight != 0.0F);
   }
+  // Clean paused slots are all default, so scans over them can be skipped.
+  std::span<const Voice> pausedVoices() const noexcept {
+    return paused_voices_dirty_ ? std::span<const Voice>(*paused_voices_)
+                                : std::span<const Voice>{};
+  }
+  void clearPausedVoices() noexcept {
+    if (paused_voices_dirty_)
+      paused_voices_->fill({});
+    paused_voices_dirty_ = false;
+  }
   void trimVoiceExtent() noexcept {
     while (voice_extent_ && !(*voices_)[voice_extent_ - 1u].region &&
            !hasStolenTail((*voices_)[voice_extent_ - 1u])) {
@@ -4282,6 +4564,11 @@ private:
     voice_limit_ = limit;
     voice_extent_ = std::min(voice_extent_, limit);
   }
+  // Slots at or above voice_extent_ are idle in MIDI mode, so event scans stop there.
+  std::span<Voice> activeVoices() noexcept {
+    return voices_ ? std::span<Voice>(voices_->data(), Midi ? voice_extent_ : kVoices)
+                   : std::span<Voice>{};
+  }
   std::span<const Voice> liveVoices() const noexcept {
     return voices_ ? std::span<const Voice>(voices_->data(), Midi ? voice_extent_ : kVoices)
                    : std::span<const Voice>{};
@@ -4293,9 +4580,9 @@ private:
     notes_reset_pending_ = false;
     if constexpr (Midi)
       midi_meters_.clear();
+    // Slots at or above the extent are already idle, so clearing stops there.
+    std::ranges::fill(activeVoices(), Voice{});
     voice_extent_ = 0;
-    if (voices_)
-      voices_->fill({});
     clearDetectionState();
     wet_.clear();
     wet_position_ = 0u;
@@ -4332,7 +4619,7 @@ private:
     v.filterReleaseStart = modulationEnvelope(v.filterEnvelopeParameters.data(), time);
     v.releaseElapsed = 0;
     v.released = true;
-    if (v.modulationRevision != midi_revision_)
+    if (!modulationCurrent(v))
       refreshMidiModulation(v);
     // Keep detected note-offs natural even when an SFZ omits its release envelope.
     const auto duration = preview
@@ -4691,28 +4978,19 @@ private:
       std::fill_n(stamps, bank()->group_count_, 0u);
       ++note_serial_;
     }
+    // Only the first selected_count entries are read, so the array is left uninitialized.
     struct Selection {
-      const float *region = nullptr;
-      std::uint32_t velocity = 0;
+      const float *region;
+      std::uint32_t velocity;
     };
-    std::array<Selection, kVoices> selected{};
+    std::array<Selection, kVoices> selected;
     std::uint32_t selected_count = 0u;
     // Groups share one sequence counter, advanced once for this note-on.
-    auto begin = midi_controller_ >= 0 ? 0u : bank()->indices_.data()[sample_key];
-    auto end =
-        midi_controller_ >= 0 ? bank()->region_count_ : bank()->indices_.data()[sample_key + 1];
-    // SF2 presets own contiguous region ranges and key lists are region-ordered, so only the
-    // selected preset's slice needs testing.
-    if (bank()->sf2_ && midi_controller_ < 0) {
-      const auto preset = (*midi_channels_)[midi_channel_].preset;
-      if (preset == UINT32_MAX)
-        return;
-      const auto range = bank()->preset(preset);
-      begin = static_cast<std::uint32_t>(
-          std::lower_bound(keys + begin, keys + end, range.firstRegion) - keys);
-      end = static_cast<std::uint32_t>(
-          std::lower_bound(keys + begin, keys + end, range.firstRegion + range.regionCount) - keys);
-    }
+    const auto [begin, end] =
+        midi_controller_ >= 0
+            ? std::pair{0u, bank()->region_count_}
+            : keyRegions(static_cast<std::uint32_t>(sample_key),
+                         bank()->sf2_ ? (*midi_channels_)[midi_channel_].preset : 0u);
     for (auto i = begin; i < end; ++i) {
       const auto *r = region(midi_controller_ >= 0 ? i : keys[i]);
       const auto group = static_cast<std::uint32_t>(r[SequenceGroup]);
@@ -4722,7 +5000,7 @@ private:
       if (midi_trigger_ > 0)
         if (const auto *settings = playbackPlan(r);
             settings && !settings->releaseDead &&
-            std::none_of(voices_->begin(), voices_->end(), [&](const auto &voice) {
+            std::none_of(liveVoices().begin(), liveVoices().end(), [&](const auto &voice) {
               return voice.region && voice.channel == midi_channel_ && voice.midi == midi &&
                      keyDrivenRegion(voice.region);
             }))
@@ -4747,7 +5025,7 @@ private:
       const auto *playback = playbackPlan(r);
 
       if (r[Group] != 0)
-        for (auto &v : *voices_)
+        for (auto &v : activeVoices())
           if (v.region && v.region[OffBy] == r[Group]) {
             if (v.midi == midi && playback &&
                 !playback::selfMaskCandidate(playback->selfMask, v.velocity, velocity))
@@ -4824,16 +5102,23 @@ private:
         if (r[NotePolyphony] > 0 && noteCount >= r[NotePolyphony] && oldestNote)
           fadeVoice(*oldestNote, fade_length_);
       }
+      // Steal a free slot, else the quietest released voice (its envelope is past the attack,
+      // so the estimate is meaningful), else the oldest held voice.
       Voice *chosen = nullptr;
+      float chosenLevel = 0.0F;
       for (auto v = 0u; v < voice_limit_; ++v) {
         auto &candidate = (*voices_)[v];
         if (!candidate.region) {
           chosen = &candidate;
           break;
         }
+        const auto level = candidate.released ? releasedVoiceLevel(candidate) : 0.0F;
         if (!chosen || (candidate.released && !chosen->released) ||
-            (candidate.released == chosen->released && candidate.age < chosen->age))
+            (candidate.released && chosen->released && level < chosenLevel) ||
+            (!candidate.released && !chosen->released && candidate.age < chosen->age)) {
           chosen = &candidate;
+          chosenLevel = level;
+        }
       }
       const auto old_left = chosen->lastLeft, old_right = chosen->lastRight;
       *chosen = {};
@@ -4915,7 +5200,7 @@ private:
             configureFilter(*chosen);
           const auto exclusive = chosen->sf2Parameters.exclusiveClass;
           if (exclusive)
-            for (auto &voice : *voices_)
+            for (auto &voice : activeVoices())
               if (&voice != chosen && voice.region && voice.channel == chosen->channel &&
                   voice.preset == chosen->preset && voice.noteId != chosen->noteId &&
                   voice.sf2Parameters.exclusiveClass == exclusive) {
@@ -4932,6 +5217,12 @@ private:
     }
   }
 
+  bool sf2StrictSpec() const noexcept {
+    if constexpr (Midi)
+      return params_.sf2Compatibility >= .5F;
+    else
+      return false;
+  }
   std::uint32_t sampleQuality(const Voice &voice) const noexcept {
     if constexpr (Midi) {
       const auto quality = static_cast<std::uint32_t>(bounded(params_.sampleQuality, 0, 2, 0));
@@ -5500,6 +5791,15 @@ private:
                                 voice.sourceLast, settings->playCount, voice.playbackReverse))
       voice.region = nullptr;
   }
+  // SF2 modulation reads only its own channel's state. Both key terms only grow, so the key
+  // changes whenever a shared or same-channel revision does.
+  std::uint32_t modulationKey(const Voice &v) const noexcept {
+    return bank()->sf2_ ? midi_revision_ - channel_event_count_ + channel_revision_[v.channel]
+                        : midi_revision_;
+  }
+  bool modulationCurrent(const Voice &v) const noexcept {
+    return v.modulationRevision == modulationKey(v);
+  }
   bool refreshSf2Modulation(Voice &voice) noexcept {
     const auto previousCutoff = voice.sf2Parameters.cutoffHz;
     const auto previousResonance = voice.sf2Parameters.resonanceDb;
@@ -5514,8 +5814,8 @@ private:
     const auto count = std::bit_cast<std::uint32_t>(section[directory + regionIndex * 4u + 1u]);
     const auto &channel = (*midi_channels_)[voice.channel];
     const sf2::Inputs input{
-        channel.cc.data(),  voice.outputMidi, voice.velocity,   channel.pressure[voice.midi],
-        channel.aftertouch, channel.bend,     channel.bendRange};
+        channel.cc.data(),  voice.outputMidi, voice.velocity,    channel.pressure[voice.midi],
+        channel.aftertouch, channel.bend,     channel.bendRange, sf2StrictSpec()};
     if (!sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(regionIndex), 61),
                        {section + records + first * sf2::kRouteWords, count}, input,
                        {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -5543,7 +5843,7 @@ private:
       configureSf2Lowpass(voice, sf2FilterFrequency(parameters, modLfo, modEnvelope),
                           parameters.resonanceDb);
     }
-    voice.modulationRevision = midi_revision_;
+    voice.modulationRevision = modulationKey(voice);
     return true;
   }
   void configureSf2Lowpass(Voice &voice, float frequency, float resonanceDb) noexcept {
@@ -5554,6 +5854,18 @@ private:
     return parameters.cutoffHz * std::exp2((modLfo * parameters.generators[10] +
                                             modEnvelope * parameters.generators[11]) /
                                            1200.0F);
+  }
+  // Linear output level estimate of a released voice for voice stealing.
+  float releasedVoiceLevel(const Voice &voice) const noexcept {
+    return voice.envelope * (bank()->sf2_
+                                 ? std::pow(10.0F, -voice.sf2Parameters.attenuationCb * .005F)
+                                 : voice.gainLeft + voice.gainRight);
+  }
+  // Volume level in decibels/20. The modulation LFO only attenuates: like FluidSynth, its
+  // swing is clipped at unity gain so tremolo never boosts the preset's level.
+  static float sf2VolumeLevel(const sf2::Resolved &parameters, float modLfo) noexcept {
+    const auto tremolo = modLfo * parameters.generators[13];
+    return (-parameters.attenuationCb + (tremolo < 0.0F ? tremolo : 0.0F)) * .005F;
   }
   std::uint32_t modulationRegionIndex(const Voice &voice) const noexcept {
     return static_cast<std::uint32_t>((voice.region - bank()->region(0)) / kStride);
@@ -5634,7 +5946,7 @@ private:
         modulation_cache_time_ != modulation_host_time_) {
       const auto transport = currentTransport();
       std::uint32_t voices = 0;
-      for (const auto &v : *voices_)
+      for (const auto &v : liveVoices())
         if (v.region && !v.historyOnly)
           ++voices;
       for (auto &values : *modulation_sources_) {
@@ -5965,7 +6277,7 @@ private:
       initializePlayback(v, state);
   }
   std::span<float> tickModulationVoice(Voice &v) noexcept {
-    if (!v.retired && v.modulationRevision != midi_revision_)
+    if (!v.retired && !modulationCurrent(v))
       refreshMidiModulation(v);
     const auto index = modulationRegionIndex(v);
     const auto &plan = bank()->modulation_->plan(index);
@@ -6169,7 +6481,7 @@ private:
                             float monoSample = 0.0F) noexcept {
     float amplitude = 1.0F;
 
-    if (!v.retired && v.modulationRevision != midi_revision_)
+    if (!v.retired && !modulationCurrent(v))
       refreshSf2Modulation(v);
     if (!v.region)
       return false;
@@ -6187,7 +6499,9 @@ private:
     const auto modEnvelope = Prepared && span->modSustain && v.sf2ModEnvelope.sustained()
                                  ? span->modEnvelope
                                  : v.sf2ModEnvelope.next(parameters.modEnv);
-    const auto elapsed = static_cast<double>(v.elapsed) / rate_;
+    const auto elapsed = Prepared && span->silentModLfo && span->silentVibLfo
+                             ? 0.0
+                             : static_cast<double>(v.elapsed) / rate_;
     const auto modLfo = Prepared && span->silentModLfo
                             ? 0.0F
                             : v.sf2ModLfo.next(rate_, parameters.modLfo.frequency,
@@ -6203,9 +6517,8 @@ private:
     if ((v.elapsed & 15u) == 0u && !(Prepared && span->fixedFilter))
       configureSf2Lowpass(v, sf2FilterFrequency(parameters, modLfo, modEnvelope),
                           parameters.resonanceDb);
-    amplitude = Prepared && span->fixedVolume
-                    ? span->attenuation
-                    : std::pow(10.0F, (-parameters.attenuationCb + modLfo * g[13]) * .005F);
+    amplitude = Prepared && span->fixedVolume ? span->attenuation
+                                              : std::pow(10.0F, sf2VolumeLevel(parameters, modLfo));
 
     const auto *region = v.region;
     const auto *view = Prepared ? &span->source : nullptr;
@@ -6215,9 +6528,8 @@ private:
     sampleLeft = v.sf2Lowpass.process(sampleLeft, 0);
     sampleRight = v.sf2Lowpass.process(sampleRight, 1);
     const auto gain = v.envelope * amplitude;
-    const auto pan = v.sf2Parameters.pan;
-    l = sampleLeft * gain * (Prepared ? span->panLeft : std::sqrt((1.0F - pan) * .5F));
-    r = sampleRight * gain * (Prepared ? span->panRight : std::sqrt((1.0F + pan) * .5F));
+    l = sampleLeft * gain * parameters.panLeft;
+    r = sampleRight * gain * parameters.panRight;
     return true;
   }
   void advanceVoiceSample(Voice &v, const float *region, float &l, float &r) noexcept {
@@ -6368,7 +6680,7 @@ private:
         }
       } else {
         {
-          if (!v.retired && v.modulationRevision != midi_revision_)
+          if (!v.retired && !modulationCurrent(v))
             refreshMidiModulation(v);
           if (v.delayFrames) {
             --v.delayFrames;

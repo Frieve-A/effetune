@@ -1428,6 +1428,7 @@ export interface SoundFontPlayerOptions extends CommonEffectOptions {
   readonly automaticFallback?: boolean;
   readonly previewMidi?: number;
   readonly previewChannel?: number;
+  readonly sf2Compatibility?: number;
   readonly assets: SoundFontPlayerAssets;
 }
 

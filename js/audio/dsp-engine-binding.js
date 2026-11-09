@@ -2,6 +2,10 @@ const MIDI_EVENT_BYTES = 24;
 const SFZ_STREAM_REQUEST_CAPACITY = 4096;
 const SFZ_STREAM_REQUEST_BYTES = 24;
 const SFZ_STREAM_PCM_BYTES = 4096 * 2 * 4;
+const SFZ_STREAM_EXPORTS = ['et_instance_stream_configure', 'et_instance_stream_take_requests',
+    'et_instance_stream_publish', 'et_instance_stream_prefetch'];
+const SFZ_PREFETCH_FLAGS = new Set([0, 1, 2, 4, 5, 6, 13]);
+const NO_SFZ_REQUESTS = Object.freeze([]);
 const REQUIRED_FUNCTION_EXPORTS = [
     'malloc',
     'free',
@@ -229,6 +233,7 @@ export class DspEngineBinding {
         this._midiTransportPoints = null;
         this._midiTransportInstances = new Set();
         this._sfzStreamPtr = 0;
+        this._sfzStreaming = undefined;
 
         this._validateExports();
         this.memory = this.exports.memory;
@@ -739,11 +744,11 @@ export class DspEngineBinding {
             Math.floor(frame / 0x100000000), generation >>> 0, flags >>> 0);
     }
 
+    // WebAssembly exports are immutable, so the capability is probed once.
     hasSfzSampleStreaming() {
-        return typeof this.exports.et_sfz_stream_capability === 'function' &&
+        return this._sfzStreaming ??= typeof this.exports.et_sfz_stream_capability === 'function' &&
             this.exports.et_sfz_stream_capability() === 1 &&
-            ['et_instance_stream_configure', 'et_instance_stream_take_requests', 'et_instance_stream_publish', 'et_instance_stream_prefetch']
-                .every(name => typeof this.exports[name] === 'function');
+            SFZ_STREAM_EXPORTS.every(name => typeof this.exports[name] === 'function');
     }
 
     configureSfzSampleStream(instanceId, generation) {
@@ -768,25 +773,27 @@ export class DspEngineBinding {
         if (!this.engine || !this.prepared || !this._midiEventsPtr || !this.hasSfzSampleStreaming()) return ET_ERR_STATE;
         if (!Number.isInteger(generation) || generation < 0 || generation > 0xffffffff ||
             !Number.isInteger(windowFrames) || windowFrames < 1 || windowFrames > this._sampleRate * 2 ||
-            ![0, 1, 2, 4, 5, 6, 13].includes(flags) || (flags === 2 || flags === 6) && count !== 0) throw new DspBindingError('Invalid sample prefetch window');
+            !SFZ_PREFETCH_FLAGS.has(flags) || (flags === 2 || flags === 6) && count !== 0) throw new DspBindingError('Invalid sample prefetch window');
         const ptr = this._writeMidiEvents(events, count, 256, windowFrames);
         return this.exports.et_instance_stream_prefetch(this.engine, instanceId, ptr, count, generation, windowFrames, flags);
     }
 
     // CONTROL-only snapshot. Reuse the configured request scratch between
     // operations; no audio-block allocation or cache traversal is introduced.
-    instanceStreamReadiness(instanceId) {
+    // `target` lets per-quantum callers reuse one snapshot object.
+    instanceStreamReadiness(instanceId, target = {}) {
         if (!this.engine || !this._sfzStreamPtr) return null;
         const status = this.exports.et_instance_stream_readiness(this.engine, instanceId, this._sfzStreamPtr);
         this._refreshViews();
         if (status !== ET_OK) throw new DspBindingError('Sample readiness could not be observed');
         const pointer = this._sfzStreamPtr;
-        const value = { generation: this.dataView.getUint32(pointer, true),
-            scope: this.dataView.getUint32(pointer + 4, true),
-            admittedFrames: this.dataView.getUint32(pointer + 8, true),
-            readyAheadFrames: this.dataView.getUint32(pointer + 12, true),
-            plannedPages: this.dataView.getUint32(pointer + 16, true),
-            pendingPages: this.dataView.getUint32(pointer + 20, true) };
+        const value = target;
+        value.generation = this.dataView.getUint32(pointer, true);
+        value.scope = this.dataView.getUint32(pointer + 4, true);
+        value.admittedFrames = this.dataView.getUint32(pointer + 8, true);
+        value.readyAheadFrames = this.dataView.getUint32(pointer + 12, true);
+        value.plannedPages = this.dataView.getUint32(pointer + 16, true);
+        value.pendingPages = this.dataView.getUint32(pointer + 20, true);
         if (value.scope > 3 || value.readyAheadFrames > value.admittedFrames || value.pendingPages > value.plannedPages)
             throw new DspBindingError('Invalid sample readiness snapshot');
         return value;
@@ -802,6 +809,7 @@ export class DspEngineBinding {
         if (status !== ET_OK) throw new DspBindingError(`Sample requests failed: ${status}`);
         const count = this.dataView.getUint32(countPtr, true);
         if (count > SFZ_STREAM_REQUEST_CAPACITY) throw new DspBindingError('Invalid sample request count');
+        if (count === 0) return NO_SFZ_REQUESTS;
         const requests = [];
         for (let index = 0; index < count; index++) {
             const ptr = this._sfzStreamPtr + index * SFZ_STREAM_REQUEST_BYTES;
@@ -843,7 +851,7 @@ export class DspEngineBinding {
         return this.exports.et_instance_midi_state(this.engine, instanceId) >>> 0;
     }
 
-    instanceMidiClock(instanceId) {
+    instanceMidiClock(instanceId, target = {}) {
         if (!this.engine || !this.exports.et_instance_midi_clock_low ||
             !this.exports.et_instance_midi_clock_high || !this.exports.et_instance_midi_generation) {
             throw new DspBindingError('MIDI checkpoint clock is unavailable');
@@ -852,7 +860,9 @@ export class DspEngineBinding {
         const high = this.exports.et_instance_midi_clock_high(this.engine, instanceId) >>> 0;
         const frame = high * 0x100000000 + low;
         if (!Number.isSafeInteger(frame)) throw new DspBindingError('MIDI checkpoint clock is invalid');
-        return { frame, generation: this.exports.et_instance_midi_generation(this.engine, instanceId) >>> 0 };
+        target.frame = frame;
+        target.generation = this.exports.et_instance_midi_generation(this.engine, instanceId) >>> 0;
+        return target;
     }
 
     _withMidiCheckpointBuffer(size, action) {
@@ -942,7 +952,7 @@ export class DspEngineBinding {
         );
     }
 
-    instanceRuntimeEvent(instanceId) {
+    instanceRuntimeEvent(instanceId, target = {}) {
         if (!this.engine || !this.prepared) return null;
         const ptr = this.exports.et_scratch_ptr(this.engine) >>> 0;
         this._refreshViews();
@@ -954,11 +964,10 @@ export class DspEngineBinding {
         ) !== ET_OK) {
             return null;
         }
-        return {
-            generation: this.dataView.getUint32(ptr, true),
-            latched: this.dataView.getUint32(ptr + 4, true) !== 0,
-            cause: this.dataView.getUint32(ptr + 8, true)
-        };
+        target.generation = this.dataView.getUint32(ptr, true);
+        target.latched = this.dataView.getUint32(ptr + 4, true) !== 0;
+        target.cause = this.dataView.getUint32(ptr + 8, true);
+        return target;
     }
 
     instanceSetParamBytes(instanceId, packed, paramsHash, offsetFrames = 0) {

@@ -91,6 +91,11 @@ jobs:
       - name: Make Jekyll output writable
         run: sudo chown -R "$(id -u):$(id -g)" ./_site
 
+      - name: Stage offline DST decoder build source
+        run: |
+          mkdir -p ./_site/scripts
+          cp scripts/build-dsd-wasm.mjs ./_site/scripts/build-dsd-wasm.mjs
+
       - name: Stage DSP guide and live demo under existing site
         run: |
           node examples/dsp-library/build-site.mjs --guide ./_site/dsp/index.html --check

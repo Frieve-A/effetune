@@ -214,6 +214,8 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   let sentArtwork = null;
   // Polls a subframe owner, since frame removal raises no event.
   let mediaFrameCheck = null;
+  const midiFrames = new Set();
+  let midiFrameCheck = null;
   // Best effort: remove files only when the owning app process has exited.
   const musicTempRoot = os.tmpdir();
   fs.promises.readdir(musicTempRoot, { withFileTypes: true }).then(entries => Promise.all(entries
@@ -275,7 +277,21 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
 
   // Lets the app release notes held by a page that cleared, navigated or ended.
   function resetMidi() {
+    midiFrames.clear();
+    if (midiFrameCheck) clearInterval(midiFrameCheck);
+    midiFrameCheck = null;
     if (!disposed && !trusted.isDestroyed()) trusted.send('browser:midi', { reset: true });
+  }
+
+  function watchMidiFrame(frame) {
+    if (frame === view.webContents.mainFrame) return;
+    midiFrames.add(frame);
+    if (midiFrameCheck) return;
+    // As with media ownership, a removed iframe must release its input even without an unload message.
+    midiFrameCheck = setInterval(() => {
+      if ([...midiFrames].some(owner => owner.detached)) resetMidi();
+    }, MEDIA_FRAME_CHECK_MS);
+    midiFrameCheck.unref?.();
   }
 
   // Page audio is heard only through an active capture, unless a loaded MIDI file took over
@@ -553,6 +569,11 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       return;
     }
     wc.on('did-navigate', resetPage);
+    wc.on('did-frame-navigate', (_event, _url, _code, _status, mainFrame, processId, routingId) => {
+      if (!mainFrame && [...midiFrames].some(frame => frame.processId === processId && frame.routingId === routingId)) {
+        resetMidi();
+      }
+    });
     wc.on('enter-html-full-screen', () => { htmlFullscreen = true; applyPresentation(); });
     wc.on('leave-html-full-screen', () => { htmlFullscreen = false; applyPresentation(); });
     wc.setWindowOpenHandler(details => {
@@ -772,7 +793,10 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     if (disposed || clearing || !captureActive || !pageEvent(event) || trusted.isDestroyed()) return;
     if (value?.clear === true && !Array.isArray(value)) { resetMidi(); return; }
     const events = validMidiEvents(value);
-    if (events.length) trusted.send('browser:midi', { events });
+    if (events.length) {
+      watchMidiFrame(event.senderFrame);
+      trusted.send('browser:midi', { events });
+    }
   };
   ipcMain.on('browser:midi', relayMidi);
 

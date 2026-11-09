@@ -1,6 +1,6 @@
 ---
 title: "Lecteur de musique - EffeTune"
-description: "Lisez des fichiers musicaux et vidéo à travers la chaîne d’effets d’EffeTune, changez la vitesse de lecture, utilisez le mini-lecteur et configurez la lecture sans interruption."
+description: "Lisez des fichiers musicaux et vidéo à travers la chaîne d’effets d’EffeTune, changez la vitesse de lecture, utilisez le mini-lecteur et configurez la lecture sans interruption et ReplayGain."
 lang: fr
 ---
 
@@ -67,6 +67,20 @@ Le curseur de volume et le bouton de sourdine règlent le son du lecteur avant s
 ## Lecture sans interruption
 
 **Lecture sans interruption**, dans **Configuration audio**, est activée par défaut et enchaîne sans blanc les morceaux locaux compatibles ; la prise en charge dépend du format du fichier et de l’environnement, navigateur ou application. Les formats non pris en charge et certains environnements mobiles utilisent un mode de secours économe en mémoire, si bien qu’un bref silence peut subsister. La désactiver privilégie une faible consommation de mémoire et la stabilité, au prix d’un bref silence possible ; ce changement n’interrompt pas le morceau en cours. La lecture sans interruption ne fonctionne qu’à la vitesse 1x ; changer la vitesse pendant une lecture sans interruption relance le morceau à la même position après une brève coupure.
+
+## ReplayGain
+
+De nombreux fichiers musicaux contiennent des balises ReplayGain, écrites par un logiciel de balisage après avoir mesuré le volume de chaque morceau. Réglez **ReplayGain** dans **Configuration audio** pour suivre ces balises et écouter à un volume comparable des morceaux issus d’albums différents. EffeTune se contente de lire les balises : il ne mesure pas le volume et n’écrit aucune balise. Les fichiers sans balises ReplayGain sont lus à leur niveau d’origine. Pour les fichiers Opus, les balises `R128_TRACK_GAIN` et `R128_ALBUM_GAIN` sont également prises en compte.
+
+- **Désactivé** (par défaut) : les balises sont ignorées.
+- **Piste** : amène tous les morceaux à un volume comparable. À choisir pour la lecture aléatoire et les listes qui mélangent plusieurs albums.
+- **Album** : ajuste chaque album comme un tout et conserve les écarts de volume entre ses morceaux, par exemple une introduction calme. À choisir pour écouter un album du début à la fin.
+
+Si un fichier ne contient que la valeur de piste ou que celle d’album, cette valeur est utilisée dans les deux modes. Les morceaux d’une feuille CUE utilisent les balises du fichier audio auquel elle renvoie.
+
+**Préampli ReplayGain** (de -15 à +15 dB, 0 dB par défaut) monte ou baisse le niveau des seuls fichiers balisés. ReplayGain abaisse souvent les enregistrements récents de plusieurs dB : si les morceaux balisés paraissent plus faibles que les autres, augmentez-le. **Éviter l’écrêtage** (activé par défaut) s’appuie sur les valeurs de crête des balises pour limiter le gain, afin que les morceaux amplifiés ne dépassent pas la pleine échelle. Ces deux réglages sont disponibles lorsque **ReplayGain** est sur **Piste** ou **Album**. Les changements s’appliquent immédiatement, sans interrompre la lecture.
+
+La correction s’applique au son du lecteur avant son entrée dans la chaîne d’effets ; la position du curseur de volume ne change pas. ReplayGain ne s’applique pas à la lecture MIDI ou MusicXML, à la musique en réseau, à la réception AirPlay, à la lecture sur des lecteurs OpenHome ou UPnP AV / DLNA, ni au traitement de fichiers hors ligne. ReplayGain est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android.
 
 ## Vidéo {#video}
 

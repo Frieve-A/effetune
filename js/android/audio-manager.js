@@ -151,6 +151,7 @@ export class AndroidAudioManager extends AudioManager {
     }
 
     initializeAudioWorklet() { return Promise.resolve(''); }
+    prefetchDspModule() { return Promise.resolve(); }
     waitForDspActivationBeforeOutput() { return Promise.resolve(); }
     isDspReady() { return this.snapshot !== null; }
     registerPipelineProcessors() {}

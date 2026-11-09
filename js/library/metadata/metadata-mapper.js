@@ -16,6 +16,18 @@ const ALBUM_ARTIST_SORT_NATIVE_IDS = new Set(['ALBUMARTISTSORT', 'ALBUM ARTIST S
 const COMPILATION_NATIVE_IDS = new Set(['COMPILATION', 'TCMP', 'TCP', 'CPIL', 'ITUNESCOMPILATION', 'WM/ISCOMPILATION']);
 const TRACK_NATIVE_IDS = new Set(['PART_NUMBER', 'TRACK', 'TRACKNUMBER', 'TRCK', 'TRK', 'ITRK', 'IPRT', 'TRKN']);
 const DISC_NATIVE_IDS = new Set(['TOTAL_PARTS', 'DISC', 'DISK', 'DISCNUMBER', 'DISKNUMBER', 'TPOS', 'TPA', 'DISKNUMBER']);
+// Vorbis/APEv2/ASF use the bare name; ID3v2 and iTunes store it as a user-defined text field.
+const replayGainNativeIds = name => new Set([name, `TXXX:${name}`, `----:COM.APPLE.ITUNES:${name}`]);
+const REPLAY_GAIN_TRACK_GAIN_NATIVE_IDS = replayGainNativeIds('REPLAYGAIN_TRACK_GAIN');
+const REPLAY_GAIN_TRACK_PEAK_NATIVE_IDS = replayGainNativeIds('REPLAYGAIN_TRACK_PEAK');
+const REPLAY_GAIN_ALBUM_GAIN_NATIVE_IDS = replayGainNativeIds('REPLAYGAIN_ALBUM_GAIN');
+const REPLAY_GAIN_ALBUM_PEAK_NATIVE_IDS = replayGainNativeIds('REPLAYGAIN_ALBUM_PEAK');
+const R128_TRACK_GAIN_NATIVE_IDS = new Set(['R128_TRACK_GAIN']);
+const R128_ALBUM_GAIN_NATIVE_IDS = new Set(['R128_ALBUM_GAIN']);
+// R128 gains target -23 LUFS; ReplayGain 2.0 targets -18 LUFS.
+const R128_TO_REPLAY_GAIN_OFFSET_DB = 5;
+const REPLAY_GAIN_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:\s*dB)?$/i;
+const R128_GAIN_PATTERN = /^[+-]?\d+$/;
 
 export function createFallbackTrack(candidate = {}, now = Date.now()) {
   const fileName = candidate.fileName || String(candidate.relativePath || '').split('/').pop() || 'Unknown';
@@ -120,7 +132,8 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
     codec: stringOrEmpty(format.codec, textHints) || stringOrEmpty(format.dataformat, textHints).toUpperCase() || fallback.codec,
     artworkBytes: pictureBytes,
     artworkMime: pictureBytes ? stringOrEmpty(picture.format, textHints) || 'application/octet-stream' : null,
-    artworkSourceKind: pictureBytes ? 'embedded' : null
+    artworkSourceKind: pictureBytes ? 'embedded' : null,
+    replayGain: getReplayGain(mappedMetadata)
   };
 }
 
@@ -450,6 +463,41 @@ function getNativeNumberPair(metadata, nativeIds, languageHints = null) {
     }
   }
   return { value: null, total: null, hasExplicitTotal: false };
+}
+
+export function getReplayGain(metadata) {
+  const common = metadata?.common || {};
+  return {
+    trackGainDb: getNativeNumber(metadata, REPLAY_GAIN_TRACK_GAIN_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
+      numberOrNull(common.replaygain_track_gain?.dB) ?? getR128GainDb(metadata, R128_TRACK_GAIN_NATIVE_IDS),
+    trackPeak: getNativeNumber(metadata, REPLAY_GAIN_TRACK_PEAK_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
+      numberOrNull(common.replaygain_track_peak?.ratio),
+    albumGainDb: getNativeNumber(metadata, REPLAY_GAIN_ALBUM_GAIN_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
+      numberOrNull(common.replaygain_album_gain?.dB) ?? getR128GainDb(metadata, R128_ALBUM_GAIN_NATIVE_IDS),
+    albumPeak: getNativeNumber(metadata, REPLAY_GAIN_ALBUM_PEAK_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
+      numberOrNull(common.replaygain_album_peak?.ratio)
+  };
+}
+
+function getR128GainDb(metadata, nativeIds) {
+  // R128 gains are Q7.8 fixed-point integers.
+  const q78 = getNativeNumber(metadata, nativeIds, R128_GAIN_PATTERN);
+  return q78 === null ? null : q78 / 256 + R128_TO_REPLAY_GAIN_OFFSET_DB;
+}
+
+function getNativeNumber(metadata, nativeIds, pattern) {
+  const native = metadata?.native || {};
+  for (const tagType of getNativeTagTypes(native)) {
+    for (const tag of native[tagType] || []) {
+      if (!hasNativeId(nativeIds, tag?.id)) continue;
+      for (const text of textValues(tag.value)) {
+        if (!pattern.test(text)) continue;
+        const value = Number.parseFloat(text);
+        if (Number.isFinite(value)) return value;
+      }
+    }
+  }
+  return null;
 }
 
 function getNativeTagTypes(native) {

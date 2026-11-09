@@ -1168,46 +1168,78 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (outline) ctx.restore();
     }
 
-    collectSpectrumLevels(width, now) {
+    // Pixel column of every bin (-1 when off the axis) plus per-column scratch arrays.
+    // The mapping depends only on the axis and bin layout, so it is rebuilt only when those change.
+    getSpectrumBinColumns(width) {
         const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
         const maxDisplayFreq = this.maxDisplayFrequency;
-        // Draw spectrum
         const fftSize = 1 << this.spectrumPoints;
         const binCount = this.spectrum.length;
-        const xToLevels = new Map();
-        const elapsedCapped = this.getPeakDecayElapsed(now);
-        
+        const snapshot = this.dspSpectrumSnapshot;
+        const hq = snapshot?.highQuality;
+        const key = `${width}|${binCount}|${fftSize}|${this.sampleRate}|${this.sc}|${maxDisplayFreq}|` +
+            (hq ? `${snapshot.firstValidIndex}|${snapshot.validCellCount}` : '');
+        if (this._binColumns?.key === key) return this._binColumns;
+
+        const columns = new Int32Array(binCount).fill(-1);
+        let lastColumn = -1;
         for (let i = 0; i < binCount; i++) {
-            const hq = this.dspSpectrumSnapshot?.highQuality;
-            if (hq && (i < this.dspSpectrumSnapshot.firstValidIndex ||
-                i >= this.dspSpectrumSnapshot.firstValidIndex + this.dspSpectrumSnapshot.validCellCount)) continue;
+            if (hq && (i < snapshot.firstValidIndex ||
+                i >= snapshot.firstValidIndex + snapshot.validCellCount)) continue;
             const freq = hq ? (i === binCount - 1 ? 40000 : 20 * Math.exp(i * Math.log(2000) / (binCount - 1))) : (i * this.sampleRate) / fftSize;
 
             if (freq < minDisplayFreq || freq > maxDisplayFreq) continue;
 
             const currentFreqClamped = Math.max(minDisplayFreq, Math.min(freq, maxDisplayFreq));
             const x = Math.round(this.frequencyToX(currentFreqClamped, width));
-            
-            const spectrumLevel = this.spectrum[i] > 0 ? 0 : this.spectrum[i];
-            const projectedPeak = this.peaks[i] - 20 * elapsedCapped;
+            columns[i] = x;
+            if (x > lastColumn) lastColumn = x;
+        }
+        const columnCount = lastColumn + 1;
+        this._binColumns = {
+            key,
+            columns,
+            spectrum: new Float64Array(columnCount),
+            peaks: new Float64Array(columnCount),
+            filled: new Uint8Array(columnCount)
+        };
+        return this._binColumns;
+    }
+
+    // Per-pixel-column maxima of the spectrum and decayed peak hold, sorted by column.
+    collectSpectrumLevels(width, now) {
+        const { columns, spectrum, peaks, filled } = this.getSpectrumBinColumns(width);
+        const inputSpectrum = this.spectrum;
+        const inputPeaks = this.peaks;
+        const elapsedCapped = this.getPeakDecayElapsed(now);
+        filled.fill(0);
+
+        for (let i = 0; i < columns.length; i++) {
+            const x = columns[i];
+            if (x < 0) continue;
+            const spectrumLevel = inputSpectrum[i] > 0 ? 0 : inputSpectrum[i];
+            const projectedPeak = inputPeaks[i] - 20 * elapsedCapped;
             const peakLevel = Math.max(
                 -145,
                 Math.min(0, spectrumLevel > projectedPeak ? spectrumLevel : projectedPeak)
             );
 
-            if (!xToLevels.has(x)) {
-                xToLevels.set(x, [spectrumLevel, peakLevel]);
+            if (filled[x] === 0) {
+                filled[x] = 1;
+                spectrum[x] = spectrumLevel;
+                peaks[x] = peakLevel;
             } else {
-                const [currentSpectrum, currentPeak] = xToLevels.get(x);
-                xToLevels.set(x, [
-                    currentSpectrum > spectrumLevel ? currentSpectrum : spectrumLevel,
-                    currentPeak > peakLevel ? currentPeak : peakLevel
-                ]);
+                // Same selection as `current > level ? current : level`, including NaN handling.
+                if (!(spectrum[x] > spectrumLevel)) spectrum[x] = spectrumLevel;
+                if (!(peaks[x] > peakLevel)) peaks[x] = peakLevel;
             }
         }
 
-        // Sort map entries by x-coordinate for correct line drawing
-        return [...xToLevels.entries()].sort((a, b) => a[0] - b[0]);
+        const levels = [];
+        for (let x = 0; x < filled.length; x++) {
+            if (filled[x] !== 0) levels.push([x, [spectrum[x], peaks[x]]]);
+        }
+        return levels;
     }
 
     getColorStyle(ctx, width, height) {

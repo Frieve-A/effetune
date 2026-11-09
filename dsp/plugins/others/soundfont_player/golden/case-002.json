@@ -13,12 +13,13 @@
   "seed": "0xeffe7a5f",
   "params": {
     "mc": 0,
-    "pl": 64,
+    "pl": 256,
     "og": -6,
     "sq": 0,
     "af": true,
     "pm": 83,
-    "pc": 0
+    "pc": 0,
+    "sc": 0
   },
   "events": [],
   "asset": {
@@ -31,7 +32,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:fbb5d3b04312acf71f48a8d59326d9f30ed491848cfb77e9deeba93e7c79dfb6",
+  "referenceHash": "sha256:2139937dfde2832d6e3e292b30eb7a979bfa3b55b05039c6a8163736c3dc4251",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type SoundFontPlayerPlugin --promote-production-native",
   "outputFloats": 24000,
   "byteLength": 96000,

@@ -21,6 +21,7 @@ export class StateManager {
         this.measurementSettingsButton = document.getElementById('measurementSettingsButton');
         this.backupRestoreSettingsButton = document.getElementById('backupRestoreSettingsButton');
         this.resetAudioSettingsButton = document.getElementById('resetAudioSettingsButton');
+        this.webUpdateSettingsButton = document.getElementById('webUpdateSettingsButton');
         this.shareButton = document.getElementById('shareButton');
         this.sampleRate = document.getElementById('sampleRate');
         this.installCompleted = this.isInstalledDisplayMode();
@@ -47,6 +48,10 @@ export class StateManager {
         this.measurementSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/measurement/measurement.html')));
         this.backupRestoreSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openBackupRestore()));
         this.resetAudioSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.resetAudio()));
+        this.webUpdateSettingsButton?.addEventListener('click', () => this.runMenuAction(() => {
+            const manager = window.webUpdateManager;
+            return manager?.waitingBuild ? manager.apply() : manager?.check(true);
+        }));
 
         this.settingsMenuButton?.addEventListener('click', event => {
             event?.stopPropagation?.();
@@ -143,6 +148,18 @@ export class StateManager {
         if (this.resetAudioSettingsButton) {
             this.resetAudioSettingsButton.textContent = this.translate('ui.resetButton', 'Reset Audio');
         }
+        this.updateWebUpdateAvailability();
+    }
+
+    updateWebUpdateAvailability() {
+        const button = this.webUpdateSettingsButton;
+        if (!button) return;
+        const manager = window.webUpdateManager;
+        button.hidden = this.isElectronEnvironment() || !manager?.registration;
+        button.disabled = Boolean(manager?.busy || !window.app?.initialized);
+        button.textContent = manager?.waitingBuild
+            ? this.translate('menu.settings.applyUpdate', 'Update now')
+            : this.translate('menu.settings.checkUpdates', 'Check for updates');
     }
 
     runMenuAction(action) {

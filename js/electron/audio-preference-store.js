@@ -46,8 +46,21 @@ const DEVICE_LABEL_ID_KEYS = Object.freeze({
 
 const MIDI_DEVICE_KEYS = Object.freeze(['midiInputDeviceKey', 'midiOutputDeviceKey']);
 
-export function isGaplessPlaybackOnlyChange(previousPreferences, nextPreferences) {
-  return isPreferenceOnlyChange(previousPreferences, nextPreferences, ['gaplessPlayback']);
+// Player-only preferences are applied in place without rebuilding audio.
+// Mirrors PLAYER_PREFERENCE_KEYS in electron/audio-preferences-policy.cjs.
+export const PLAYER_PREFERENCE_KEYS = Object.freeze([
+  'gaplessPlayback',
+  'replayGainMode',
+  'replayGainPreampDb',
+  'replayGainPreventClipping'
+]);
+
+export function pickPlayerPreferences(preferences) {
+  return Object.fromEntries(PLAYER_PREFERENCE_KEYS.map(key => [key, preferences[key]]));
+}
+
+export function isPlayerPreferenceOnlyChange(previousPreferences, nextPreferences) {
+  return isPreferenceOnlyChange(previousPreferences, nextPreferences, PLAYER_PREFERENCE_KEYS);
 }
 
 export function isMidiDeviceOnlyChange(previousPreferences, nextPreferences) {

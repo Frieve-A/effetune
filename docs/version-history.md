@@ -7,6 +7,8 @@ lang: en
 # Version History
 
 ### Version 2.18.0 (TBD, 2026)
+- Added ReplayGain support to the music player
+- Improved SoundFont Player compatibility and reduced processing load
 - Various minor improvements
 
 ### Version 2.17.0 (Nov 6, 2026)

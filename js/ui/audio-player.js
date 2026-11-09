@@ -15,7 +15,7 @@ import { OpenHomePlaybackAdapter } from './audio-player/openhome-playback-adapte
 import { AirPlayPlayback } from './audio-player/airplay-playback.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
-import { normalizeGaplessPlayback } from './audio-player/rolling-pcm-policy.js';
+import { normalizeWebAudioPreferences } from '../electron/webSettingsStorage.js';
 
 export class AudioPlayer {
   constructor(audioManager) {
@@ -25,8 +25,14 @@ export class AudioPlayer {
     const initialPreferences = typeof window !== 'undefined'
       ? (window.audioPreferences || window.electronIntegration?.audioPreferences)
       : null;
-    this.gaplessPlayback = normalizeGaplessPlayback(initialPreferences);
-    
+    const preferences = normalizeWebAudioPreferences(initialPreferences || {});
+    this.gaplessPlayback = preferences.gaplessPlayback !== false;
+    this.replayGain = {
+      mode: preferences.replayGainMode,
+      preampDb: preferences.replayGainPreampDb,
+      preventClipping: preferences.replayGainPreventClipping
+    };
+
     // Initialize centralized state manager first
     this.stateManager = new StateManager(this);
     const windowRef = typeof window !== 'undefined' ? window : null;
@@ -103,6 +109,15 @@ export class AudioPlayer {
     this.stateManager.updateState({ seamlessMode: this.gaplessPlayback }, 'gapless_preference_change');
     this.playbackManager.seamlessMode = this.gaplessPlayback;
     return cleanup;
+  }
+
+  /**
+   * Apply new ReplayGain settings to the playing and the prepared next track at once.
+   * The factor stays out of the volume UI and the player state.
+   */
+  applyReplayGainPreference({ mode, preampDb, preventClipping }) {
+    this.replayGain = { mode, preampDb, preventClipping };
+    return this.contextManager.applyReplayGainPreference();
   }
 
   applyPlaybackSpeed(speed) {

@@ -1,6 +1,6 @@
 ---
 title: "Player de música - EffeTune"
-description: "Reproduza arquivos de música e vídeo pela cadeia de efeitos do EffeTune, altere a velocidade de reprodução, use o minirreprodutor e configure a reprodução sem intervalos."
+description: "Reproduza arquivos de música e vídeo pela cadeia de efeitos do EffeTune, altere a velocidade de reprodução, use o minirreprodutor e configure a reprodução sem intervalos e o ReplayGain."
 lang: pt
 ---
 
@@ -67,6 +67,20 @@ Use o controle de volume e o botão de silenciar para ajustar o som do reproduto
 ## Reprodução sem intervalos
 
 **Reprodução sem intervalos**, em **Configuração de Áudio**, vem ativada por padrão e reproduz faixas locais compatíveis sem intervalo; o suporte é limitado pelo formato do arquivo e pelo ambiente do navegador ou do aplicativo. Formatos não suportados e alguns ambientes móveis usam um modo alternativo seguro que economiza memória, por isso ainda pode haver um breve intervalo. Ao desativá-la, a prioridade passa a ser o menor uso de memória e a estabilidade, ao custo de um possível breve intervalo; a mudança não interrompe a faixa atual. A reprodução sem intervalos só funciona na velocidade 1x; mudar a velocidade durante a reprodução sem intervalos reinicia a faixa na mesma posição, com uma breve interrupção.
+
+## ReplayGain
+
+Muitos arquivos de música trazem tags ReplayGain, gravadas por um programa de edição de tags depois de medir o volume de cada música. Ajuste **ReplayGain** em **Configuração de Áudio** para seguir essas tags e ouvir músicas de álbuns diferentes com volume parecido. O EffeTune apenas lê as tags: não mede o volume nem grava tags. Arquivos sem tags ReplayGain tocam no nível original. Em arquivos Opus, as tags `R128_TRACK_GAIN` e `R128_ALBUM_GAIN` também são usadas.
+
+- **Desativado** (padrão): as tags são ignoradas.
+- **Faixa**: deixa todas as músicas com volume parecido. Indicado para o modo aleatório e para playlists que misturam álbuns.
+- **Álbum**: ajusta cada álbum como um todo e mantém as diferenças de volume entre as faixas, como uma introdução mais baixa. Indicado para ouvir álbuns inteiros do começo ao fim.
+
+Se um arquivo tiver só o valor de faixa ou só o de álbum, esse valor é usado nos dois modos. As faixas de uma folha CUE usam as tags do arquivo de áudio a que ela se refere.
+
+**Pré-amplificação do ReplayGain** (de -15 a +15 dB, padrão 0 dB) aumenta ou diminui o nível apenas dos arquivos com tags. O ReplayGain costuma baixar gravações recentes em vários dB; se as músicas com tags soarem mais baixas que as sem tags, aumente esse valor. **Evitar clipping** (ativado por padrão) usa os valores de pico das tags para limitar o ganho, de modo que músicas amplificadas não ultrapassem a escala máxima. Esses dois ajustes ficam disponíveis quando **ReplayGain** está em **Faixa** ou **Álbum**. As mudanças valem na hora, sem interromper a reprodução.
+
+O ajuste é aplicado ao som do Player antes de ele entrar na cadeia de efeitos; a posição do controle de volume não muda. O ReplayGain não se aplica à reprodução de MIDI ou MusicXML, à música em rede, à recepção por AirPlay, à reprodução em players OpenHome ou UPnP AV / DLNA nem ao processamento de arquivos offline. O ReplayGain está disponível no aplicativo de desktop e no player web/PWA, mas não no aplicativo Android.
 
 ## Vídeo {#video}
 

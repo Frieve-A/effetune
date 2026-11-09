@@ -209,7 +209,7 @@ test('SoundFont Player presents sixteen channel patch menus and separates config
   assert.equal(plugin._bankSummary.parentNode, plugin._tabs[1].panel);
   assert.equal(plugin._tabs[1].panel.children[1].children[0].getAttribute('aria-label'), 'MIDI Channel');
   const maxVoices = plugin._tabs[1].panel.children.find(child => child.controlArgs?.[0] === 'Max Voices');
-  assert.deepEqual(maxVoices.controlArgs.slice(1, 5), [1, 1024, 1, 64]);
+  assert.deepEqual(maxVoices.controlArgs.slice(1, 5), [1, 1024, 1, 256]);
   assert.equal(maxVoices.controlArgs[9], true, 'voice limit uses the shared logarithmic slider mapping');
   const quality = plugin._tabs[1].panel.children.find(child => child.getAttribute('aria-label') === 'Interpolation');
   assert.deepEqual(quality.children.map(child => child.value), [0, 1, 2]);
@@ -217,6 +217,12 @@ test('SoundFont Player presents sixteen channel patch menus and separates config
   quality.children[2].checked = true;
   quality.children[2].dispatchEvent('change');
   assert.equal(plugin.getParameters().sq, 2);
+  const compatibility = plugin._tabs[1].panel.children.find(child => child.getAttribute('aria-label') === 'SF2 Compatibility');
+  assert.deepEqual(compatibility.children.map(child => child.value), [0, 1]);
+  assert.equal(compatibility.children[0].checked, true, 'Standard is the default interpretation');
+  compatibility.children[1].checked = true;
+  compatibility.children[1].dispatchEvent('change');
+  assert.equal(plugin.getParameters().sc, 1);
 });
 
 test('MIDI channel volume knob reflects CC7 telemetry without controller feedback', () => {

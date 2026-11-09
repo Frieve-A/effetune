@@ -217,13 +217,13 @@ function hasExplicitStartupViewRequest(windowRef = window) {
     }
 }
 
-function markTransientPipelineRestoreRequest(windowRef = window) {
+function markTransientPipelineRestoreRequest(windowRef = window, value = TRANSIENT_PIPELINE_RESTORE_VALUE) {
     try {
         if (typeof windowRef.history?.replaceState !== 'function') {
             return false;
         }
         const params = new URLSearchParams(windowRef.location?.search || '');
-        params.set(TRANSIENT_PIPELINE_RESTORE_PARAM, TRANSIENT_PIPELINE_RESTORE_VALUE);
+        params.set(TRANSIENT_PIPELINE_RESTORE_PARAM, value);
         const pathname = windowRef.location?.pathname || 'effetune.html';
         const search = params.toString();
         const hash = windowRef.location?.hash || '';
@@ -445,6 +445,36 @@ class App {
         window.location.href = path;
     }
 
+    async prepareWebUpdate() {
+        let fadeToken;
+        const restore = () => {
+            try {
+                window.sessionStorage.removeItem(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+                consumeTransientPipelineRestoreRequest();
+            } finally {
+                this.audioManager.fadeInOutputForToken?.(fadeToken);
+            }
+        };
+        try {
+            const pipelineState = this.getPipelineStateForFeatureNavigation();
+            if (!pipelineState) throw new Error('The effect pipeline snapshot is unavailable.');
+            this.uiManager.flushPipelineStateToLocalStorage?.();
+            await this.uiManager.audioPlayer?.playbackManager?.savePlayerState?.();
+            await this.uiManager.libraryView?.saveUIState?.();
+            window.sessionStorage.setItem(TRANSIENT_PIPELINE_STATE_STORAGE_KEY, JSON.stringify(pipelineState));
+            if (!markTransientPipelineRestoreRequest(window, RELOAD_PIPELINE_RESTORE_VALUE)) {
+                throw new Error('The pipeline restore marker could not be set.');
+            }
+            fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
+            return restore;
+        } catch (error) {
+            try { restore(); } catch (restoreError) {
+                console.warn('Could not clear incomplete web update state:', restoreError);
+            }
+            throw error;
+        }
+    }
+
     async reloadWithPipelineState() {
         let pipelineState = null;
         try {
@@ -473,6 +503,9 @@ class App {
             this.uiManager.pipelineAnalyzerLoadPromise,
             displayAppVersion()
         ]);
+        // Fetch and compile the WASM DSP while plugins load so worklet startup
+        // does not wait for it on a cold visit.
+        void this.audioManager.prefetchDspModule();
         try {
             this.hadSavedPipelineState = await this.hasSavedPipelineState();
             this.uiManager.updateLoadingProgress(0);
@@ -603,6 +636,8 @@ class App {
         // can receive its first video frame. The audio graph and power controller
         // are ready now; awaiting capture before presentation would deadlock startup.
         if (this.browserStartupRequested) await this.uiManager.showBrowserView();
+
+        await window.webUpdateManager?.onApplicationReady?.();
 
         // Device permission prompts and bulk storage migration start after presentation.
         this.scheduleDeferredStartupTasks();

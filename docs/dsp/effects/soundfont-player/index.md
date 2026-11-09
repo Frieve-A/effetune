@@ -25,12 +25,13 @@ This type can intentionally generate output from zero input at an active setting
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
 | `midiChannel` | `midi_channel` | integer / 1 | `0` | Not declared in catalog | 0 … 16 |
-| `maxVoices` | `max_voices` | integer / 1 | `64` | Not declared in catalog | 1 … 1024 |
+| `maxVoices` | `max_voices` | integer / 1 | `256` | Not declared in catalog | 1 … 1024 |
 | `outputGain` | `output_gain` | number / 1 | `0` | dB | -60 … 12 |
 | `sampleQuality` | `sample_quality` | integer / 1 | `0` | Not declared in catalog | 0 … 2 |
 | `automaticFallback` | `automatic_fallback` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
 | `previewMidi` | `preview_midi` | integer / 1 | `-1` | Not declared in catalog | -1 … 127 |
 | `previewChannel` | `preview_channel` | integer / 1 | `0` | Not declared in catalog | 0 … 15 |
+| `sf2Compatibility` | `sf2_compatibility` | integer / 1 | `0` | Not declared in catalog | 0 … 1 |
 
 ### Playing MIDI
 
@@ -99,9 +100,10 @@ The **Settings** tab contains the saved playback settings:
 
 - **MIDI Channel** plays **All** channels by default, or only the selected channel from **1–16**.
 - **Instrument Level** adjusts the generated sound from -60 to +12 dB (default 0 dB), without changing incoming audio.
-- **Max Voices** limits simultaneous sample voices, including releases, to 1–1024 (default 64). Higher values preserve more overlapping sounds and use more processing.
+- **Max Voices** limits simultaneous sample voices, including releases, to 1–1024 (default 256). Higher values preserve more overlapping sounds and use more processing.
 - **Automatic Fallback** (on by default) replaces a missing SF2/SF3 sound with a similar available one, as described above. Turn it off to keep channels that request a missing sound silent, which makes gaps in the SoundFont easy to notice.
 - **Interpolation** chooses how the instrument's samples are resampled. **FIR (64 taps)** uses the standard SF2/SF3 filter or the SFZ instrument's own quality setting. **FIR (32 taps)** (default) uses less processing for SF2/SF3; it uses 32 taps when no downsampling is needed, while FIR filters grow when playback requires downsampling to limit aliasing. **Cubic (4 points)** uses light interpolation, but lacks an anti-alias low-pass filter, so strongly raised notes or samples rich in high harmonics can produce aliasing. FIR and Cubic override an SFZ instrument's quality setting.
+- **SF2 Compatibility** chooses how SF2/SF3 sounds are interpreted; SFZ instruments are not affected. **Standard** (default) behaves like common SoundFont synthesizers and the original SoundFont hardware, which most SoundFonts are tuned for: each sound's attenuation setting is applied at 40% strength, and the specification's default velocity-to-filter rule is ignored, so softer notes are not automatically darker. **SF2.04 Strict** follows the SoundFont 2.04 specification literally: attenuation is applied in full, so sounds that use attenuation play quieter than their authors likely intended, and softer notes sound darker. Use it to hear how a SoundFont sounds when the specification is followed to the letter.
 
 The selected instrument and these settings are saved normally. The Music Player’s volume and mute also control the MIDI instrument. Presets, shared links, and backups store the instrument reference, not its samples; keep the original files available in the desktop app and for use on another device.
 

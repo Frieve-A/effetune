@@ -6609,7 +6609,7 @@
           "name": "maxVoices",
           "type": "integer",
           "count": 1,
-          "default": 64,
+          "default": 256,
           "minimum": 1,
           "maximum": 1024
         },
@@ -6651,6 +6651,14 @@
           "default": 0,
           "minimum": 0,
           "maximum": 15
+        },
+        {
+          "name": "sf2Compatibility",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
         }
       ],
       "seeded": true,
@@ -9932,7 +9940,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "4d5c64a5dcb8a4405af443a159808dc24fb4fdae530b2a349c823e3540d00f8b",
-    "privateLayoutSha256": "8b8f917cd5c8786d112ee88e8d0d3572e43473004c90a70d1a08eeee29426d45"
+    "publicCatalogSha256": "fdde654b4049e53fd9bfe8cee41581255d4a3d8b855aafca89851eba62f377be",
+    "privateLayoutSha256": "cf1b7773e7a2796f2d45590f01ba264b0d404fb550538c3d4234812031fac713"
   }
 }

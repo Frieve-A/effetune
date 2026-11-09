@@ -172,7 +172,7 @@ test('MIDI selection refreshes on demand, retains disconnected choices and appli
   assert.equal(changed, null);
 });
 
-test('Android audio settings omit performance MIDI without starting or applying its saved input', async t => {
+test('Android audio settings omit performance MIDI and ReplayGain without starting or overwriting saved values', async t => {
   const document = createFakeDocument();
   const resetCalls = [];
   const harness = createAudioHarness({ window: {
@@ -196,12 +196,14 @@ test('Android audio settings omit performance MIDI without starting or applying 
       assert.equal(document.getElementById('midi-input-device'), null);
       assert.equal(document.getElementById('midi-output-device'), null);
       assert.equal(document.getElementById('refresh-midi-devices'), null);
+      assert.equal(document.getElementById('replay-gain-mode'), null);
       await document.getElementById('apply-button').dispatchEvent('click');
     });
   });
   assert.equal(resetCalls.length, 1);
   assert.equal(Object.hasOwn(resetCalls[0], 'midiInputDeviceKey'), false);
   assert.equal(Object.hasOwn(resetCalls[0], 'midiOutputDeviceKey'), false);
+  assert.equal(Object.hasOwn(resetCalls[0], 'replayGainMode'), false);
 });
 
 test('audio preferences load and save honor Electron and Web storage availability', async () => {
@@ -700,7 +702,7 @@ test('showAudioConfigDialog applies with Enter without stealing control key hand
   const harness = createAudioHarness({
     window: {
       audioManager: {
-        async applyGaplessPlaybackPreference(nextPreferences) {
+        async applyPlayerPreferences(nextPreferences) {
           applyCalls.push(nextPreferences);
           return '';
         }
@@ -821,6 +823,9 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     useInputWithPlayer: false,
     useWasmDsp: true,
     gaplessPlayback: true,
+    replayGainMode: 'off',
+    replayGainPreampDb: 0,
+    replayGainPreventClipping: true,
     outputChannels: 6,
     latencyHint: 'balanced'
   });
@@ -853,7 +858,7 @@ test('showAudioConfigDialog applies only Gapless Playback without resetting audi
   const harness = createAudioHarness({
     window: {
       audioManager: {
-        async applyGaplessPlaybackPreference(nextPreferences) {
+        async applyPlayerPreferences(nextPreferences) {
           applyCalls.push(nextPreferences);
           return '';
         },
@@ -914,7 +919,7 @@ test('showAudioConfigDialog treats refreshed device labels as a Gapless-only cha
     },
     window: {
       audioManager: {
-        async applyGaplessPlaybackPreference(nextPreferences) {
+        async applyPlayerPreferences(nextPreferences) {
           applyCalls.push(nextPreferences);
           return '';
         },
@@ -942,7 +947,7 @@ test('showAudioConfigDialog treats refreshed device labels as a Gapless-only cha
   assert.equal(harness.calls.some(call => call[0] === 'saveAudioPreferences'), false);
 });
 
-test('showAudioConfigDialog persists only the Gapless field when no AudioManager exists', async () => {
+test('showAudioConfigDialog persists only player fields when no AudioManager exists', async () => {
   const preferences = {
     inputDeviceId: 'mic1',
     outputDeviceId: 'out1',
@@ -968,8 +973,13 @@ test('showAudioConfigDialog persists only the Gapless field when no AudioManager
   const saves = harness.calls.filter(call => call[0] === 'saveAudioPreferences');
   assert.deepEqual(saves, [[
     'saveAudioPreferences',
-    { gaplessPlayback: false },
-    { applyInPlace: 'gapless-playback' }
+    {
+      gaplessPlayback: false,
+      replayGainMode: 'off',
+      replayGainPreampDb: 0,
+      replayGainPreventClipping: true
+    },
+    { applyInPlace: 'player-preferences' }
   ]]);
   assert.equal(harness.window.audioPreferences.gaplessPlayback, false);
   assert.equal(harness.window.audioPreferences.sampleRate, 96000);
@@ -992,7 +1002,7 @@ test('showAudioConfigDialog reports localized guidance when the Gapless field ca
   };
   const harness = createAudioHarness({
     window: { electronIntegration: { audioPreferences: preferences } },
-    saveResult: { success: false, error: 'Gapless Playback must be saved without other audio preference changes' }
+    saveResult: { success: false, error: 'Player settings must be saved without other audio preference changes' }
   });
   const document = createFakeDocument();
   await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
@@ -1041,7 +1051,7 @@ test('showAudioConfigDialog keeps Gapless failure details in the console', async
     const harness = createAudioHarness({
       window: {
         audioManager: {
-          applyGaplessPlaybackPreference: failure.apply
+          applyPlayerPreferences: failure.apply
         }
       }
     });
@@ -1134,7 +1144,7 @@ test('showAudioConfigDialog applies first-use Gapless Playback without resetting
     },
     window: {
       audioManager: {
-        async applyGaplessPlaybackPreference(nextPreferences) {
+        async applyPlayerPreferences(nextPreferences) {
           applyCalls.push(nextPreferences);
           return '';
         },

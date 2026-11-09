@@ -467,3 +467,11 @@ export const audioContextManagerMetadataMethods = {
 export function isFileObject(value) {
   return typeof File !== 'undefined' && value instanceof File;
 }
+
+// Local file paths that only the Electron main process can read; URL-like sources do not qualify.
+export function isLocalFilePath(path) {
+  if (typeof path !== 'string') return false;
+  if (/^[A-Za-z]:[\\/]/.test(path)) return true;
+  if (/^[A-Za-z][A-Za-z\d+\-.]*:/.test(path)) return false;
+  return path.startsWith('/') || path.startsWith('\\\\') || path.includes('\\');
+}

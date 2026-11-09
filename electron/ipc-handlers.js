@@ -19,6 +19,7 @@ const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 const { ArtworkWorkerPool } = require('./library-artwork-worker-pool.cjs');
 const { queueAutoRestart } = require('./relaunch');
 const {
+  PLAYER_PREFERENCE_KEYS,
   canPersistAudioPreferencesWithoutReload,
   mergeAudioPreferences,
   normalizeAudioPreferences
@@ -945,6 +946,19 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
       await Promise.all([metadataPool.close(), artworkPool.close()]);
     }
   });
+  // Playback start waits for this read, so the pool stays alive to skip worker startup on later tracks.
+  let replayGainPool = null;
+  fileIpc.handle('read-replay-gain', async (event, filePath) => {
+    assertFile(filePath);
+    replayGainPool ??= new MetadataWorkerPool({ workerCount: 2 });
+    const result = await replayGainPool.parse({
+      path: filePath,
+      relativePath: typeof filePath === 'string' ? path.basename(filePath) : '',
+      skipCovers: true,
+      replayGain: true
+    });
+    return result.replayGain ?? null;
+  });
   fileIpc.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {
     if (expectedByteLength !== undefined &&
         (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0)) {
@@ -1028,21 +1042,21 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
         options,
         NO_AUDIO_INPUT_DEVICE_ID
       );
-      if (options?.applyInPlace === 'gapless-playback') {
-        // A Gapless Playback change is applied in place by the renderer and
-        // must never schedule a reload. When the request would change anything
+      if (options?.applyInPlace === 'player-preferences') {
+        // A Player-only change is applied in place by the renderer and must
+        // never schedule a reload. When the request would change anything
         // else, leave the stored preferences untouched and report the failure;
-        // otherwise store only the playback field so refreshed device labels
+        // otherwise store only the player fields so refreshed device labels
         // or session-only renderer state never reach the file.
         if (!persistWithoutReload) {
           return {
             success: false,
-            error: 'Gapless Playback must be saved without other audio preference changes'
+            error: 'Player settings must be saved without other audio preference changes'
           };
         }
-        nextPreferences = mergeAudioPreferences(previousPreferences, {
-          gaplessPlayback: nextPreferences.gaplessPlayback
-        });
+        nextPreferences = mergeAudioPreferences(previousPreferences, Object.fromEntries(
+          PLAYER_PREFERENCE_KEYS.map(key => [key, nextPreferences[key]])
+        ));
       }
       if (options?.applyInPlace === 'midi-devices') {
         if (!persistWithoutReload) {
@@ -1298,6 +1312,8 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
       console.error('Failed to trigger window close:', error);
       const mainWin = constants.getMainWindow();
       if (mainWin && !mainWin.isDestroyed()) {
+        // destroy() emits no 'close', so persist any debounced bounds first.
+        windowState.flushScheduledSave();
         mainWin.destroy();
       }
       app.quit();

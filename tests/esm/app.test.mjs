@@ -411,6 +411,9 @@ function createDependencies(calls, options = {}) {
     contextManager: { audioContext: { sinkId: options.contextSink, setSinkId() {} } },
     pipelineManager: null,
     isFirstLaunch: false,
+    async prefetchDspModule() {
+      calls.push(['audio.prefetchDspModule']);
+    },
     async initAudio() {
       calls.push(['audio.initAudio']);
       return options.initAudioResult;
@@ -780,6 +783,9 @@ test('App initialize handles success, audio warnings, and initialization failure
     ), true);
     assert.ok(calls.findIndex(call => call[0] === 'pluginManager.loadPlugins') <
       calls.findIndex(call => call[0] === 'ui.initPluginList'));
+    const prefetchIndex = calls.findIndex(call => call[0] === 'audio.prefetchDspModule');
+    assert.ok(prefetchIndex >= 0 &&
+      prefetchIndex < calls.findIndex(call => call[0] === 'pluginManager.loadPlugins'));
     assert.equal(calls.some(call => call[0] === 'ui.showLibraryView' && call[1]?.focusSearch === false), true);
     assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
@@ -1306,6 +1312,42 @@ test('initializeAndBuildPipeline loads pending, URL, and saved pipeline state', 
     await app.initializeAndBuildPipeline();
     assert.equal(app.audioManager.currentPipeline, 'B');
     assert.equal(calls.some(call => call[0] === 'audio.setCurrentPipeline' && call[1] === 'B'), true);
+  });
+});
+
+test('web update preparation preserves both pipelines and restores audio after a failed update', async () => {
+  await withAppModule({ search: '?mode=compact' }, async ({ calls, mod, window }) => {
+    const deps = createDependencies(calls, {
+      pipelineA: [createPlugin('Update A')],
+      pipelineB: [createPlugin('Update B')],
+      audioPlayer: { playbackManager: { savePlayerState() { calls.push(['player.save']); } } }
+    });
+    deps.audioManager.currentPipeline = 'B';
+    deps.audioManager.fadeOutOutputForTeardown = async () => {
+      assert.ok(window.sessionStorage.getItem('effetune_transient_pipeline_state'));
+      calls.push(['fade.out']);
+      return 'fade-token';
+    };
+    deps.audioManager.fadeInOutputForToken = token => calls.push(['fade.in', token]);
+    const app = new mod.App(deps);
+    const restore = await app.prepareWebUpdate();
+    assert.deepEqual(JSON.parse(window.sessionStorage.getItem('effetune_transient_pipeline_state')), {
+      pipelineA: [{ name: 'Update A' }], pipelineB: [{ name: 'Update B' }], currentPipeline: 'B'
+    });
+    assert.match(calls.find(call => call[0] === 'history.replaceState')[3], /restorePipeline=reload/);
+    assert.ok(calls.findIndex(call => call[0] === 'player.save') < calls.findIndex(call => call[0] === 'fade.out'));
+    window.sessionStorage.removeItem = () => { throw new Error('cleanup unavailable'); };
+    assert.throws(restore, /cleanup unavailable/);
+    assert.deepEqual(calls.find(call => call[0] === 'fade.in'), ['fade.in', 'fade-token']);
+  });
+
+  await withAppModule({ sessionStorageSetError: new Error('storage unavailable') }, async ({ calls, mod }) => {
+    const deps = createDependencies(calls);
+    let faded = false;
+    deps.audioManager.fadeOutOutputForTeardown = async () => { faded = true; };
+    const app = new mod.App(deps);
+    await assert.rejects(app.prepareWebUpdate(), /storage unavailable/);
+    assert.equal(faded, false);
   });
 });
 

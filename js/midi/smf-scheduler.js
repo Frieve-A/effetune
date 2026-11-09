@@ -4,6 +4,14 @@ export const MIDI_SYSTEM_RESET = 8192;
 export const MIDI_DRUM_MODE = 16384;
 const MIDI_RESTORE_SLICE = 256;
 
+function targetsInstance(targets, key, token) {
+    for (let index = 0; index < targets.length; index++) {
+        const target = targets[index];
+        if (target.id === key && target.token === token) return true;
+    }
+    return false;
+}
+
 // Merge the parser's two ordered maps once, outside audio processing. A meter
 // origin stays fixed through tempo changes; native code derives each bar from it.
 export function midiTransportPoints(timeline) {
@@ -52,6 +60,7 @@ export class MidiFrameScheduler {
         this.anchorFrame = 0;
         this.speed = 1;
         this.gain = 1;
+        this.clockReceipt = {};
     }
 
     configure({ timeline = this.timeline, position = 0, anchorFrame = 0, speed = 1,
@@ -157,8 +166,8 @@ export class MidiFrameScheduler {
             for (const event of input.events) {
                 if (event.serial <= state.inputCursor) continue;
                 if (event.frame + delay >= frame + frames) break;
-                if (event.targets.some(target => target.id === key && target.token === state.token) &&
-                    ![0x80, 0x90].includes(event.status & 0xf0)) {
+                const kind = event.status & 0xf0;
+                if (kind !== 0x80 && kind !== 0x90 && targetsInstance(event.targets, key, state.token)) {
                     this.append(state, event.status, event.data1, event.data2, 0,
                         event.systemReset || 0, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0);
                     systemReset ||= !!event.systemReset;
@@ -184,7 +193,7 @@ export class MidiFrameScheduler {
             if (event.serial <= state.inputCursor) continue;
             const at = event.frame + delay;
             if (at >= frame + frames) break;
-            if (event.targets.some(target => target.id === key && target.token === state.token))
+            if (targetsInstance(event.targets, key, state.token))
                 this.append(state, event.status, event.data1, event.data2, Math.max(0, at - frame),
                     event.systemReset || event.serial, event.systemReset ? MIDI_SYSTEM_RESET : event.drumMode ? MIDI_DRUM_MODE : 0);
             state.inputCursor = event.serial;
@@ -195,20 +204,25 @@ export class MidiFrameScheduler {
     }
 
     finishInputFrame(frame) {
-        if (!this.input) return;
-        this.input.events = this.input.events.filter(event => {
+        const events = this.input?.events;
+        if (!events?.length) return;
+        // Compact in place; the queue is drained every render quantum.
+        let kept = 0;
+        for (const event of events) {
             // Losing processing ownership retires pending actions, including
             // future events. Rejoining receives current controls separately.
-            let retained = 0;
-            for (const target of event.targets) {
+            const targets = event.targets;
+            let retained = 0, pending = event.frame >= frame;
+            for (const target of targets) {
                 const state = this.instances.get(target.id);
-                if (state && !state.failed && state.enabled && state.token === target.token)
-                    event.targets[retained++] = target;
+                if (!state || state.failed || !state.enabled || state.token !== target.token) continue;
+                targets[retained++] = target;
+                if ((state.inputCursor ?? 0) < event.serial) pending = true;
             }
-            event.targets.length = retained;
-            return event.targets.length && (event.frame >= frame || event.targets.some(target =>
-                (this.instances.get(target.id).inputCursor ?? 0) < event.serial));
-        });
+            targets.length = retained;
+            if (retained && pending) events[kept++] = event;
+        }
+        events.length = kept;
     }
 
     start(generation, anchorFrame) {
@@ -261,10 +275,18 @@ export class MidiFrameScheduler {
             }
             return previous;
         }
+        // Every field is declared here, so the per-quantum draft copy keeps one
+        // object shape and discards uncommitted fields uniformly.
         const state = { instanceId, token, channel, generation: -1, cursor: 0, restoring: true,
             enabled: false, ended: false, target: 0, forceReset: true, clockFrame: 0, clockOrigin: null,
             pool: Array.from({ length: MIDI_EVENT_CAPACITY }, () => ({ offsetFrames: 0,
-                status: 0, data1: 0, data2: 0, noteId: 0, flags: 0, renderFrame: 0 })), batchCount: 0 };
+                status: 0, data1: 0, data2: 0, noteId: 0, flags: 0, renderFrame: 0 })), batchCount: 0,
+            failed: undefined, paused: undefined, draining: undefined, retime: undefined, activation: undefined,
+            needsReattack: undefined, historyAwait: undefined, historyTargetRequested: undefined,
+            transportFrame: undefined, transportSeconds: undefined, liveJoin: undefined,
+            joinInitialized: undefined, joinReset: undefined, ownershipActive: undefined,
+            inputCursor: undefined, inputOrigin: undefined, inputRevision: undefined, inputHydration: undefined,
+            inputFrozen: undefined, inputResume: undefined };
         this.instances.set(key, state);
         this.stagedInstances.set(key, { state, draft: { ...state }, pending: false });
         return state;
@@ -293,7 +315,7 @@ export class MidiFrameScheduler {
                 const state = stage.draft;
                 if (state.enabled && !state.restoring && !state.liveJoin && !state.failed &&
                     binding.instanceMidiClock) {
-                    const receipt = binding.instanceMidiClock(state.instanceId);
+                    const receipt = binding.instanceMidiClock(state.instanceId, this.clockReceipt);
                     if (receipt.generation !== this.generation || receipt.frame !== state.clockFrame)
                         throw new Error('MIDI audio processing did not commit its scheduled frames');
                 }

@@ -725,7 +725,8 @@ test('list templates release observers while tab changes and item actions create
     assert.equal(item.querySelector('.plugin-description').textContent, added[0].description);
     assert.equal(added[0].vl, 0);
     assert.equal(added[1].vl, 0);
-    assert.deepEqual([observers.size, portListeners.size], [2, 2]);
+    // The worklet already exists, so live plugins register immediately and need no observer.
+    assert.deepEqual([observers.size, portListeners.size], [0, 2]);
     for (const plugin of added) plugin.cleanup();
     assert.deepEqual([observers.size, portListeners.size], [0, 0]);
   });

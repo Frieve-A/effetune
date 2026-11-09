@@ -815,6 +815,49 @@ test('Browser media info is normalized, follows its owning frame, is sent only d
   assert.equal(h.ipc.listenerCount('browser:media'), 0);
 });
 
+test('Browser MIDI releases held notes, sustain and delayed events when an input subframe leaves', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const h = harness(t);
+  await h.invoke('navigate', 'https://music.example.com/');
+  const wc = h.views[0].webContents;
+  const token = h.prepare(); await h.capture();
+  await h.invoke('set-capture-state', { ...token, active: true });
+  const sent = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:midi') sent.push(value); };
+  const post = frame => h.ipc.emit('browser:midi', { sender: wc, senderFrame: frame }, [
+    { data: [0x90, 60, 100], delay: 0 },
+    { data: [0xb0, 64, 127], delay: 0 },
+    { data: [0x90, 64, 100], delay: 60000 }
+  ]);
+  const removed = { detached: false, processId: 1, routingId: 2 };
+  post(removed);
+  removed.detached = true;
+  t.mock.timers.tick(1000);
+  assert.deepEqual(sent.at(-1), { reset: true });
+  const afterRemoval = sent.length;
+  t.mock.timers.tick(2000);
+  assert.equal(sent.length, afterRemoval, 'the ended input is forgotten');
+
+  const navigated = { detached: false, processId: 3, routingId: 4 };
+  post(navigated);
+  wc.emit('did-frame-navigate', {}, 'https://music.example.com/other', 200, 'OK', false, 9, 9);
+  assert.equal(sent.at(-1).events.length, 3, 'another frame does not release the live input');
+  wc.emit('did-frame-navigate', {}, 'https://music.example.com/next', 200, 'OK', false, 3, 4);
+  assert.deepEqual(sent.at(-1), { reset: true }, 'same-process navigation releases the old document');
+  const afterNavigation = sent.length;
+  navigated.detached = true;
+  t.mock.timers.tick(1000);
+  assert.equal(sent.length, afterNavigation);
+
+  const released = { detached: false, processId: 5, routingId: 6 };
+  post(released);
+  await h.invoke('set-capture-state', { ...token, active: false });
+  const afterCapture = sent.length;
+  released.detached = true;
+  t.mock.timers.tick(1000);
+  assert.equal(sent.length, afterCapture, 'capture release also clears frame ownership');
+});
+
 test('Browser media resumes at the elapsed position, forgets a removed subframe owner, and sends only image artwork', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
   const h = harness(t);

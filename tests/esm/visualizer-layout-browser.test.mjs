@@ -2439,3 +2439,77 @@ test('Counter inspector groups remain usable with wrapped labels in every locale
         await browser.close();
     }
 });
+
+
+test('Visualizer expand control returns after app activity on touch and desktop screens', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        for (const mobile of [true, false]) {
+            const page = await browser.newPage({ viewport: { width: mobile ? 390 : 1280, height: 844 },
+                isMobile: mobile, hasTouch: mobile });
+            await page.clock.install();
+            await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
+                <body class="view-visualizer layout-${mobile ? 'mobile' : 'desktop'}">
+                <button id="outside">Other screen control</button><div class="main-container"></div></body>`);
+            await page.addStyleTag({ content: css + '* { transition: none !important; }' });
+            await page.addScriptTag({ content: `
+                window.VisualizerPresetStore = class {};
+                window.VisualizerSources = class {};
+                window.VisualizerRenderer = class {};
+            ` });
+            for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) {
+                await page.addScriptTag({ content: source });
+            }
+            await page.evaluate(() => {
+                Object.defineProperty(window, 'localStorage', { configurable: true,
+                    value: { getItem: () => null, setItem() {} } });
+                VisualizerView.prototype.initialize = async () => {};
+                window.view = new VisualizerView({ t: key => key, audioManager: {} });
+                view.visible = true;
+                const outside = document.getElementById('outside');
+                for (const type of ['pointerdown', 'pointermove', 'pointerup', 'keydown', 'wheel', 'scroll', 'focusin']) {
+                    outside.addEventListener(type, event => event.stopPropagation());
+                }
+                view.showControls();
+            });
+            const opacity = () => page.locator('.visualizer-expand').evaluate(button => getComputedStyle(button).opacity);
+            const interact = async selector => {
+                if (mobile) await page.locator(selector).tap();
+                else await page.locator(selector).click();
+            };
+            assert.equal(await opacity(), '1');
+            await page.clock.runFor(2501);
+            assert.equal(await opacity(), '0');
+            await interact('#outside');
+            assert.equal(await opacity(), '1', 'activity outside the stage reveals the button');
+            await page.clock.runFor(2000);
+            await interact('#outside');
+            await page.clock.runFor(1000);
+            assert.equal(await opacity(), '1', 'further activity restarts the full display interval');
+            await page.clock.runFor(1501);
+            assert.equal(await opacity(), '0');
+            await interact('.visualizer-stage canvas:not([hidden])');
+            assert.equal(await opacity(), '1', 'touching the scene reveals the button again');
+            await interact('.visualizer-expand');
+            assert.equal(await page.evaluate(() => view.expanded), true);
+            await page.clock.runFor(2501);
+            assert.equal(await opacity(), '0');
+            await interact('.visualizer-stage canvas:not([hidden])');
+            assert.equal(await opacity(), '1', 'expanded view also responds after the button fades');
+            await interact('.visualizer-expand');
+            assert.equal(await page.evaluate(() => view.expanded), false);
+            for (const type of ['keydown', 'wheel', 'scroll', 'focusin']) {
+                await page.clock.runFor(2501);
+                await page.locator('#outside').dispatchEvent(type);
+                assert.equal(await opacity(), '1', `${type} reveals the button`);
+            }
+            await page.evaluate(() => { view.visible = false; });
+            await page.clock.runFor(2501);
+            await interact('#outside');
+            assert.equal(await opacity(), '0', 'hidden Visualizer does not restart its controls timer');
+            await page.close();
+        }
+    } finally {
+        await browser.close();
+    }
+});

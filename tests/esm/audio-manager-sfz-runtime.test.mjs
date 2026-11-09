@@ -115,7 +115,7 @@ test('SFZ stream cancellation closes a preparing worker and ignores its delayed 
   h.plugins[0].onWasmAssetRejected = () => { failed++; };
   h.plugins[0].getWasmAssetRevisionDescriptor = () => ({ sampleProviderFactory: async ({ generation, publish, onProvider }) => {
     const provider = { close() { closed++; } }; onProvider(provider);
-    assert.equal(await publish({ generation }), false);
+    assert.equal(await publish({ generation, pcm: new Float32Array(1) }), false);
     return provider;
   } });
   const pending = manager._startSfzSampleStream(h.primary, { pluginId: 7, operationRevision: 3, generation: 10 });

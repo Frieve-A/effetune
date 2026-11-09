@@ -1,5 +1,6 @@
 import { isAndroidHost } from './android/bridge.js';
 import { installAndroidFileDownloads } from './android/file-downloads.js';
+import { WebUpdateManager } from './web-update-manager.js';
 
 function getDefaultWindow() {
     return typeof window !== 'undefined' ? window : {};
@@ -46,17 +47,16 @@ export function registerTrayPresetListener({
 
 export function createAndInitializeApp(AppClass, {
     windowRef = getDefaultWindow(),
-    logger = console
+    logger = console,
+    onInitialized = null
 } = {}) {
     const app = new AppClass();
     windowRef.app = app;
 
-    const initializeResult = app.initialize();
-    if (initializeResult && typeof initializeResult.catch === 'function') {
-        initializeResult.catch(error => {
-            logger.error('Failed to initialize app:', error);
-        });
-    }
+    const initialization = Promise.resolve(app.initialize()).catch(error => {
+        logger.error('Failed to initialize app:', error);
+    });
+    if (typeof onInitialized === 'function') void initialization.then(onInitialized);
 
     return app;
 }
@@ -98,15 +98,17 @@ export function startApplication({
     const start = isFirstLaunch => {
         windowRef.isFirstLaunchConfirmed = isFirstLaunch;
         windowRef.isFirstLaunch = isFirstLaunch;
-        registerServiceWorker(windowRef, logger);
+        let onInitialized;
+        registerServiceWorker(windowRef, logger, new Promise(resolve => { onInitialized = resolve; }));
+        const createApp = () => createAndInitializeAppFn(AppClass, { windowRef, logger, onInitialized });
         if (typeof loadInitialConfigFn === 'function') {
             return Promise.resolve(loadInitialConfigFn({ windowRef, logger }))
                 .catch(error => {
                     logger.warn('Failed to load initial app config:', error);
                 })
-                .then(() => createAndInitializeAppFn(AppClass, { windowRef, logger }));
+                .then(createApp);
         }
-        return Promise.resolve(createAndInitializeAppFn(AppClass, { windowRef, logger }));
+        return Promise.resolve(createApp());
     };
 
     return firstLaunchPromise.then(start).catch(error => {
@@ -115,7 +117,15 @@ export function startApplication({
     });
 }
 
-export function registerServiceWorker(windowRef = getDefaultWindow(), logger = console) {
+// The update manager exists from startup so the app can report readiness to it,
+// but registration waits until the app has initialized and the page is idle:
+// installing a release downloads the whole precache, which must not compete
+// with application startup.
+export function registerServiceWorker(
+    windowRef = getDefaultWindow(),
+    logger = console,
+    appInitialized = Promise.resolve()
+) {
     const isElectron = windowRef.electronIntegration?.isElectronEnvironment?.() ||
         windowRef.electronIntegration?.isElectron;
     if (isElectron || isAndroidHost(windowRef) || !windowRef.navigator?.serviceWorker) return;
@@ -123,14 +133,21 @@ export function registerServiceWorker(windowRef = getDefaultWindow(), logger = c
         unregisterDevelopmentServiceWorkers(windowRef, logger);
         return;
     }
+    const manager = windowRef.webUpdateManager || new WebUpdateManager(windowRef, logger);
+    windowRef.webUpdateManager = manager;
     const register = () => {
-        windowRef.navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(error => {
-            logger.warn('Service worker registration failed:', error);
-        });
+        windowRef.navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+            .then(registration => manager.attach(registration))
+            .catch(error => {
+                logger.warn('Service worker registration failed:', error);
+            });
     };
-    if (windowRef.document?.readyState === 'complete') {
-        register();
-    } else {
-        windowRef.addEventListener?.('load', register, { once: true });
-    }
+    const registerWhenIdle = () => {
+        if (typeof windowRef.requestIdleCallback === 'function') {
+            windowRef.requestIdleCallback(register, { timeout: 5000 });
+        } else {
+            setTimeout(register, 1000);
+        }
+    };
+    void Promise.resolve(appInitialized).then(registerWhenIdle, registerWhenIdle);
 }

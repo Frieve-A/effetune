@@ -762,7 +762,12 @@ void storageFormatsAndResidency() {
     CHECK(mixed.requestWindow(1, 0, frames * 2));
     CHECK(mixed.commitForecast());
     mixed.beginQuantum();
-    CHECK(!mixed.publish({92, 2, 1}, pcm.data(), frames, 2));
+    // Unrequested data without a free slot is dropped; it never evicts pinned forecast pages.
+    CHECK(mixed.publish({92, 2, 1}, pcm.data(), frames, 2));
+    {
+      std::array<float, 514> scratch{};
+      CHECK(mixed.readWindow(1, 4000, 514, 1, scratch.data()) == SampleReadStatus::Ready);
+    }
     mixed.clearForecast();
     CHECK(mixed.publish({92, 2, 1}, pcm.data(), frames, 2));
   }

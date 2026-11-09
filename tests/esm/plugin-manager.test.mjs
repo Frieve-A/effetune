@@ -31,9 +31,7 @@ function createLoaderHarness(options = {}) {
         const url = element.src || element.href;
         calls.push(['appendChild', element.tagName, url]);
         options.onAppend?.(element, url);
-        if (options.throwOnAppend?.has(url)) {
-          throw new Error(`append failed: ${url}`);
-        }
+        if (options.deferLoad) return;
         if (options.errorOnLoad?.has(url)) {
           element.onerror?.(new Error(`load failed: ${url}`));
         } else {
@@ -318,35 +316,32 @@ test('loadPlugins cache-busts dynamic resources on the development server', asyn
   assert.ok(harness.calls.some(call => call[0] === 'appendChild' && call[2] === 'plugins/compressor.css?dev=zzz'));
 });
 
-test('loadPlugins catches base, JS batch, CSS batch, and fetch-level failures', async () => {
-  await withGlobals(createLoaderHarness({
-    pluginsText: PLUGINS_TEXT,
-    throwOnAppend: new Set(['plugins/plugin-base.js'])
-  }).globals, async () => {
+test('loadPlugins appends every resource before any load completes and keeps script order', async () => {
+  const harness = createLoaderHarness({ pluginsText: PLUGINS_TEXT, deferLoad: true });
+  await withGlobals(harness.globals, async () => {
     const manager = new PluginManager();
-    await manager.loadPlugins();
-  });
+    let settled = false;
+    const loading = manager.loadPlugins().then(() => { settled = true; });
+    await new Promise(resolve => setImmediate(resolve));
 
-  const jsBatchHarness = createLoaderHarness({
-    pluginsText: PLUGINS_TEXT,
-    throwOnAppend: new Set(['plugins/tone.js'])
-  });
-  await withGlobals(jsBatchHarness.globals, async () => {
-    const manager = new PluginManager();
-    await manager.loadPlugins();
-  });
-  assert.ok(jsBatchHarness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Error loading JS files')));
+    const scripts = harness.appended.filter(element => element.tagName === 'SCRIPT');
+    assert.equal(harness.appended.length, scripts.length + 3);
+    assert.ok(scripts.every(element => element.async === false));
+    assert.deepEqual(scripts.slice(-4).map(element => element.src), [
+      'plugins/compressor.js',
+      'plugins/tone.js',
+      'plugins/missing.js',
+      'plugins/throwing.js'
+    ]);
+    assert.equal(scripts[0].src, 'plugins/plugin-base.js');
+    assert.equal(settled, false);
 
-  const cssBatchHarness = createLoaderHarness({
-    pluginsText: PLUGINS_TEXT,
-    throwOnAppend: new Set(['plugins/compressor.css'])
+    for (const element of harness.appended) element.onload();
+    await loading;
   });
-  await withGlobals(cssBatchHarness.globals, async () => {
-    const manager = new PluginManager();
-    await manager.loadPlugins();
-  });
-  assert.ok(cssBatchHarness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Error loading CSS files')));
+});
 
+test('loadPlugins handles a missing UI manager and fetch-level failures', async () => {
   const noUiHarness = createLoaderHarness({
     pluginsText: PLUGINS_TEXT,
     uiManager: false

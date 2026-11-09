@@ -46,8 +46,8 @@ function createRiffInfoWave(tags) {
 test('metadata workers reject invalid path requests', async () => {
   assert.throws(() => validateParseMessage({
     type: 'parse', requestId: 1, filePath: 'relative.wav', relativePath: 'relative.wav',
-    skipCovers: true, languageHints: null, lyrics: null
-  }), error => error?.code === 'invalidMetadataRequest');
+    skipCovers: true, languageHints: null, lyrics: null, replayGain: false
+  }),error => error?.code === 'invalidMetadataRequest');
 
   const pool = new MetadataWorkerPool({ workerCount: 2 });
   await assert.rejects(pool.parse({
@@ -94,7 +94,7 @@ test('Electron catalog metadata worker restores v2 CP932 RIFF INFO decoding', as
 test('lyrics requests require explicit bounded names and a valid region', () => {
   const message = {
     type: 'parse', requestId: 1, filePath: path.resolve('song.wav'), relativePath: 'song.wav',
-    skipCovers: true, languageHints: null, lyrics: null
+    skipCovers: true, languageHints: null, lyrics: null, replayGain: false
   };
   assert.doesNotThrow(() => validateParseMessage(message));
   const { lyrics: _lyrics, ...missingLyrics } = message;
@@ -132,6 +132,10 @@ test('on-demand lyrics worker finds listed sidecars and rebases album lyrics', a
     lyrics: { synced: true, lines: [{ time: 0, text: 'Current' }] }
   });
   assert.deepEqual(await pool.parse({ ...request, lyrics: { names: ['missing'], region: null } }), { lyrics: null });
+  // ReplayGain requests return only the gain values, here of an untagged file.
+  assert.deepEqual(await pool.parse({ ...request, replayGain: true }), {
+    replayGain: { trackGainDb: null, trackPeak: null, albumGainDb: null, albumPeak: null }
+  });
 });
 
 test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', async t => {

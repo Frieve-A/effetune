@@ -684,8 +684,7 @@ class AnalogMeterPlugin extends PluginBase {
             grid: read('graph-grid-soft'),
             label: read('graph-label-soft'),
             text: read('text-primary'),
-            danger: (this.canvas && window.getComputedStyle?.(this.canvas)
-                ?.getPropertyValue('--et-danger').trim()) || ANALOG_METER_DANGER_COLOR
+            danger: read('danger') || ANALOG_METER_DANGER_COLOR
         };
     }
 

@@ -20,10 +20,11 @@ export async function createSf2RuntimeFixture({ resident = false, loopStart = 16
   sampleFrames = 32768, latePage = 4 } = {}) {
   const pcm16 = Int16Array.from({ length: sampleFrames }, (_, frame) => Math.round(16000 * Math.sin(2 * Math.PI * frame / 64)));
   const bytes = createSf2Fixture({ sampleFrames: pcm16.length, sampleRate: 48000, loopStart, loopEnd,
+    // Quiet presets sound 120 cB down after the Standard 0.4 attenuation-generator factor.
     pcm16, keyRange: [48, 96], presets: [{ name: 'Bright', bank: 0, program: 0, attenuation: 0 },
-      { name: 'Quiet', bank: 1, program: 1, attenuation: 120 },
+      { name: 'Quiet', bank: 1, program: 1, attenuation: 300 },
       { name: 'Drum Bright', bank: 128, program: 0, attenuation: 0 },
-      { name: 'Drum Quiet', bank: 128, program: 1, attenuation: 120 }],
+      { name: 'Drum Quiet', bank: 128, program: 1, attenuation: 300 }],
     modulators: [{ source: 13, destination: 48, amount: 120 }, { source: 10, destination: 48, amount: 120 }] });
   let sampleOffset = Infinity, lateRead = null;
   const reader = { size: bytes.length, revision: 'authored-runtime-fixture',

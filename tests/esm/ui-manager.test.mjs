@@ -1157,6 +1157,64 @@ test('handles invalid URL state and URL updates', async () => {
   }
 });
 
+test('pending URL reflection preserves reload restoration and other current URL state', async () => {
+  await withUIHarness({}, async ({ manager, timers, window }) => {
+    window.location.href = 'https://example.test/effetune.html?view=before#before';
+    window.history.state = { effetuneVisualizer: 1 };
+    window.history.replaceState = (state, title, url) => {
+      window.history.state = state;
+      window.location.href = String(url);
+    };
+    manager.urlReflectionEnabled = true;
+    const pipeline = encodePipelineState([{ nm: 'Gain', amount: 2 }]);
+    manager.getPipelineStateJson = () => JSON.stringify([{ nm: 'Gain', amount: 2 }]);
+    manager.updateURL();
+    const reflection = timers.at(-1);
+
+    const restoringURL = new URL(window.location.href);
+    restoringURL.searchParams.set('restorePipeline', 'reload');
+    restoringURL.searchParams.set('view', 'after');
+    restoringURL.hash = 'after';
+    window.history.replaceState({ ...window.history.state, update: true }, '', restoringURL);
+    reflection.fn();
+
+    const result = new URL(window.location.href);
+    assert.equal(result.searchParams.get('restorePipeline'), 'reload');
+    assert.equal(result.searchParams.get('view'), 'after');
+    assert.equal(result.hash, '#after');
+    assert.equal(result.searchParams.get('p'), pipeline);
+    assert.equal(window.history.state.effetuneReflectedPipeline, pipeline);
+    assert.equal(window.history.state.update, true);
+  });
+});
+
+test('URL reflection snapshots state per call and shares one deferred encode between URL and storage', async () => {
+  await withUIHarness({}, async ({ audioManager, manager, timers, window }) => {
+    window.history.replaceState = (state, title, url) => {
+      window.history.state = state;
+      window.location.href = String(url);
+    };
+    const params = { amount: 1 };
+    audioManager.pipeline = [{ name: 'Gain', enabled: true, getSerializableParameters: () => ({ ...params }) }];
+    manager.urlReflectionEnabled = true;
+    manager.updateURL();
+    const expected = manager.getPipelineState();
+    // State changes that never reach updateURL (e.g. MIDI automation) must not leak.
+    params.amount = 2;
+    let encodes = 0;
+    const btoa = globalThis.btoa;
+    globalThis.btoa = text => (encodes++, btoa(text));
+    try {
+      timers.splice(0).forEach(timer => timer.fn());
+    } finally {
+      globalThis.btoa = btoa;
+    }
+    assert.equal(encodes, 1);
+    assert.equal(new URL(window.location.href).searchParams.get('p'), expected);
+    assert.equal(globalThis.localStorage.getItem('effetune_pipeline_state'), expected);
+  });
+});
+
 test('URL reflection preserves local reload provenance and existing history without claiming external shares', async () => {
   for (const [search, historyState, expectedLocal] of [
     ['', { effetuneVisualizer: 1 }, true],
@@ -1173,7 +1231,7 @@ test('URL reflection preserves local reload provenance and existing history with
       };
       manager.urlReflectionEnabled = true;
       for (const amount of [1, 2]) {
-        manager.getPipelineState = () => encodePipelineState([{ nm: 'Gain', amount }]);
+        manager.getPipelineStateJson = () => JSON.stringify([{ nm: 'Gain', amount }]);
         manager.updateURL();
         timers.splice(0).forEach(timer => timer.fn());
         const reflected = new URL(window.location.href).searchParams.get('p');

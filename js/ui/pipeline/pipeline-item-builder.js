@@ -116,7 +116,8 @@ export class PipelineItemBuilder {
         
         // Detect click/touch events for entire pipeline-item
         item.addEventListener('click', selectPlugin);
-        item.addEventListener('touchstart', selectPlugin);
+        // selectPlugin never calls preventDefault(), so scrolling need not wait for it.
+        item.addEventListener('touchstart', selectPlugin, { passive: true });
         
         // Handle for reordering
         const handle = this.createHandle(selectPlugin);

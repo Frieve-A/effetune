@@ -77,22 +77,25 @@ export class VisualizerView {
         this.stageHost.appendChild(this.expandButton);
         this.expandButton.addEventListener('click', () => this.setExpanded(!this.expanded));
         this.createPlaybackControls(this.stage);
+        // Capture activity across the app, including controls that stop event propagation.
+        for (const type of ['pointerdown', 'pointermove', 'pointerup', 'keydown', 'wheel', 'scroll', 'focusin']) {
+            document.addEventListener(type, () => {
+                if (this.visible) this.showControls();
+            }, { capture: true, passive: true });
+        }
         this.stage.addEventListener('pointermove', event => {
-            this.showControls();
             this.movePlaybackPointer(event);
             this.moveSeekPointer(event);
             const control = this.playbackControlAt(event);
             this.playbackHoveredId = control?.id;
             this.stage.classList.toggle('lyrics-seekable', !!control || !!this.seekBarAt(event) || this.lyricsSeekTime(event) !== null || this.counterAt(event) !== null);
         });
-        this.stage.addEventListener('pointerdown', event => { this.showControls(); this.beginPlaybackInteraction(event); });
+        this.stage.addEventListener('pointerdown', event => this.beginPlaybackInteraction(event));
         this.stage.addEventListener('pointerup', event => this.finishSeekPointer(event));
         this.stage.addEventListener('click', event => { if (!this.activatePlaybackControl(event) && !this.resetCounterAt(event)) this.seekToLyrics(event); });
         this.stage.addEventListener('pointercancel', () => { this.clearPlaybackPointer(); this.cancelSeekPointer(); });
         this.canvas.addEventListener('lostpointercapture', () => this.cancelSeekPointer());
         this.stage.addEventListener('pointerleave', event => this.leavePlaybackPointer(event));
-        this.stageHost.addEventListener('pointermove', () => this.showControls());
-        this.stageHost.addEventListener('pointerdown', () => this.showControls());
         this.toolbar = this.root.querySelector('.visualizer-toolbar');
         this.qualityLabel = this.root.querySelector('.visualizer-quality-label');
         const quality = this.qualityLabel.querySelector('select');

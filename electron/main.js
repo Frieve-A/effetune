@@ -766,11 +766,11 @@ function createWindow() {
   ipcHandlers.createMenu();
   
 
-  // Save window state when window is moved or resized
+  // Save window state shortly after the window stops moving or resizing
   mainWindow.on('resize', () => {
-    if (!windowState.isMiniMode()) windowState.saveWindowState();
+    if (!windowState.isMiniMode()) windowState.scheduleWindowStateSave();
   });
-  mainWindow.on('move', () => windowState.saveWindowState());
+  mainWindow.on('move', () => windowState.scheduleWindowStateSave());
   mainWindow.on('maximize', () => {
     if (!windowState.isMiniMode()) {
       windowState.saveWindowState();
@@ -1679,6 +1679,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', (event) => {
   isAppQuitting = true;
+  windowState.flushScheduledSave();
   macPlaybackPower?.stop();
   void windowsRendererPower?.dispose();
   stopWatchdog();

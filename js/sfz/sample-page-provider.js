@@ -145,7 +145,11 @@ export class SfzSamplePageProvider {
       const unique = new Set(requests.map(request => pageKey(request.sample, request.pageIndex, request.resident)));
       const newCount = [...unique].filter(key => !this.pending.has(key)).length;
       if (this.pending.size + newCount > 4096) throw failure('sample-capacity');
-      const pending = requests.map(request => this.enqueue(request));
+      // Native requests arrive in miss order, interleaving voices. Reading them
+      // grouped by sample and page turns a backlog into contiguous batch reads,
+      // which slow storage serves with far fewer seeks.
+      const ordered = [...requests].sort((a, b) => a.sample - b.sample || a.pageIndex - b.pageIndex);
+      const pending = ordered.map(request => this.enqueue(request));
       if (!this.pumping) void this.pump();
       return Promise.all(pending);
     } catch (error) { return Promise.reject(error); }

@@ -78,7 +78,8 @@ function createDocument(calls) {
     'benchmarkSettingsButton',
     'measurementSettingsButton',
     'backupRestoreSettingsButton',
-    'resetAudioSettingsButton'
+    'resetAudioSettingsButton',
+    'webUpdateSettingsButton'
   ]) {
     elements.set(id, createElement(id, calls));
   }
@@ -140,6 +141,36 @@ async function withStateGlobals(options, callback) {
     }
   }, async () => callback({ calls, documentRef, windowRef }));
 }
+
+test('the web update menu reflects readiness and runs the matching update action', async () => {
+  await withStateGlobals({ app: { initialized: true } }, async ({ windowRef }) => {
+    const manager = new StateManager({});
+    const button = manager.webUpdateSettingsButton;
+    assert.equal(button.hidden, true);
+    const actions = [];
+    windowRef.webUpdateManager = {
+      registration: {}, busy: false, waitingBuild: null,
+      check(manual) { actions.push(['check', manual]); },
+      apply() { actions.push(['apply']); }
+    };
+    manager.updateWebUpdateAvailability();
+    assert.equal(button.hidden, false);
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, 'Check for updates');
+    await button.click();
+    windowRef.webUpdateManager.waitingBuild = 'new';
+    manager.updateLabels();
+    assert.equal(button.textContent, 'Update now');
+    await button.click();
+    assert.deepEqual(actions, [['check', true], ['apply']]);
+    windowRef.webUpdateManager.busy = true;
+    manager.updateWebUpdateAvailability();
+    assert.equal(button.disabled, true);
+    windowRef.electronAPI = {};
+    manager.updateWebUpdateAvailability();
+    assert.equal(button.hidden, true);
+  });
+});
 
 test('constructor labels the settings gear as Settings in Electron environments detected by preload API', async () => {
   await withStateGlobals({ electronAPI: {} }, async ({ calls, documentRef }) => {

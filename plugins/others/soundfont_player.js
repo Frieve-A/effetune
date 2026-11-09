@@ -10,8 +10,9 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this.name = 'SoundFont Player';
         this.description = 'Plays MIDI songs through SoundFont and SFZ instruments';
         this.mc = 0;
-        this.pl = 64;
+        this.pl = 256;
         this.sq = 1;
+        this.sc = 0;
         this.af = true;
         this._presetChannels = 16;
         this._mixerRows = [];
@@ -27,7 +28,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
 
     getParameters() {
         return { ...PluginBase.prototype.getParameters.call(this), sf: this.sf,
-            mc: this.mc, pl: this.pl, og: this.og, sq: this.sq, af: this.af };
+            mc: this.mc, pl: this.pl, og: this.og, sq: this.sq, sc: this.sc, af: this.af };
     }
 
     getWorkletPluginData(parameters = this.getParameters()) {
@@ -79,6 +80,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         }
         this.pl = Math.round(this.pl);
         if ([0, 1, 2].includes(params.sq)) this.sq = params.sq;
+        if ([0, 1].includes(params.sc)) this.sc = params.sc;
         if (typeof params.af === 'boolean') this.af = params.af;
         PluginBase.prototype._setValidatedParameters.call(this, params);
         if (typeof params.sf === 'string') {
@@ -198,6 +200,9 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             { value: 0, label: 'FIR (64 taps)' }, { value: 1, label: 'FIR (32 taps)' },
             { value: 2, label: 'Cubic (4 points)' }
         ], this.sq, value => this.setParameters({ sq: Number(value) }), 'sq'));
+        settings.append(this.createRadioGroup('SF2 Compatibility', [
+            { value: 0, label: 'Standard' }, { value: 1, label: 'SF2.04 Strict' }
+        ], this.sc, value => this.setParameters({ sc: Number(value) }), 'sc'));
         settings.append(this.createRadioGroup('Color', [
             { value: 'Normal', label: 'Normal' }, { value: 'Rainbow', label: 'Note Colors' },
             { value: 'Channel', label: 'Channel Colors' }

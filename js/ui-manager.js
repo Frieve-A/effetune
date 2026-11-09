@@ -19,7 +19,7 @@ import {
     convertPresetToShortFormat
 } from './utils/serialization-utils.js';
 import {
-    encodePipelineState,
+    encodePipelineStateJson,
     decodePipelineState,
     createShareUrl
 } from './utils/pipeline-state-codec.js';
@@ -680,11 +680,11 @@ export class UIManager {
 
     getPipelineState(pipeline = this.audioManager.pipeline) {
         // Get current pipeline state for URL sharing
-        const state = pipeline.map(plugin =>
-            getSerializablePluginStateShort(plugin)
-        );
+        return encodePipelineStateJson(this.getPipelineStateJson(pipeline));
+    }
 
-        return encodePipelineState(state);
+    getPipelineStateJson(pipeline = this.audioManager.pipeline) {
+        return JSON.stringify(pipeline.map(plugin => getSerializablePluginStateShort(plugin)));
     }
 
     /**
@@ -856,41 +856,42 @@ export class UIManager {
         // leaks into the address bar.
         if (!this.urlReflectionEnabled) return;
 
-        // Get current state
-        const state = this.getPipelineState();
-        this.savePipelineStateToLocalStorage(state);
-        const newURL = new URL(window.location.href);
-        const reflectsLocalPipeline = !newURL.searchParams.has('p') ||
-            window.history.state?.effetuneReflectedPipeline === newURL.searchParams.get('p');
-        newURL.searchParams.set('p', state);
-
+        // Snapshot the state now: it may change before the timers fire through paths
+        // that must not be reflected (e.g. MIDI automation). Only the base64 step, the
+        // bulk of the cost, is deferred; both writes share one encode per debounce window.
+        const json = this.getPipelineStateJson();
+        let state;
+        const getState = () => (state ??= encodePipelineStateJson(json));
+        this.savePipelineStateToLocalStorage(getState);
         // Clear any existing timeout
         if (this._updateURLTimeout) {
             clearTimeout(this._updateURLTimeout);
         }
 
-        // Store the latest URL to ensure it gets applied
-        this._latestURL = newURL;
-
         // Set a new timeout
         this._updateURLTimeout = setTimeout(() => {
-            // Apply the latest URL
+            // Reflect only the pipeline; other URL state may have changed while waiting.
+            const newURL = new URL(window.location.href);
+            const reflectsLocalPipeline = !newURL.searchParams.has('p') ||
+                window.history.state?.effetuneReflectedPipeline === newURL.searchParams.get('p');
+            const state = getState();
+            newURL.searchParams.set('p', state);
             const historyState = { ...window.history.state };
-            if (reflectsLocalPipeline) historyState.effetuneReflectedPipeline = this._latestURL.searchParams.get('p');
+            if (reflectsLocalPipeline) historyState.effetuneReflectedPipeline = state;
             else delete historyState.effetuneReflectedPipeline;
-            window.history.replaceState(historyState, '', this._latestURL);
+            window.history.replaceState(historyState, '', newURL);
             this._updateURLTimeout = null;
         }, 100); // Throttle to once every 100ms
     }
 
-    savePipelineStateToLocalStorage(encodedState = this.getPipelineState()) {
+    savePipelineStateToLocalStorage(getEncodedState) {
         if (window.electronIntegration?.isElectronEnvironment?.()) return;
         if (this._pipelineStorageTimeout) {
             clearTimeout(this._pipelineStorageTimeout);
         }
         this._pipelineStorageTimeout = setTimeout(() => {
             try {
-                getSettingsStorage().setItem('effetune_pipeline_state', encodedState);
+                getSettingsStorage().setItem('effetune_pipeline_state', getEncodedState());
             } catch (error) {
                 console.warn('Failed to save web pipeline state:', error);
             }

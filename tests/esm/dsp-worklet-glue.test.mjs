@@ -8881,3 +8881,14 @@ test('real worklet instrument activation keeps the song clock advancing through 
     } finally { p.disableDspEngine(); }
   });
 });
+
+test('identical processor re-registration keeps the compiled function', async () => {
+  const harness = await createWorkletHarness();
+  const register = processor => harness.send({ type: 'registerProcessor', pluginType: 'VolumePlugin', processor });
+  await register('return data;');
+  const compiled = harness.processor.pluginProcessors.get('VolumePlugin');
+  await register('return data;');
+  assert.equal(harness.processor.pluginProcessors.get('VolumePlugin'), compiled);
+  await register('data[0] = 1; return data;');
+  assert.notEqual(harness.processor.pluginProcessors.get('VolumePlugin'), compiled);
+});

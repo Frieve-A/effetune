@@ -1171,7 +1171,7 @@ for (const source of ['saved', 'shared']) {
           assert.equal(h.dbt.restoreFromShare(encodePipelineState(state)), true);
         }
         assert.equal(listeners.size, 2);
-        assert.equal(observers.size, 2);
+        assert.equal(observers.size, 0);
         assert.deepEqual(h.uiManager.expandedPlugins, new Set([...audioManager.pipelineA, ...audioManager.pipelineB]));
       }
       await h.dbt.exit();

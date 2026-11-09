@@ -4,7 +4,8 @@
  * UNIFIED STATE MANAGEMENT: All state managed in StateManager only
  */
 import { midiPlaybackMethods } from './midi-playback.js';
-import { audioContextManagerMetadataMethods, isFileObject } from './audio-context-manager-metadata.js';
+import { audioContextManagerMetadataMethods, isFileObject, isLocalFilePath } from './audio-context-manager-metadata.js';
+import { computeReplayGainFactor, getReplayGainTrackKey, readReplayGain } from './replay-gain.js';
 import { isPwaNetworkMediaUrl } from '../../network-music/pwa-connection.js';
 import {
   clampLogicalTime,
@@ -133,6 +134,9 @@ export class AudioContextManager {
     this.privatePipelineSourceGates = new WeakMap();
     this.playerVolumeGains = new WeakMap();
     this.playerVolumeNodes = new Set();
+    // Player volume node -> track whose ReplayGain applies, and track -> its read ReplayGain values.
+    this.playerVolumeTracks = new WeakMap();
+    this.replayGains = new WeakMap();
     this.playerVolume = 100;
     this.playerMute = false;
     this.pendingPause = null;
@@ -292,8 +296,47 @@ export class AudioContextManager {
     this.applyPlayerVolume();
   }
 
+  getPlayerGain(volume) {
+    if (this.playerMute) return 0;
+    const track = this.playerVolumeTracks.get(volume);
+    return this.playerVolume / 100 *
+      computeReplayGainFactor(track ? this.replayGains.get(track) : null, this.audioPlayer.replayGain);
+  }
+
+  applyPlayerGains() {
+    for (const node of this.playerVolumeNodes) node.gain.value = this.getPlayerGain(node);
+  }
+
+  /**
+   * Read the ReplayGain values of a track so its source node starts at the right gain.
+   * Resolves to null without reading while ReplayGain is off; score files never carry it.
+   */
+  readPlaybackReplayGain(track) {
+    const mode = this.audioPlayer.replayGain?.mode;
+    if ((mode !== 'track' && mode !== 'album') || !track || this.isMidiTrack(track)) return null;
+    return readReplayGain(track);
+  }
+
+  rememberReplayGain(replayGain, ...tracks) {
+    for (const track of tracks) {
+      const key = getReplayGainTrackKey(track);
+      if (key) this.replayGains.set(key, replayGain);
+    }
+  }
+
+  async applyReplayGainPreference() {
+    const state = this.getCurrentState();
+    const tracks = new Set([state?.currentTrack, this.nextBuffer?.playableTrack, this.nextBuffer?.track]);
+    for (const node of this.playerVolumeNodes) tracks.add(this.playerVolumeTracks.get(node));
+    await Promise.all([...tracks].map(async track => {
+      const reading = this.readPlaybackReplayGain(track);
+      if (reading) this.rememberReplayGain(await reading, track);
+    }));
+    this.applyPlayerGains();
+  }
+
   applyPlayerVolume() {
-    for (const node of this.playerVolumeNodes) node.gain.value = this.playerMute ? 0 : this.playerVolume / 100;
+    this.applyPlayerGains();
     if (this.midiTimeline) for (const node of this.getMidiWorklets()) {
       node.port.postMessage({ type: 'midiGain', gain: this.playerMute ? 0 : this.playerVolume / 100 });
     }
@@ -301,14 +344,20 @@ export class AudioContextManager {
       volume: this.playerVolume, volumeMax: 100 }, 'Player volume changed');
   }
 
-  preparePlaybackSource(sourceNode) {
+  /**
+   * Route a source through its own player volume node. A source for another song than the
+   * current one names its track so that song's ReplayGain applies from the first sample.
+   */
+  preparePlaybackSource(sourceNode, track = this.getCurrentState()?.currentTrack) {
     if (!sourceNode) return null;
     const existingVolume = this.playerVolumeGains.get(sourceNode);
     if (existingVolume) return existingVolume;
 
     const audioContext = this.audioPlayer.audioContext;
     const volume = audioContext.createGain();
-    volume.gain.value = this.playerMute ? 0 : this.playerVolume / 100;
+    const trackKey = getReplayGainTrackKey(track);
+    if (trackKey) this.playerVolumeTracks.set(volume, trackKey);
+    volume.gain.value = this.getPlayerGain(volume);
     // The pipeline worklet reads discrete channels, so a mono source would reach channel 0 only.
     // A silent explicit-stereo input lifts the volume node's mixing count to at least two, and its
     // speaker upmix then copies mono to L and R at unity while wider sources pass through. This
@@ -1455,6 +1504,7 @@ export class AudioContextManager {
     let rebuildTrack = currentTrack;
     let rebuildDescriptor = null;
     let rebuildDecisionRecord = null;
+    let rebuildBuffer = null;
     let backendCommitted = false;
     try {
       const revalidation = currentTrack.sourceKind === 'electron-file'
@@ -1563,10 +1613,12 @@ export class AudioContextManager {
             rollingTransport: transport,
             targetIndex: graphRebuildRequest.trackIndex
           };
-          const candidate = this.prepareRollingTransitionCandidate(
+          const candidate = await this.prepareTransitionCandidate(
             prepared,
-            ++this.sourceGenerationSequence
+            ++this.sourceGenerationSequence,
+            isStale
           );
+          if (!candidate) return;
           candidate.initialFrame = adoptedFrame;
           const transportIntent = graphRebuildRequest.transportIntent;
           if (this.commitPreparedTrackCandidate(
@@ -1631,14 +1683,20 @@ export class AudioContextManager {
         return;
       }
 
-      const buffer = reusableFallbackBuffer ?? await this.prepareTrackBuffer(
+      rebuildBuffer = reusableFallbackBuffer ?? await this.prepareTrackBuffer(
         playableTrack,
         isStale,
         true,
         descriptor,
         decisionRecord
       );
-      if (!isGraphRebuildCurrent() || !buffer) return;
+      const buffer = rebuildBuffer;
+      if (isStale() || !buffer) return;
+      // Revalidation can replace the track object while decoding waits, so settle its current
+      // ReplayGain preference before publishing that identity or preparing its playback source.
+      const replayGain = this.readPlaybackReplayGain(playableTrack);
+      if (replayGain) this.rememberReplayGain(await replayGain, playableTrack);
+      if (isStale()) return;
       const duration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
       const transportIntent = graphRebuildRequest.transportIntent;
       const clampedPosition = transportIntent.isStopped
@@ -1747,6 +1805,7 @@ export class AudioContextManager {
         settleGraphRebindFailure();
       }
     } finally {
+      this.releasePartialDecodeBufferReservation(rebuildBuffer, this.currentBuffer);
       const shouldConverge = backendCommitted && isGraphRebuildCurrent();
       if (this.activeGraphRebuildRequest === graphRebuildRequest) {
         this.activeGraphRebuildRequest = null;
@@ -1774,12 +1833,12 @@ export class AudioContextManager {
     if (isStale?.() || !playableTrack) return false;
     const playbackDescriptor = descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
     const sourceGeneration = ++this.sourceGenerationSequence;
-    const prepared = { playableTrack, descriptor: playbackDescriptor };
+    const prepared = { playableTrack, descriptor: playbackDescriptor, decisionRecord: { committedMode: 'media' } };
     let candidate = null;
     let preflight = null;
     let mediaStart = null;
     try {
-      candidate = await this.prepareMediaTransitionCandidate(
+      candidate = await this.prepareTransitionCandidate(
         prepared,
         sourceGeneration,
         () => isStale?.() === true
@@ -3587,6 +3646,7 @@ export class AudioContextManager {
     this.invalidateAutomaticMoveForManualCommand();
     const loadRequest = this.beginLoadRequest(track, trackIndex);
     const isStale = () => !this.isActiveLoadRequest(loadRequest);
+    let prepared = null;
 
     try {
       this.updateState({
@@ -3601,7 +3661,7 @@ export class AudioContextManager {
         this.playbackEntriesMatch(preparedRequest.track, track, trackIndex)
         ? preparedRequest
         : null;
-      const prepared = await this.prepareTrackTransitionRequest(
+      prepared = await this.prepareTrackTransitionRequest(
         track,
         trackIndex,
         isStale,
@@ -3628,6 +3688,7 @@ export class AudioContextManager {
       if (error?.code === 'alacRequiresMacDesktop') throw error;
       return false;
     } finally {
+      this.releasePartialDecodeBufferReservation(prepared?.buffer, this.currentBuffer);
       if (this.isActiveLoadRequest(loadRequest)) this.convergePlaybackSpeedBackend();
     }
   }
@@ -3636,13 +3697,15 @@ export class AudioContextManager {
     const owner = { sourceGeneration: ++this.sourceGenerationSequence };
     const isStale = () => !isCurrent();
     let candidate = null;
+    let prepared = null;
     try {
-      const prepared = await this.prepareTrackTransitionRequest(track, 0, isStale, null, null, owner);
+      prepared = await this.prepareTrackTransitionRequest(track, 0, isStale, null, null, owner);
       if (!prepared || isStale()) return false;
       candidate = await this.prepareTransitionCandidate(prepared, owner.sourceGeneration, isStale);
       return !!candidate && !isStale();
     } finally {
       if (candidate) this.cleanupPreparedTransitionCandidate(candidate);
+      this.releasePartialDecodeBufferReservation(prepared?.buffer, this.currentBuffer);
       await this.disposeRollingPreparationsForOwner(owner);
     }
   }
@@ -4532,13 +4595,7 @@ export class AudioContextManager {
   shouldUseElectronFileRead(path) {
     const integration = window.electronIntegration;
     const isElectron = integration?.isElectronEnvironment?.() || integration?.isElectron === true;
-    if (!window.electronAPI || !isElectron || typeof path !== 'string') {
-      return false;
-    }
-
-    if (/^[A-Za-z]:[\\/]/.test(path)) return true;
-    if (/^[A-Za-z][A-Za-z\d+\-.]*:/.test(path)) return false;
-    return path.startsWith('/') || path.startsWith('\\\\') || path.includes('\\');
+    return !!window.electronAPI && !!isElectron && isLocalFilePath(path);
   }
 
   /**
@@ -4607,6 +4664,7 @@ export class AudioContextManager {
   async prepareNextTrackBufferForTrack(track, targetIndex = null, automaticMovePlan = null) {
     if (!track) return;
     const request = this.beginNextBufferRequest(track, targetIndex);
+    let buffer = null;
     
     try {
       const isStale = () => !this.isActiveNextBufferRequest(request);
@@ -4616,6 +4674,7 @@ export class AudioContextManager {
       let playableTrack = planSnapshot?.playableTrack ?? this.resolveTrackProvider(track);
       if (playableTrack instanceof Promise) playableTrack = await playableTrack;
       if (isStale()) return;
+      const initialReplayGain = this.readPlaybackReplayGain(playableTrack);
       const descriptor = planSnapshot?.descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
       let decisionRecord = planSnapshot?.decisionRecord?.committedMode === 'rolling'
         ? planSnapshot.decisionRecord
@@ -4630,6 +4689,24 @@ export class AudioContextManager {
       if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
       if (!decisionRecord || isStale()) return;
       if (decisionRecord.sourceSnapshot?.dsd) playableTrack = decisionRecord.playableTrack;
+      const prepareBuffer = decisionRecord.committedMode === 'buffer' && !decisionRecord.deferRollingFallbackUntilBoundary;
+      if (prepareBuffer) {
+        try {
+          buffer = await this.prepareTrackBuffer(playableTrack, isStale, true, descriptor, decisionRecord);
+        } catch (error) {
+          if (!decisionRecord.decision.allowMediaFallback || isStale()) throw error;
+          decisionRecord.committedMode = 'media';
+          decisionRecord.mediaFallbackLocked = true;
+        }
+        if (isStale()) return;
+      }
+      // Read the current preference only after asynchronous preparation, before publishing or scheduling.
+      const replayGain = initialReplayGain ?? this.readPlaybackReplayGain(playableTrack);
+      if (replayGain) {
+        // The next source may be created ahead of the boundary below, so its factor must be known first.
+        this.rememberReplayGain(await replayGain, track, playableTrack);
+        if (isStale()) return;
+      }
       if (decisionRecord.deferRollingFallbackUntilBoundary === true) {
         this.nextBuffer = {
           buffer: null,
@@ -4668,8 +4745,8 @@ export class AudioContextManager {
         return;
       }
       if (decisionRecord.committedMode !== 'buffer') {
-        if (automaticMovePlan &&
-            this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true) {
+        if (prepareBuffer || (automaticMovePlan &&
+            this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true)) {
           this.nextBuffer = {
             buffer: null,
             track,
@@ -4682,33 +4759,6 @@ export class AudioContextManager {
           };
         }
         return;
-      }
-      let buffer;
-      try {
-        buffer = await this.prepareTrackBuffer(
-          playableTrack,
-          isStale,
-          true,
-          descriptor,
-          decisionRecord
-        );
-      } catch (error) {
-        if (decisionRecord.decision.allowMediaFallback && this.isActiveNextBufferRequest(request)) {
-          decisionRecord.committedMode = 'media';
-          decisionRecord.mediaFallbackLocked = true;
-          this.nextBuffer = {
-            buffer: null,
-            track,
-            playableTrack,
-            descriptor,
-            decisionRecord,
-            automaticMovePlan,
-            targetIndex: request.targetIndex,
-            requestToken: request.token
-          };
-          return;
-        }
-        throw error;
       }
       const planIsCurrent = automaticMovePlan
         ? this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(automaticMovePlan) === true
@@ -4730,6 +4780,8 @@ export class AudioContextManager {
         console.warn('[AudioContextManager] Next track buffer preparation failed:', error);
         if (error?.code === 'alacRequiresMacDesktop') this.reportPlaybackSourceFailure(error);
       }
+    } finally {
+      if (buffer !== this.nextBuffer?.buffer) this.releasePartialDecodeBufferReservation(buffer, this.currentBuffer);
     }
   }
 
@@ -4769,7 +4821,7 @@ export class AudioContextManager {
       sourceGeneration: ++this.sourceGenerationSequence
     };
     source.buffer = prepared.buffer;
-    this.preparePlaybackSource(source);
+    this.preparePlaybackSource(source, scheduled.track);
     source.onended = () => {
       this.releasePipelineSource(source);
       if (scheduled.cancelled) return;
@@ -4821,7 +4873,7 @@ export class AudioContextManager {
         !transport.canPromoteReservation(current)) {
       return false;
     }
-    this.preparePlaybackSource(transport.sourceNode);
+    this.preparePlaybackSource(transport.sourceNode, prepared.playableTrack ?? prepared.track);
     if (!this.privatePipelineSourceGates.has(transport.sourceNode) &&
         !this.connectPrivatePipelineSource(transport.sourceNode)) return false;
     const boundaryTime = current.anchorContextTime +
@@ -5083,6 +5135,7 @@ export class AudioContextManager {
       isTransitioning: true,
       transitionType: 'seamless'
     }, 'Transition started');
+    let prepared = null;
     
     try {
       if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
@@ -5097,7 +5150,7 @@ export class AudioContextManager {
       const isStale = () => transitionOptions?.signal?.aborted === true ||
         !this.isActiveTransitionRequest(transitionRequest) ||
         (plan && this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true);
-      const prepared = await this.prepareTrackTransitionRequest(
+      prepared = await this.prepareTrackTransitionRequest(
         nextTrack,
         nextTrackIndex,
         isStale,
@@ -5141,6 +5194,7 @@ export class AudioContextManager {
       }
       throw error;
     } finally {
+      this.releasePartialDecodeBufferReservation(prepared?.buffer, this.currentBuffer);
       if (this.isActiveTransitionRequest(transitionRequest)) this.convergePlaybackSpeedBackend();
     }
   }
@@ -5153,69 +5207,78 @@ export class AudioContextManager {
     plan,
     preparationOwner = null
   ) {
-    const planSnapshot = plan?.preparedRequest ?? null;
-    let playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
-      this.resolveTrackProvider(track);
-    if (playableTrack instanceof Promise) playableTrack = await playableTrack;
-    if (isStale() || !playableTrack) return null;
-    const descriptor = preparedRequest?.descriptor ?? planSnapshot?.descriptor ??
-      this.createPlaybackSourceDescriptor(playableTrack);
-    let decisionRecord = preparedRequest?.decisionRecord ?? planSnapshot?.decisionRecord ??
-      this.preparePlaybackDecisionRecord(
+    let buffer = preparedRequest?.buffer ?? null;
+    let prepared = null;
+    try {
+      const planSnapshot = plan?.preparedRequest ?? null;
+      let playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
+        this.resolveTrackProvider(track);
+      if (playableTrack instanceof Promise) playableTrack = await playableTrack;
+      if (isStale() || !playableTrack) return null;
+      const initialReplayGain = this.readPlaybackReplayGain(playableTrack);
+      const descriptor = preparedRequest?.descriptor ?? planSnapshot?.descriptor ??
+        this.createPlaybackSourceDescriptor(playableTrack);
+      let decisionRecord = preparedRequest?.decisionRecord ?? planSnapshot?.decisionRecord ??
+        this.preparePlaybackDecisionRecord(
+          playableTrack,
+          descriptor,
+          isStale,
+          'candidate',
+          null,
+          preparationOwner
+        );
+      if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
+      if (!decisionRecord || isStale()) return null;
+      if (decisionRecord.committedMode === 'dsd') {
+        decisionRecord = await this.prepareDsdPlaybackDecisionRecord(decisionRecord, isStale,
+          'candidate', null, preparationOwner);
+        if (!decisionRecord || isStale()) return null;
+      }
+      if (decisionRecord.sourceSnapshot?.dsd) playableTrack = decisionRecord.playableTrack;
+      let midiTimeline = preparedRequest?.midiTimeline ?? null;
+      if (decisionRecord.committedMode === 'midi' && !midiTimeline) {
+        midiTimeline = await this.prepareMidiTrack(playableTrack, descriptor, isStale);
+        if (!midiTimeline || isStale()) return null;
+      }
+
+      if (decisionRecord.committedMode === 'unavailable') {
+        throw new Error('Playback source is unavailable');
+      }
+      if (decisionRecord.committedMode === 'buffer' && !buffer) {
+        try {
+          buffer = await this.prepareTrackBuffer(
+            playableTrack,
+            isStale,
+            true,
+            descriptor,
+            decisionRecord
+          );
+        } catch (error) {
+          if (!decisionRecord.decision.allowMediaFallback || decisionRecord.mediaFallbackLocked === true) {
+            throw error;
+          }
+          decisionRecord.committedMode = 'media';
+          decisionRecord.mediaFallbackLocked = true;
+        }
+      }
+      const replayGain = initialReplayGain ?? this.readPlaybackReplayGain(playableTrack);
+      if (replayGain) this.rememberReplayGain(await replayGain, track, playableTrack);
+      if (isStale()) return null;
+      prepared = {
+        track,
         playableTrack,
         descriptor,
-        isStale,
-        'candidate',
-        null,
-        preparationOwner
-      );
-    if (decisionRecord instanceof Promise) decisionRecord = await decisionRecord;
-    if (!decisionRecord || isStale()) return null;
-    if (decisionRecord.committedMode === 'dsd') {
-      decisionRecord = await this.prepareDsdPlaybackDecisionRecord(decisionRecord, isStale,
-        'candidate', null, preparationOwner);
-      if (!decisionRecord || isStale()) return null;
+        decisionRecord,
+        buffer,
+        rollingTransport: decisionRecord.rollingTransport,
+        midiTimeline,
+        automaticMovePlan: plan,
+        targetIndex
+      };
+      return prepared;
+    } finally {
+      if (!prepared) this.releasePartialDecodeBufferReservation(buffer, this.currentBuffer);
     }
-    if (decisionRecord.sourceSnapshot?.dsd) playableTrack = decisionRecord.playableTrack;
-    let buffer = preparedRequest?.buffer ?? null;
-    let midiTimeline = preparedRequest?.midiTimeline ?? null;
-    if (decisionRecord.committedMode === 'midi' && !midiTimeline) {
-      midiTimeline = await this.prepareMidiTrack(playableTrack, descriptor, isStale);
-      if (!midiTimeline || isStale()) return null;
-    }
-
-    if (decisionRecord.committedMode === 'unavailable') {
-      throw new Error('Playback source is unavailable');
-    }
-    if (decisionRecord.committedMode === 'buffer' && !buffer) {
-      try {
-        buffer = await this.prepareTrackBuffer(
-          playableTrack,
-          isStale,
-          true,
-          descriptor,
-          decisionRecord
-        );
-      } catch (error) {
-        if (!decisionRecord.decision.allowMediaFallback || decisionRecord.mediaFallbackLocked === true) {
-          throw error;
-        }
-        decisionRecord.committedMode = 'media';
-        decisionRecord.mediaFallbackLocked = true;
-      }
-    }
-    if (isStale()) return null;
-    return {
-      track,
-      playableTrack,
-      descriptor,
-      decisionRecord,
-      buffer,
-      rollingTransport: decisionRecord.rollingTransport,
-      midiTimeline,
-      automaticMovePlan: plan,
-      targetIndex
-    };
   }
 
   async activatePreparedTrackLoad(prepared, loadRequest, isStale) {
@@ -5360,12 +5423,32 @@ export class AudioContextManager {
     }
   }
 
-  prepareTransitionCandidate(prepared, sourceGeneration, isStale) {
-    switch (prepared.decisionRecord.committedMode) {
-      case 'midi': return this.prepareMidiTransitionCandidate(prepared, sourceGeneration);
-      case 'buffer': return this.prepareBufferTransitionCandidate(prepared, sourceGeneration);
-      case 'rolling': return this.prepareRollingTransitionCandidate(prepared, sourceGeneration);
-      default: return this.prepareMediaTransitionCandidate(prepared, sourceGeneration, isStale);
+  async prepareTransitionCandidate(prepared, sourceGeneration, isStale) {
+    if (prepared.decisionRecord.committedMode === 'midi') {
+      return this.prepareMidiTransitionCandidate(prepared, sourceGeneration);
+    }
+    let candidate = null;
+    let ready = false;
+    try {
+      switch (prepared.decisionRecord.committedMode) {
+        case 'buffer': candidate = this.prepareBufferTransitionCandidate(prepared, sourceGeneration); break;
+        case 'rolling': candidate = this.prepareRollingTransitionCandidate(prepared, sourceGeneration); break;
+        default: candidate = await this.prepareMediaTransitionCandidate(prepared, sourceGeneration, isStale);
+      }
+      // Candidate readiness can wait for media metadata after the initial track preparation.
+      // Its private source stays muted until the current preference is ready for publication.
+      const track = prepared.playableTrack ?? prepared.track;
+      const replayGain = this.readPlaybackReplayGain(track);
+      if (replayGain) this.rememberReplayGain(await replayGain, track, prepared.track);
+      if (isStale()) return null;
+      this.applyPlayerGains();
+      ready = true;
+      return candidate;
+    } finally {
+      if (!ready) {
+        this.cleanupPreparedTransitionCandidate(candidate);
+        this.releasePartialDecodeBufferReservation(prepared.buffer, this.currentBuffer);
+      }
     }
   }
 
@@ -5385,7 +5468,7 @@ export class AudioContextManager {
       cleaned: false
     };
     source.buffer = prepared.buffer;
-    this.preparePlaybackSource(source);
+    this.preparePlaybackSource(source, prepared.playableTrack ?? prepared.track);
     source.onended = () => {
       if (!candidate.committed) {
         candidate.ended = true;
@@ -5422,7 +5505,7 @@ export class AudioContextManager {
       committed: false,
       cleaned: false
     };
-    this.preparePlaybackSource(candidate.source);
+    this.preparePlaybackSource(candidate.source, prepared.playableTrack ?? prepared.track);
     if (!this.connectPrivatePipelineSource(candidate.source)) {
       void this.disposeRollingTransport(transport);
       throw new Error('private-rolling-candidate-connect-failed');
@@ -5459,7 +5542,7 @@ export class AudioContextManager {
       }
       if (isStale()) throw new Error('stale-media-transition-candidate');
       const source = this.audioPlayer.audioContext.createMediaElementSource(element);
-      this.preparePlaybackSource(source);
+      this.preparePlaybackSource(source, prepared.playableTrack);
       const candidate = {
         mode: 'audioElement',
         backend: 'html-media',

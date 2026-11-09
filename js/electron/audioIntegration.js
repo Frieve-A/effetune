@@ -7,15 +7,16 @@ import {
   normalizeWebAudioPreferences
 } from './webSettingsStorage.js';
 import {
-  isGaplessPlaybackOnlyChange,
   isMidiDeviceOnlyChange,
+  isPlayerPreferenceOnlyChange,
   loadAudioPreferences,
+  pickPlayerPreferences,
   saveAudioPreferences
 } from './audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 import { bindMidiDeviceSettings } from '../midi/device-settings.js';
-export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences };
+export { isPlayerPreferenceOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
  * Get available audio devices
@@ -266,6 +267,16 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <label for="gapless-playback">${t('dialog.audioConfig.gaplessPlayback')}</label>
           </div>
         </div>
+        ${!androidHost ? `<div class="device-section">
+          <label for="replay-gain-mode">${t('dialog.audioConfig.replayGain')}</label>
+          <select id="replay-gain-mode"></select>
+          <label for="replay-gain-preamp">${t('dialog.audioConfig.replayGainPreamp')}</label>
+          <input type="number" id="replay-gain-preamp" min="-15" max="15" step="0.5" value="${audioPreferences.replayGainPreampDb}">
+          <div class="checkbox-container">
+            <input type="checkbox" id="replay-gain-prevent-clipping" ${audioPreferences.replayGainPreventClipping ? 'checked' : ''}>
+            <label for="replay-gain-prevent-clipping">${t('dialog.audioConfig.replayGainPreventClipping')}</label>
+          </div>
+        </div>` : ''}
         <div class="device-section">
           <label for="sample-rate">${t('dialog.audioConfig.sampleRate')}</label>
           <select id="sample-rate"></select>
@@ -323,8 +334,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       .device-section select + label {
         margin-top: 10px;
       }
-      .device-section select {
+      .device-section select,
+      .device-section input[type="number"] {
         width: 100%;
+        box-sizing: border-box;
         padding: 8px;
         background-color: var(--et-surface-13);
         color: var(--et-text-primary);
@@ -417,6 +430,22 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         playback: t('dialog.audioConfig.latency.high')
       })[value]
     );
+    if (!androidHost) {
+      const replayGainModeSelect = document.getElementById('replay-gain-mode');
+      replaceValueOptions(
+        replayGainModeSelect,
+        ['off', 'track', 'album'],
+        audioPreferences.replayGainMode,
+        value => t(`dialog.audioConfig.replayGain.${value}`)
+      );
+      const updateReplayGainControls = () => {
+        const disabled = replayGainModeSelect.value === 'off';
+        document.getElementById('replay-gain-preamp').disabled = disabled;
+        document.getElementById('replay-gain-prevent-clipping').disabled = disabled;
+      };
+      replayGainModeSelect.addEventListener('change', updateReplayGainControls);
+      updateReplayGainControls();
+    }
 
     const supportMessage = document.getElementById('output-device-support-message');
     if (!outputSupport.supported) {
@@ -525,7 +554,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const preferences = {
         ...(!androidHost ? {
           midiInputDeviceKey: document.getElementById('midi-input-device').value,
-          midiOutputDeviceKey: document.getElementById('midi-output-device').value
+          midiOutputDeviceKey: document.getElementById('midi-output-device').value,
+          replayGainMode: document.getElementById('replay-gain-mode').value,
+          replayGainPreampDb: parseFloat(document.getElementById('replay-gain-preamp').value),
+          replayGainPreventClipping: document.getElementById('replay-gain-prevent-clipping').checked
         } : {}),
         inputDeviceId: inputDeviceSelect.value,
         outputDeviceId: selectedOutputDeviceId,
@@ -556,17 +588,17 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         callback?.(effectivePreferences);
         return;
       }
-      const gaplessOnlyChange = isGaplessPlaybackOnlyChange(audioPreferences, effectivePreferences);
-      if (gaplessOnlyChange && typeof window.audioManager?.applyGaplessPlaybackPreference === 'function') {
+      const playerOnlyChange = isPlayerPreferenceOnlyChange(audioPreferences, effectivePreferences);
+      if (playerOnlyChange && typeof window.audioManager?.applyPlayerPreferences === 'function') {
         closeDialog();
         let applyResult = '';
         try {
-          applyResult = await window.audioManager.applyGaplessPlaybackPreference(effectivePreferences);
+          applyResult = await window.audioManager.applyPlayerPreferences(effectivePreferences);
           if (applyResult) {
-            console.error('Failed to apply Gapless Playback preference:', applyResult);
+            console.error('Failed to apply player preferences:', applyResult);
           }
         } catch (error) {
-          console.error('Failed to apply Gapless Playback preference:', error);
+          console.error('Failed to apply player preferences:', error);
           applyResult = error || true;
         }
         if (applyResult && window.uiManager) {
@@ -575,13 +607,11 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         if (!applyResult) callback?.(effectivePreferences);
         return;
       }
-      if (gaplessOnlyChange) {
-        // Persist only the playback field so the stored preferences never
+      if (playerOnlyChange) {
+        // Persist only the player fields so the stored preferences never
         // absorb session-only runtime overrides or refreshed device labels.
-        const saved = await saveAudioPreferences(isElectron, {
-          gaplessPlayback: effectivePreferences.gaplessPlayback
-        }, {
-          applyInPlace: 'gapless-playback'
+        const saved = await saveAudioPreferences(isElectron, pickPlayerPreferences(effectivePreferences), {
+          applyInPlace: 'player-preferences'
         });
         if (!saved) {
           window.uiManager?.setError?.('error.audioSettingsSaveFailed', true);

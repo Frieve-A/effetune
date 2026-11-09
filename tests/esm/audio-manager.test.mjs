@@ -824,7 +824,8 @@ test('repeated A/B copies release replaced plugins and retain only owned expande
         assert.equal(disposed.at(-1), previousTarget);
         assert.equal(disposed.includes(sourcePlugin), false);
         assert.equal(listeners.size, 2);
-        assert.equal(observers.size, 2);
+        // Plugins created with a live worklet register at once and need no observer.
+        assert.equal(observers.size, 0);
         assert.deepEqual(expandedPlugins, new Set([...manager.pipelineA, ...manager.pipelineB]));
       }
     }
@@ -1774,6 +1775,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
         useInputWithPlayer: false,
         useWasmDsp: true,
         gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         outputChannels: 2,
         latencyHint: 'interactive'
       },
@@ -1796,6 +1800,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
         useInputWithPlayer: false,
         useWasmDsp: true,
         gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         outputChannels: 2,
         latencyHint: 'interactive'
       }
@@ -1864,6 +1871,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
         useInputWithPlayer: false,
         useWasmDsp: true,
         gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         outputChannels: 2,
         latencyHint: 'interactive'
       }
@@ -1902,6 +1912,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
       useInputWithPlayer: false,
       useWasmDsp: true,
       gaplessPlayback: true,
+      replayGainMode: 'off',
+      replayGainPreampDb: 0,
+      replayGainPreventClipping: true,
       outputChannels: 2,
       latencyHint: 'interactive'
     });
@@ -1914,6 +1927,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
       useInputWithPlayer: false,
       useWasmDsp: true,
       gaplessPlayback: true,
+      replayGainMode: 'off',
+      replayGainPreampDb: 0,
+      replayGainPreventClipping: true,
       outputChannels: 2,
       latencyHint: 'interactive'
     }));
@@ -1925,6 +1941,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
       useInputWithPlayer: false,
       useWasmDsp: true,
       gaplessPlayback: true,
+      replayGainMode: 'off',
+      replayGainPreampDb: 0,
+      replayGainPreventClipping: true,
       outputChannels: 2,
       latencyHint: 'interactive'
     });
@@ -1936,6 +1955,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
       useInputWithPlayer: false,
       useWasmDsp: true,
       gaplessPlayback: true,
+      replayGainMode: 'off',
+      replayGainPreampDb: 0,
+      replayGainPreventClipping: true,
       outputChannels: 2,
       latencyHint: 'interactive'
     });
@@ -1967,6 +1989,9 @@ test('Web and Electron input None switch locally only while pipeline configurati
         useInputWithPlayer: false,
         useWasmDsp: true,
         gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         outputChannels: 2,
         latencyHint: 'interactive'
       }
@@ -2000,6 +2025,32 @@ test('Web and Electron input None switch locally only while pipeline configurati
       [['manager._doReset', graphChangingPreferences]]
     );
   });
+});
+
+test('Web reset applies Player settings changed together with the sample rate before the rebuild', async () => {
+  const stored = { inputDeviceId: 'default', sampleRate: 48000 };
+  const events = [];
+  const uiManager = {
+    audioPlayer: {
+      async applyGaplessPlaybackPreference(enabled) { events.push(['gapless', enabled]); },
+      async applyReplayGainPreference(replayGain) { events.push(['replay-gain', replayGain]); }
+    }
+  };
+  await withAudioManager({ storedAudioPreferences: stored, uiManager }, async ({ manager }) => {
+    manager._doReset = async () => { events.push(['rebuild']); return ''; };
+    assert.equal(await manager.reset({
+      ...stored,
+      sampleRate: 96000,
+      gaplessPlayback: false,
+      replayGainMode: 'track',
+      replayGainPreampDb: 3
+    }), '');
+  });
+  assert.deepEqual(events, [
+    ['gapless', false],
+    ['replay-gain', { mode: 'track', preampDb: 3, preventClipping: true }],
+    ['rebuild']
+  ]);
 });
 
 test('fades output with scheduled ramps and immediate fallbacks', async () => {

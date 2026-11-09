@@ -38,6 +38,7 @@ function createMainHarness() {
     process: { platform: 'win32', exit: () => lifecycle.push('process.exit') },
     macPlaybackPower: null,
     windowsRendererPower: { dispose() {} },
+    windowState: { flushScheduledSave() {} },
     queueAutoRestart: () => lifecycle.push('relaunch'),
     armQuitProtection: () => lifecycle.push('quit-deadline'),
     isAppQuitting: false,

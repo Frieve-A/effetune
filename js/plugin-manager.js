@@ -83,126 +83,44 @@ export class PluginManager {
                 if (hasCSS) cssUrls.push(this.withDevelopmentCacheBuster(`${path}.css`, devCacheToken));
             }
 
-            // Calculate total files to load for progress tracking
             const totalFiles = jsUrls.length + cssUrls.length;
             let loadedFiles = 0;
-            
-            // Show initial progress
             if (window.uiManager) window.uiManager.updateLoadingProgress(0);
-            
-            // Function to update progress
-            const updateProgress = () => {
-                loadedFiles++;
-                // Calculate progress percentage based on loaded files (0-100%)
-                const percent = Math.round((loadedFiles / totalFiles) * 100);
-                if (window.uiManager) window.uiManager.updateLoadingProgress(percent);
-            };
 
-            // Custom script loader with progress tracking
-            const loadScriptWithProgress = async (url) => {
-                return new Promise((resolve) => {
-                    const script = document.createElement('script');
-                    script.src = url;
-                    script.onload = () => {
-                        updateProgress();
-                        resolve();
-                    };
-                    script.onerror = (error) => {
-                        console.error(`Failed to load script: ${url}`, error);
-                        updateProgress();
-                        resolve(); // Continue even if a single script fails
-                    };
-                    document.head.appendChild(script);
-                });
-            };
+            // Resolves once the file has loaded or failed; a failed file is
+            // logged and must not stop the others.
+            const loadResource = (element, url, kind) => new Promise(resolve => {
+                const settle = () => {
+                    loadedFiles++;
+                    if (window.uiManager) {
+                        window.uiManager.updateLoadingProgress(Math.round((loadedFiles / totalFiles) * 100));
+                    }
+                    resolve();
+                };
+                element.onload = settle;
+                element.onerror = error => {
+                    console.error(`Failed to load ${kind}: ${url}`, error);
+                    settle();
+                };
+                document.head.appendChild(element);
+            });
 
-            // Custom CSS loader with progress tracking
-            const loadCSSWithProgress = async (url) => {
-                return new Promise((resolve) => {
-                    const link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = url;
-                    link.onload = () => {
-                        updateProgress();
-                        resolve();
-                    };
-                    link.onerror = (error) => {
-                        console.error(`Failed to load CSS: ${url}`, error);
-                        updateProgress();
-                        resolve(); // Continue even if a single CSS file fails
-                    };
-                    document.head.appendChild(link);
-                });
-            };
-
-            // Load plugin-base.js first as it's a dependency for other plugins
-            try {
-                const baseJsUrl = jsUrls.shift(); // Remove and get the first item (plugin-base.js)
-                await loadScriptWithProgress(baseJsUrl);
-            } catch (error) {
-                console.error('Error loading base plugin file:', error);
-                // Continue with application
-            }
-            try {
-                await loadScriptWithProgress(jsUrls.shift());
-            } catch (error) {
-                console.error('Error loading graph point interaction helpers:', error);
-            }
-            try {
-                await loadScriptWithProgress(jsUrls.shift());
-            } catch (error) {
-                console.error('Error loading frequency axis helpers:', error);
-            }
-            try {
-                await loadScriptWithProgress(jsUrls.shift());
-            } catch (error) {
-                console.error('Error loading spectrum overlay:', error);
-            }
-            try {
-                await loadScriptWithProgress(jsUrls.shift());
-            } catch (error) {
-                console.error('Error loading frequency preview:', error);
-            }
-            try {
-                await loadScriptWithProgress(jsUrls.shift());
-            } catch (error) {
-                console.error('Error loading graph readout:', error);
-            }
-            
-            await loadScriptWithProgress(jsUrls.shift());
-
-            await loadScriptWithProgress(jsUrls.shift());
-
-            // Both SFZ instruments share this asset lifecycle base.
-            await loadScriptWithProgress(jsUrls.shift());
-
-            // Load remaining JS files in parallel with error handling
-            try {
-                // Create batches of JS files to load in parallel (6 at a time to respect browser connection limits)
-                const batchSize = 6;
-                for (let i = 0; i < jsUrls.length; i += batchSize) {
-                    const batch = jsUrls.slice(i, i + batchSize);
-                    await Promise.all(batch.map(url => loadScriptWithProgress(url)));
-                }
-            } catch (error) {
-                console.error('Error loading JS files:', error);
-                // Continue with application
-            }
-            
-            // Load CSS files in parallel with error handling
-            try {
-                // Create batches of CSS files to load in parallel (6 at a time to respect browser connection limits)
-                const batchSize = 6;
-                for (let i = 0; i < cssUrls.length; i += batchSize) {
-                    const batch = cssUrls.slice(i, i + batchSize);
-                    await Promise.all(batch.map(url => loadCSSWithProgress(url)));
-                }
-            } catch (error) {
-                console.error('Error loading CSS files:', error);
-                // Continue with application
-            }
-
-            // Resources loaded
+            // All files download in parallel. Non-async scripts still run in
+            // insertion order, so the support scripts run before the plugins
+            // that depend on them.
+            const scriptLoads = jsUrls.map(url => {
+                const script = document.createElement('script');
+                script.async = false;
+                script.src = url;
+                return loadResource(script, url, 'script');
+            });
+            const cssLoads = cssUrls.map(url => {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = url;
+                return loadResource(link, url, 'CSS');
+            });
+            await Promise.all([...scriptLoads, ...cssLoads]);
 
             // Initialize plugins sequentially to avoid Promise.all rejection on error
             for (const [displayName, {className}] of pluginDefinitions.entries()) {

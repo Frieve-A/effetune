@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'stereo_meter.js');
-const jsEngineHash = '53eae175f8c7ded1110034bd3960a6a807a2d6816498331a13ab64b1fad9127f';
+const jsEngineHash = '6094dcfecc9f9c1dd0faf371a1ac870ab7bbcf3a32a6377060caf4ffe9d8e7b7';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -184,7 +184,7 @@ test('Stereo Meter kernel and renderer freeze the bounded v2 sample-delta contra
   assert.match(sampleHandlerBody, /resetDspSampleBuffers/);
   assert.match(sampleHandlerBody, /xBuffer: this\.dspXBuffer/);
   assert.match(sampleHandlerBody, /yBuffer: this\.dspYBuffer/);
-  assert.match(renderer, /const weight = Math\.exp/);
+  assert.match(renderer, /return Math\.exp\(-\(offset \* offset\)/);
   assert.match(renderer, /Draw every sample in the selected window with the original age grading/);
 
   const coordinateBytesPerSecond = 96000 * 8;

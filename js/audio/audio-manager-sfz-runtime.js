@@ -430,8 +430,8 @@ export const audioManagerSfzRuntimeMethods = {
             this._stopSfzSampleStream(node, data.pluginId, data.generation);
             plugin.onWasmAssetRejected?.(0, 'sample-read', data.operationRevision);
         };
-        const request = async (type, replyType, payload) => {
-            const pending = this._requestDspControl(node, type, replyType, payload, 5000);
+        const request = async (type, replyType, payload, transfer) => {
+            const pending = this._requestDspControl(node, type, replyType, payload, 5000, transfer);
             const id = this._dspControlRequestSequence;
             stream.requests.add(id);
             try { return await pending; } finally { stream.requests.delete(id); }
@@ -444,7 +444,7 @@ export const audioManagerSfzRuntimeMethods = {
                     if (!current()) return false;
                     const answer = await request('sfzPublishPage', 'sfzStreamPagesPublished',
                         { pluginId: data.pluginId, operationRevision: data.operationRevision, replayEpoch: data.replayEpoch,
-                            generation: data.generation, page });
+                            generation: data.generation, page }, [page.pcm.buffer]);
                     return current() && answer?.ok === true;
                 } });
             if (!current()) { this._stopSfzSampleStream(node, data.pluginId, data.generation); return; }

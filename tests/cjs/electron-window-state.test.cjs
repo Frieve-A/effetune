@@ -334,6 +334,37 @@ test('saveWindowState writes rounded bounds and current maximized state', () => 
   assert.deepEqual(readSavedWindowState(harness.userDataPath), harness.windowState);
 });
 
+test('scheduled saves coalesce, read the live window, and yield to immediate saves', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let bounds = { x: 1, y: 1, width: 1200, height: 800 };
+  const harness = createHarness({
+    mainWindow: {
+      isDestroyed: () => false,
+      isMinimized: () => false,
+      isMaximized: () => false,
+      getNormalBounds: () => bounds
+    }
+  });
+  t.after(() => fs.rmSync(harness.userDataPath, { recursive: true, force: true }));
+  const statePath = path.join(harness.userDataPath, 'window-state.json');
+  harness.module.markRestoreComplete();
+
+  harness.module.scheduleWindowStateSave();
+  bounds = { x: 5, y: 6, width: 1200, height: 800 };
+  harness.module.scheduleWindowStateSave();
+  t.mock.timers.tick(299);
+  assert.equal(fs.existsSync(statePath), false);
+  t.mock.timers.tick(1);
+  assert.deepEqual(readSavedWindowState(harness.userDataPath).bounds, bounds);
+
+  harness.module.scheduleWindowStateSave();
+  bounds = { x: 9, y: 9, width: 1300, height: 900 };
+  harness.module.saveWindowState();
+  fs.rmSync(statePath);
+  t.mock.timers.tick(1000);
+  assert.equal(fs.existsSync(statePath), false);
+});
+
 test('saveWindowState creates the user data directory before writing', () => {
   const userDataPath = path.join(createTempDir('effetune-window-state'), 'missing-user-data');
   const harness = createHarness({

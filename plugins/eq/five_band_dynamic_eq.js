@@ -724,6 +724,8 @@ class FiveBandDynamicEQ extends PluginBase {
 
         // Setup ResizeObserver
         this.resizeObserver = new ResizeObserver(entries => {
+            // The canvas CSS size (read by _drawGraph) follows this container.
+            this._graphInputs = null;
             for (let entry of entries) {
                 const { width, height } = entry.contentRect;
                 if (width > 0 && height > 0) {
@@ -1111,6 +1113,16 @@ class FiveBandDynamicEQ extends PluginBase {
             this._zeroGains = new Float64Array(this.numBands);
         }
         const freqPoints = this._freqPoints;
+        // Curve x positions depend only on the canvas width.
+        if (!this._xPoints || this._xPointsWidth !== width) {
+            const xp = new Float64Array(freqPoints.length);
+            for (let i = 0; i < freqPoints.length; i++) {
+                xp[i] = width * (Math.log10(freqPoints[i]) - logMinFreq) / logFreqSpan;
+            }
+            this._xPoints = xp;
+            this._xPointsWidth = width;
+        }
+        const xPoints = this._xPoints;
 
         // --- Draw Static Curves for Selected Band (if enabled) ---
         if (this.currentBandIndex >= 0 && this.currentBandIndex < this.numBands) {
@@ -1124,7 +1136,7 @@ class FiveBandDynamicEQ extends PluginBase {
                     const freq = freqPoints[i];
                     // Calculate bandpass response (at 0dB gain, slightly amplified for visualization)
                     const gain = this._calculateBandResponse(freq, band.scf, 0, band.scq, 'bp');
-                    const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
+                    const x = xPoints[i];
                     const y = height * (1 - (gain - minGain) / gainRange);
                     if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
                 }
@@ -1141,7 +1153,7 @@ class FiveBandDynamicEQ extends PluginBase {
                 for (let i = 0; i < freqPoints.length; i++) {
                     const freq = freqPoints[i];
                     const gain = this._calculateBandResponse(freq, band.f, staticGain, band.q, band.ft);
-                    const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
+                    const x = xPoints[i];
                     const y = height * (1 - (gain - minGain) / gainRange);
                     if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
                 }
@@ -1168,7 +1180,7 @@ class FiveBandDynamicEQ extends PluginBase {
                     if (!band.en) continue;
                     totalResponse += this._calculateBandResponse(freq, band.f, currentGains[bandIdx], band.q, band.ft);
                 }
-                const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
+                const x = xPoints[i];
                 const y = height * (1 - (totalResponse - minGain) / gainRange);
                 if (i === 0) {
                     ctx.moveTo(x, y);
@@ -1341,15 +1353,42 @@ class FiveBandDynamicEQ extends PluginBase {
         if (this.animationFrameId) return; // Already running
         if (!this.enabled || !this._sectionEnabled) return; // Skip if disabled or section is off.
         if (this.isVisible === false) return;                // Skip if off-screen.
+        this._graphInputs = null;
         const animate = () => {
             if (this.isVisible === false) {
                 this.stopAnimation();
                 return;
             }
-            this._drawGraph();
+            if (this._graphInputsChanged()) this._drawGraph();
             this.animationFrameId = this.requestPowerAnimationFrame(animate);
         };
         this.animationFrameId = this.requestPowerAnimationFrame(animate);
+    }
+
+    // Returns true when any value that _drawGraph reads differs from the previous
+    // frame, so the loop skips redrawing an identical picture. The canvas CSS width
+    // is not sampled here: the ResizeObserver clears the snapshot instead.
+    _graphInputsChanged() {
+        const palette = window.ThemePalette;
+        const gains = this.latestSmoothedGains;
+        const inputs = [
+            this.canvas?.width, this.canvas?.height, this.sampleRate, this.numBands,
+            this.currentBandIndex, this.hasLocalAudio !== false,
+            palette?.get('graph-bg-deep'), palette?.get('graph-grid'), palette?.get('graph-tone-50'),
+            palette?.get('graph-tone-56'), palette?.get('graph-handle'), palette?.get('graph-trace'),
+            palette?.get('text-primary'),
+            gains?.length
+        ];
+        if (gains) for (let i = 0; i < gains.length; i++) inputs.push(gains[i]);
+        for (const b of this.bs) inputs.push(b.en, b.ft, b.f, b.q, b.mg, b.r, b.scf, b.scq);
+
+        const previous = this._graphInputs;
+        this._graphInputs = inputs;
+        if (!previous || previous.length !== inputs.length) return true;
+        for (let i = 0; i < inputs.length; i++) {
+            if (previous[i] !== inputs[i]) return true;
+        }
+        return false;
     }
 
     stopAnimation() {

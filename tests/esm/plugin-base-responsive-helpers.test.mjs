@@ -1058,3 +1058,37 @@ for (const [name, className, ratioMin] of [
     }
   });
 }
+
+test('message handler observer exists only until the worklet handler is registered', () => {
+  const observers = new Set();
+  const listeners = new Set();
+  const port = {
+    addEventListener(type, listener) { listeners.add(listener); },
+    removeEventListener(type, listener) { listeners.delete(listener); }
+  };
+  const windowRef = {};
+  const { PluginBase } = loadPluginBase({
+    window: windowRef,
+    globals: {
+      MutationObserver: class {
+        constructor(callback) { this.callback = callback; }
+        observe() { observers.add(this); }
+        disconnect() { observers.delete(this); }
+      }
+    }
+  });
+
+  const waiting = new PluginBase('Waiting', 'Created before the worklet');
+  assert.equal(observers.size, 1);
+  const [observer] = observers;
+  observer.callback();
+  assert.deepEqual([observers.size, listeners.size], [1, 0]);
+  windowRef.workletNode = { port };
+  observer.callback();
+  assert.deepEqual([observers.size, listeners.size], [0, 1]);
+
+  const live = new PluginBase('Live', 'Created with the worklet');
+  assert.deepEqual([observers.size, listeners.size], [0, 2]);
+  for (const plugin of [waiting, live]) plugin.cleanup();
+  assert.equal(listeners.size, 0);
+});

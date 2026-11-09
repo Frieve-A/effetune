@@ -38,7 +38,8 @@ void dryPressureAndRecovery() {
   CHECK(cache.admitForecast() == Admission::Pressure);
   CHECK(!cache.requestOverflow());
   CHECK(cache.publish({101, 1, 0}, pcm.data(), P, 1));
-  CHECK(!cache.publish({101, 2, 0}, pcm.data(), P, 1));
+  // Prediction data without a free slot is dropped instead of failing the stream.
+  CHECK(cache.publish({101, 2, 0}, pcm.data(), P, 1));
   cache.beginQuantum();
   CHECK(cache.publish({101, 2, 0}, pcm.data(), P, 1));
   float value = 0;
@@ -331,6 +332,28 @@ void actualPublicationPreservesRequiredPages() {
   }
 }
 
+void actualPublicationKeepsCollectingPlan() {
+  const SampleMetadata metadata{4u * P, 1, 48000};
+  std::array<float, P> pcm;
+  pcm.fill(.25F);
+  SamplePageCache cache;
+  CHECK(cache.configure(111, &metadata, 1, 1));
+  effetune::allocation_guard::Scope guard;
+  CHECK(cache.publish({111, 0, 0}, pcm.data(), P, 1));
+  cache.beginQuantum();
+  CHECK(cache.beginAdmission() && cache.requestWindow(0, 0, P));
+  CHECK(cache.admitForecast() == Admission::Admitted && cache.commitForecast());
+  cache.beginQuantum();
+  float value = 0;
+  CHECK(cache.readSample(0, P, 0, value) == SampleReadStatus::Unavailable);
+  // A plan spans CONTROL operations; an actual page published between them
+  // releases the old pins without abandoning the plan being collected.
+  CHECK(cache.beginAdmission() && cache.requestWindow(0, 2u * P, P));
+  CHECK(cache.publish({111, 1, 0}, pcm.data(), P, 1));
+  CHECK(cache.admitForecast() == Admission::Pressure);
+  CHECK(!cache.requestOverflow());
+}
+
 void mandatoryQueueStillRejectsTrueOverflow() {
   const SampleMetadata metadata{(SamplePageCache::kMaxRequests + 1u) * P, 1, 48000};
   SamplePageCache cache;
@@ -355,6 +378,7 @@ int main() {
   invalidPlanAndSourceCapacity();
   actualReadRetiresOptionalPrediction();
   actualPublicationPreservesRequiredPages();
+  actualPublicationKeepsCollectingPlan();
   mandatoryQueueStillRejectsTrueOverflow();
   CHECK(effetune::allocation_guard::violationCount() == 0);
   if (!failures)

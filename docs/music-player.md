@@ -1,6 +1,6 @@
 ---
 title: "Music Player - EffeTune"
-description: "Play music and video files through your EffeTune effect chain, change playback speed, use the Mini Player, and set up gapless playback."
+description: "Play music and video files through your EffeTune effect chain, change playback speed, use the Mini Player, and set up gapless playback and ReplayGain."
 lang: en
 ---
 
@@ -69,6 +69,20 @@ When the built-in Player starts or resumes playback, including track changes and
 ## Gapless Playback
 
 **Gapless Playback** in **Audio Configuration** is on by default and plays compatible local tracks without a gap; support is limited by the file format and the browser or app environment. Unsupported formats and some mobile environments use a memory-safe fallback, so a short gap may remain. Turning it off prioritizes lower memory use and stability, at the cost of a possible short gap; the change does not interrupt the current track. Gapless playback works only at 1x speed; changing speed during gapless playback restarts the track from the same position with a brief interruption.
+
+## ReplayGain
+
+Many music files carry ReplayGain tags, written by a tagging tool after measuring each song's loudness. Set **ReplayGain** in **Audio Configuration** to follow these tags so that songs from different albums play at a similar volume. EffeTune only reads the tags; it does not measure loudness or write tags. Files without ReplayGain tags play at their original level. In Opus files, the `R128_TRACK_GAIN` and `R128_ALBUM_GAIN` tags are also used.
+
+- **Off** (default): Tags are ignored.
+- **Track**: Brings every song to a similar level. Use this for shuffle and playlists that mix albums.
+- **Album**: Adjusts each album as a whole, keeping the level differences between its songs, such as a quiet intro. Use this when listening to albums from start to finish.
+
+If a file has only a track value or only an album value, that value is used in either mode. CUE sheet tracks use the tags in the referenced audio file.
+
+**ReplayGain Preamp** (-15 to +15 dB, default 0 dB) raises or lowers the level of tagged files only. ReplayGain often turns modern recordings down by several dB, so if tagged songs sound quieter than untagged ones, raise it. **Prevent Clipping** (on by default) uses the peak values in the tags to limit the gain so that boosted songs do not exceed full scale. These two settings are available when **ReplayGain** is **Track** or **Album**. Changes take effect immediately without interrupting playback.
+
+The adjustment is applied to the Player's sound before it enters the effect chain; the volume slider position does not change. ReplayGain does not apply to MIDI or MusicXML playback, network music, AirPlay reception, playback on OpenHome or UPnP AV / DLNA players, or offline file processing. ReplayGain is available in the desktop app and web/PWA player, but not the Android app.
 
 ## Video
 

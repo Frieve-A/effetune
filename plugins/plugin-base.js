@@ -115,14 +115,18 @@ class PluginBase {
             this._setupMessageHandler();
         }
 
-        // Observe mutations to detect when workletNode becomes available
-        if (this.audioHostActive) {
+        // Until the handler is registered, observe mutations to detect when
+        // workletNode becomes available. Once registered by any path, the
+        // handler stays registered until cleanup(), which also disconnects
+        // this observer, so the observer is no longer needed after that.
+        if (this.audioHostActive && !this._hasMessageHandler) {
             this._messageHandlerObserver = new MutationObserver(() => {
-                if (window.workletNode && !this._hasMessageHandler) {
+                if (!this._hasMessageHandler) {
+                    if (!window.workletNode) return;
                     this._setupMessageHandler();
-                    this._messageHandlerObserver?.disconnect();
-                    this._messageHandlerObserver = null;
                 }
+                this._messageHandlerObserver?.disconnect();
+                this._messageHandlerObserver = null;
             });
             this._messageHandlerObserver.observe(document, {
                 attributes: true,

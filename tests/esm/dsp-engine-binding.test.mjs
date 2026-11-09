@@ -252,7 +252,7 @@ test('SFZ page transport preserves uint64 identities and allocates only at confi
   const ptr = binding._sfzStreamPtr;
   binding.destroyEngine(); assert.ok(fake.calls.some(call => call[0] === 'free' && call[1] === ptr));
   delete exports.et_sfz_stream_capability;
-  assert.equal(binding.hasSfzSampleStreaming(), false);
+  assert.equal(new DspEngineBinding(fake.instance).hasSfzSampleStreaming(), false);
 });
 
 test('binding rejects missing ABI exports and invalid instances', () => {

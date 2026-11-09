@@ -1,6 +1,6 @@
 ---
 title: "Reproductor de música - EffeTune"
-description: "Reproduce archivos de música y de vídeo con la cadena de efectos de EffeTune, cambia la velocidad de reproducción, usa el reproductor mini y configura la reproducción sin pausas."
+description: "Reproduce archivos de música y de vídeo con la cadena de efectos de EffeTune, cambia la velocidad de reproducción, usa el reproductor mini y configura la reproducción sin pausas y ReplayGain."
 lang: es
 ---
 
@@ -67,6 +67,20 @@ El deslizador de volumen y el botón de silencio permiten ajustar el sonido del 
 ## Reproducción sin pausas
 
 **Reproducción sin pausas**, en **Configuración de audio**, está activada de forma predeterminada y reproduce sin pausa las pistas locales compatibles; su compatibilidad está limitada por el formato del archivo y por el entorno del navegador o de la aplicación. Los formatos no compatibles y algunos entornos móviles usan un modo alternativo seguro que ahorra memoria, por lo que puede quedar una pausa breve. Al desactivarla se da prioridad a un menor uso de memoria y a la estabilidad, a costa de una posible pausa breve; el cambio no interrumpe la pista actual. La reproducción sin pausas solo funciona a velocidad 1x; si cambias la velocidad durante la reproducción sin pausas, la pista se reanuda desde la misma posición tras una breve interrupción.
+
+## ReplayGain
+
+Muchos archivos de música llevan etiquetas ReplayGain, que un programa de etiquetado escribe tras medir el volumen de cada canción. Ajusta **ReplayGain** en **Configuración de audio** para seguir esas etiquetas y escuchar con un volumen parecido canciones de álbumes distintos. EffeTune solo lee las etiquetas: no mide el volumen ni escribe etiquetas. Los archivos sin etiquetas ReplayGain se reproducen a su nivel original. En los archivos Opus también se usan las etiquetas `R128_TRACK_GAIN` y `R128_ALBUM_GAIN`.
+
+- **Desactivado** (predeterminado): no se usan las etiquetas.
+- **Pista**: lleva todas las canciones a un volumen parecido. Es lo adecuado para el modo aleatorio y para listas que mezclan álbumes.
+- **Álbum**: ajusta cada álbum como un conjunto y conserva las diferencias de volumen entre sus canciones, como una introducción suave. Es lo adecuado para escuchar álbumes completos de principio a fin.
+
+Si un archivo solo tiene el valor de pista o solo el de álbum, se usa ese valor en cualquiera de los dos modos. Las pistas de una hoja CUE usan las etiquetas del archivo de audio al que remiten.
+
+**Preamplificación de ReplayGain** (de -15 a +15 dB; 0 dB de forma predeterminada) sube o baja el nivel solo de los archivos con etiquetas. ReplayGain suele bajar varios dB las grabaciones actuales, así que, si las canciones con etiquetas suenan más bajas que las que no las tienen, súbelo. **Evitar la saturación digital** (activado de forma predeterminada) usa los valores de pico de las etiquetas para limitar la ganancia y que las canciones amplificadas no superen la escala completa. Estos dos ajustes están disponibles cuando **ReplayGain** está en **Pista** o **Álbum**. Los cambios se aplican al momento, sin interrumpir la reproducción.
+
+El ajuste se aplica al sonido del reproductor antes de entrar en la cadena de efectos; la posición del control de volumen no cambia. ReplayGain no se aplica a la reproducción de MIDI o MusicXML, la música en red, la recepción por AirPlay, la reproducción en reproductores OpenHome o UPnP AV / DLNA ni el procesamiento de archivos sin conexión. ReplayGain está disponible en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación de Android.
 
 ## Vídeo {#video}
 

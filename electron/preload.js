@@ -382,6 +382,7 @@ contextBridge.exposeInMainWorld(
     readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
     readMidiWrd: filePath => ipcRenderer.invoke('read-midi-wrd', filePath),
     readTrackTags: filePath => ipcRenderer.invoke('read-track-tags', filePath),
+    readReplayGain: filePath => ipcRenderer.invoke('read-replay-gain', filePath),
     openPlaybackRange: filePath => ipcRenderer.invoke('open-playback-range', filePath),
     readPlaybackRange: (token, offset, length) => ipcRenderer.invoke('read-playback-range', token, offset, length),
     closePlaybackRange: token => ipcRenderer.invoke('close-playback-range', token),

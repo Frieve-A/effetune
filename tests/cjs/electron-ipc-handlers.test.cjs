@@ -717,6 +717,9 @@ test('registers core handlers and delegates file, config, update, path, and URL 
         useInputWithPlayer: false,
         useWasmDsp: true,
         gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         outputChannels: 2,
         latencyHint: 'interactive'
       }
@@ -867,6 +870,35 @@ test('read-track-tags validates the path before artwork and closes both worker p
 
     await assert.rejects(readTrackTags(ipcMain.fileEvent(), 'relative.flac'), error => error?.code === 'invalidMetadataRequest');
     assert.deepEqual(poolCalls.map(call => call[0]), ['metadata.parse', 'metadata.close', 'artwork.close']);
+  });
+});
+
+test('read-replay-gain returns only the ReplayGain values of an authorized file', async () => {
+  const replayGain = { trackGainDb: -6.2, trackPeak: 0.98, albumGainDb: null, albumPeak: null };
+  const poolCalls = [];
+  class FakeMetadataWorkerPool {
+    constructor() {
+      poolCalls.push(['create']);
+    }
+    async parse(request) {
+      poolCalls.push(['parse', request]);
+      return { replayGain };
+    }
+  }
+  await withHarness({
+    moduleStubs: { './library-metadata-worker-pool.cjs': { MetadataWorkerPool: FakeMetadataWorkerPool } }
+  }, async ({ ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const readReplayGain = ipcMain.handlers.get('read-replay-gain');
+    const filePath = path.join(tempDir, 'penia.flac');
+    await assert.rejects(readReplayGain(ipcMain.fileEvent(), filePath), /Select this file/);
+    assert.deepEqual(poolCalls, []);
+    fileAccess.grantRead(filePath);
+    assert.deepEqual(await readReplayGain(ipcMain.fileEvent(), filePath), replayGain);
+    assert.deepEqual(await readReplayGain(ipcMain.fileEvent(), filePath), replayGain);
+    const request = ['parse', { path: filePath, relativePath: 'penia.flac', skipCovers: true, replayGain: true }];
+    // One resident pool serves every read.
+    assert.deepEqual(poolCalls, [['create'], request, request]);
   });
 });
 
@@ -1606,7 +1638,10 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
-        gaplessPlayback: true
+        gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true
       }
     );
 
@@ -1672,7 +1707,10 @@ test('audio preference IPC persists a verified output-device fallback without re
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',
-        gaplessPlayback: true
+        gaplessPlayback: true,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true
       }
     );
 

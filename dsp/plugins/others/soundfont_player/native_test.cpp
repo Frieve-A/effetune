@@ -254,14 +254,16 @@ struct Player {
     return true;
   }
   void configure(unsigned channel, float gain = 0, unsigned voices = 64, unsigned quality = 0,
-                 bool fallback = true, int previewMidi = -1, unsigned previewChannel = 0) {
+                 bool fallback = true, int previewMidi = -1, unsigned previewChannel = 0,
+                 bool strict = false) {
     generated::SoundFontPlayerPluginParams params{static_cast<float>(channel),
                                                   static_cast<float>(voices),
                                                   gain,
                                                   static_cast<float>(quality),
                                                   fallback ? 1.0F : 0.0F,
                                                   static_cast<float>(previewMidi),
-                                                  static_cast<float>(previewChannel)};
+                                                  static_cast<float>(previewChannel),
+                                                  strict ? 1.0F : 0.0F};
     CHECK(kernel->stageParameters(reinterpret_cast<const float *>(&params),
                                   descriptor->paramsFloatCount, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -1823,9 +1825,24 @@ void sf2CollectionPlayback() {
                         0, 2) == ET_OK);
     player.process();
     player.process();
-    const auto expected = channel == 9 ? .01F : channel & 1u ? .1F : 1.0F;
+    // Standard compatibility scales the 400cB and 200cB attenuation generators by 0.4.
+    const auto expected = channel == 9   ? std::pow(10.0F, -.8F)
+                          : channel & 1u ? std::pow(10.0F, -.4F)
+                                         : 1.0F;
     CHECK(std::abs(player.peak() / reference - expected) < .0001F);
   }
+  // SF2.04 Strict applies the attenuation generators literally.
+  std::array<float, 2> strictPeaks{};
+  for (auto program = 0u; program < 2u; ++program) {
+    Player strict;
+    strict.loadSf2();
+    strict.configure(0, 0, 64, 0, true, -1, 0, true);
+    CHECK(strict.events({event(0, 0xc0, program, 0), event(0, 0x90, 72, 127, 1)}, 0, 2) == ET_OK);
+    strict.process();
+    strict.process();
+    strictPeaks[program] = strict.peak();
+  }
+  CHECK(std::abs(strictPeaks[1] / strictPeaks[0] - .1F) < .0001F);
   Player pendingBank, committedBank, drum;
   for (auto *player : {&pendingBank, &committedBank, &drum})
     player->loadSf2();
@@ -1839,8 +1856,8 @@ void sf2CollectionPlayback() {
     player->process();
   }
   CHECK(std::abs(pendingBank.peak() / reference - 1.0F) < .0001F);
-  CHECK(std::abs(committedBank.peak() / reference - std::pow(10.0F, -.5F)) < .0001F);
-  CHECK(std::abs(drum.peak() / reference - .01F) < .0001F);
+  CHECK(std::abs(committedBank.peak() / reference - std::pow(10.0F, -.2F)) < .0001F);
+  CHECK(std::abs(drum.peak() / reference - std::pow(10.0F, -.8F)) < .0001F);
   Player unchanged, changed;
   for (auto *player : {&unchanged, &changed}) {
     player->loadSf2();
@@ -1952,8 +1969,9 @@ void sf2SoundOffAndModulation() {
     if (block == 11u || block == 34u) {
       const auto up = positive.audio[64] / reference.audio[64];
       const auto down = negative.audio[64] / reference.audio[64];
-      CHECK(block == 11u ? up > 3.0F && down < .34F : up < .34F && down > 3.0F);
-      CHECK(std::abs(up * down - 1.0F) < .001F);
+      // Like FluidSynth, the LFO only attenuates: the boosting half-cycle stays at unity.
+      CHECK(block == 11u ? std::abs(up - 1.0F) < .001F && down < .34F
+                         : up < .34F && std::abs(down - 1.0F) < .001F);
     }
   }
   float center = 0;
@@ -1966,8 +1984,9 @@ void sf2SoundOffAndModulation() {
     if (pan == 0)
       center = player.audio[64] * std::sqrt(2.0F);
     const auto left = player.audio[64] / center, right = player.audio[192] / center;
-    CHECK(std::abs(left - std::sqrt((1.0F - pan * .002F) * .5F)) < .0001F);
-    CHECK(std::abs(right - std::sqrt((1.0F + pan * .002F) * .5F)) < .0001F);
+    const auto angle = (pan * .002F + 1.0F) * .78539816F;
+    CHECK(std::abs(left - std::cos(angle)) < .0001F);
+    CHECK(std::abs(right - std::sin(angle)) < .0001F);
     CHECK(std::abs(left * left + right * right - 1) < .0001F);
   }
 }
@@ -2931,7 +2950,7 @@ void percussionDesignation() {
       actual.process();
       // A pending bank select remains pending when returning to melodic mode.
       CHECK(mixerU16(readMixer(*actual.kernel).data() + 8u + channel * 32u) == 0u);
-      CHECK(std::abs(actual.peak() / drumPeak - 100.0F) < .001F);
+      CHECK(std::abs(actual.peak() / drumPeak - std::pow(10.0F, .8F)) < .001F);
     }
   const std::array<std::array<std::uint32_t, 2>, 4> presets{{{0, 0}, {0, 1}, {128, 1}, {128, 0}}};
   Player kit;
@@ -2940,7 +2959,7 @@ void percussionDesignation() {
   CHECK(kit.events({event(0, 0x92, 72, 127, 1)}, 0, 2) == ET_OK);
   kit.process();
   kit.process();
-  CHECK(std::abs(kit.peak() / drumPeak - std::pow(10.0F, 1.5F)) < .001F);
+  CHECK(std::abs(kit.peak() / drumPeak - std::pow(10.0F, .6F)) < .001F);
   CHECK(kit.events({}, ET_MIDI_PAUSE, 2) == ET_OK);
   std::vector<std::uint8_t> checkpoint(kit.kernel->midiCheckpointSize());
   CHECK(!checkpoint.empty());
@@ -3558,15 +3577,15 @@ void extendedVoiceCapacity() {
   }
 }
 void selectableSampleQuality() {
-  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 7u);
+  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 8u);
   auto r = region();
   r[LoopStart] = r[Offset] = 37;
   r[LoopEnd] = 1006;
   r[KeyCenter] = 55;
   Player current({r}, false, false, {}, true);
-  CHECK(current.descriptor->paramsFloatCount == 7u);
+  CHECK(current.descriptor->paramsFloatCount == 8u);
   CHECK(current.descriptor->paramsHash == generated::SoundFontPlayerPluginParams::kHash);
-  const std::array<float, 7> defaults{0, 64, 0, 0, 1, -1, 0};
+  const std::array<float, 8> defaults{0, 64, 0, 0, 1, -1, 0, 0};
   CHECK(current.kernel->stageParameters(defaults.data(), 3, current.descriptor->paramsHash) ==
         ET_ERR_ARGS);
   CHECK(current.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);

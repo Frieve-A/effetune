@@ -366,7 +366,7 @@ test('Stereo Meter retains raw-buffer bucketing and statistics as processBuffer 
   assert.match(plugin.processorString, /right = data\[i \+ blockSize\]/);
   assert.match(plugin.processorString, /Math\.exp\(-timeDelta \* LOG10\)/);
   assert.match(plugin.processorString, /measurementInterval = 1 \/ 60/);
-  assert.match(plugin.drawMeter.toString(), /buckets\[green\]\.push/);
+  assert.match(plugin.drawMeter.toString(), /if \(green !== currentGreen\)/);
 });
 
 test('Stereo Meter v2 keeps full-precision 96 kHz deltas below 0.9 MB/s', () => {

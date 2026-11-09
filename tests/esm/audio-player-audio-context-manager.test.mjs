@@ -812,10 +812,13 @@ class FakeAudioElement {
   }
 }
 
-async function waitForPendingMediaStartCandidate() {
+async function waitForPendingMediaStartCandidate({ started = true } = {}) {
   for (let index = 0; index < 20; index += 1) {
     const candidate = FakeAudioElement.instances.at(-1);
-    if ((candidate?.listeners.get('ended') || []).length > 0) return candidate;
+    if ((candidate?.listeners.get('ended') || []).length > 0 &&
+        (!started || FakeAudioElement.calls.some(call => call[0] === 'audio.play' && call[1] === candidate.src))) {
+      return candidate;
+    }
     await flushMicrotasks();
   }
   return FakeAudioElement.instances.at(-1);
@@ -3688,6 +3691,273 @@ test('every player source retains volume and mute through seek, scheduling, and 
   });
 });
 
+test('ReplayGain scales each player source by its own track and follows volume, mute, and setting changes', async () => {
+  const gains = {
+    'C:\\Music\\current.flac': { trackGainDb: -6, trackPeak: 0.5, albumGainDb: -12, albumPeak: 0.5 },
+    'C:\\Music\\next.flac': { trackGainDb: 6, trackPeak: 0.25, albumGainDb: 0, albumPeak: 0.25 }
+  };
+  const reads = [];
+  const electronAPI = { async readReplayGain(path) { reads.push(path); return gains[path]; } };
+  await withAudioContextGlobals({ electronAPI, electronIntegration: { isElectron: true } }, async ({ calls }) => {
+    const harness = createHarness({ calls, isPlaying: true });
+    const { manager, audioContext } = harness;
+    let gainSequence = 0;
+    audioContext.createGain = () => createNode(calls, `player-gain-${++gainSequence}`);
+    const current = { path: 'C:\\Music\\current.flac' };
+    const next = { path: 'C:\\Music\\next.flac' };
+    // A converted playable copy shares the ReplayGain of its original track.
+    const nextPlayable = { path: 'C:\\Temp\\next.wav', presentationTrack: next };
+    harness.state.currentTrack = current;
+    manager.audioPlayer.replayGain = { mode: 'off', preampDb: 0, preventClipping: false };
+    manager.setPlayerVolume(50);
+    const currentSource = createNode(calls, 'current-source');
+    const nextSource = createNode(calls, 'next-source');
+    manager.preparePlaybackSource(currentSource);
+    manager.preparePlaybackSource(nextSource, nextPlayable);
+    manager.nextBuffer = { track: next, playableTrack: nextPlayable };
+    const currentVolume = manager.playerVolumeGains.get(currentSource);
+    const nextVolume = manager.playerVolumeGains.get(nextSource);
+    const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} != ${expected}`);
+    close(currentVolume.gain.value, .5);
+    close(nextVolume.gain.value, .5);
+
+    await manager.applyReplayGainPreference();
+    assert.deepEqual(reads, [], 'Off must not read tags');
+
+    manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+    await manager.applyReplayGainPreference();
+    assert.deepEqual(reads.sort(), ['C:\\Music\\current.flac', 'C:\\Music\\next.flac']);
+    close(currentVolume.gain.value, .5 * 10 ** (-6 / 20));
+    close(nextVolume.gain.value, .5 * 10 ** (6 / 20));
+
+    manager.audioPlayer.replayGain = { mode: 'album', preampDb: 0, preventClipping: true };
+    await manager.applyReplayGainPreference();
+    close(currentVolume.gain.value, .5 * 10 ** (-12 / 20));
+    close(nextVolume.gain.value, .5);
+
+    manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: true };
+    await manager.applyReplayGainPreference();
+    // A 0.25 peak allows +6 dB without clipping.
+    close(nextVolume.gain.value, .5 * 10 ** (6 / 20));
+    manager.setPlayerMute(true);
+    assert.equal(currentVolume.gain.value, 0);
+    assert.equal(nextVolume.gain.value, 0);
+    manager.setPlayerMute(false);
+    manager.setPlayerVolume(20);
+    close(currentVolume.gain.value, .2 * 10 ** (-6 / 20));
+    // A source recreated later for the current track keeps its factor.
+    const recreated = createNode(calls, 'recreated-source');
+    manager.preparePlaybackSource(recreated);
+    close(manager.playerVolumeGains.get(recreated).gain.value, .2 * 10 ** (-6 / 20));
+    assert.equal(reads.length, 2, 'values are read once per track');
+    for (const source of [currentSource, nextSource, recreated]) manager.releasePipelineSource(source);
+    manager.disconnect();
+  });
+});
+
+for (const operation of ['load', 'prefetch']) {
+  test(`ReplayGain enabled during ${operation} preparation applies before the track is published`, async () => {
+    const reads = [];
+    let completeRead;
+    const electronAPI = {
+      readReplayGain(path) {
+        reads.push(path);
+        return new Promise(resolve => { completeRead = resolve; });
+      }
+    };
+    await withAudioContextGlobals({ electronAPI, electronIntegration: { isElectron: true } }, async ({ calls }) => {
+      const current = { name: 'Current', path: 'https://example.test/current.wav', data: new Uint8Array([1]) };
+      const track = { name: 'Tagged', path: `C:\\Music\\ReplayGain-${operation}.flac`, data: new Uint8Array([2]) };
+      const harness = createHarness({ calls, playlist: [current, track],
+        currentTrack: operation === 'prefetch' ? current : null, currentTrackIndex: 0 });
+      const { manager, audioContext } = harness;
+      audioContext.createGain = () => createNode(calls, 'player-gain');
+      manager.audioPlayer.replayGain = { mode: 'off', preampDb: 0, preventClipping: false };
+      manager.loadMetadata = () => {};
+      manager.prepareNextTrackBufferWithRepeatMode = () => {};
+      let completeBuffer;
+      manager.prepareTrackBuffer = () => new Promise(resolve => { completeBuffer = resolve; });
+      let scheduledGain = null;
+      manager.schedulePreparedBufferTransition = prepared => {
+        const source = createNode(calls, 'scheduled-source');
+        scheduledGain = manager.preparePlaybackSource(source, prepared.playableTrack).gain.value;
+        manager.releasePipelineSource(source);
+      };
+      try {
+        const pending = operation === 'load'
+          ? manager.loadTrack(track, 1)
+          : manager.prepareNextTrackBufferForTrack(track, 1);
+        await flushMicrotasks();
+        assert.equal(typeof completeBuffer, 'function');
+        assert.deepEqual(reads, [], 'Off does not parse tags during preparation');
+        manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+        await manager.applyReplayGainPreference();
+        assert.deepEqual(reads, [], 'the in-flight track is not published yet');
+        completeBuffer({ duration: 20 });
+        await flushMicrotasks();
+        assert.deepEqual(reads, [track.path]);
+        assert.equal(manager.nextBuffer, null);
+        assert.notEqual(harness.state.currentTrack, track);
+        completeRead({ trackGainDb: -6 });
+        await pending;
+        if (operation === 'load') {
+          assert.equal(harness.state.currentTrack, track);
+          const source = createNode(calls, 'loaded-source');
+          scheduledGain = manager.preparePlaybackSource(source).gain.value;
+          manager.releasePipelineSource(source);
+        } else {
+          assert.equal(manager.nextBuffer.track, track);
+        }
+        assert.ok(Math.abs(scheduledGain - 10 ** (-6 / 20)) < 1e-12, `${scheduledGain}`);
+      } finally { manager.disconnect(); }
+    });
+  });
+}
+
+for (const operation of ['load', 'transition']) {
+  test(`ReplayGain enabled during ${operation} media readiness is settled before publication`, async () => {
+    const reads = [];
+    let completeRead;
+    await withAudioContextGlobals({
+      audioElements: [{ readyState: 0, duration: Number.NaN }],
+      electronIntegration: { isElectron: true },
+      electronAPI: { readReplayGain(path) {
+        reads.push(path);
+        return new Promise(resolve => { completeRead = resolve; });
+      } }
+    }, async ({ calls }) => {
+      const track = { name: 'Media tags', path: `C:\\Music\\media-readiness-${operation}.flac`,
+        byteLength: 300 * 1024 * 1024 };
+      const { manager, state, audioContext } = createHarness({ calls, playlist: [track] });
+      audioContext.createGain = () => createNode(calls, 'media-tag-gain');
+      manager.audioPlayer.replayGain = { mode: 'off', preampDb: 0, preventClipping: false };
+      manager.loadMetadata = () => {};
+      manager.prepareNextTrackBufferWithRepeatMode = () => {};
+      try {
+        const pending = operation === 'load' ? manager.loadTrack(track, 0) : manager.transitionToNextTrack(track, 0);
+        await flushMicrotasks();
+        const element = FakeAudioElement.instances[0];
+        assert.equal(element.readyState, 0);
+        manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+        await manager.applyReplayGainPreference();
+        assert.deepEqual(reads, [], 'the waiting media document is not published yet');
+        element.readyState = 1;
+        element.duration = 12;
+        element.dispatch('loadedmetadata');
+        await flushMicrotasks();
+        assert.deepEqual(reads, [track.path]);
+        assert.notEqual(state.currentTrack, track);
+        completeRead({ trackGainDb: -9 });
+        assert.equal(await pending, true);
+        assert.equal(state.currentTrack, track);
+        const gain = manager.playerVolumeGains.get(manager.mediaSource).gain.value;
+        assert.ok(Math.abs(gain - 10 ** (-9 / 20)) < 1e-12, `${gain}`);
+      } finally { manager.disconnect(); }
+    });
+  });
+}
+
+test('ReplayGain survives a graph rebuild that re-resolves the current catalog track', async () => {
+  const reads = [];
+  const electronAPI = {
+    async readReplayGain(path) {
+      reads.push(path);
+      return { trackGainDb: -8, trackPeak: null, albumGainDb: null, albumPeak: null };
+    }
+  };
+  await withAudioContextGlobals({ electronAPI, electronIntegration: { isElectron: true } }, async ({ calls }) => {
+    const track = {
+      name: 'ReplayGain catalog track',
+      path: 'D:\\Music\\ReplayGainRebuild.flac',
+      libraryTrackId: 'replay-gain-catalog-track',
+      sourceKind: 'electron-file'
+    };
+    const harness = createHarness({
+      calls,
+      playlist: [track],
+      currentTrack: track,
+      currentTrackIndex: 0,
+      currentTrackPosition: 4,
+      isPlaying: false,
+      isPaused: true,
+      isStopped: false,
+      playbackMode: 'bufferSource'
+    });
+    const { manager, audioContext } = harness;
+    audioContext.createGain = () => createNode(calls, 'player-gain');
+    manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+    manager.setPlayerVolume(100);
+    await manager.applyReplayGainPreference();
+    // Catalog revalidation hands back a new object for the same entry.
+    const revalidated = { ...track };
+    harness.audioPlayer.playbackManager.prepareCatalogTrackForGraphRebuild = async () => ({
+      handled: false, track: revalidated, ordinal: 0
+    });
+    manager.createPlaybackDecisionRecord = () => ({
+      committedMode: 'buffer',
+      decision: { allowMediaFallback: false },
+      playableTrack: revalidated
+    });
+    manager.prepareTrackBuffer = async () => ({ duration: 20 });
+
+    await manager.handleAudioGraphRebuilt();
+
+    assert.equal(harness.state.currentTrack, revalidated);
+    const source = createNode(calls, 'rebuilt-source');
+    manager.preparePlaybackSource(source);
+    const gain = manager.playerVolumeGains.get(source).gain.value;
+    assert.ok(Math.abs(gain - 10 ** (-8 / 20)) < 1e-12, `${gain}`);
+    assert.deepEqual(reads, [track.path], 'the same file is not read again');
+    manager.releasePipelineSource(source);
+    manager.disconnect();
+  });
+});
+
+test('ReplayGain enabled during graph buffer decoding follows the revalidated track into resumed playback', async () => {
+  const reads = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: { async readReplayGain(path) { reads.push(path); return { trackGainDb: -7 }; } }
+  }, async ({ calls }) => {
+    const track = { name: 'Rebuilt tags', path: 'C:\\Music\\ReplayGain-late-graph.flac',
+      sourceKind: 'electron-file', libraryTrackId: 'replay-gain-late-graph' };
+    const revalidated = { ...track };
+    const { manager, audioContext, audioPlayer, state } = createHarness({ calls,
+      playlist: [track], currentTrack: track, currentTrackIndex: 0, currentTrackPosition: 4,
+      isPlaying: true, isPaused: false, isStopped: false, playbackMode: 'bufferSource' });
+    audioContext.createGain = () => createNode(calls, 'rebound-tag-gain');
+    manager.currentBuffer = { duration: 20 };
+    manager.currentBufferSource = createNode(calls, 'old-rebound-tag-source');
+    manager.audioPlayer.replayGain = { mode: 'off', preampDb: 0, preventClipping: false };
+    audioPlayer.playbackManager.prepareCatalogTrackForGraphRebuild = async () => ({
+      handled: false, track: revalidated, ordinal: 0
+    });
+    manager.createPlaybackDecisionRecord = () => ({ committedMode: 'buffer',
+      decision: { allowMediaFallback: false }, playableTrack: revalidated });
+    let completeBuffer;
+    manager.prepareTrackBuffer = () => new Promise(resolve => { completeBuffer = resolve; });
+    manager.loadMetadata = () => {};
+    manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    try {
+      const rebuilding = manager.handleAudioGraphRebuilt();
+      await flushMicrotasks();
+      assert.equal(typeof completeBuffer, 'function');
+      assert.deepEqual(reads, [], 'Off skips tag parsing during decoding');
+      manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+      await manager.applyReplayGainPreference();
+      assert.equal(state.currentTrack, track, 'preference updates still see the old identity');
+      assert.equal(manager.replayGains.has(revalidated), false);
+      completeBuffer({ duration: 20 });
+      await rebuilding;
+      assert.equal(state.currentTrack, revalidated);
+      assert.equal(state.isPlaying, true);
+      const gain = manager.playerVolumeGains.get(manager.currentBufferSource).gain.value;
+      assert.ok(Math.abs(gain - 10 ** (-7 / 20)) < 1e-12, `${gain}`);
+      assert.deepEqual(reads, [track.path], 'the revalidated identity reuses the file tag read');
+    } finally { manager.disconnect(); }
+  });
+});
+
 test('every player source gets a silent stereo floor so mono upmixes without channel metadata', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     const routing = [];
@@ -4027,6 +4297,47 @@ test('structured fallback reserves aggregate bytes before read and releases admi
     assert.equal(admittedHarness.manager.rollingReservationLedger.totalReservedBytes(), 0);
   });
 });
+
+for (const operation of ['load', 'prefetch', 'selection']) {
+  test(`structured fallback ${operation} releases prepared PCM when superseded during ReplayGain`, async () => {
+    let completeRead;
+    await withAudioContextGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: { readReplayGain() { return new Promise(resolve => { completeRead = resolve; }); } }
+    }, async ({ calls }) => {
+      const file = new FakeFile(`stale-tags-${operation}.flac`, new Uint8Array(1024).buffer);
+      const track = { name: file.name, file, path: `C:\\Music\\${file.name}`,
+        durationSec: 1, sampleRate: 48000, channelCount: 2 };
+      const current = { name: 'Current', path: 'https://example.test/current.wav' };
+      const { manager } = createHarness({ calls, playlist: [current, track], currentTrack: current,
+        audioContextOptions: { decodedBuffer: { duration: 1, length: 48000, numberOfChannels: 2, sampleRate: 48000 } } });
+      const descriptor = manager.createPlaybackSourceDescriptor(track);
+      const record = manager.createPartialDecodeFallbackRecord(
+        manager.createPlaybackDecisionRecord(track, descriptor),
+        Object.assign(new Error('partial-decode-unsupported'), { code: 'partial-decode-unsupported',
+          partialDecodeFailure: Object.freeze({ reason: 'partial-decode-unsupported', format: 'flac',
+            sourceByteLength: file.size, decodedPcmBytes: 48000 * 2 * Float32Array.BYTES_PER_ELEMENT, verified: true }) }),
+        'candidate', { sourceGeneration: 93 });
+      manager.preparePlaybackDecisionRecord = () => record;
+      manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+      let currentSelection = true;
+      try {
+        const pending = operation === 'load' ? manager.loadTrack(track, 1)
+          : operation === 'prefetch' ? manager.prepareNextTrackBufferForTrack(track, 1)
+            : manager.prepareTrackSelection(track, () => currentSelection);
+        await flushMicrotasks();
+        assert.equal(manager.rollingReservationLedger.totalReservedBytes(), 48000 * 2 * Float32Array.BYTES_PER_ELEMENT);
+        if (operation === 'prefetch') manager.clearNextTrackBuffer();
+        else if (operation === 'selection') currentSelection = false;
+        else manager.beginLoadRequest(current, 0);
+        completeRead({ trackGainDb: -6 });
+        await pending;
+        assert.equal(manager.rollingReservationLedger.totalReservedBytes(), 0);
+        assert.equal(manager.nextBuffer, null);
+      } finally { manager.disconnect(); }
+    });
+  });
+}
 
 test('graph rebuild starts with a synchronous barrier and converges non-playing on rebind failure', async () => {
   await withAudioContextGlobals({
@@ -7411,7 +7722,7 @@ test('a candidate error or end during activation staging prevents media start', 
           throwOnError: true
         });
         await entered;
-        const candidate = await waitForPendingMediaStartCandidate();
+        const candidate = await waitForPendingMediaStartCandidate({ started: false });
         assert.equal((candidate.listeners.get('error') || []).length, 1);
         if (eventType === 'error') candidate.error = { code: 2 };
         else candidate.ended = true;

@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   canPersistAudioPreferencesWithoutReload,
-  isGaplessPlaybackOnlyChange
+  isPlayerPreferenceOnlyChange
 } = require('../../electron/audio-preferences-policy.cjs');
 const {
   loadFreshModule,
@@ -46,7 +46,7 @@ test('MIDI-device-only IPC preserves audio preferences and never reloads, includ
   } finally { await fs.rm(tempRoot, { recursive: true, force: true }); }
 });
 
-test('Electron accepts reload suppression only for a gapless-only change', () => {
+test('Electron accepts reload suppression only for a player-only change', () => {
   const previous = {
     inputDeviceId: 'default',
     outputDeviceId: 'default',
@@ -57,13 +57,19 @@ test('Electron accepts reload suppression only for a gapless-only change', () =>
   assert.equal(canPersistAudioPreferencesWithoutReload(
     previous,
     { ...previous, gaplessPlayback: false },
-    { applyInPlace: 'gapless-playback' },
+    { applyInPlace: 'player-preferences' },
+    noInput
+  ), true);
+  assert.equal(canPersistAudioPreferencesWithoutReload(
+    previous,
+    { ...previous, replayGainMode: 'track', replayGainPreampDb: 1.5, replayGainPreventClipping: false },
+    { applyInPlace: 'player-preferences' },
     noInput
   ), true);
   assert.equal(canPersistAudioPreferencesWithoutReload(
     previous,
     { ...previous, sampleRate: 96000, gaplessPlayback: false },
-    { applyInPlace: 'gapless-playback' },
+    { applyInPlace: 'player-preferences' },
     noInput
   ), false);
   assert.equal(canPersistAudioPreferencesWithoutReload(
@@ -92,7 +98,7 @@ test('Electron ignores device label differences while the device IDs are unchang
     outputDeviceLabel: 'Desk speakers',
     gaplessPlayback: true
   };
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     ...previous,
     inputDeviceLabel: 'Mic One',
     outputDeviceLabel: 'Desk speakers (2)',
@@ -101,19 +107,19 @@ test('Electron ignores device label differences while the device IDs are unchang
   assert.equal(canPersistAudioPreferencesWithoutReload(
     previous,
     { ...previous, inputDeviceLabel: 'Mic One', gaplessPlayback: false },
-    { applyInPlace: 'gapless-playback' },
+    { applyInPlace: 'player-preferences' },
     noInput
   ), true);
   assert.equal(canPersistAudioPreferencesWithoutReload(
     previous,
     { ...previous, inputDeviceLabel: 'Mic One' },
-    { applyInPlace: 'gapless-playback' },
+    { applyInPlace: 'player-preferences' },
     noInput
   ), false);
   assert.equal(canPersistAudioPreferencesWithoutReload(
     previous,
     { ...previous, outputDeviceId: 'speaker-2', gaplessPlayback: false },
-    { applyInPlace: 'gapless-playback' },
+    { applyInPlace: 'player-preferences' },
     noInput
   ), false);
 });
@@ -180,7 +186,7 @@ test('registered Electron IPC defaults missing input selections to None and pres
   }
 });
 
-test('registered Electron IPC persists canonical gapless changes without reload', async () => {
+test('registered Electron IPC persists canonical player changes without reload', async () => {
   const rawTempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-ipc-audio-preferences-'));
   const tempRoot = await fs.realpath(rawTempRoot);
   const preferencesPath = path.join(tempRoot, 'audio-preferences.json');
@@ -215,7 +221,7 @@ test('registered Electron IPC persists canonical gapless changes without reload'
       return timers.length;
     }, async () => {
       assert.deepEqual(await save(null, { gaplessPlayback: false }, {
-        applyInPlace: 'gapless-playback'
+        applyInPlace: 'player-preferences'
       }), { success: true });
       assert.deepEqual(messages, []);
       assert.deepEqual(timers, []);
@@ -226,9 +232,21 @@ test('registered Electron IPC persists canonical gapless changes without reload'
       assert.equal(savedGaplessPreferences.customPreference, 'preserved');
       assert.equal(savedGaplessPreferences.gaplessPlayback, false);
       assert.equal((await load()).preferences.gaplessPlayback, false);
+      assert.equal(savedGaplessPreferences.replayGainMode, 'off');
+
+      assert.deepEqual(await save(null, { replayGainMode: 'album', replayGainPreampDb: 3 }, {
+        applyInPlace: 'player-preferences'
+      }), { success: true });
+      const savedReplayGain = (await load()).preferences;
+      assert.equal(savedReplayGain.replayGainMode, 'album');
+      assert.equal(savedReplayGain.replayGainPreampDb, 3);
+      assert.equal(savedReplayGain.sampleRate, 96000);
+      assert.deepEqual(await save(null, { replayGainMode: 'off', replayGainPreampDb: 0 }, {
+        applyInPlace: 'player-preferences'
+      }), { success: true });
 
       const rejected = await save(null, { sampleRate: 48000 }, {
-        applyInPlace: 'gapless-playback'
+        applyInPlace: 'player-preferences'
       });
       assert.equal(rejected.success, false);
       assert.equal(typeof rejected.error, 'string');
@@ -245,7 +263,7 @@ test('registered Electron IPC persists canonical gapless changes without reload'
   }
 });
 
-test('registered Electron IPC keeps a drifted renderer mirror out of the stored gapless change', async () => {
+test('registered Electron IPC keeps a drifted renderer mirror out of the stored player change', async () => {
   const rawTempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-ipc-audio-preferences-'));
   const tempRoot = await fs.realpath(rawTempRoot);
   const preferencesPath = path.join(tempRoot, 'audio-preferences.json');
@@ -271,6 +289,9 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
     useInputWithPlayer: true,
     useWasmDsp: true,
     gaplessPlayback: true,
+    replayGainMode: 'off',
+    replayGainPreampDb: 0,
+    replayGainPreventClipping: true,
     outputChannels: 2,
     latencyHint: 'interactive'
   };
@@ -284,9 +305,9 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
       timers.push({ callback, delay });
       return timers.length;
     }, async () => {
-      // The gapless-only apply path sends the playback field alone.
+      // The player-only apply path sends the player fields alone.
       assert.deepEqual(await save(null, { gaplessPlayback: false }, {
-        applyInPlace: 'gapless-playback'
+        applyInPlace: 'player-preferences'
       }), { success: true });
       assert.deepEqual(messages, []);
       assert.deepEqual(timers, []);
@@ -303,7 +324,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
         useInputWithPlayer: false,
         inputDeviceLabel: 'Mic One',
         gaplessPlayback: true
-      }, { applyInPlace: 'gapless-playback' });
+      }, { applyInPlace: 'player-preferences' });
       assert.equal(drifted.success, false);
       assert.deepEqual(messages, []);
       assert.deepEqual(timers, []);
@@ -314,12 +335,12 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
       );
 
       // Refreshed device labels alone do not block the in-place save, and only
-      // the playback field is stored.
+      // the player fields are stored.
       assert.deepEqual(await save(null, {
         ...storedPreferences,
         inputDeviceLabel: 'Mic One',
         gaplessPlayback: true
-      }, { applyInPlace: 'gapless-playback' }), { success: true });
+      }, { applyInPlace: 'player-preferences' }), { success: true });
       assert.deepEqual(messages, []);
       assert.deepEqual(timers, []);
       assert.equal(mainWindow.reloadCalls, 0);

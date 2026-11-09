@@ -3,30 +3,60 @@ import test from 'node:test';
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
-import { isGaplessPlaybackOnlyChange } from '../../js/electron/audioIntegration.js';
+import { isPlayerPreferenceOnlyChange } from '../../js/electron/audioIntegration.js';
+import { normalizeWebAudioPreferences } from '../../js/electron/webSettingsStorage.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
-test('gapless-only comparison ignores only the normalized playback preference', () => {
+test('player-only comparison ignores only the normalized player preferences', () => {
   const previous = { sampleRate: 48000, gaplessPlayback: true };
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     sampleRate: 48000, gaplessPlayback: false
   }), true);
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     sampleRate: 96000, gaplessPlayback: false
   }), false);
-  assert.equal(isGaplessPlaybackOnlyChange({}, { gaplessPlayback: false }), true);
-  assert.equal(isGaplessPlaybackOnlyChange(null, { gaplessPlayback: false }), true);
-  assert.equal(isGaplessPlaybackOnlyChange(undefined, { gaplessPlayback: false }), true);
-  assert.equal(isGaplessPlaybackOnlyChange({ sampleRate: 96000 }, {
+  assert.equal(isPlayerPreferenceOnlyChange({}, { gaplessPlayback: false }), true);
+  assert.equal(isPlayerPreferenceOnlyChange(null, { gaplessPlayback: false }), true);
+  assert.equal(isPlayerPreferenceOnlyChange(undefined, { gaplessPlayback: false }), true);
+  assert.equal(isPlayerPreferenceOnlyChange({ sampleRate: 96000 }, {
     gaplessPlayback: false
   }), true);
-  assert.equal(isGaplessPlaybackOnlyChange({}, {
+  assert.equal(isPlayerPreferenceOnlyChange({}, {
     sampleRate: 48000,
     gaplessPlayback: false
   }), false);
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
+    replayGainMode: 'album', replayGainPreampDb: -3, replayGainPreventClipping: false
+  }), true);
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
+    replayGainMode: 'track', sampleRate: 96000
+  }), false);
+  // Invalid values normalize to the defaults and therefore are not a change.
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
+    replayGainMode: 'loud', replayGainPreampDb: Number.NaN, replayGainPreventClipping: 'yes'
+  }), false);
 });
 
-test('gapless-only comparison ignores device labels while the device IDs are unchanged', () => {
+test('ReplayGain preferences normalize to defaults, range, and 0.5 dB steps', () => {
+  const normalize = preferences => {
+    const { replayGainMode, replayGainPreampDb, replayGainPreventClipping } =
+      normalizeWebAudioPreferences(preferences);
+    return { replayGainMode, replayGainPreampDb, replayGainPreventClipping };
+  };
+  const defaults = { replayGainMode: 'off', replayGainPreampDb: 0, replayGainPreventClipping: true };
+  assert.deepEqual(normalize({}), defaults);
+  assert.deepEqual(normalize({
+    replayGainMode: 'Album', replayGainPreampDb: 'x', replayGainPreventClipping: 0
+  }), defaults);
+  assert.deepEqual(normalize({
+    replayGainMode: 'album', replayGainPreampDb: 2.3, replayGainPreventClipping: false
+  }), { replayGainMode: 'album', replayGainPreampDb: 2.5, replayGainPreventClipping: false });
+  assert.equal(normalize({ replayGainPreampDb: 40 }).replayGainPreampDb, 15);
+  assert.equal(normalize({ replayGainPreampDb: -40 }).replayGainPreampDb, -15);
+  assert.ok(Object.is(normalize({ replayGainPreampDb: -0.1 }).replayGainPreampDb, 0));
+});
+
+test('player-only comparison ignores device labels while the device IDs are unchanged', () => {
   const previous = {
     inputDeviceId: 'mic1',
     outputDeviceId: 'out1',
@@ -34,24 +64,24 @@ test('gapless-only comparison ignores device labels while the device IDs are unc
     outputDeviceLabel: 'Out One',
     gaplessPlayback: true
   };
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     ...previous,
     inputDeviceLabel: 'Mic One',
     outputDeviceLabel: 'Out One (renamed)',
     gaplessPlayback: false
   }), true);
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     ...previous,
     inputDeviceLabel: 'Mic One',
     outputDeviceLabel: 'Out One (renamed)'
   }), false);
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     ...previous,
     inputDeviceId: 'mic2',
     inputDeviceLabel: 'Mic Two',
     gaplessPlayback: false
   }), false);
-  assert.equal(isGaplessPlaybackOnlyChange(previous, {
+  assert.equal(isPlayerPreferenceOnlyChange(previous, {
     ...previous,
     outputDeviceId: 'out2',
     gaplessPlayback: false
@@ -191,7 +221,7 @@ test('Electron preference mirrors publish only after persistence succeeds', asyn
     assert.equal(await ElectronIntegration.prototype.saveAudioPreferences.call(
       integration,
       preferences,
-      { applyInPlace: 'gapless-playback' }
+      { applyInPlace: 'player-preferences' }
     ), true);
     events.push(['published', integration.audioPreferences, window.audioPreferences]);
   });
@@ -214,13 +244,13 @@ test('Electron preference mirrors publish only after persistence succeeds', asyn
     assert.equal(await ElectronIntegration.prototype.saveAudioPreferences.call(
       integration,
       { gaplessPlayback: false },
-      { applyInPlace: 'gapless-playback' }
+      { applyInPlace: 'player-preferences' }
     ), true);
     assert.equal(integration.audioPreferences.useInputWithPlayer, false);
     assert.equal(integration.audioPreferences.gaplessPlayback, false);
   });
   assert.deepEqual(events, [['persist', { gaplessPlayback: false }, {
-    applyInPlace: 'gapless-playback'
+    applyInPlace: 'player-preferences'
   }]]);
 
   const failedWindow = {
@@ -232,7 +262,7 @@ test('Electron preference mirrors publish only after persistence succeeds', asyn
     assert.equal(await ElectronIntegration.prototype.saveAudioPreferences.call(
       integration,
       { gaplessPlayback: false },
-      { applyInPlace: 'gapless-playback' }
+      { applyInPlace: 'player-preferences' }
     ), false);
     assert.equal(integration.audioPreferences.gaplessPlayback, true);
     assert.equal(failedWindow.audioPreferences.gaplessPlayback, true);
@@ -266,13 +296,18 @@ test('AudioManager persists then mirrors then enqueues one player operation', as
     }
   };
   await withGlobals({ window }, async () => {
-    assert.equal(await AudioManager.prototype.applyGaplessPlaybackPreference.call(
+    assert.equal(await AudioManager.prototype.applyPlayerPreferences.call(
       manager,
       next
     ), '');
   });
   assert.deepEqual(events.map(event => event[0]), ['persist', 'mirror', 'enqueue']);
-  assert.deepEqual(events[0].slice(1), [{ gaplessPlayback: false }, 'gapless-playback']);
+  assert.deepEqual(events[0].slice(1), [{
+    gaplessPlayback: false,
+    replayGainMode: 'off',
+    replayGainPreampDb: 0,
+    replayGainPreventClipping: true
+  }, 'player-preferences']);
   assert.equal(events[1][1].gaplessPlayback, false);
   assert.equal(events[1][1].sampleRate, 48000);
   assert.deepEqual(events[2][1], false);
@@ -281,7 +316,7 @@ test('AudioManager persists then mirrors then enqueues one player operation', as
   window.audioPreferences = previous;
   window.electronIntegration.audioPreferences = previous;
   await withGlobals({ window }, async () => {
-    const result = await AudioManager.prototype.applyGaplessPlaybackPreference.call(manager, {
+    const result = await AudioManager.prototype.applyPlayerPreferences.call(manager, {
       ...next,
       sampleRate: 96000
     });
@@ -300,15 +335,63 @@ test('AudioManager persists then mirrors then enqueues one player operation', as
   window.electronIntegration.audioPreferences = previous;
   await withGlobals({ window }, async () => {
     assert.equal(
-      await AudioManager.prototype.applyGaplessPlaybackPreference.call(manager, next),
-      'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.'
+      await AudioManager.prototype.applyPlayerPreferences.call(manager, next),
+      'Audio Error: The player settings could not be changed. Please apply the audio settings again.'
     );
   });
   assert.deepEqual(events.map(event => event[0]), ['persist']);
   assert.equal(window.audioPreferences, previous);
 });
 
-test('Web AudioManager compares against the mirror and stores only the Gapless field', async () => {
+test('AudioManager applies a ReplayGain-only change without touching Gapless Playback', async () => {
+  const events = [];
+  const previous = { sampleRate: 48000, gaplessPlayback: true };
+  const window = {
+    electronAPI: {},
+    electronIntegration: { audioPreferences: previous },
+    audioPreferences: previous,
+    uiManager: {
+      audioPlayer: {
+        async applyGaplessPlaybackPreference(enabled) {
+          events.push(['gapless', enabled]);
+        },
+        async applyReplayGainPreference(replayGain) {
+          events.push(['replay-gain', replayGain]);
+        }
+      }
+    }
+  };
+  const manager = {
+    async _persistInPlaceAudioPreferences(preferences, reason) {
+      events.push(['persist', preferences, reason]);
+      return true;
+    },
+    _setAudioPreferencesMirror(preferences) {
+      events.push(['mirror']);
+      window.audioPreferences = preferences;
+      window.electronIntegration.audioPreferences = preferences;
+    }
+  };
+  await withGlobals({ window }, async () => {
+    assert.equal(await AudioManager.prototype.applyPlayerPreferences.call(manager, {
+      ...previous,
+      replayGainMode: 'album',
+      replayGainPreampDb: -2.5
+    }), '');
+  });
+  assert.deepEqual(events, [
+    ['persist', {
+      gaplessPlayback: true,
+      replayGainMode: 'album',
+      replayGainPreampDb: -2.5,
+      replayGainPreventClipping: true
+    }, 'player-preferences'],
+    ['mirror'],
+    ['replay-gain', { mode: 'album', preampDb: -2.5, preventClipping: true }]
+  ]);
+});
+
+test('Web AudioManager compares against the mirror and stores only the player fields', async () => {
   const stored = {
     inputDeviceId: 'mic1',
     outputDeviceId: 'out1',
@@ -346,7 +429,7 @@ test('Web AudioManager compares against the mirror and stores only the Gapless f
     }
   };
   await withGlobals({ window }, async () => {
-    assert.equal(await AudioManager.prototype.applyGaplessPlaybackPreference.call(manager, {
+    assert.equal(await AudioManager.prototype.applyPlayerPreferences.call(manager, {
       ...mirror,
       gaplessPlayback: false
     }), '');
@@ -362,7 +445,7 @@ test('Web AudioManager compares against the mirror and stores only the Gapless f
 
   // _executeReset routes the same drifted mirror to the in-place path.
   const resetManager = {
-    applyGaplessPlaybackPreference: async preferences => {
+    applyPlayerPreferences: async preferences => {
       events.push(['gapless-route', preferences.gaplessPlayback]);
       return '';
     }

@@ -4,6 +4,7 @@
 #include "SFZModulationSchema.h"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -135,6 +136,7 @@ public:
     forecast_plan_.swap(plan);
     forecast_sources_.swap(sources);
     plan_count_ = source_count_ = plan_request_cursor_ = planned_pages_ = pending_pages_ = 0;
+    resetSourceIndex();
     collecting_plan_ = plan_pressure_ = plan_invalid_ = optional_forecast_ = false;
     sample_count_ = count;
     slot_count_ = slots;
@@ -144,6 +146,8 @@ public:
     epoch_ = 1;
     forecast_serial_ = committed_forecast_ = staged_forecast_ = 0;
     request_count_ = 0;
+    request_buckets_.fill(0u);
+    exhausted_epoch_ = {};
     deleted_ = 0;
     overflow_ = false;
     return true;
@@ -170,6 +174,7 @@ public:
     collecting_plan_ = true;
     plan_pressure_ = plan_invalid_ = false;
     plan_count_ = source_count_ = 0;
+    resetSourceIndex();
     return true;
   }
   std::span<ForecastSource> forecastSources() noexcept {
@@ -183,6 +188,26 @@ public:
     auto &source = forecast_sources_[source_count_++];
     source = {};
     return &source;
+  }
+  // Merges a candidate into the earliest source with the same geometry; anyChannel lets
+  // selected-preset prefixes union across channels.
+  void collectForecastSource(const ForecastSource &candidate, bool anyChannel) noexcept {
+    indexForecastSources();
+    ForecastSource *match = nullptr;
+    // Chains run newest first, so the last match is the earliest source.
+    for (auto i = source_heads_[sourceBucket(candidate)]; i != kNoSource; i = source_next_[i])
+      if (auto &source = forecast_sources_[i];
+          source.region == candidate.region &&
+          (anyChannel || source.channel == candidate.channel) &&
+          source.physicalKey == candidate.physicalKey &&
+          source.musicalKey == candidate.musicalKey && source.velocity == candidate.velocity &&
+          source.position == candidate.position && source.flags == candidate.flags)
+        match = &source;
+    if (match) {
+      match->onset = std::min(match->onset, candidate.onset);
+      match->maximumStep = std::max(match->maximumStep, candidate.maximumStep);
+    } else if (auto *source = addForecastSource())
+      *source = candidate;
   }
   std::uint32_t plannedPages() const noexcept { return planned_pages_; }
   std::uint32_t pendingPages() const noexcept { return pending_pages_; }
@@ -251,20 +276,28 @@ public:
         overflow_ = true;
         return Admission::Invalid;
       }
-      pages_[slot].requested = true;
+      pages_[slot].requested = requestLevel(requests_[i].mandatory);
     }
     planned_pages_ = static_cast<std::uint32_t>(plan_count_);
     pending_pages_ = 0;
+    // Pin every planned page already in the pool before reserving any missing
+    // one, so a reservation never evicts a ready page the new window still needs.
+    for (std::size_t i = 0; i < plan_count_; ++i) {
+      const auto slot = find(forecast_plan_[i].sample, forecast_plan_[i].page);
+      if (slot != kEmpty)
+        stageForecast(pages_[slot]);
+    }
     for (std::size_t i = 0; i < plan_count_; ++i) {
       const auto &key = forecast_plan_[i];
       auto slot = find(key.sample, key.page);
-      if (slot == kEmpty)
-        slot = reserve(key.sample, key.page);
       if (slot == kEmpty) {
-        overflow_ = true;
-        return Admission::Invalid;
+        slot = reserve(key.sample, key.page);
+        if (slot == kEmpty) {
+          overflow_ = true;
+          return Admission::Invalid;
+        }
+        stageForecast(pages_[slot]);
       }
-      stageForecast(pages_[slot]);
       if (!pages_[slot].ready)
         ++pending_pages_;
     }
@@ -322,6 +355,11 @@ public:
   }
   void clearForecast() noexcept {
     collecting_plan_ = false;
+    releaseForecastPins();
+  }
+  // Drops prediction pins and optional requests but keeps a plan being collected across
+  // CONTROL operations; its admission recomputes every pin from scratch.
+  void releaseForecastPins() noexcept {
     committed_forecast_ = staged_forecast_ = 0;
     planned_pages_ = pending_pages_ = 0;
     discardUnheldRequests();
@@ -335,6 +373,7 @@ public:
       for (std::size_t index = 0; index < slot_count_; ++index)
         pages_[index].used = 0;
       epoch_ = 1;
+      exhausted_epoch_ = {};
     }
   }
 
@@ -472,9 +511,14 @@ public:
     for (auto page = first / kPageFrames; page <= (first + count - 1) / kPageFrames; ++page) {
       auto index = find(sampleId, page);
       if (index == kEmpty && staged_forecast_) {
-        index = reserve(sampleId, page);
+        // Lookahead is a hint: with every slot held, skip it (and further
+        // full-pool scans this quantum); an actual read later degrades to an
+        // underrun instead of failing the bank.
+        auto &exhausted = exhausted_epoch_[storageMode(sampleId)];
+        if (exhausted != epoch_)
+          index = reserve(sampleId, page);
         if (index == kEmpty) {
-          overflow_ = true;
+          exhausted = epoch_;
           ready = false;
           continue;
         }
@@ -511,16 +555,18 @@ public:
     auto slot = find(request.sample, request.page);
     if (slot == kEmpty)
       slot = reserve(request.sample, request.page);
-    if (slot == kEmpty && optional_forecast_) {
-      const auto actual = std::any_of(
-          requests_.begin(), requests_.begin() + request_count_, [&](const Request &pending) {
-            return pending.mandatory && pending.sample == request.sample &&
-                   pending.page == request.page;
-          });
-      if (actual) {
+    if (slot == kEmpty) {
+      const auto pending = findRequest(request.sample, request.page);
+      if (pending == kMaxRequests || !requests_[pending].mandatory) {
+        // Prediction data without a free slot is only a hint: drop it; playback
+        // requests the page again if it actually reaches it.
+        removeRequest(request.sample, request.page);
+        return true;
+      }
+      if (optional_forecast_) {
         // Actual playback takes precedence over optional prediction. Resident,
         // current-quantum and outstanding actual/in-flight pages stay protected.
-        clearForecast();
+        releaseForecastPins();
         slot = reserve(request.sample, request.page);
       }
     }
@@ -545,15 +591,11 @@ public:
           pending_pages_)
         --pending_pages_;
     }
-    pages_[slot].requested = false;
+    pages_[slot].requested = kNotRequested;
     pages_[slot].resident = pages_[slot].resident || resident;
     if (!optional_forecast_)
       stageForecast(pages_[slot]);
-    std::size_t kept = 0;
-    for (std::size_t index = 0; index < request_count_; ++index)
-      if (requests_[index].sample != request.sample || requests_[index].page != request.page)
-        requests_[kept++] = requests_[index];
-    request_count_ = kept;
+    removeRequest(request.sample, request.page);
     fillForecastRequests();
     return true;
   }
@@ -569,7 +611,7 @@ public:
       auto request = requests_[index];
       const auto slot = find(request.sample, request.page);
       if (slot != kEmpty && pages_[slot].ready) {
-        pages_[slot].requested = false;
+        pages_[slot].requested = kNotRequested;
         continue;
       }
       if (!request.inFlight && taken < capacity) {
@@ -578,13 +620,18 @@ public:
       }
       requests_[kept++] = request;
     }
-    request_count_ = kept;
+    compactRequests(kept);
     return taken;
   }
   bool requestOverflow() const noexcept { return overflow_; }
 
 private:
   static constexpr std::uint32_t kEmpty = 0xffffffffu, kDeleted = 0xfffffffeu;
+  static constexpr std::uint8_t kNotRequested = 0u, kRequestedOptional = 1u,
+                                kRequestedMandatory = 2u;
+  static constexpr std::uint8_t requestLevel(bool mandatory) noexcept {
+    return mandatory ? kRequestedMandatory : kRequestedOptional;
+  }
   struct Request {
     std::uint64_t generation = 0, page = 0;
     std::uint32_t sample = 0;
@@ -597,7 +644,8 @@ private:
   struct Page {
     std::uint64_t page = 0, used = 0;
     std::uint32_t sample = 0;
-    bool valid = false, resident = false, ready = false, requested = false;
+    bool valid = false, resident = false, ready = false;
+    std::uint8_t requested = kNotRequested; // Level of the queued request for this page.
     std::uint32_t forecast = 0, previousForecast = 0;
   };
   static_assert(sizeof(Page) == schema::kStorageCachePageBytes);
@@ -623,9 +671,54 @@ private:
           (slot != kEmpty && !pages_[slot].ready && forecastPinned(pages_[slot])))
         requests_[kept++] = requests_[index];
       else if (slot != kEmpty)
-        pages_[slot].requested = false;
+        pages_[slot].requested = kNotRequested;
     }
+    compactRequests(kept);
+  }
+  // Open-addressed index over requests_ (position + 1, 0 = empty) keeps lookups
+  // O(1) for pages without a slot, which a full pool produces on every tap.
+  static constexpr std::size_t kRequestBuckets = kMaxRequests * 2u;
+  static_assert((kRequestBuckets & (kRequestBuckets - 1u)) == 0u && kMaxRequests < 0xffffu);
+  std::size_t requestBucket(std::uint32_t sample, std::uint64_t page) const noexcept {
+    auto key = page ^ (static_cast<std::uint64_t>(sample) * 0x9e3779b97f4a7c15ull);
+    key ^= key >> 31;
+    key *= 0xbf58476d1ce4e5b9ull;
+    return static_cast<std::size_t>(key >> 40) & (kRequestBuckets - 1u);
+  }
+  void indexRequest(std::size_t position) noexcept {
+    auto bucket = requestBucket(requests_[position].sample, requests_[position].page);
+    while (request_buckets_[bucket])
+      bucket = (bucket + 1u) & (kRequestBuckets - 1u);
+    request_buckets_[bucket] = static_cast<std::uint16_t>(position + 1u);
+  }
+  std::size_t findRequest(std::uint32_t sample, std::uint64_t page) const noexcept {
+    for (auto bucket = requestBucket(sample, page); request_buckets_[bucket];
+         bucket = (bucket + 1u) & (kRequestBuckets - 1u)) {
+      const auto &request = requests_[request_buckets_[bucket] - 1u];
+      if (request.sample == sample && request.page == page)
+        return request_buckets_[bucket] - 1u;
+    }
+    return kMaxRequests;
+  }
+  void compactRequests(std::size_t kept) noexcept {
+    if (kept == request_count_)
+      return;
     request_count_ = kept;
+    reindexRequests();
+  }
+  void reindexRequests() noexcept {
+    request_buckets_.fill(0u);
+    for (std::size_t index = 0; index < request_count_; ++index)
+      indexRequest(index);
+  }
+  void removeRequest(std::uint32_t sample, std::uint64_t page) noexcept {
+    if (findRequest(sample, page) == kMaxRequests)
+      return;
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < request_count_; ++index)
+      if (requests_[index].sample != sample || requests_[index].page != page)
+        requests_[kept++] = requests_[index];
+    compactRequests(kept);
   }
   std::uint32_t reserve(std::uint32_t sample, std::uint64_t page) noexcept {
     auto slot = kEmpty;
@@ -709,40 +802,43 @@ private:
   }
   void request(std::uint32_t sample, std::uint64_t page, bool mandatory = true) noexcept {
     const auto slot = find(sample, page);
-    if (slot != kEmpty && pages_[slot].requested && !mandatory)
+    // A slotted page mirrors its queued request level, so repeated reads of a
+    // pending page stay O(1) instead of rescanning the queue per tap.
+    if (slot != kEmpty && pages_[slot].requested >= requestLevel(mandatory))
       return;
-    auto replaceable = requests_.size();
-    for (std::size_t i = 0; i < request_count_; ++i) {
-      if (requests_[i].sample == sample && requests_[i].page == page) {
-        requests_[i].mandatory = requests_[i].mandatory || mandatory;
-        if (slot != kEmpty)
-          pages_[slot].requested = true;
-        return;
-      }
-      if (!requests_[i].inFlight && !requests_[i].mandatory)
-        replaceable = i;
+    if (const auto pending = findRequest(sample, page); pending != kMaxRequests) {
+      requests_[pending].mandatory = requests_[pending].mandatory || mandatory;
+      if (slot != kEmpty)
+        pages_[slot].requested = requestLevel(requests_[pending].mandatory);
+      return;
     }
     if (request_count_ == requests_.size()) {
       if (optional_forecast_) {
         if (!mandatory)
           return;
+        auto replaceable = requests_.size();
+        for (std::size_t i = 0; i < request_count_; ++i)
+          if (!requests_[i].inFlight && !requests_[i].mandatory)
+            replaceable = i;
         if (replaceable != requests_.size()) {
           const auto previous = find(requests_[replaceable].sample, requests_[replaceable].page);
           if (previous != kEmpty)
-            pages_[previous].requested = false;
+            pages_[previous].requested = kNotRequested;
           requests_[replaceable] = {generation_, page, sample, false, true};
+          reindexRequests();
           committed_forecast_ = staged_forecast_ = planned_pages_ = pending_pages_ = 0;
           if (slot != kEmpty)
-            pages_[slot].requested = true;
+            pages_[slot].requested = kRequestedMandatory;
           return;
         }
       }
       overflow_ = true;
       return;
     }
-    requests_[request_count_++] = {generation_, page, sample, false, mandatory};
+    requests_[request_count_] = {generation_, page, sample, false, mandatory};
+    indexRequest(request_count_++);
     if (slot != kEmpty)
-      pages_[slot].requested = true;
+      pages_[slot].requested = requestLevel(mandatory);
   }
   bool storageMode(std::uint32_t sample) const noexcept {
     return storage_modes_ && storage_modes_[sample] != 0u;
@@ -792,6 +888,33 @@ private:
   std::unique_ptr<ForecastPage[]> forecast_plan_;
   std::unique_ptr<ForecastSource[]> forecast_sources_;
   std::size_t plan_count_ = 0, source_count_ = 0, plan_request_cursor_ = 0;
+  // Hash chains over forecast sources; sources are indexed lazily because a raw
+  // addForecastSource() caller fills the record after adding it.
+  static constexpr std::uint16_t kNoSource = 0xffffu;
+  static constexpr std::size_t kSourceBuckets = 4096u;
+  static_assert(kMaxForecastSources < kNoSource);
+  std::array<std::uint16_t, kSourceBuckets> source_heads_{};
+  std::array<std::uint16_t, kMaxForecastSources> source_next_{};
+  std::size_t indexed_sources_ = 0;
+  void resetSourceIndex() noexcept {
+    source_heads_.fill(kNoSource);
+    indexed_sources_ = 0;
+  }
+  static std::size_t sourceBucket(const ForecastSource &source) noexcept {
+    // Adding zero folds -0.0 into +0.0, matching the == comparison.
+    auto hash = std::bit_cast<std::uint64_t>(source.position + 0.0);
+    for (const auto value :
+         {source.region, source.physicalKey, source.musicalKey, source.velocity, source.flags})
+      hash = (hash ^ value) * 0x9e3779b97f4a7c15ull;
+    return static_cast<std::size_t>(hash >> 52u);
+  }
+  void indexForecastSources() noexcept {
+    for (; indexed_sources_ < source_count_; ++indexed_sources_) {
+      auto &head = source_heads_[sourceBucket(forecast_sources_[indexed_sources_])];
+      source_next_[indexed_sources_] = head;
+      head = static_cast<std::uint16_t>(indexed_sources_);
+    }
+  }
   std::uint32_t planned_pages_ = 0, pending_pages_ = 0;
   bool collecting_plan_ = false, plan_pressure_ = false, plan_invalid_ = false;
   bool optional_forecast_ = false;
@@ -806,6 +929,8 @@ private:
   std::uint32_t forecast_serial_ = 0, committed_forecast_ = 0, staged_forecast_ = 0;
   std::array<Request, kMaxRequests> requests_{};
   std::size_t request_count_ = 0;
+  std::array<std::uint16_t, kRequestBuckets> request_buckets_{};
+  std::array<std::uint64_t, 2> exhausted_epoch_{};
   std::size_t deleted_ = 0;
   std::uint64_t generation_ = 0, epoch_ = 1;
   bool overflow_ = false;

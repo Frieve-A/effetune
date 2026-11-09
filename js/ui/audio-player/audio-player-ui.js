@@ -1990,14 +1990,23 @@ export class AudioPlayerUI {
     
     // Update seek bar position
     if (previewSeek) return;
+    let seekValue = 0; // Reset seek bar when no duration
     if (duration > 0) {
-      const seekValue = (currentTime / duration) * 100;
-      if (isFinite(seekValue) && seekValue >= 0 && seekValue <= 100) {
-        this.seekBar.value = seekValue;
-      }
-    } else {
-      // Reset seek bar when no duration
-      this.seekBar.value = 0;
+      seekValue = (currentTime / duration) * 100;
+      if (!(isFinite(seekValue) && seekValue >= 0 && seekValue <= 100)) seekValue = null;
+    }
+    if (seekValue !== null) {
+      // The browser snaps the bar to its step. A value at least 0.1 step away from a
+      // rounding boundary, in the same step as the last write, on an unchanged bar,
+      // cannot change its value or fill, so skip the per-frame write and restyle.
+      const steps = seekValue / Number(this.seekBar.step);
+      const step = Math.round(steps);
+      const settled = Math.abs(steps - step) <= 0.4;
+      const last = this.lastSeekBarWrite;
+      if (settled && last?.bar === this.seekBar && last.step === step &&
+          last.text === this.seekBar.value) return;
+      this.seekBar.value = seekValue;
+      this.lastSeekBarWrite = { bar: this.seekBar, step: settled ? step : null, text: this.seekBar.value };
     }
     window.uiManager?.refreshRangeFillStyling?.(this.seekBar);
   }

@@ -29,79 +29,99 @@ test('pipeline close handler sends state only after the output fade completes', 
   assert.deepEqual(calls, [['fade'], ['send', ['state']]]);
 });
 
-test('registerServiceWorker registers the web service worker on load', async () => {
-  const loadHandlers = [];
+function createServiceWorkerWindow({ register = () => Promise.resolve(), idle = true } = {}) {
   const registrations = [];
-  const warnings = [];
+  const idleCallbacks = [];
   const windowRef = {
     navigator: {
       serviceWorker: {
         register(url, options) {
           registrations.push([url, options]);
-          return Promise.resolve();
+          return register();
         }
-      }
-    },
-    addEventListener(type, handler) {
-      if (type === 'load') {
-        loadHandlers.push(handler);
       }
     }
   };
+  if (idle) {
+    windowRef.requestIdleCallback = (callback, options) => idleCallbacks.push([callback, options]);
+  }
+  return { idleCallbacks, registrations, windowRef };
+}
 
-  registerServiceWorker(windowRef, { warn: (...args) => warnings.push(args) });
+test('registerServiceWorker registers only after app initialization and an idle period', async () => {
+  const { idleCallbacks, registrations, windowRef } = createServiceWorkerWindow();
+  const warnings = [];
+  let finishInitialization;
 
-  assert.equal(loadHandlers.length, 1);
-  loadHandlers[0]();
-  await Promise.resolve();
+  registerServiceWorker(
+    windowRef,
+    { warn: (...args) => warnings.push(args) },
+    new Promise(resolve => { finishInitialization = resolve; })
+  );
+  assert.ok(windowRef.webUpdateManager, 'the manager exists before application initialization');
+  await flushMicrotasks();
+  assert.equal(idleCallbacks.length, 0);
+
+  finishInitialization();
+  await flushMicrotasks();
+  assert.equal(idleCallbacks.length, 1);
+  assert.deepEqual(idleCallbacks[0][1], { timeout: 5000 });
+  assert.deepEqual(registrations, []);
+
+  idleCallbacks[0][0]();
+  await flushMicrotasks();
   assert.deepEqual(registrations, [['./sw.js', { updateViaCache: 'none' }]]);
   assert.deepEqual(warnings, []);
 });
 
-test('registerServiceWorker registers immediately after load already completed', async () => {
-  const registrations = [];
-  const windowRef = {
-    document: { readyState: 'complete' },
-    navigator: {
-      serviceWorker: {
-        register(url, options) {
-          registrations.push([url, options]);
-          return Promise.resolve();
-        }
-      }
-    },
-    addEventListener() {
-      throw new Error('should not wait for load');
-    }
-  };
+test('registerServiceWorker still registers after failed initialization and without idle callbacks', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { registrations, windowRef } = createServiceWorkerWindow({ idle: false });
 
-  registerServiceWorker(windowRef);
-  await Promise.resolve();
+  registerServiceWorker(windowRef, console, Promise.reject(new Error('init failed')));
+  await flushMicrotasks();
+  assert.deepEqual(registrations, []);
 
+  t.mock.timers.tick(1000);
   assert.deepEqual(registrations, [['./sw.js', { updateViaCache: 'none' }]]);
 });
 
 test('registerServiceWorker reports registration failures', async () => {
-  const loadHandlers = [];
+  const { idleCallbacks, windowRef } = createServiceWorkerWindow({
+    register: () => Promise.reject(new Error('register failed'))
+  });
   const warnings = [];
-  const windowRef = {
-    navigator: {
-      serviceWorker: {
-        register() {
-          return Promise.reject(new Error('register failed'));
-        }
-      }
-    },
-    addEventListener(type, handler) {
-      if (type === 'load') loadHandlers.push(handler);
-    }
-  };
 
   registerServiceWorker(windowRef, { warn: (...args) => warnings.push(args) });
-  loadHandlers[0]();
+  await flushMicrotasks();
+  idleCallbacks[0][0]();
   await flushMicrotasks();
 
   assert.equal(warnings.length, 1);
+});
+
+test('startApplication registers the service worker once the app has initialized', async () => {
+  const { idleCallbacks, windowRef } = createServiceWorkerWindow();
+  let finishInitialization;
+  class SlowApp {
+    initialize() {
+      return new Promise(resolve => { finishInitialization = resolve; });
+    }
+  }
+
+  await startApplication({
+    AppClass: SlowApp,
+    firstLaunchPromise: Promise.resolve(false),
+    startHeartbeat() {},
+    windowRef
+  });
+  await flushMicrotasks();
+  assert.ok(windowRef.webUpdateManager);
+  assert.equal(idleCallbacks.length, 0);
+
+  finishInitialization();
+  await flushMicrotasks();
+  assert.equal(idleCallbacks.length, 1);
 });
 
 test('registerServiceWorker skips Electron and missing service worker support', () => {

@@ -22,6 +22,10 @@ const MINI_MIN_SIZE = Object.freeze({ width: 320, height: 96 });
 let restoreComplete = false;
 let windowMode = 'normal';
 let saveSuspended = false;
+// Move/resize events fire continuously while the user drags, so those saves are
+// coalesced into one trailing save that reads the window state when it runs.
+const SCHEDULED_SAVE_DELAY_MS = 300;
+let scheduledSaveTimer = null;
 
 function finite(value) {
   return Number.isFinite(value);
@@ -187,7 +191,15 @@ function roundedBounds(raw) {
   };
 }
 
+function cancelScheduledSave() {
+  clearTimeout(scheduledSaveTimer);
+  scheduledSaveTimer = null;
+}
+
+// Every save reads the live window state, so an immediate save supersedes a
+// pending scheduled one.
 function saveWindowState() {
+  cancelScheduledSave();
   const mainWindow = constants.getMainWindow();
   if (saveSuspended || !restoreComplete || !mainWindow || mainWindow.isDestroyed()) return;
 
@@ -227,6 +239,16 @@ function saveWindowState() {
   }
 }
 
+function scheduleWindowStateSave() {
+  cancelScheduledSave();
+  scheduledSaveTimer = setTimeout(saveWindowState, SCHEDULED_SAVE_DELAY_MS);
+}
+
+// Write a pending scheduled save now so the persisted and in-memory state are current.
+function flushScheduledSave() {
+  if (scheduledSaveTimer !== null) saveWindowState();
+}
+
 // Enable saving once the window has been shown in its final restored state.
 function markRestoreComplete() {
   restoreComplete = true;
@@ -236,6 +258,7 @@ function markRestoreComplete() {
 // persisted bounds, but restart its in-memory lifetime in normal mode so a
 // window that was closed while mini does not inherit stale transition state.
 function prepareForNewWindow() {
+  cancelScheduledSave();
   restoreComplete = false;
   windowMode = 'normal';
   saveSuspended = false;
@@ -271,6 +294,7 @@ function getMiniPlayerState() {
 }
 
 function setMiniPlayerAlwaysOnTop(alwaysOnTop) {
+  flushScheduledSave();
   const previous = constants.getWindowState();
   const state = {
     ...previous,
@@ -298,6 +322,7 @@ function getVisualizerFeedSettings() {
 }
 
 function setVisualizerFeedSettings(changes) {
+  flushScheduledSave();
   const state = {
     ...constants.getWindowState(),
     visualizerFeed: { ...getVisualizerFeedSettings(), ...changes }
@@ -316,6 +341,8 @@ module.exports = {
   MINI_MIN_SIZE,
   loadWindowState,
   saveWindowState,
+  scheduleWindowStateSave,
+  flushScheduledSave,
   resolveWindowBoundsForRestore,
   restoreMaximizedStateWhileHidden,
   showWindowInRestoredState,

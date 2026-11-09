@@ -18,6 +18,9 @@ struct Inputs {
   std::uint32_t key = 60, velocity = 127, polyPressure = 0, channelPressure = 0;
   int bend = 0;
   float bendRangeSemitones = 2.0F;
+  // Follows the SoundFont 2.04 text literally instead of the E-mu hardware
+  // behavior that common synthesizers emulate and banks are authored for.
+  bool strictSpec = false;
 };
 struct RouteSpan {
   const float *words = nullptr;
@@ -34,6 +37,7 @@ struct Resolved {
   EnvelopeParameters volEnv{}, modEnv{};
   LfoParameters modLfo{}, vibLfo{};
   float pitchCents = 0, cutoffHz = 20000, resonanceDb = 0, attenuationCb = 0, pan = 0;
+  float panLeft = .70710678F, panRight = .70710678F;
   float chorusSend = 0, reverbSend = 0;
   std::uint32_t effectiveKey = 60, effectiveVelocity = 127, exclusiveClass = 0;
 };
@@ -41,23 +45,38 @@ struct Resolved {
 struct Lowpass {
   double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
   std::array<double, 2> z1{}, z2{};
+  // Arguments of the coefficients currently held.
+  double lastRate = 0, lastFrequency = 0, lastResonanceDb = 0;
+  bool configured = false;
+  // Resonance terms of the last clamped resonance; a cutoff sweep reuses them.
+  double resonanceKey = 0, resonanceQ = 0, resonanceDc = 0;
+  bool resonanceCached = false;
+  // The filter is never bypassed: a modulated cutoff crossing a bypass
+  // threshold would switch the response and state abruptly.
   void configure(double rate, double frequency, double resonanceDb) noexcept {
-    if (frequency > 20000 && resonanceDb <= 0) {
-      b0 = 1;
-      b1 = b2 = a1 = a2 = 0;
-      z1.fill(0);
-      z2.fill(0);
+    // Identical arguments reproduce identical coefficients; the state is kept.
+    if (configured && rate == lastRate && frequency == lastFrequency &&
+        resonanceDb == lastResonanceDb)
       return;
-    }
+    configured = true;
+    lastRate = rate;
+    lastFrequency = frequency;
+    lastResonanceDb = resonanceDb;
     frequency = frequency < 5 ? 5 : frequency > rate * .45 ? rate * .45 : frequency;
     resonanceDb = resonanceDb < 0 ? 0 : resonanceDb > 96 ? 96 : resonanceDb;
     const auto omega = 6.2831853071795864769 * frequency / rate;
     const auto cosine = std::cos(omega);
-    // At cutoff the biquad gain relative to DC is Q. SF2 specifies that ratio
-    // directly, with half the resonant gain removed from the DC response.
-    const auto q = resonanceDb > 0 ? std::pow(10.0, resonanceDb * .05) : .7071067811865475244;
+    // At cutoff the biquad gain relative to DC is Q. As in common SF2
+    // synthesizers, Q is the resonance offset by -3.01 dB, so zero resonance is
+    // the Butterworth response; half the resonant gain is removed from DC.
+    if (!resonanceCached || resonanceDb != resonanceKey) {
+      resonanceCached = true;
+      resonanceKey = resonanceDb;
+      resonanceQ = .7071067811865475244 * std::pow(10.0, resonanceDb * .05);
+      resonanceDc = std::pow(10.0, -resonanceDb * .025);
+    }
+    const auto q = resonanceQ, dc = resonanceDc;
     const auto alpha = std::sin(omega) / (2 * q), scale = 1 / (1 + alpha);
-    const auto dc = std::pow(10.0, -resonanceDb * .025);
     b0 = (1 - cosine) * .5 * scale * dc;
     b1 = 2 * b0;
     b2 = b0;
@@ -70,6 +89,19 @@ struct Lowpass {
     z1[channel] = dsp::flushSubnormal(b1 * input - a1 * output + z2[channel]);
     z2[channel] = dsp::flushSubnormal(b2 * input - a2 * output);
     return dsp::flushSubnormal(static_cast<float>(output));
+  }
+  // process() without per-frame flushing, for hot loops that call
+  // flushState() after each run. A subnormal only arises in the last steps of
+  // a decay to silence, where a few unflushed frames change nothing audible.
+  float processUnflushed(float input, unsigned channel) noexcept {
+    const auto output = b0 * input + z1[channel];
+    z1[channel] = b1 * input - a1 * output + z2[channel];
+    z2[channel] = b2 * input - a2 * output;
+    return static_cast<float>(output);
+  }
+  void flushState() noexcept {
+    z1 = {dsp::flushSubnormal(z1[0]), dsp::flushSubnormal(z1[1])};
+    z2 = {dsp::flushSubnormal(z2[0]), dsp::flushSubnormal(z2[1])};
   }
 };
 
@@ -169,6 +201,10 @@ inline bool evaluate(std::span<const float, kGeneratorCount> generators, RouteSp
       return false;
     result.generators[i] = generators[i];
   }
+  // E-mu hardware, and the synthesizers that emulate it, scale only the
+  // attenuation generator by 0.4; modulator contributions are unscaled.
+  if (!input.strictSpec)
+    result.generators[48] *= .4F;
   input.key = generators[46] >= 0.0F && generators[46] <= 127.0F
                   ? static_cast<std::uint32_t>(generators[46])
                   : input.key;
@@ -184,6 +220,11 @@ inline bool evaluate(std::span<const float, kGeneratorCount> generators, RouteSp
     const auto sourceB = std::bit_cast<std::uint32_t>(route[2]);
     const auto flags = std::bit_cast<std::uint32_t>(route[8]);
     const auto transform = std::bit_cast<std::uint32_t>(route[9]);
+    // Common synthesizers do not apply the default velocity-to-cutoff
+    // modulator, including a bank's own copy of it, so banks do not rely on it.
+    if (!input.strictSpec && target == 0x10008u && sourceA == 0x0102u && sourceB == 0u &&
+        transform == 0u)
+      continue;
     float first;
     if ((sourceA & 0xffff0000u) == 0x20000u) {
       const auto index = sourceA & 0xffffu;
@@ -228,6 +269,10 @@ inline bool evaluate(std::span<const float, kGeneratorCount> generators, RouteSp
   result.resonanceDb = clamp(g[9], 0.0F, 960.0F) * .1F;
   result.attenuationCb = clamp(g[48], 0.0F, 1440.0F);
   result.pan = clamp(g[17], -500.0F, 500.0F) * .002F;
+  // Constant-power sine/cosine pan law, as in common SF2 synthesizers.
+  const auto panAngle = (result.pan + 1.0F) * .78539816F;
+  result.panLeft = result.pan >= 1.0F ? 0.0F : std::cos(panAngle);
+  result.panRight = result.pan >= 1.0F ? 1.0F : std::sin(panAngle);
   result.chorusSend = clamp(g[15], 0.0F, 1000.0F) * .001F;
   result.reverbSend = clamp(g[16], 0.0F, 1000.0F) * .001F;
   result.exclusiveClass = static_cast<std::uint32_t>(clamp(g[57], 0.0F, 127.0F));
@@ -368,6 +413,74 @@ public:
     }
     ++elapsed_;
     return value_;
+  }
+  // Equals up to n successive next() calls with unchanged parameters. Returns
+  // the number of outputs written; fewer than n means the next call reached
+  // Done, which is absorbing, so the caller's next() repeats that frame exactly.
+  // After next() configures a stage, its configure() calls are no-ops until a
+  // transition, so each stage extends with only its own state update.
+  std::uint32_t render(const EnvelopeParameters &parameters, float *out, std::uint32_t n) noexcept {
+    std::uint32_t i = 0;
+    while (i < n) {
+      const auto first = next(parameters);
+      if (done())
+        return i;
+      out[i++] = first;
+      auto value = value_;
+      auto elapsed = elapsed_;
+      const auto duration = duration_;
+      switch (stage_) {
+      case Stage::Sustain:
+        for (; i < n; ++i)
+          out[i] = value;
+        return n;
+      case Stage::Delay:
+        for (; i < n && !(elapsed >= duration); ++elapsed)
+          out[i++] = value;
+        break;
+      case Stage::Attack:
+        for (; i < n && !(elapsed >= duration); ++elapsed) {
+          const auto progress = static_cast<float>((elapsed + 1.0) / duration);
+          value = volume_ ? clamp(progress, 0.0F, 1.0F) : curve(progress, 2u);
+          out[i++] = value;
+        }
+        break;
+      case Stage::Hold:
+        for (; i < n && !(elapsed >= duration); ++elapsed)
+          out[i++] = value = 1.0F;
+        break;
+      case Stage::Decay:
+      case Stage::Release: {
+        const auto target = target_;
+        const auto threshold = stage_ == Stage::Decay ? target : volume_ ? .00001F : 0.0F;
+        if (duration <= 0)
+          break;
+        if (volume_ && !forced_) {
+          const auto multiplier = multiplier_;
+          for (; i < n && !(value <= threshold); ++elapsed) {
+            value = value * multiplier;
+            if (value < target)
+              value = target;
+            out[i++] = value;
+          }
+        } else {
+          const auto decrement = decrement_;
+          for (; i < n && !(value <= threshold); ++elapsed) {
+            value = value - decrement;
+            if (value < target)
+              value = target;
+            out[i++] = value;
+          }
+        }
+        break;
+      }
+      default:
+        break;
+      }
+      value_ = value;
+      elapsed_ = elapsed;
+    }
+    return i;
   }
 
 private:

@@ -23,9 +23,15 @@ export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   useInputWithPlayer: false,
   useWasmDsp: true,
   gaplessPlayback: true,
+  replayGainMode: 'off',
+  replayGainPreampDb: 0,
+  replayGainPreventClipping: true,
   outputChannels: 2,
   latencyHint: 'interactive'
 });
+
+const REPLAY_GAIN_MODES = Object.freeze(['off', 'track', 'album']);
+const REPLAY_GAIN_PREAMP_LIMIT_DB = 15;
 
 let defaultRuntime = null;
 let runtimeOverride = undefined;
@@ -524,7 +530,24 @@ export function normalizeWebAudioPreferences(preferences) {
   for (const [key, fallback] of Object.entries(WEB_AUDIO_PREFERENCE_DEFAULTS)) {
     normalized[key] = normalized[key] ?? fallback;
   }
+  normalizeReplayGainPreferences(normalized);
   return normalized;
+}
+
+// Mirrors normalizeReplayGainPreferences in electron/audio-preferences-policy.cjs.
+function normalizeReplayGainPreferences(preferences) {
+  if (!REPLAY_GAIN_MODES.includes(preferences.replayGainMode)) {
+    preferences.replayGainMode = WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainMode;
+  }
+  // Round to 0.5 dB steps; adding 0 turns -0 into 0 for Object.is comparisons.
+  const preampDb = Math.round(Number(preferences.replayGainPreampDb) * 2) / 2 + 0;
+  preferences.replayGainPreampDb = Number.isFinite(preampDb)
+    ? (preampDb > REPLAY_GAIN_PREAMP_LIMIT_DB ? REPLAY_GAIN_PREAMP_LIMIT_DB
+      : preampDb < -REPLAY_GAIN_PREAMP_LIMIT_DB ? -REPLAY_GAIN_PREAMP_LIMIT_DB : preampDb)
+    : WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainPreampDb;
+  if (typeof preferences.replayGainPreventClipping !== 'boolean') {
+    preferences.replayGainPreventClipping = WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainPreventClipping;
+  }
 }
 
 export function mergeWebAudioPreferences(previousPreferences, nextPreferences) {

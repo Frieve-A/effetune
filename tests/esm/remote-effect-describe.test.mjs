@@ -243,7 +243,6 @@ test('describing effects never connects temporary instances to the live audio ho
         assert.deepEqual(constructorGates.at(-1), [true, true]);
         assert.ok(hostCalls.includes('registerProcessor'));
         assert.ok(hostCalls.includes('listen'));
-        assert.ok(hostCalls.includes('observe'));
         assert.ok(hostCalls.includes('power-mutation'));
     } finally {
         live.cleanup();

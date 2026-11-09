@@ -122,7 +122,7 @@ int main() {
                         (1.0 + filter.a1 * z + filter.a2 * z * z));
       };
       const auto dc = std::pow(10.0, -resonance / 40.0);
-      const auto q = resonance > 0 ? std::pow(10.0, resonance / 20.0) : std::sqrt(.5);
+      const auto q = std::sqrt(.5) * std::pow(10.0, resonance / 20.0);
       require(std::abs(response(0) / dc - 1) < .000001, "SF2 resonance DC gain");
       require(std::abs(response(6.2831853071795864769 * frequency / 48000) / (dc * q) - 1) < .0001,
               "SF2 resonance cutoff relative to DC");
@@ -133,9 +133,13 @@ int main() {
         require(std::isfinite(output) && std::abs(output) < 1000, "bounded SF2 impulse response");
       }
     }
-  sf2::Lowpass bypass;
-  bypass.configure(44100, 22000, 0);
-  near(bypass.process(.25F, 0), .25F, 0, "nonresonant cutoff above20kHz bypasses");
+  sf2::Lowpass crossing;
+  crossing.configure(44100, 19000, 0);
+  crossing.process(.25F, 0);
+  const auto state = crossing.z1[0];
+  crossing.configure(44100, 22000, 0);
+  require(crossing.z1[0] == state && crossing.a1 != 0,
+          "cutoff crossing 20kHz keeps filtering and state");
   std::array<std::uint8_t, 128> cc{};
   cc[7] = 100;
   cc[10] = 64;
@@ -168,7 +172,14 @@ int main() {
     require(sf2::evaluate(g, {pan.data(), 1}, in, scratch, 60, 0, out), "pan route");
     near(out.pan, value < 64 ? (value - 64) / 64.0F : (value - 64) / 63.0F, .00001F,
          "pan full and quarter range");
+    const auto angle = (out.pan + 1.0F) * .78539816F;
+    near(out.panLeft, out.pan >= 1.0F ? 0.0F : std::cos(angle), .000001F, "sine-cosine pan left");
+    near(out.panRight, std::sin(angle), .000001F, "sine-cosine pan right");
   }
+  cc[10] = 127;
+  require(sf2::evaluate(g, {pan.data(), 1}, in, scratch, 60, 0, out), "full right pan");
+  require(out.panLeft == 0 && out.panRight == 1, "full right pan silences left");
+  cc[10] = 64;
   auto bend = route(0x1003c, 0x020e, 12700, 16);
   for (auto value : {-8192, 0, 8191}) {
     in.bend = value;
@@ -189,6 +200,24 @@ int main() {
   require(sf2::evaluate(g, {velocity.data(), 1}, in, scratch, 60, 0, out), "forced velocity");
   near(out.attenuationCb, 0, 0, "per-voice velocity override");
   g[47] = -1;
+  g[48] = 100;
+  const auto cutoff = route(0x10008, 0x0102, -2400);
+  std::array<float, 20> pair{};
+  for (std::size_t i = 0; i < 10; ++i) {
+    pair[i] = velocity[i];
+    pair[10 + i] = cutoff[i];
+  }
+  const auto velocityCb = -400.0F * std::log10(64.0F / 127.0F);
+  require(sf2::evaluate(g, {pair.data(), 2}, in, scratch, 60, 0, out), "standard compatibility");
+  near(out.attenuationCb, 40 + velocityCb, .001F, "standard scales attenuation generator by 0.4");
+  near(out.generators[8], 13500, 0, "standard skips default velocity to cutoff");
+  in.strictSpec = true;
+  require(sf2::evaluate(g, {pair.data(), 2}, in, scratch, 60, 0, out), "strict compatibility");
+  near(out.attenuationCb, 100 + velocityCb, .001F, "strict keeps attenuation generator");
+  near(out.generators[8], 13500 - 2400 * (1 - 64.0F / 127.0F), .01F,
+       "strict applies default velocity to cutoff");
+  in.strictSpec = false;
+  g[48] = 0;
   for (std::uint32_t type = 0; type < 4; ++type) {
     near(sf2::curve(0, type), 0, 0, "curve minimum");
     near(sf2::curve(1, type), 1, 0, "curve maximum");

@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:a424e6b6298df6e1348cecf22a3cc56eed069cfdfa23e0114833d3bfae21c1dd",
+  "sourceDigest": "sha256:5ea3c59fbbe4e041f433a0bab3e222d03f2e83b717ca1c5a17ebaae342b3eff7",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:05b718f2e345923b0fe5c6333c2b2449ce99691e52ebbb6c63e733ab3b097d19",
+    "digest": "sha256:bc0202c456e8080f05dcc8aef1fce5cfe695429905f4cb06712a907ed13cf49b",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -130,7 +130,7 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:ae56e0fb88031495c1bbe1df837037f932c6dda58c6f6683a2a01c3fba0040eb"
+        "sha256": "sha256:2126f6b9219a47cfacb1bf6d80aa61a1fd91aa2a664b4a8da7a6ebc05d9c3f17"
       },
       {
         "id": "production-build#g726-resolved-authority",
@@ -940,7 +940,7 @@
     },
     {
       "name": "SoundFontPlayerPlugin",
-      "hash": 2110390933,
+      "hash": 4067548753,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1141,7 +1141,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4909853,
-    "simd": 5129166
+    "baseline": 4866946,
+    "simd": 5081068
   }
 }

@@ -27,7 +27,7 @@
       "kind": "int",
       "min": 1,
       "max": 1024,
-      "default": 64
+      "default": 256
     },
     {
       "name": "outputGain",
@@ -67,6 +67,14 @@
       "kind": "int",
       "min": 0,
       "max": 15,
+      "default": 0
+    },
+    {
+      "name": "sf2Compatibility",
+      "key": "sc",
+      "kind": "int",
+      "min": 0,
+      "max": 1,
       "default": 0
     }
   ]

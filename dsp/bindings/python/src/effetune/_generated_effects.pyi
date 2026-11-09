@@ -1351,6 +1351,7 @@ class SoundFontPlayer(Effect):
         automatic_fallback: bool = ...,
         preview_midi: int = ...,
         preview_channel: int = ...,
+        sf2_compatibility: int = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

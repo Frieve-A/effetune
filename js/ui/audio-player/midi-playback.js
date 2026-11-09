@@ -75,7 +75,7 @@ export const midiPlaybackMethods = {
     // A one-frame stereo loop keeps input quanta running without song-length PCM.
     source.buffer = context.createBuffer(2, 1, context.sampleRate);
     source.loop = true;
-    this.preparePlaybackSource(source);
+    this.preparePlaybackSource(source, null);
     if (!this.connectPrivatePipelineSource(source)) {
       this.releasePipelineSource(source, true);
       throw new Error('MIDI playback could not connect to the audio pipeline');

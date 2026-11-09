@@ -892,6 +892,22 @@ struct SFZBank final : PreparedAsset {
         addStartController(view.instances[node].authoredIndex);
     }
   }
+  // MIDI controller values are 7-bit, so only authored LowCC/HighCC entries can reject a region.
+  // Entries are sorted by family * 512 + cc, which places those two families first.
+  bool controllerRangesMatch(const float *r,
+                             const std::array<std::uint8_t, 128> &cc) const noexcept {
+    const auto count = indexValue(r, ControlCount), offset = indexValue(r, ControlOffset);
+    const auto *entry = payload_.data() + 8u + offset;
+    for (auto i = 0u; i < count; ++i, entry += 2) {
+      const auto id = std::bit_cast<std::uint32_t>(entry[0]);
+      if (id >= 2u * 512u)
+        break;
+      const auto value = static_cast<float>(cc[id % 512u]);
+      if (id < 512u ? value < entry[1] : value > entry[1])
+        return false;
+    }
+    return true;
+  }
   float controller(const float *r, std::uint32_t family, std::uint32_t cc) const noexcept {
     const auto count = indexValue(r, ControlCount), offset = indexValue(r, ControlOffset);
     const auto wanted = family * 512u + cc;

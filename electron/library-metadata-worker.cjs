@@ -21,6 +21,12 @@ parentPort?.on('message', async message => {
       parentPort.postMessage({ type: 'result', requestId: message.requestId, result });
       return;
     }
+    if (message.replayGain) {
+      const parsed = await metadata.parseFile(message.filePath, { duration: false, skipCovers: true });
+      const result = { replayGain: support.getReplayGain(parsed) };
+      parentPort.postMessage({ type: 'result', requestId: message.requestId, result });
+      return;
+    }
     const candidate = createCandidate(message);
     const midi = await import(pathToFileURL(path.join(__dirname, '../js/library/metadata/midi-metadata.js')).href);
     if (midi.isScoreFile(candidate.fileName)) {
@@ -54,7 +60,7 @@ parentPort?.on('message', async message => {
 });
 
 function validateParseMessage(message) {
-  const expected = ['filePath', 'languageHints', 'lyrics', 'relativePath', 'requestId', 'skipCovers', 'type'];
+  const expected = ['filePath', 'languageHints', 'lyrics', 'relativePath', 'replayGain', 'requestId', 'skipCovers', 'type'];
   const actual = Object.keys(message).sort();
   if (actual.length !== expected.length || actual.some((field, index) => field !== expected[index])) {
     throw typedError('invalidMetadataRequest', 'Metadata parse request fields are invalid');
@@ -67,6 +73,9 @@ function validateParseMessage(message) {
   }
   if (typeof message.relativePath !== 'string' || !message.relativePath || message.relativePath.length > 32_768) {
     throw typedError('invalidMetadataRequest', 'Metadata relative path is invalid');
+  }
+  if (typeof message.replayGain !== 'boolean') {
+    throw typedError('invalidMetadataRequest', 'Metadata ReplayGain request is invalid');
   }
   if (message.lyrics !== null) {
     const lyrics = message.lyrics;
@@ -107,6 +116,7 @@ async function loadMetadataSupport() {
     ...lyrics,
     TEXT_FILE_MAX_BYTES: textEncoding.TEXT_FILE_MAX_BYTES,
     createTrackFromMetadata: mapper.createTrackFromMetadata,
+    getReplayGain: mapper.getReplayGain,
     shouldRetryDuration: mapper.shouldRetryDuration,
     readRiffInfoTagsFromReader: riffInfo.readRiffInfoTagsFromReader
   };

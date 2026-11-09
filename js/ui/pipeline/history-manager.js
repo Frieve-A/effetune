@@ -141,9 +141,15 @@ export class HistoryManager {
         }
         const state = this.createSnapshot();
         const activeState = this.history[this.historyIndex] || null;
+        // The fresh snapshot is compared up to twice; serialize it only once.
+        // Stored states are serialized on every comparison because snapshots
+        // are shallow and may share nested values with live plugin state.
+        let stateJson;
+        const equalsState = other => other !== null &&
+            JSON.stringify(other) === (stateJson ??= JSON.stringify(state));
 
         if (operationToken !== undefined &&
-            this.statesEqual(state, this.activeOperationBaseState)) {
+            equalsState(this.activeOperationBaseState)) {
             if (this.activeOperationOwnerIndex === this.historyIndex &&
                 this.activeOperationOwnerIndex >= 0) {
                 this.history.splice(this.activeOperationOwnerIndex, 1, ...this.activeOperationRedo);
@@ -159,7 +165,7 @@ export class HistoryManager {
             return;
         }
 
-        if (this.statesEqual(state, activeState)) return;
+        if (equalsState(activeState)) return;
 
         if (operationToken !== undefined &&
             this.activeOperationOwnerIndex === this.historyIndex &&

@@ -54,5 +54,5 @@ test('mini-player resize events cannot overwrite the persisted fixed size', () =
   const resizeSource = mainSource.slice(resizeStart, resizeEnd);
 
   assert.ok(resizeStart >= 0);
-  assert.match(resizeSource, /if \(!windowState\.isMiniMode\(\)\) windowState\.saveWindowState\(\)/);
+  assert.match(resizeSource, /if \(!windowState\.isMiniMode\(\)\) windowState\.scheduleWindowStateSave\(\)/);
 });

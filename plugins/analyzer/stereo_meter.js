@@ -7,6 +7,14 @@ const STEREO_FIELD_ENVELOPE_BINS = 360;
 const STEREO_FIELD_PAYLOAD_TAIL_BYTES = STEREO_FIELD_ENVELOPE_BINS * 4 + 16;
 const STEREO_FIELD_SAMPLE_FLAG_DISCONTINUITY = 1;
 const STEREO_FIELD_MAX_SAMPLE_RATE = 768000;
+// Gaussian (sigma = 5 degrees) weights for smoothing the 360-degree peak envelope.
+const STEREO_METER_PEAK_SIGMA = 5;
+const STEREO_METER_PEAK_RANGE = Math.ceil(STEREO_METER_PEAK_SIGMA * 3);
+const STEREO_METER_PEAK_WEIGHTS = Float64Array.from({ length: 2 * STEREO_METER_PEAK_RANGE + 1 }, (_, index) => {
+  const offset = index - STEREO_METER_PEAK_RANGE;
+  return Math.exp(-(offset * offset) / (2 * STEREO_METER_PEAK_SIGMA * STEREO_METER_PEAK_SIGMA));
+});
+const STEREO_METER_PEAK_WEIGHT_SUM = STEREO_METER_PEAK_WEIGHTS.reduce((sum, weight) => sum + weight, 0);
 
 class StereoMeterPlugin extends PluginBase {
   constructor() {
@@ -188,11 +196,8 @@ class StereoMeterPlugin extends PluginBase {
     this.observer = null;
 
     // Persistent buffers for drawing
-    this.buckets = new Array(256);
-    for (let i = 0; i < 256; i++) {
-      this.buckets[i] = [];
-    }
     this.smoothedPeaks = new Float32Array(360);
+    this._drawnState = null;
     this.dspStereoFieldSnapshot = null;
     this.dspXBuffer = null;
     this.dspYBuffer = null;
@@ -245,6 +250,7 @@ class StereoMeterPlugin extends PluginBase {
         this.graphCssWidth = cssWidth;
         this.graphDpr = dpr;
         this.ctx = canvas.getContext('2d', { alpha: false });
+        this._drawnState = null;
         this.drawMeter();
       }
     });
@@ -558,6 +564,19 @@ class StereoMeterPlugin extends PluginBase {
     const tickLabelColor = tickPalette?.get(this.displayOptions?.visualizerAxisLabels
       ? 'graph-label' : 'graph-trace-tertiary') ?? '';
     const trace = (window.ThemePalette?.get('graph-trace') ?? '');
+    // A standalone meter's picture depends only on these inputs (including every theme color drawn
+    // below), so skip frames where none changed. Hosts with display options always redraw.
+    if (!this.displayOptions) {
+      const palette = window.ThemePalette;
+      const drawState = [
+        this.currentMeasurements, this.dspStereoFieldSnapshot, ctx, width, height, dpr, isNarrow,
+        this.gainDb, this.windowTime, this.sampleRate, background, trace, tickColor, tickLabelColor,
+        palette?.get('graph-grid-subtle'), palette?.get('graph-label'),
+        palette?.get('text-primary'), palette?.get('graph-trace-fill')
+      ];
+      if (this._drawnState?.every((value, index) => value === drawState[index])) return;
+      this._drawnState = drawState;
+    }
     if (this._colorLookupBackground !== background || this._colorLookupTrace !== trace) {
       // ThemePalette returns normalized rgba colors. Blend once, not during canvas drawing.
       const [r, g, b] = background.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
@@ -626,11 +645,10 @@ class StereoMeterPlugin extends PluginBase {
       const endPos = this.currentMeasurements.currentPosition;
       const startIndex = (endPos - samplesNeeded + bufferLength) % bufferLength;
 
-      const buckets = this.buckets;
-      for (let i = 0; i < 256; i++) {
-        buckets[i].length = 0;
-      }
-
+      const pointSize = (isNarrow ? 2 : 1) * dpr;
+      const pointOffset = pointSize * 0.5;
+      // The age grade never decreases with i, so each grade is one contiguous run filled as one path.
+      let currentGreen = -1;
       for (let i = 0; i < samplesNeeded; i++) {
         const pos = (startIndex + i) % bufferLength;
         const sampleX = xBuffer[pos];
@@ -639,39 +657,27 @@ class StereoMeterPlugin extends PluginBase {
         const screenY = centerY - (sampleY * 0.5) * signalRadius;
         const intensity = samplesNeeded > 1 ? (i / (samplesNeeded - 1)) : 0;
         const green = Math.floor(255 * intensity);
-        buckets[green].push({ x: screenX, y: screenY });
-      }
-
-      const pointSize = (isNarrow ? 2 : 1) * dpr;
-      const pointOffset = pointSize * 0.5;
-      for (let g = 0; g < 256; g++) {
-        const points = buckets[g];
-        if (points.length === 0) continue;
-
-        ctx.fillStyle = this.displayOptions?.sampleStyle?.(ctx, centerX, centerY, g) ?? this._colorLookup[g];
-        ctx.beginPath();
-        for (let j = 0; j < points.length; j++) {
-          ctx.rect(points[j].x - pointOffset, points[j].y - pointOffset, pointSize, pointSize);
+        if (green !== currentGreen) {
+          if (currentGreen >= 0) ctx.fill();
+          currentGreen = green;
+          ctx.fillStyle = this.displayOptions?.sampleStyle?.(ctx, centerX, centerY, green) ?? this._colorLookup[green];
+          ctx.beginPath();
         }
-        ctx.fill();
+        ctx.rect(screenX - pointOffset, screenY - pointOffset, pointSize, pointSize);
       }
+      if (currentGreen >= 0) ctx.fill();
 
       // Smooth the 360° peak buffer using a Gaussian (sigma = 5°).
       const smoothedPeaks = this.smoothedPeaks;
-      const sigma = 5;
-      const gaussianRange = Math.ceil(sigma * 3);
       const { peakBuffer } = this.currentMeasurements;
 
       for (let i = 0; i < 360; i++) {
         let sum = 0;
-        let weightSum = 0;
-        for (let j = -gaussianRange; j <= gaussianRange; j++) {
-          const angle = ((i + j) % 360 + 360) % 360;
-          const weight = Math.exp(-(j * j) / (2 * sigma * sigma));
-          sum += peakBuffer[angle] * weight;
-          weightSum += weight;
+        for (let k = 0; k < STEREO_METER_PEAK_WEIGHTS.length; k++) {
+          const angle = ((i + k - STEREO_METER_PEAK_RANGE) % 360 + 360) % 360;
+          sum += peakBuffer[angle] * STEREO_METER_PEAK_WEIGHTS[k];
         }
-        smoothedPeaks[i] = sum / weightSum;
+        smoothedPeaks[i] = sum / STEREO_METER_PEAK_WEIGHT_SUM;
       }
 
       ctx.strokeStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '');

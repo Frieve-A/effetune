@@ -579,3 +579,16 @@ test('Android instrument transfers preserve configured native memory budgets and
         assert.ok(plugins.every(plugin => plugin.assetStates.length === 1));
     });
 });
+
+test('Android startup skips the web DSP module prefetch because native audio owns processing', async () => {
+    const attempts = [];
+    await withGlobals({
+        window: { location: { pathname: '/effetune.html', search: '' } },
+        fetch: url => { attempts.push(url); throw new Error('unexpected fetch'); },
+        console: createConsoleHarness({ warn: (...args) => attempts.push(args) })
+    }, async () => {
+        const { manager } = await audioFixture();
+        await manager.prefetchDspModule();
+    });
+    assert.deepEqual(attempts, []);
+});

@@ -29,7 +29,12 @@ function utf8Base64ToString(base64Text) {
 }
 
 export function encodePipelineState(state) {
-    return stringToUtf8Base64(JSON.stringify(state));
+    return encodePipelineStateJson(JSON.stringify(state));
+}
+
+// Encode an already serialized pipeline state (the JSON text of encodePipelineState).
+export function encodePipelineStateJson(json) {
+    return stringToUtf8Base64(json);
 }
 
 export function decodePipelineState(encodedState) {

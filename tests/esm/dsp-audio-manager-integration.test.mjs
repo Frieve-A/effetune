@@ -5,6 +5,7 @@ import { TelemetryHub } from '../../js/audio/telemetry-hub.js';
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
+import { clearDspModuleCache } from '../../js/audio/dsp-wasm-loader.js';
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 import { createWasmExecutionNotice } from '../../js/ui/pipeline/wasm-execution-notice.js';
@@ -1842,6 +1843,43 @@ test('AudioManager rollout kill switches avoid loading a DSP artifact', async ()
     globalThis.window.location.search = '';
     globalThis.window.audioPreferences.useWasmDsp = false;
     assert.equal(await manager.loadDspForWorklet(), null);
+  });
+});
+
+test('AudioManager startup prefetch honours the stored preference and shares the worklet load', async () => {
+  const fetched = [];
+  let stored = { useWasmDsp: false };
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  await withGlobals({
+    window: {
+      location: { pathname: '/app/index.html', search: '' },
+      localStorage: { getItem: () => JSON.stringify(stored) }
+    },
+    fetch: url => {
+      fetched.push(url);
+      return new Promise(() => {});
+    }
+  }, async () => {
+    clearDspModuleCache();
+    try {
+      const manager = createManager();
+      manager.contextManager = { audioContext: { sampleRate: 48000 } };
+      await manager.prefetchDspModule();
+      assert.deepEqual(fetched, []);
+
+      stored = { useWasmDsp: true };
+      void manager.prefetchDspModule();
+      await flush();
+      assert.equal(fetched.length, 2);
+      assert.ok(fetched.every(url => url.startsWith('/app/plugins/dsp/')));
+      assert.equal(globalThis.window.audioPreferences, undefined);
+
+      void manager.loadDspForWorklet();
+      await flush();
+      assert.equal(fetched.length, 2);
+    } finally {
+      clearDspModuleCache();
+    }
   });
 });
 

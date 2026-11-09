@@ -39,7 +39,11 @@ import {
     saveWebPowerSavingSettings,
     setWebPowerSettingsApplyHandler
 } from './electron/webSettingsStorage.js';
-import { isGaplessPlaybackOnlyChange } from './electron/audio-preference-store.js';
+import {
+    isPlayerPreferenceOnlyChange,
+    loadAudioPreferences,
+    pickPlayerPreferences
+} from './electron/audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from './audio/audio-device-constants.js';
 import { getSerializablePluginStateShort, applySerializedState } from './utils/serialization-utils.js';
 
@@ -92,6 +96,37 @@ function audioPreferencesEqual(left, right) {
     const rightKeys = Object.keys(right);
     return leftKeys.length === rightKeys.length &&
         leftKeys.every(key => Object.hasOwn(right, key) && Object.is(left[key], right[key]));
+}
+
+/**
+ * Hand the changed Player settings (Gapless Playback and ReplayGain) to the
+ * live player. Both preference objects must already be normalized.
+ */
+async function applyPlayerPreferenceChanges(previousPreferences, nextPreferences) {
+    const player = window.uiManager?.audioPlayer;
+    if (nextPreferences.gaplessPlayback !== previousPreferences.gaplessPlayback &&
+        typeof player?.applyGaplessPlaybackPreference === 'function') {
+        try {
+            await player.applyGaplessPlaybackPreference(nextPreferences.gaplessPlayback);
+        } catch (error) {
+            console.error('[AudioManager] Failed to clean up the previous gapless plan:', error);
+        }
+    }
+    const replayGain = {
+        mode: nextPreferences.replayGainMode,
+        preampDb: nextPreferences.replayGainPreampDb,
+        preventClipping: nextPreferences.replayGainPreventClipping
+    };
+    if ((replayGain.mode !== previousPreferences.replayGainMode ||
+        replayGain.preampDb !== previousPreferences.replayGainPreampDb ||
+        replayGain.preventClipping !== previousPreferences.replayGainPreventClipping) &&
+        typeof player?.applyReplayGainPreference === 'function') {
+        try {
+            await player.applyReplayGainPreference(replayGain);
+        } catch (error) {
+            console.error('[AudioManager] Failed to apply the ReplayGain preference:', error);
+        }
+    }
 }
 
 function audioPipelineConfigurationEqual(left, right) {
@@ -633,14 +668,36 @@ export class AudioManager {
         }
     }
 
-    async loadDspForWorklet() {
-        const pathname = window.location?.pathname || '';
-        const basePath = this.runtimeOptions?.assetBasePath ?? pathname.substring(0, pathname.lastIndexOf('/'));
-        const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
+    // Returns null without fetching when WASM DSP is disabled. The loader
+    // memoizes per asset path, so every caller shares one fetch and compile.
+    _loadEnabledDspModule(
+        preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {}
+    ) {
         const rollout = getDspRolloutConfig({ preference, location: window.location });
         if (rollout.forceOff || preference.useWasmDsp === false) return null;
+        const pathname = window.location?.pathname || '';
+        const basePath = this.runtimeOptions?.assetBasePath ?? pathname.substring(0, pathname.lastIndexOf('/'));
+        return loadDspModule({ basePath });
+    }
+
+    // Starts the WASM download and compile at app startup so the worklet does
+    // not wait for it later. Runs before the effective preferences are
+    // published, so it reads the stored ones without publishing them.
+    async prefetchDspModule() {
+        try {
+            const preference = await loadAudioPreferences(Boolean(window.electronIntegration?.isElectron));
+            await this._loadEnabledDspModule(preference || {});
+        } catch (error) {
+            // The worklet startup path loads the module again and reports failures.
+            console.warn('[dsp-wasm] Startup prefetch failed:', error);
+        }
+    }
+
+    async loadDspForWorklet() {
+        const loading = this._loadEnabledDspModule();
+        if (!loading) return null;
         const sampleRate = this.contextManager.audioContext.sampleRate;
-        const info = await loadDspModule({ basePath });
+        const info = await loading;
         if (!info) return null;
         return warmUpDspModule(info, sampleRate);
     }
@@ -2007,7 +2064,7 @@ export class AudioManager {
         this._publishDspLatency(sampleRate);
     }
 
-    _requestDspControl(workletNode, type, replyType, payload, timeoutMs) {
+    _requestDspControl(workletNode, type, replyType, payload, timeoutMs, transfer) {
         if (!workletNode?.port || !(timeoutMs > 0)) return Promise.resolve(null);
         if (!(this._pendingDspControlRequests instanceof Map)) {
             this._pendingDspControlRequests = new Map();
@@ -2027,7 +2084,7 @@ export class AudioManager {
         };
         pending.set(requestId, request);
         try {
-            workletNode.port.postMessage({ type, requestId, ...payload });
+            workletNode.port.postMessage({ type, requestId, ...payload }, transfer);
             if (pending.get(requestId) === request) {
                 request.timer = setTimeout(() => {
                     if (pending.get(requestId) !== request) return;
@@ -3161,33 +3218,29 @@ export class AudioManager {
         return saveWebAudioPreferences(preferences);
     }
 
-    async applyGaplessPlaybackPreference(preferences) {
+    async applyPlayerPreferences(preferences) {
         // Compare against the same source as the Audio Configuration dialog (the
         // live mirror first) so a runtime-only mirror override, such as the
-        // default-output fallback, never blocks a Gapless-only change.
-        const previousPreferences = window.electronIntegration?.audioPreferences ||
+        // default-output fallback, never blocks a Player-only change.
+        const previousPreferences = mergeWebAudioPreferences({},
+            window.electronIntegration?.audioPreferences ||
             window.audioPreferences ||
-            (window.electronAPI ? null : loadWebAudioPreferences()) || {};
-        if (!isGaplessPlaybackOnlyChange(previousPreferences, preferences)) {
-            console.warn('[AudioManager] Gapless Playback was requested together with other audio preference changes.');
-            return 'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.';
+            (window.electronAPI ? null : loadWebAudioPreferences()) || {});
+        if (!isPlayerPreferenceOnlyChange(previousPreferences, preferences)) {
+            console.warn('[AudioManager] Player settings were requested together with other audio preference changes.');
+            return 'Audio Error: The player settings could not be changed. Please apply the audio settings again.';
         }
         const nextPreferences = mergeWebAudioPreferences(previousPreferences, preferences);
-        // Persist only the playback field so a session-only mirror override
+        // Persist only the player fields so a session-only mirror override
         // never reaches the stored preferences and never triggers a reload.
-        const gaplessPatch = { gaplessPlayback: nextPreferences.gaplessPlayback };
-        if (!await this._persistInPlaceAudioPreferences(gaplessPatch, 'gapless-playback')) {
-            return 'Audio Error: Gapless Playback could not be changed. Please apply the audio settings again.';
+        if (!await this._persistInPlaceAudioPreferences(
+            pickPlayerPreferences(nextPreferences),
+            'player-preferences'
+        )) {
+            return 'Audio Error: The player settings could not be changed. Please apply the audio settings again.';
         }
         this._setAudioPreferencesMirror(nextPreferences);
-        const player = window.uiManager?.audioPlayer;
-        if (typeof player?.applyGaplessPlaybackPreference === 'function') {
-            try {
-                await player.applyGaplessPlaybackPreference(nextPreferences.gaplessPlayback);
-            } catch (error) {
-                console.error('[AudioManager] Failed to clean up the previous gapless plan:', error);
-            }
-        }
+        await applyPlayerPreferenceChanges(previousPreferences, nextPreferences);
         return '';
     }
 
@@ -3227,14 +3280,20 @@ export class AudioManager {
             ? window.electronIntegration?.audioPreferences || window.audioPreferences
             : loadWebAudioPreferences() || window.electronIntegration?.audioPreferences) ||
             { inputDeviceId: 'default' };
-        // The Gapless-only decision uses the same source as the Audio
+        // The Player-only decision uses the same source as the Audio
         // Configuration dialog (the live mirror first); the stored preferences
         // above remain the rollback target for the in-place input switch.
         const mirrorPreferences = window.electronIntegration?.audioPreferences ||
             window.audioPreferences || previousPreferences;
-        if (audioPreferences && isGaplessPlaybackOnlyChange(mirrorPreferences, audioPreferences)) {
-            return this.applyGaplessPlaybackPreference(audioPreferences);
+        if (audioPreferences && isPlayerPreferenceOnlyChange(mirrorPreferences, audioPreferences)) {
+            return this.applyPlayerPreferences(audioPreferences);
         }
+        // A mixed change keeps the page alive, so Player settings it carries
+        // must reach the live player too.
+        const playerPreferences = audioPreferences && {
+            previous: mergeWebAudioPreferences({}, mirrorPreferences),
+            next: mergeWebAudioPreferences(mirrorPreferences, audioPreferences)
+        };
         if (audioPreferences &&
             this._canApplySilentInputInPlace(previousPreferences, audioPreferences)) {
             const result = await this._applySilentInputInPlace(
@@ -3243,8 +3302,15 @@ export class AudioManager {
             );
             if (result) {
                 this._setAudioPreferencesMirror(previousPreferences);
+            } else {
+                await applyPlayerPreferenceChanges(playerPreferences.previous, playerPreferences.next);
             }
             return result;
+        }
+        // Apply before the rebuild: rebinding the current track reads its
+        // ReplayGain tags with the player's settings.
+        if (playerPreferences) {
+            await applyPlayerPreferenceChanges(playerPreferences.previous, playerPreferences.next);
         }
         return this._doReset(audioPreferences);
     }

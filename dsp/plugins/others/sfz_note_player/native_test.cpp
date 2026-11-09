@@ -279,7 +279,9 @@ void sharedSf2Features() {
     return result;
   };
   const auto base = run(-1), quiet = run(1);
-  CHECK(std::abs(quiet / base - .1F) < .0001F);
+  // Standard compatibility scales the fixture's 200cB attenuation generator by 0.4.
+  const auto expected = std::pow(10.0F, -200.0F * .4F / 200.0F);
+  CHECK(std::abs(quiet / base - expected) < .0001F);
 }
 void sharedSfzFeatures() {
   auto r = region();
