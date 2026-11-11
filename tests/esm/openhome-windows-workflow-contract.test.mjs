@@ -439,8 +439,8 @@ test('desktop tag jobs build every platform package after exact-version prefligh
   assert.match(preflight, /expected="v\$\(node -p "require\('\.\/package\.json'\)\.version"\)"/);
   assert.match(preflight, /test "\$GITHUB_REF_NAME" = "\$expected"/);
   assert.match(preflight, /dsp-v\*/);
-  assert.match(preflight, /npm audit signatures/);
-  assert.equal(preflight.match(/npm run verify/g)?.length, 1);
+  assert.match(preflight, /^\s+run: npm run verify:npm-signatures$/m);
+  assert.equal(preflight.match(/^\s+run: npm run verify$/gm)?.length, 1);
 
   const windows = jobBlock(workflows.desktopRelease, 'windows');
   assert.match(windows, /^\s+needs: preflight$/m);

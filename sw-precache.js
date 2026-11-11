@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.18.0-18ff323a3f456fd7";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.18.0-2bda08133e8b9665";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -1221,7 +1221,7 @@ self.EFFECTUNE_PRECACHE_INTEGRITY = {
   "./js/visualizer/visualizer-view.js": "sha256-V1gcrbvDtO2NCbs/1Tcapdv9YlDLTCOseQgN6BYspVE=",
   "./js/web-update-manager.js": "sha256-OTJflHuHnD52gzfl54jBN93hunPXZ9qkQBuzjH2DmPQ=",
   "./manifest.json": "sha256-ceLA8yRRfMIeOFkQDXpHg/b0AKDQW2+g8i0c+3ymIdc=",
-  "./package.json": "sha256-LM8AzDNh/fzV0l8eE7bMF7npGaqsqA9ES9LTWFLZcgo=",
+  "./package.json": "sha256-U0ZuIflAiuDoj///qqQBrT+ydlG2RtMl+7qxec9QVtI=",
   "./plugins/analyzer/analog_meter.js": "sha256-+hxSOWQoZP7v2GtV5T5fqCrzN5vvD9kPpQZxMUJGLNU=",
   "./plugins/analyzer/chroma_spiral.js": "sha256-UCIxyKHKuynF2kkAqN2aUe7gTlu8okA7sTgVXqY2hqM=",
   "./plugins/analyzer/level_meter.css": "sha256-/L/9zILf85HdQjg4PqZ3miYkWl1xzNAzdpOgdBM0Ljg=",

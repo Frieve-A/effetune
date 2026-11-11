@@ -52,6 +52,7 @@
     "test:library-sqlite:web": "node tools/library-scale/run-web-sqlite.mjs --contract",
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
+    "verify:npm-signatures": "npm exec --yes --ignore-scripts -- npm@12.2.2 audit signatures",
     "clean": "rimraf dist node_modules/.cache",
     "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win --publish never",
     "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win portable --publish never",

@@ -114,10 +114,10 @@ Because `ignore-scripts` also suppresses implicit `pre`/`post` hooks for
 with `&&`. Keep new scripts self-contained the same way instead of relying on a
 `pre<name>` entry, which would be skipped without warning.
 
-CI installs with `npm ci --ignore-scripts` and additionally runs
-`npm audit signatures`, which rejects the run if any installed package fails to
-match its registry signature. It also verifies that every workflow action is
-pinned to a full commit SHA; see CONTRIBUTING.md for that convention.
+CI installs with `npm ci --ignore-scripts` and runs
+`npm run verify:npm-signatures` with the pinned npm CLI to verify registry
+signatures and provenance attestations. CI also checks that every workflow
+action is pinned to a full commit SHA, as described in CONTRIBUTING.md.
 
 ### 3. Run Quality Checks
 
@@ -210,7 +210,7 @@ checks before the normal verification. Do not use `--force` or
 
 ```bash
 npm ci --ignore-scripts
-npm audit signatures
+npm run verify:npm-signatures
 npm run verify
 ```
 

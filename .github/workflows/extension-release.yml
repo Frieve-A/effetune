@@ -43,7 +43,7 @@ jobs:
       - name: Check release tag or manual main draft
         run: node scripts/release-extension.mjs check
       - run: npm ci --ignore-scripts
-      - run: npm audit signatures
+      - run: npm run verify:npm-signatures
       - run: npm run verify
       - run: npm run build:extension
       - name: Install browser and virtual audio output
