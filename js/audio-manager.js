@@ -20,7 +20,7 @@ import {
 import { TelemetryHub } from './audio/telemetry-hub.js';
 import { updateWasmExecutionNotice } from './ui/pipeline/wasm-execution-notice.js';
 import { DSP_PARAM_PACKERS } from './audio/dsp-params.generated.js';
-import { SpectrumTapContract, VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, dropVisualSyncOverflow,
+import { SpectrumTapContract, VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, VISUAL_SYNC_QUEUE_LIMIT, dropVisualSyncOverflow,
     isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime,
     audiblePlaybackPosition, telemetryCaptureTiming } from './audio/visual-sync.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
@@ -244,6 +244,17 @@ export class AudioManager {
         this.stream = null;
         this.sourceNode = null;
         this.workletNode = null;
+        // Network Output: held L0 stage state (resent to every new primary worklet)
+        // and the renderer callback that requests a fresh send port for it.
+        this._networkOutputLocalDelay = { active: false, delayMs: 0, localEnabled: true };
+        this._networkDelayRequestId = 0;
+        this._networkDelayRequests = new Map();
+        this._appliedNetworkDelay = null;
+        this._networkOutputPortRequester = null;
+        this._networkReceiveSession = { active: false, generation: 0, sessionId: null };
+        this.networkRoute = null;
+        this.networkPaths = null;
+        if (this.telemetryHub) this.telemetryHub.routeRevision = null;
         this.pipeline = this.pipelineA; // Reference to current pipeline
         this.masterBypass = false;
         this.offlineContext = null;
@@ -512,6 +523,13 @@ export class AudioManager {
                 return contextResult;
             }
             
+            // Initialize audio output first: the System Audio input guard
+            // must see the output device that was actually applied.
+            const outputResult = await this.ioManager.initAudioOutput();
+            if (outputResult) {
+                return outputResult;
+            }
+
             // Initialize audio input. Layout mode must never affect the audio
             // path: mobile and desktop both request the input device here (a
             // denied permission falls back to the silent source inside
@@ -520,12 +538,6 @@ export class AudioManager {
                 ? await this.ioManager.initAudioInput(audioPreferences)
                 : await this.ioManager.initAudioInput();
             // No need to log input result
-            
-            // Initialize audio output
-            const outputResult = await this.ioManager.initAudioOutput();
-            if (outputResult) {
-                return outputResult;
-            }
             // Note: We don't build the pipeline here anymore
             // That will be done in initializeAudioWorklet after GUI is fully rendered
             
@@ -647,6 +659,9 @@ export class AudioManager {
                     await this.setVisualSyncEnabled(true);
                     await this._applyWorkletOutputDelays([sourceWorkletNode]);
                 }
+                this._postNetworkOutputLocalDelay(sourceWorkletNode);
+                this._postNetworkReceiveSession(sourceWorkletNode);
+                this._networkOutputPortRequester?.();
             }
             this._pruneInactiveDspWorklets();
             this.dspModuleInfo = null;
@@ -2033,7 +2048,83 @@ export class AudioManager {
 
     getTotalPipelineLatencySamples() {
         return (this.dspPipelineLatencySamples || 0) +
-            (this._appliedOutputDelayFrames?.get(this._getPrimaryWorkletNode()) || 0);
+            (this._appliedOutputDelayFrames?.get(this._getPrimaryWorkletNode()) || 0) +
+            this._getNetworkOutputLocalDelaySamples();
+    }
+
+    // Network Output: hands the send port to the primary worklet (transferred).
+    // Without a primary worklet the port is closed so the requester runs again
+    // once a worklet exists.
+    setNetworkOutputPort(port) {
+        const worklet = this._getPrimaryWorkletNode();
+        if (!worklet?.port) {
+            port?.close?.();
+            return;
+        }
+        worklet.port.postMessage({ type: 'setNetworkOutputPort', port }, port ? [port] : []);
+    }
+
+    setNetworkReceiveSession(active, generation, sessionId = null) {
+        const previous = this._networkReceiveSession;
+        if (!Number.isSafeInteger(generation) || generation <= (previous?.generation ?? -1)) return;
+        this._networkReceiveSession = { active: active === true, generation,
+            sessionId: active === true ? sessionId : null };
+        this.networkRoute = null;
+        this.networkPaths = null;
+        if (this.telemetryHub) this.telemetryHub.routeRevision = -1;
+        this.telemetryHub?.clearVisualSyncQueue?.();
+        this.dispatchEvent('networkRoute', null);
+        for (const worklet of this._getActiveDspWorklets()) this._postNetworkReceiveSession(worklet);
+        const delay = this._networkOutputLocalDelay;
+        if (delay) this.setNetworkOutputLocalDelay(delay.active, delay.delayMs, delay.localEnabled, delay.syncDelayMs, delay.syncRevision);
+    }
+
+    _postNetworkReceiveSession(worklet) {
+        if (!worklet?.port || !this._networkReceiveSession) return;
+        const { active, generation } = this._networkReceiveSession;
+        worklet.port.postMessage({ type: 'setNetworkReceiveSession', active, generation });
+    }
+
+    // Apply the same local output settings to the primary and Double-Blind Test branches.
+    setNetworkOutputLocalDelay(active, delayMs, localEnabled = true, syncDelayMs = 0, syncRevision = 0) {
+        syncDelayMs = active && Number.isFinite(syncDelayMs) && syncDelayMs > 0 ? syncDelayMs : 0;
+        this._networkOutputLocalDelay = {
+            active: active === true,
+            delayMs: Number.isFinite(delayMs) ? delayMs : 0,
+            localEnabled,
+            syncDelayMs,
+            syncRevision,
+            requestId: ++this._networkDelayRequestId
+        };
+        this._networkDelayRequests.set(this._networkDelayRequestId, { ...this._networkOutputLocalDelay,
+            generation: this._networkReceiveSession?.generation });
+        while (this._networkDelayRequests.size > 32) this._networkDelayRequests.delete(this._networkDelayRequests.keys().next().value);
+        for (const worklet of this._getActiveDspWorklets()) this._postNetworkOutputLocalDelay(worklet);
+    }
+
+    setNetworkOutputPortRequester(requester) {
+        this._networkOutputPortRequester = typeof requester === 'function' ? requester : null;
+        if (this._networkOutputPortRequester && this._getPrimaryWorkletNode()) {
+            this._networkOutputPortRequester();
+        }
+    }
+
+    _postNetworkOutputLocalDelay(worklet) {
+        if (!worklet?.port || !this._networkOutputLocalDelay) return;
+        const { active, delayMs, localEnabled, requestId } = this._networkOutputLocalDelay;
+        worklet.port.postMessage({ type: 'setNetworkOutputLocalDelay', active, delayMs, localEnabled, requestId });
+    }
+
+    // The Double-Blind Test keeps the L0 stage but sends no PCM; main fills silence.
+    _postNetworkOutputSendPaused(worklet, paused) {
+        if (!worklet?.port) return;
+        worklet.port.postMessage({ type: 'setNetworkOutputSendPaused', paused });
+    }
+
+    _getNetworkOutputLocalDelaySamples() {
+        // Tolerate prototype-only instances the way the output-delay lookups do.
+        const applied = this._appliedNetworkDelay;
+        return applied?.worklet === this._getPrimaryWorkletNode() ? applied.localDelaySamples : 0;
     }
 
     getAudiblePlaybackPosition(position, playbackSpeed) {
@@ -2129,7 +2220,7 @@ export class AudioManager {
 
     _visualSyncSource(tapId) {
         const source = this.visualizerSourcesByTap?.get(tapId);
-        if (source) return { ruleKey: source.type, params: source.params,
+        if (source) return { ruleKey: source.type, params: source.params, outputVisualizer: true,
             execution: 'wasm', tap: VISUALIZER_SOURCE_TAP };
         const plugin = this._visualSyncPlugin(tapId);
         if (!plugin) return null;
@@ -2167,6 +2258,12 @@ export class AudioManager {
         const context = this.contextManager?.audioContext;
         const now = performance.now();
         if (!context) return now;
+        // The shared target is timed from the send tap on the render clock.
+        if (this.visualSyncEnabled && ((this._networkOutputLocalDelay?.active && this.networkRoute?.sendId != null) ||
+            this.networkRoute?.receiveId != null ||
+            (this._networkOutputLocalDelay?.active && this._appliedNetworkDelay?.syncDelayMs > 0))) {
+            return context.currentTime * 1000;
+        }
         return audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
             currentTime: context.currentTime, outputLatency: context.outputLatency,
             baseLatency: context.baseLatency, performanceTime: now });
@@ -2181,13 +2278,46 @@ export class AudioManager {
         const rule = VISUAL_SYNC_RULES[key];
         const tap = source.tap;
         if (!rule?.synced || !tap) return null;
+        const stage = source.outputVisualizer ? frame?.visualizerTapStage : undefined;
+        if (stage === 'local') return null;
+        const appliedNetwork = this._appliedNetworkDelay?.worklet === this._getPrimaryWorkletNode()
+            ? this._appliedNetworkDelay : null;
+        const syncDelayMs = appliedNetwork?.syncDelayMs || 0;
+        const networkFrames = syncDelayMs * context.sampleRate / 1000;
+        if ((this._networkOutputLocalDelay?.active && this.networkRoute?.sendId != null) || this.networkRoute?.receiveId != null) {
+            const paths = this.networkPaths;
+            if (!paths || paths.revision !== this.networkRoute.revision) return null;
+            const path = stage === 'send' ? { localSamples: null, networkSamples: 0 }
+                : stage === 'network' || stage === 'pipeline' ? { localSamples: 0, networkSamples: null }
+                    : paths.taps?.[tapId]?.[rule.tap];
+            if (!path) return null;
+            const network = !this.networkRoute.receiveActive && networkFrames > 0 && Number.isFinite(path.networkSamples);
+            if (!network && (this._networkOutputLocalDelay?.localEnabled === false || !Number.isFinite(path.localSamples))) return null;
+            const tapFrames = network ? path.networkSamples : path.localSamples;
+            const outputDelayFrames = network ? networkFrames : (stage === 'network' ? 0 : (paths.outputDelaySamples || 0)) +
+                (paths.localDelaySamples || 0) + this._getDeviceLatencyFrames(context);
+            if (key === 'spectrumOverlay' && SpectrumTapContract.valid(frame?.timing)) {
+                const { captureEndFrame, windowAgeFrames } = frame.timing;
+                return audibleFrameTime({ endFrame: captureEndFrame, generationFrames: windowAgeFrames,
+                    tapFrames, outputDelayFrames, sampleRate: context.sampleRate });
+            }
+            const capture = telemetryCaptureTiming(frame, contextFrameOffset, context.sampleRate);
+            const generationFrames = capture?.generationFrames ?? rule.generationFrames(source.params, context.sampleRate, source.execution);
+            return audibleFrameTime({ endFrame: capture?.endFrame ?? endFrame, generationFrames,
+                tapFrames, outputDelayFrames, sampleRate: context.sampleRate });
+        }
         const primaryWorklet = this._getPrimaryWorkletNode();
         const appliedFrames = this._appliedOutputDelayFrames?.get(primaryWorklet) || 0;
         const requestedFrames = (this._dbtOutputDelayFrames?.get(primaryWorklet) || 0) +
             (this.visualSyncDelayFrames || 0);
-        if (this._pendingOutputDelayRequests?.has(primaryWorklet) || appliedFrames !== requestedFrames) return null;
+        if (stage !== 'network' &&
+            (this._pendingOutputDelayRequests?.has(primaryWorklet) || appliedFrames !== requestedFrames)) return null;
+        const outputFrames = this.networkRoute?.receiveActive
+            ? (this.networkPaths?.localDelaySamples ?? this.networkRoute.localDelaySamples ?? 0)
+            : this._networkOutputLocalDelay?.active ? networkFrames : this._getNetworkOutputLocalDelaySamples();
+        const outputDelayFrames = (stage === 'network' ? 0 : appliedFrames) + outputFrames;
         if (key === 'spectrumOverlay' && SpectrumTapContract.valid(frame?.timing)) {
-            return SpectrumTapContract.audibleFrame(frame.timing, appliedFrames) / context.sampleRate * 1000;
+            return SpectrumTapContract.audibleFrame(frame.timing, outputDelayFrames) / context.sampleRate * 1000;
         }
         const capture = telemetryCaptureTiming(frame, contextFrameOffset, context.sampleRate);
         return audibleFrameTime({ endFrame: capture?.endFrame ?? endFrame,
@@ -2195,7 +2325,7 @@ export class AudioManager {
                 ? this._visualSyncGeneration(source.plugin, key)
                 : rule.generationFrames(source.params, context.sampleRate, source.execution)),
             tapFrames: tap[rule.tap],
-            outputDelayFrames: appliedFrames,
+            outputDelayFrames,
             sampleRate: context.sampleRate });
     }
 
@@ -2212,7 +2342,7 @@ export class AudioManager {
         const due = this._resolveVisualSyncDue(data.pluginId, data.endFrame);
         const now = this._visualSyncNow();
         this._syncedMeasurements ??= [];
-        if (dropVisualSyncOverflow(this._syncedMeasurements, entry => entry.plugin === plugin) &&
+        if (dropVisualSyncOverflow(this._syncedMeasurements, entry => entry.plugin === plugin, this.telemetryHub?.queueLimit) &&
             this.telemetryHub?.stats) {
             this.telemetryHub.stats.visualSyncDropped++;
         }
@@ -2737,6 +2867,48 @@ export class AudioManager {
             console.warn(`[dsp-wasm] Worklet ${data.stage || 'runtime'} failure: ${data.error || 'unknown error'}`);
             workletNode?.port?.postMessage({ type: 'dspCleanupFailed' });
             this.dispatchEvent('dspFailed', data);
+        } else if (data.type === 'networkDelayApplied') {
+            if (workletNode !== this._getPrimaryWorkletNode()) return;
+            const request = this._networkDelayRequests?.get(data.requestId);
+            if (!request || request.generation !== this._networkReceiveSession?.generation ||
+                (this._appliedNetworkDelay?.worklet === workletNode &&
+                 data.requestId <= this._appliedNetworkDelay.requestId) ||
+                !Number.isFinite(data.localDelaySamples) || data.localDelaySamples < 0) return;
+            const previous = this._appliedNetworkDelay;
+            this._appliedNetworkDelay = { ...request, worklet: workletNode, localDelaySamples: data.localDelaySamples };
+            for (const id of this._networkDelayRequests.keys()) {
+                if (id < data.requestId) this._networkDelayRequests.delete(id);
+            }
+            if (this.telemetryHub && (request.syncDelayMs !== (previous?.syncDelayMs ?? 0) ||
+                request.syncRevision !== (previous?.syncRevision ?? 0))) {
+                this.telemetryHub.queueLimit = VISUAL_SYNC_QUEUE_LIMIT + Math.ceil(request.syncDelayMs * 60 / 1000);
+                this.telemetryHub.clearVisualSyncQueue();
+            }
+        } else if (data.type === 'networkRoute') {
+            if (workletNode !== this._getPrimaryWorkletNode() ||
+                data.generation !== this._networkReceiveSession?.generation) return;
+            const previousReceiveId = this.networkRoute?.receiveId ?? null;
+            this.networkRoute = { sendId: data.sendId ?? null, receiveId: data.receiveId ?? null,
+                generation: data.generation, receiveActive: data.receiveActive === true,
+                revision: data.revision, localDelaySamples: data.localDelaySamples,
+                visualizerTapStage: data.visualizerTapStage };
+            this.telemetryHub.routeRevision = data.revision;
+            this.telemetryHub?.clearVisualSyncQueue?.();
+            this.dispatchEvent('networkRoute', this.networkRoute);
+            // Power coverage depends only on the Receive cut point.
+            if (this.networkRoute.receiveId !== previousReceiveId) this.powerPolicyController?._configureWorklets?.();
+        } else if (data.type === 'networkPaths') {
+            if (workletNode !== this._getPrimaryWorkletNode()) return;
+            if (this.networkRoute && data.revision !== this.networkRoute.revision) return;
+            const previous = this.networkPaths;
+            const legacyRoute = this.networkRoute?.sendId == null && this.networkRoute?.receiveId == null &&
+                !this.networkRoute?.receiveActive;
+            const visualPath = ({ revision, localDelaySamples, localDelayRevision, ...path }) => path;
+            const trimOnly = legacyRoute && previous &&
+                JSON.stringify(visualPath(previous)) === JSON.stringify(visualPath(data));
+            this.networkPaths = data;
+            if (!trimOnly) this.telemetryHub?.clearVisualSyncQueue?.();
+            this.dispatchEvent('networkPaths', data);
         } else if (data.type === 'dspLatency') {
             if (workletNode !== this._getPrimaryWorkletNode()) return;
             const samples = Number.isInteger(data.samples) && data.samples >= 0 ? data.samples : 0;
@@ -4118,6 +4290,10 @@ export class AudioManager {
                 }
             };
             if (this.visualSyncEnabled) wB.port.postMessage({ type: 'setVisualSync', enabled: true });
+            // Both branches keep the L0 stage; only the primary sends, and it pauses now.
+            this._postNetworkOutputLocalDelay(wB);
+            this._postNetworkReceiveSession(wB);
+            this._postNetworkOutputSendPaused(wA, true);
 
             const selA = ctx.createGain();
             const selB = ctx.createGain();
@@ -4449,6 +4625,7 @@ export class AudioManager {
         this._parallelFallbackBudgetInvalidated = false;
         this._parallelPreparing = false;
         this._parallelActive = false;
+        this._postNetworkOutputSendPaused(wA, false);
         const generation = this._advanceAudioGraphGeneration();
         let graphReleased = false;
         const releaseParallelGraph = () => {

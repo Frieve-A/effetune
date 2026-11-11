@@ -95,6 +95,28 @@ function createWhiteNoiseBuffer(audioContext, channel, minFreq, maxFreq, outputB
     return noiseBuffer;
 }
 
+// Renders one loop period of measurement noise at 0 dB through the effect pipeline,
+// feeding the same pipeline inputs as the sweep. Three periods are rendered and the
+// middle one is kept so the loop stays continuous across its boundary.
+async function renderPipelineNoise(audioContext, channel, minFreq, maxFreq, outputBands, pipeline) {
+    const separateBands = channel === 'all' && Array.isArray(outputBands);
+    const noise = createWhiteNoiseBuffer(
+        audioContext, channel, minFreq, maxFreq, outputBands, separateBands ? outputBands.length : 1
+    );
+    const period = noise.length;
+    const selected = channel === 'left' ? 0 : channel === 'right' ? 1 : Number(channel);
+    const input = Array.from({ length: pipeline.channelCount }, (_, index) => {
+        const data = new Float32Array(3 * period);
+        const source = separateBands ? (index < noise.numberOfChannels ? noise.getChannelData(index) : null)
+            : channel === 'all' || channel === 'both' ? (index < 2 ? noise.getChannelData(0) : null)
+                : (index === selected ? noise.getChannelData(0) : null);
+        if (source) for (let repeat = 0; repeat < 3; repeat++) data.set(source, repeat * period);
+        return data;
+    });
+    const rendered = await pipeline.render(input);
+    return rendered.map(data => data.slice(period, 2 * period));
+}
+
 function nextWhiteNoiseOperationToken(audioState) {
     if (!Number.isSafeInteger(audioState.whiteNoiseOperationToken)) {
         audioState.whiteNoiseOperationToken = 0;
@@ -199,8 +221,12 @@ async function prepareSerializedWhiteNoiseOutputRoute(
  * @param {string} channel - The channel to output to ('left', 'right', 'all', or specific channel number '3'-'16')
  * @param {number} minFreq - Lower band edge in Hz (default 1 = effectively unlimited)
  * @param {number} maxFreq - Upper band edge in Hz (default null = up to Nyquist)
+ * @param {Array|null} outputBands - Per-output bands when channel is 'all'
+ * @param {number} outputChannelCount - Output route width
+ * @param {{channelCount: number, cache: Map, render: Function}|null} pipeline - Renders the
+ *     noise through the effect pipeline; rendered loops are cached per channel token
  */
-async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null, outputChannelCount) {
+async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null, outputChannelCount, pipeline = null) {
     validateSignalOutputChannel(channel);
     if (isAndroidHost()) {
         if (!['all', 'both', 'left', 'right', '0', '1'].includes(String(channel)) || outputChannelCount > 2) {
@@ -269,19 +295,36 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
         const separateBands = channel === 'all' && Array.isArray(outputBands);
         console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
-        const noiseBuffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, outputChannels);
+        let noiseBuffer;
+        if (pipeline) {
+            const cacheKey = String(channel);
+            let rendered = pipeline.cache.get(cacheKey);
+            if (!rendered) {
+                rendered = await renderPipelineNoise(this.audioContext, channel, minFreq, maxFreq, outputBands, pipeline);
+                pipeline.cache.set(cacheKey, rendered);
+            }
+            if (operationToken !== this.whiteNoiseOperationToken) {
+                releaseWhiteNoiseResources(resources);
+                return false;
+            }
+            noiseBuffer = this.audioContext.createBuffer(outputChannels, rendered[0].length, this.audioContext.sampleRate);
+            rendered.forEach((data, index) => noiseBuffer.getChannelData(index).set(data));
+        } else {
+            noiseBuffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, outputChannels);
+        }
 
         // Create audio source from buffer
         resources.node = this.audioContext.createBufferSource();
         resources.node.buffer = noiseBuffer;
         resources.node.loop = true;
-        
+
         // Create gain node for level control
         resources.gain = this.audioContext.createGain();
         resources.gain.gain.value = Math.pow(10, level / 20);
 
         resources.node.connect(resources.gain);
-        if (separateBands) {
+        if (separateBands || pipeline) {
+            // Every rendered pipeline output plays on its matching device channel.
             resources.gain.channelCount = outputChannels;
             resources.gain.channelCountMode = 'explicit';
             resources.gain.channelInterpretation = 'discrete';

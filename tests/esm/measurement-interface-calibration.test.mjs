@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { resolveInterfaceCalibrationEntry } from '../../features/measurement/measurement-controller/index.js';
+import dataStorage from '../../features/measurement/dataStorage.js';
+import CorrectionHandler from '../../features/measurement/ui/correction-handler.js';
 import FFT from '../../js/utils/measurement-dsp/fft.js';
 import {
     applyInterfaceCalibration
@@ -156,4 +159,71 @@ test('invalid onset and empty calibration records are rejected', () => {
         minFrequency: 20,
         maxFrequency: 20000
     }), /measured impulse response is invalid/i);
+});
+
+function storedSourceMeasurement(extra = {}) {
+    return {
+        id: 'source',
+        sampleRate: 48000,
+        sweepMinFreq: 20,
+        sweepMaxFreq: 20000,
+        points: [{ pointId: 3, ir: { stored: true } }],
+        ...extra
+    };
+}
+
+test('a measurement taken through the effect pipeline is rejected as a calibration source', async t => {
+    const originals = {
+        getMeasurementById: dataStorage.getMeasurementById,
+        getImpulseResponse: dataStorage.getImpulseResponse
+    };
+    t.after(() => Object.assign(dataStorage, originals));
+    let source = null;
+    const impulseReads = [];
+    dataStorage.getMeasurementById = () => source;
+    dataStorage.getImpulseResponse = async (...args) => {
+        impulseReads.push(args);
+        return null;
+    };
+    const entry = { sourceMeasurementId: 'source', sourcePointId: 3 };
+    const unavailable = error => error.code === 'interfaceCalibrationUnavailable';
+
+    source = storedSourceMeasurement({ effectPipeline: { pluginNames: [] } });
+    await assert.rejects(resolveInterfaceCalibrationEntry(entry, 48000, 20, 20000), unavailable);
+    assert.equal(impulseReads.length, 0);
+
+    // The same record without the marker reaches its stored impulse response.
+    source = storedSourceMeasurement();
+    await assert.rejects(resolveInterfaceCalibrationEntry(entry, 48000, 20, 20000), unavailable);
+    assert.deepEqual(impulseReads, [['source', 3]]);
+});
+
+test('correction design returns no filters for a measurement taken through the effect pipeline', async t => {
+    const originalGetMeasurementById = dataStorage.getMeasurementById;
+    t.after(() => { dataStorage.getMeasurementById = originalGetMeasurementById; });
+    const handler = new CorrectionHandler({
+        measurementStateGeneration: 1,
+        selectedMeasurementId: 'measurement',
+        measurementDisplay: { selectedChannel: 'all' },
+        updateResultsGraph() {}
+    });
+    let designs = 0;
+    handler.calculatePEQParametersForResponse = async () => {
+        designs += 1;
+        return [{ frequency: 1000, gain: -3, q: 1 }];
+    };
+    const settings = { lowFreq: 20, highFreq: 20000, smoothing: 0.3, eqBandCount: 5 };
+    const design = async measurement => {
+        dataStorage.getMeasurementById = () => measurement;
+        return handler.calculatePEQParameters(settings, 1,
+            { measurementId: 'measurement', measurement, channel: 'all' });
+    };
+
+    const marked = storedSourceMeasurement({ effectPipeline: { pluginNames: ['Volume'] } });
+    assert.deepEqual(await design(marked), []);
+    assert.equal(designs, 0);
+    assert.equal(marked.peqParameters, undefined);
+
+    assert.equal((await design(storedSourceMeasurement())).length, 1);
+    assert.equal(designs, 1);
 });

@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:5ea3c59fbbe4e041f433a0bab3e222d03f2e83b717ca1c5a17ebaae342b3eff7",
+  "sourceDigest": "sha256:99ee703895a385cb783156c476330c4c9a12c82dbd00e02d91942460be8797ab",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -522,6 +522,18 @@
     {
       "name": "VolumePlugin",
       "hash": 1719233191,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "NetworkReceivePlugin",
+      "hash": 2166136261,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
+      "name": "NetworkSendPlugin",
+      "hash": 2166136261,
       "byteCapacity": 0,
       "assets": []
     },
@@ -1141,7 +1153,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4866946,
-    "simd": 5081068
+    "baseline": 4868256,
+    "simd": 5082147
   }
 }

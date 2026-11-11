@@ -7,7 +7,7 @@
 .plugin-parameter-ui .parameter-row {
     display: flex;
     align-items: center;
-    min-height: 26px;
+    min-height: var(--et-control-height-field);
     flex-wrap: wrap;
     gap: 10px;
     margin: var(--et-parameter-row-margin) 0;
@@ -21,7 +21,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row {
 .plugin-parameter-ui .parameter-row:has(> input[type="number"], > input[type="range"], > select) > label:first-child {
     display: flex;
     align-items: center;
-    height: 26px;
+    height: var(--et-control-height-field);
     line-height: normal;
     overflow: visible;
 }
@@ -67,8 +67,19 @@ body:not(.layout-mobile) :is(
     .multichannel-panel-ui input[type="number"]
 ) {
     box-sizing: border-box;
-    height: 26px;
-    min-height: 26px;
+    height: var(--et-control-height-field);
+    min-height: var(--et-control-height-field);
+}
+
+body:not(.layout-mobile) .plugin-parameter-ui :is(
+    .eq-reset-button,
+    .analyzer-reset-button,
+    .fifteen-band-peq-import-button,
+    .fifteen-band-peq-inverse-button
+) {
+    box-sizing: border-box;
+    min-height: var(--et-control-height-field);
+    padding-block: 0;
 }
 
 body:not(.layout-mobile) .plugin-parameter-ui input[type="number"],

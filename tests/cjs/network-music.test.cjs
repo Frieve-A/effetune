@@ -729,6 +729,18 @@ test('player lists exclude only the local UDN on initial state, refresh and disc
   assert.equal(discovery.devices.get(self.id), self);
 });
 
+test('bursts of state changes share one catalog read in flight plus one follow-up', async t => {
+  let active = 0; let peak = 0; let reads = 0;
+  const repository = { listScanFolders: async () => { reads++; active++; peak = Math.max(peak, active); await new Promise(resolve => setImmediate(resolve)); active--; return { folders: [] }; } };
+  const { host } = fixture({ getCatalog: async () => ({ repository }) });
+  t.after(() => host.dispose());
+  const states = [];
+  host.on('state', state => states.push(state));
+  for (let index = 0; index < 40; index++) host.emitState();
+  while (host.stateRefresh) await host.stateRefresh;
+  assert.equal(peak, 1); assert.equal(reads, 2); assert.equal(states.length, 2);
+});
+
 test('catalog selections retain playlist identities and original queue order while choosing the starting track', async () => {
   const { host, calls, repository } = playerFixture();
   const released = [];

@@ -9,12 +9,17 @@ function getDefaultWindow() {
 export function registerPipelineStateCloseHandler(
     getPipelineStateForSave,
     fadeOutOutput,
-    electronAPI = getDefaultWindow().electronAPI
+    electronAPI = getDefaultWindow().electronAPI,
+    releaseAudioInput = () => getDefaultWindow().audioManager?.ioManager?.releaseAudioInput?.({ reason: 'close' })
 ) {
     if (electronAPI && electronAPI.onRequestPipelineStateForClose) {
         electronAPI.onRequestPipelineStateForClose(async () => {
             // Silence the output before the window closes.
             await fadeOutOutput();
+            // Release the capture before the main process persists state so a
+            // loopback capture (which mutes the Windows default output) ends
+            // with the window instead of lingering until the process exits.
+            releaseAudioInput();
             const pipelineState = getPipelineStateForSave();
             electronAPI.sendPipelineStateForClose(pipelineState);
         });

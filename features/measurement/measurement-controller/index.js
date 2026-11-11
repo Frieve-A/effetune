@@ -12,11 +12,16 @@ import SweepMeasurement from './sweep-measurement.js';
 import AudioProcessing from './audio-processing.js';
 import GraphUtils from './graph-utils.js';
 import {
+    channelIndexOf,
     isMultiChannelSelection,
     selectionFromConfig
 } from '../audio-utils/channel-selection.js';
 import { resolveCalibrationIrCandidate, resolveSweepBand } from '../measurement-model.js';
-import { prepareMeasurementOutputRoute, releaseMeasurementOutputRoute } from '../audio-utils/output-routing.js';
+import {
+    SUPPORTED_OUTPUT_CHANNEL_COUNTS,
+    prepareMeasurementOutputRoute,
+    releaseMeasurementOutputRoute
+} from '../audio-utils/output-routing.js';
 import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
 
 export class MeasurementSetupError extends Error {
@@ -48,6 +53,7 @@ async function resolveInterfaceCalibrationEntry(entry, actualSampleRate, sweepMi
     const sourcePoint = source && sourceMeasurement.points[source.pointIndex];
     if (!sourceMeasurement || sourceMeasurement.interfaceCalibration !== undefined ||
         sourceMeasurement.interfaceCalibrations !== undefined ||
+        sourceMeasurement.effectPipeline !== undefined ||
         !Number.isFinite(sourceMeasurement.sampleRate) || !Number.isSafeInteger(sourcePointId) ||
         !source) {
         throw new MeasurementSetupError('interfaceCalibrationUnavailable');
@@ -106,7 +112,11 @@ export class MeasurementController {
         this.channelRotationEpoch = 0;
         this.channelRotationTickInFlight = false;
         this.currentNoiseChannel = null;
-        
+        // Effect pipeline hand-off from the main app ({ snapshot, pluginNames }) or null.
+        this.pipelineHandoff = null;
+        // Rendered level-adjustment noise loops per channel token for the active measurement.
+        this.pipelineNoiseCache = new Map();
+
         // Mix in functionality from other modules
         Object.assign(this, LevelAdjustment);
         Object.assign(this, SweepMeasurement);
@@ -124,6 +134,14 @@ export class MeasurementController {
         } catch (error) {
             console.error('Failed to initialize audio:', error);
         }
+    }
+
+    /**
+     * Show an error notification. Mixins use this instead of importing ui-manager,
+     * which would load this module before the mixin has initialized.
+     */
+    showErrorNotification(message) {
+        uiManager.showNotification(message, 'error');
     }
 
     /**
@@ -205,12 +223,38 @@ export class MeasurementController {
             });
             configSnapshot.outputChannelCount = route.channelCount;
         }
+        const pipelineSnapshot = configSnapshot.effectPipeline ? this.pipelineHandoff?.snapshot : null;
+        if (configSnapshot.effectPipeline) {
+            if (!pipelineSnapshot || isAndroidHost()) {
+                throw new MeasurementSetupError('pipelineUnavailable');
+            }
+            if (actualSampleRate !== pipelineSnapshot.sampleRate) {
+                throw new MeasurementSetupError('pipelineSampleRateMismatch');
+            }
+            if (outputChannels.some(channel =>
+                (channelIndexOf(channel) ?? 0) >= pipelineSnapshot.channelCount)) {
+                throw new MeasurementSetupError('pipelineInputChannelUnavailable');
+            }
+            // Every pipeline output plays on its matching device channel.
+            configSnapshot.outputChannelCount = SUPPORTED_OUTPUT_CHANNEL_COUNTS.find(
+                count => count >= pipelineSnapshot.channelCount);
+        }
         if (!isAndroidHost() && (configSnapshot.outputChannelCount !== undefined ||
             (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel'))) {
             await audioUtils.waitForWhiteNoiseRouteIdle?.();
-            const route = await prepareMeasurementOutputRoute(
-                audioUtils.audioContext, configSnapshot.audioOutputId, outputChannels.at(-1), {},
-                configSnapshot.outputChannelCount);
+            let route;
+            try {
+                route = await prepareMeasurementOutputRoute(
+                    audioUtils.audioContext, configSnapshot.audioOutputId, outputChannels.at(-1), {},
+                    configSnapshot.outputChannelCount);
+            } catch (error) {
+                const maxChannels = Number(audioUtils.audioContext?.destination?.maxChannelCount) || 2;
+                if (pipelineSnapshot && maxChannels < configSnapshot.outputChannelCount) {
+                    console.error('The output device cannot play every pipeline channel:', error);
+                    throw new MeasurementSetupError('pipelineOutputChannelsUnavailable');
+                }
+                throw error;
+            }
             configSnapshot.outputChannelCount = route.outputChannels;
             releaseMeasurementOutputRoute(route);
         }
@@ -273,12 +317,16 @@ export class MeasurementController {
         };
         if (interfaceCalibration) measurement.interfaceCalibration = interfaceCalibration;
         if (interfaceCalibrations?.length) measurement.interfaceCalibrations = interfaceCalibrations;
+        if (pipelineSnapshot) {
+            measurement.effectPipeline = { pluginNames: [...this.pipelineHandoff.pluginNames] };
+        }
 
         this.measurementConfig = configSnapshot;
         this.currentMeasurement = measurement;
         this.interfaceCalibrationImpulseResponse = calibrationImpulseResponse;
         this.interfaceCalibrationImpulseResponsesByChannel = calibrationImpulseResponsesByChannel;
-        
+        this.pipelineNoiseCache = new Map();
+
         try {
             await this.prepareForLevelAdjustment();
         } catch (error) {

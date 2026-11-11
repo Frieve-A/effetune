@@ -107,6 +107,7 @@ export class PipelineCore {
             }
         }
 
+        this.itemBuilder?.updateNetworkMarkerStatuses?.();
         this.updateSelectionClasses(); // Update selection visuals after distribution
         this.updateURL(); // Update URL based on the new state
          // Ensure pull tab position is updated after potential column changes
@@ -352,6 +353,7 @@ export class PipelineCore {
                 }
             }
         });
+        this.itemBuilder?.updateNetworkMarkerStatuses?.();
     }
 
     /**

@@ -3,6 +3,8 @@ import {
     PIPELINE_ANALYZER_TSP_LENGTHS
 } from './mls.js';
 import { AnalysisPlot } from '../../features/measurement/ui/analysis-plot.js';
+import { zoomImpulseView } from '../../features/measurement/ui/impulse-response-plot.js';
+import { createPipelineImpulseView } from './result-adapter.js';
 
 const MAX_OUTPUT_SLOTS = 4;
 const NARROW_LAYOUT_QUERY = '(max-width: 1180px)';
@@ -442,6 +444,7 @@ export class PipelineAnalyzerUI {
         ));
         this.graphShell.addEventListener('pointermove', event => this.updateCursorReadout(event));
         this.graphShell.addEventListener('pointerleave', () => this.clearCursorReadout());
+        this.graphShell.addEventListener('wheel', event => this.zoomImpulse(event), { passive: false });
         this.viewGroup = createElement(
             this.document,
             'div',
@@ -799,6 +802,7 @@ export class PipelineAnalyzerUI {
     }
 
     setConfiguration(configuration = {}) {
+        const previousImpulseRange = this.configuration.displaySettings.impulseRangeMs;
         const focusToken = this.captureControlFocus();
         const activeDisplayControl = Object.values(this.displayControls || {})
             .find(control => this.document?.activeElement === control.number);
@@ -818,6 +822,7 @@ export class PipelineAnalyzerUI {
             measurementSettings: normalizeMeasurementSettings(configuration.measurementSettings),
             displaySettings: normalizeDisplaySettings(configuration.displaySettings)
         };
+        if (previousImpulseRange !== this.configuration.displaySettings.impulseRangeMs) this.impulseView = null;
         this.renderControls();
         if (displayNumberText) {
             this.displayControls[displayNumberText.key].number.value = displayNumberText.value;
@@ -971,6 +976,10 @@ export class PipelineAnalyzerUI {
             ...this.configuration.displaySettings,
             [key]: nextValue
         });
+        if (key === 'impulseRangeMs' && this.impulseView) {
+            this.impulseView = null;
+            this.renderGraph();
+        }
         if (preserveNumberText) {
             control.range.value = String(this.configuration.displaySettings[key]);
             this.syncRangeFill(control.range);
@@ -1224,7 +1233,10 @@ export class PipelineAnalyzerUI {
     }
 
     setResult(result, { stale = false } = {}) {
+        const timeRange = this.impulseView?.timeRange;
         this.result = result || null;
+        this.impulseView = timeRange && result?.views?.impulse?.timeRange
+            ? this.createImpulseView(timeRange) : null;
         this.setMeasuring(stale);
         this.clearCursorReadout();
         this.renderMeasurementSettings();
@@ -1239,7 +1251,34 @@ export class PipelineAnalyzerUI {
     }
 
     currentView() {
+        if (this.configuration.graphView === 'impulse' && this.impulseView) return this.impulseView;
         return this.result?.views?.[this.configuration.graphView] || null;
+    }
+
+    createImpulseView(timeRange) {
+        const { before, after } = this.result.displayReference;
+        return createPipelineImpulseView(this.result, timeRange, {
+            before: before.impulseDivisor, after: after.impulseDivisor
+        });
+    }
+
+    zoomImpulse(event) {
+        if (this.configuration.graphView !== 'impulse' || !event.deltaY) return;
+        const range = this.currentView()?.timeRange;
+        const rect = this.graphSvg.getBoundingClientRect();
+        if (!range || !rect.width) return;
+        const fraction = (event.clientX - rect.left) / rect.width;
+        if (fraction < 0 || fraction > 1 || event.clientY < rect.top || event.clientY > rect.bottom) return;
+        event.preventDefault();
+        const durationMs = range.maximum - range.minimum;
+        const view = zoomImpulseView(range.minimum, durationMs, event.deltaY < 0 ? 0.8 : 1.25, fraction,
+            { minMs: -2, maxMs: 50, samplePeriodMs: 1000 / this.result.sampleRate });
+        if (view.durationMs === durationMs) return;
+        this.impulseView = this.createImpulseView({
+            minimum: view.startMs, maximum: view.startMs + view.durationMs
+        });
+        this.cursorPosition = fraction;
+        this.renderGraph();
     }
 
     clearCursorReadout({ preservePosition = false } = {}) {

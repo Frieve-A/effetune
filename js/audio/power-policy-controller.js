@@ -34,7 +34,7 @@ import {
     validateStatePreparation
 } from './power-snapshot.js';
 import { PowerSessionJournal } from './power-session-journal.js';
-import { NO_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
+import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
 
 const POWER_COMMAND_TIMEOUT_MS = 1500;
 // The worklet publishes at least one heartbeat per running audio second.
@@ -155,6 +155,7 @@ export class PowerPolicyController {
         this.queue = Promise.resolve();
         this.reconcileRequested = false;
         this.reconcilePromise = null;
+        this.systemAudioSwap = null;
         this.deadlineTimer = null;
         this.operationSequence = 0;
         this.commandSequence = 0;
@@ -670,7 +671,9 @@ export class PowerPolicyController {
         const browser = this.audioManager.ioManager?.browserInput;
         const browserSelected = browser?.selected === true;
         if (browserSelected || this.player) {
-            inputRouteIntent = (browserSelected || preferences.useInputWithPlayer === true) &&
+            const mixInput = this.player?.contextManager?.shouldMixInputWithPlayer?.() ??
+                (browserSelected || preferences.useInputWithPlayer === true);
+            inputRouteIntent = mixInput &&
                 inputSnapshot.inputConfigured === true
                 ? InputRouteIntent.MIXED
                 : InputRouteIntent.PLAYER_ONLY;
@@ -852,6 +855,11 @@ export class PowerPolicyController {
     }
 
     _analyzeTemporalCapabilities(pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || []) {
+        const receiveId = this.audioManager.networkRoute?.receiveId;
+        if (receiveId != null) {
+            const index = pipeline.findIndex(plugin => plugin.id === receiveId);
+            if (index >= 0) pipeline = pipeline.slice(index);
+        }
         const midi = this.player?.contextManager?.getMidiPresentation?.();
         const tokens = this._getTokensAndGuards().tokens;
         const nodes = this._getActiveWorkletNodes();
@@ -2258,9 +2266,133 @@ export class PowerPolicyController {
         }
     }
 
-    handleInputResourceEvent() {
+    handleInputResourceEvent(snapshot = null) {
         this.pendingInputChangedEvent = true;
+        if (snapshot?.state === InputResourceState.ENDED && this._systemAudioInputSelected()) {
+            this._swapSystemAudioInput('input-ended').catch(() => {});
+        }
         this.requestReconcile('input-resource').catch(() => {});
+    }
+
+    _selectedInputDeviceId() {
+        const preferences = this.windowRef?.audioPreferences ||
+            this.windowRef?.electronIntegration?.audioPreferences || {};
+        return preferences.inputDeviceId;
+    }
+
+    _systemAudioInputSelected() {
+        return this._selectedInputDeviceId() === SYSTEM_AUDIO_INPUT_DEVICE_ID &&
+            this.audioManager.ioManager?.systemAudioDisabled !== true;
+    }
+
+    /**
+     * Called after the output device was reconciled on `devicechange`. System
+     * Audio captures and mutes the Windows default output, so a moved default
+     * endpoint (or a guard that now denies) swaps the capture once.
+     */
+    async handleSystemAudioOutputChange() {
+        if (this.disposed || !this._systemAudioInputSelected()) return false;
+        const ioManager = this.audioManager.ioManager;
+        const guard = await ioManager.evaluateSystemAudioGuard();
+        if (guard.allowed && guard.defaultGroupId === ioManager.systemAudioDefaultGroupId) {
+            return false;
+        }
+        return this._swapSystemAudioInput('default-output-changed');
+    }
+
+    _swapSystemAudioInput(cause) {
+        if (!this.systemAudioSwap) {
+            this.systemAudioSwap = this._enqueue(() => this._runSystemAudioSwap(cause))
+                .finally(() => { this.systemAudioSwap = null; });
+        }
+        return this.systemAudioSwap;
+    }
+
+    /**
+     * Narrow runtime input swap for System Audio. It only releases and
+     * reacquires the capture with the existing mutation tokens; the
+     * AudioContext, output bridge and power state are never touched here.
+     */
+    async _runSystemAudioSwap(cause) {
+        const ioManager = this.audioManager.ioManager;
+        if (this.disposed || !this._systemAudioInputSelected()) return false;
+        const input = ioManager.getInputSnapshot();
+        if (input.state === InputResourceState.RELEASED) {
+            // Power saving released the capture: do not reacquire here, only
+            // record a guard denial so the next resume honors it.
+            const guard = await ioManager.evaluateSystemAudioGuard();
+            if (guard.allowed) return false;
+            await this._disableSystemAudioInput();
+        } else if (input.state === InputResourceState.LIVE ||
+            input.state === InputResourceState.ENDED) {
+            const released = await this.requestAudioReconfigurationInputRelease({
+                handoffToSilent: true,
+                disconnectInput: true
+            });
+            if (!released) return false;
+            const before = this._getTokensAndGuards();
+            try {
+                await ioManager.beginReacquireAudioInput({ requireVisible: false });
+                this._installSystemAudioInput(before);
+            } catch (error) {
+                console.warn('System Audio input could not be restored:', error);
+                this._resynchronizeInputGeneration();
+                await this._disableSystemAudioInput();
+            }
+        } else {
+            return false;
+        }
+        this.pendingInputChangedEvent = true;
+        this.requestReconcile(`system-audio-${cause}`).catch(() => {});
+        return true;
+    }
+
+    _installSystemAudioInput(before) {
+        const ioManager = this.audioManager.ioManager;
+        const inputSource = ioManager.inputSourceNode;
+        const route = this._deriveRouteAndPlayerFacts().inputRouteIntent;
+        const routeNeedsInput = route === InputRouteIntent.EXTERNAL ||
+            route === InputRouteIntent.MIXED;
+        if (routeNeedsInput &&
+            this.audioManager.ensureSourceConnectedToPipeline?.(inputSource) !== true) {
+            throw new Error('system-audio-route-connect-failed');
+        }
+        const mutation = this.mutations.commitOwnedMutation({
+            ownerOperationId: `input-install-${++this.operationSequence}`,
+            mutationKind: 'input-install',
+            beforeTokens: before.tokens,
+            beforeGuards: before.guards,
+            resourceSnapshot: ioManager.getInputSnapshot(),
+            topologyChanged: routeNeedsInput
+        });
+        if (routeNeedsInput) this._invalidateTopologyBoundPowerEvidence();
+        this.audioManager.adoptPowerMutation?.(mutation);
+        if (routeNeedsInput) this._configureWorklets();
+        if (this.player?.contextManager?.replaceCanonicalInputSource?.(inputSource) === false) {
+            throw new Error('system-audio-canonical-source-rejected');
+        }
+        if (route === InputRouteIntent.EXTERNAL) {
+            ioManager.sourceNode = inputSource;
+            this.audioManager.sourceNode = inputSource;
+        }
+    }
+
+    /**
+     * Leave the pipeline on the silent source, record the session disable and
+     * tell the user once. Preferences are not touched.
+     */
+    async _disableSystemAudioInput() {
+        const ioManager = this.audioManager.ioManager;
+        if (ioManager.inputSourceNode || ioManager.inputStream) {
+            const released = await this.requestAudioReconfigurationInputRelease({
+                handoffToSilent: true,
+                disconnectInput: true
+            });
+            if (!released) this._resynchronizeInputGeneration();
+        }
+        ioManager.markInputNotConfigured?.();
+        ioManager.markSystemAudioDisabled?.();
+        this.windowRef?.uiManager?.showTransientMessage?.('error.systemAudioStopped', true, {}, 5000);
     }
 
     handlePageLifecycleEvent(type, detail = {}) {
@@ -2330,13 +2462,15 @@ export class PowerPolicyController {
 
         const ioManager = this.audioManager.ioManager;
         const input = ioManager?.getInputSnapshot?.();
-        const preferences = this.windowRef?.audioPreferences ||
-            this.windowRef?.electronIntegration?.audioPreferences || {};
-        const selectedInputDeviceId = preferences.inputDeviceId;
-        const inputResumable = input?.state !== InputResourceState.NOT_CONFIGURED ||
-            (typeof selectedInputDeviceId === 'string' &&
-                selectedInputDeviceId.length > 0 &&
-                selectedInputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID);
+        const selectedInputDeviceId = this._selectedInputDeviceId();
+        // A System Audio capture disabled for this session is not resumed.
+        const systemAudioDisabled = selectedInputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID &&
+            ioManager?.systemAudioDisabled === true;
+        const inputResumable = !systemAudioDisabled &&
+            (input?.state !== InputResourceState.NOT_CONFIGURED ||
+                (typeof selectedInputDeviceId === 'string' &&
+                    selectedInputDeviceId.length > 0 &&
+                    selectedInputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID));
         const kindNeedsInput = resumeKind === ResumeKind.DEDICATED_INPUT ||
             resumeKind === ResumeKind.MIXED_PLAY;
         if (!kindNeedsInput || !inputResumable) return;

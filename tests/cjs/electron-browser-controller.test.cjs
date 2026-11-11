@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const { createBrowserController, normalizeBrowserURL, normalizeBrowserSettings, PARTITION } = require('../../electron/browser-controller.cjs');
+const { createSystemAudioCapture } = require('../../electron/system-audio-capture.cjs');
 const RUNTIME_USER_AGENT = 'Mozilla/5.0 EffeTune/2.15.0 Chrome/152.0.0.0 Electron/44.5.1 Safari/537.36';
 const DEFAULT_USER_AGENT = RUNTIME_USER_AGENT.replace(/\sElectron\/\S+/g, '');
 
@@ -70,8 +71,15 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   });
   let settings = initialSettings || { bookmarks: [], startPage: '' };
   const opened = [];
+  const screenSource = { id: 'screen:0:0' };
+  const sourceQueries = [];
+  const systemAudioCapture = createSystemAudioCapture({
+    mainWindow, ipcMain: ipc,
+    desktopCapturer: { async getSources(options) { sourceQueries.push(options); return [screenSource]; } }
+  });
+  t.after(() => systemAudioCapture.dispose());
   const controller = createBrowserController({
-    mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset,
+    mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset, systemAudioCapture,
     async openMusicFiles(paths, canOpen) {
       await beforeMusicOpen?.(paths);
       if (!canOpen()) return false;
@@ -102,12 +110,15 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   const prepare = () => {
     const e = event(); ipc.emit('browser:prepare-capture', e); return e.returnValue;
   };
+  const prepareSystemAudio = () => {
+    const e = event(); ipc.emit('system-audio:prepare-capture', e); return e.returnValue;
+  };
   const capture = async (changes = {}) => {
     let streams;
     await mediaSession.handler({ frame: trusted.mainFrame, userGesture: true, videoRequested: true, audioRequested: true, ...changes }, value => { streams = value; });
     return streams;
   };
-  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, capture, contents, externalURLs, menus, copied, opened };
+  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, prepareSystemAudio, capture, contents, externalURLs, menus, copied, opened, screenSource, sourceQueries };
 }
 
 test('browser page shortcuts are scoped to visible pages and leave unrelated app keys alone', async t => {
@@ -419,8 +430,13 @@ test('Browser lazily isolates remote pages and rejects foreign/subframe IPC and 
     assert.equal(h.partition.check(wc, permission, 'https://example.com'), false);
   }
   assert.equal(h.partition.check(wc, 'mediaKeySystem', 'https://example.com'), true);
+  // A foreign frame leaves the reservation; a rejected trusted request consumes it at once.
   assert.deepEqual(await h.capture({ frame: {} }), {});
   assert.deepEqual(await h.capture({ userGesture: false }), {});
+  assert.equal(h.controller.getState().error, 'captureFailed');
+  assert.deepEqual(await h.capture(), {});
+  h.prepare();
+  assert.deepEqual(await h.capture({ frame: {} }), {});
   const streams = await h.capture();
   assert.equal(streams.audio, wc.mainFrame);
   assert.equal(streams.video, wc.mainFrame);
@@ -655,7 +671,52 @@ test('Browser startup permits only its first reserved trusted capture without a 
   await h.invoke('set-capture-state', { ...first, active: false });
   h.prepare();
   assert.deepEqual(await h.capture({ userGesture: false }), {});
+  h.prepare();
   assert.equal((await h.capture()).audio, h.views[0].webContents.mainFrame);
+});
+
+test('System Audio reservations receive a muted system loopback and never a Browser stream', async t => {
+  const h = harness(t);
+  assert.deepEqual(h.prepareSystemAudio(), { ok: true });
+  assert.deepEqual(await h.capture({ userGesture: false, frame: {} }), {});
+  assert.deepEqual(await h.capture({ userGesture: false }), { video: h.screenSource, audio: 'loopbackWithMute' });
+  assert.deepEqual(h.sourceQueries, [{ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }]);
+  assert.equal(h.views.length, 0);
+  // Consumed and missing reservations grant nothing.
+  assert.deepEqual(await h.capture(), {});
+  const foreign = { sender: h.trusted, senderFrame: {}, returnValue: null };
+  h.ipc.emit('system-audio:prepare-capture', foreign);
+  assert.deepEqual(foreign.returnValue, { ok: false, error: 'unavailable' });
+  assert.deepEqual(await h.capture(), {});
+  assert.equal(h.sourceQueries.length, 1);
+});
+
+test('Simultaneous Browser and System Audio reservations are consumed in issue order', async t => {
+  const h = harness(t, { allowStartupCapture: true });
+  const browser = h.prepare();
+  h.prepareSystemAudio();
+  assert.equal((await h.capture({ userGesture: false })).audio, h.views[0].webContents.mainFrame);
+  assert.equal((await h.capture({ userGesture: false })).audio, 'loopbackWithMute');
+  assert.equal((await h.invoke('set-capture-state', { ...browser, active: true })).captureActive, true);
+  await h.invoke('set-capture-state', { ...browser, active: false });
+
+  h.prepareSystemAudio();
+  const next = h.prepare();
+  assert.equal((await h.capture()).audio, 'loopbackWithMute');
+  assert.equal((await h.capture()).audio, h.views[0].webContents.mainFrame);
+  assert.equal((await h.invoke('set-capture-state', { ...next, active: true })).captureActive, true);
+});
+
+test('A rejected Browser reservation cannot hand its request or the next one to the wrong source', async t => {
+  const h = harness(t);
+  h.prepare();
+  h.prepareSystemAudio();
+  assert.deepEqual(await h.capture({ userGesture: false }), {});
+  assert.equal(h.controller.getState().error, 'captureFailed');
+  assert.equal((await h.capture({ userGesture: false })).audio, 'loopbackWithMute');
+  const next = h.prepare();
+  assert.equal((await h.capture()).audio, h.views[0].webContents.mainFrame);
+  assert.equal((await h.invoke('set-capture-state', { ...next, active: true })).captureActive, true);
 });
 const browserRules = [{ pattern: '*.example.com/music/*', preset: 'Music', enabled: true }];
 test('Browser URL rules persist independently, reject invalid edits and retain other Browser settings', async t => {

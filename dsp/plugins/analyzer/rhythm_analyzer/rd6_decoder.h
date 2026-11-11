@@ -1,6 +1,6 @@
 // Frozen RD6 V1 forward filter and immutable one-second-lag Viterbi blocks.
 #pragma once
-#include "portable_math.h"
+#include "effetune/dsp/portable_math.h"
 #include "rd6_math.h"
 #include <algorithm>
 #include <array>
@@ -48,8 +48,8 @@ public:
       const double bpm = 60.0 / (kBeatDt * interval);
       double best = std::numeric_limits<double>::infinity();
       for (std::uint32_t t = 0u; t < 61u; ++t) {
-        const double delta = rhythm_d::portableLog(bpm) -
-                             (rhythm_d::portableLog(30.0) + rhythm_d::portableLog(10.0) * t / 60.0);
+        const double delta =
+            dsp::portableLog(bpm) - (dsp::portableLog(30.0) + dsp::portableLog(10.0) * t / 60.0);
         const double distance = delta < 0.0 ? -delta : delta;
         if (distance < best) {
           best = distance;
@@ -60,8 +60,8 @@ public:
         const double phase = static_cast<double>(p) / interval;
         chain_[states_] = static_cast<std::uint8_t>(c);
         beat_[states_] = phase < 1.0 / 16.0;
-        cos_[states_] = rhythm_d::portableCos(6.283185307179586 * phase);
-        sin_[states_] = rhythm_d::portableSin(6.283185307179586 * phase);
+        cos_[states_] = dsp::portableCos(6.283185307179586 * phase);
+        sin_[states_] = dsp::portableSin(6.283185307179586 * phase);
         ++states_;
       }
       last_[c] = states_ - 1u;
@@ -74,7 +74,7 @@ public:
       double row[kChains], sum = 0.0;
       for (std::uint32_t d = 0u; d < count_; ++d) {
         const double delta = static_cast<double>(low_ + d) / (low_ + s) - 1.0;
-        double weight = rhythm_d::portableExp(-100.0 * (delta < 0.0 ? -delta : delta));
+        double weight = dsp::portableExp(-100.0 * (delta < 0.0 ? -delta : delta));
         if (weight <= 0x1p-52)
           weight = 0.0;
         row[d] = weight;
@@ -86,7 +86,7 @@ public:
         const auto edge = edges_[d]++;
         sources_[d][edge] = static_cast<std::uint8_t>(s);
         probability_[d][edge] = row[d] / sum;
-        logProbability_[d][edge] = static_cast<float>(rhythm_d::portableLog(row[d] / sum));
+        logProbability_[d][edge] = static_cast<float>(dsp::portableLog(row[d] / sum));
       }
     }
     reset();
@@ -94,7 +94,7 @@ public:
 
   void reset() noexcept {
     const double uniform = states_ ? 1.0 / states_ : 0.0;
-    const float uniformLog = states_ ? static_cast<float>(-rhythm_d::portableLog(states_)) : 0.0f;
+    const float uniformLog = states_ ? static_cast<float>(-dsp::portableLog(states_)) : 0.0f;
     std::fill_n(alpha_.data(), states_, uniform);
     std::fill_n(dp_.data(), states_, uniformLog);
     tick_ = committed_ = 0;
@@ -107,8 +107,8 @@ public:
 
   void push(float activation, const float *tempo, bool hardSilence = false) noexcept {
     const double a = activation, off = (1.0 - a) / 15.0;
-    const float onLog = static_cast<float>(rhythm_d::portableLog(a));
-    const float offLog = static_cast<float>(rhythm_d::portableLog(off));
+    const float onLog = static_cast<float>(dsp::portableLog(a));
+    const float offLog = static_cast<float>(dsp::portableLog(off));
     for (std::uint32_t d = 0u; d < count_; ++d) {
       double forward = 0.0;
       float best = -std::numeric_limits<float>::infinity();
@@ -126,8 +126,8 @@ public:
       nextDp_[first_[d]] = best;
       back_[static_cast<std::uint32_t>(tick_) % kBack][d] = choice;
       const double p = tempo[tempo_[d]] < 1e-4f ? 1e-4 : static_cast<double>(tempo[tempo_[d]]);
-      const double log = .03 * rhythm_d::portableLog(p);
-      prior_[d] = rhythm_d::portableExp(log);
+      const double log = .03 * dsp::portableLog(p);
+      prior_[d] = dsp::portableExp(log);
       logPrior_[d] = static_cast<float>(log);
     }
     double total = 0.0;
@@ -141,7 +141,7 @@ public:
       const float observed = nextDp_[s] + (beat_[s] ? onLog : offLog);
       nextDp_[s] = observed + logPrior_[chain_[s]];
     }
-    evidence_ = total > 0.0 ? rhythm_d::portableLog(16.0 * total) : -50.0;
+    evidence_ = total > 0.0 ? dsp::portableLog(16.0 * total) : -50.0;
     if (!std::isfinite(evidence_))
       evidence_ = -50.0;
     // scipy lfilter([dt/tau], [1, dt/tau-1], evidence), with zero initial state.
@@ -149,7 +149,7 @@ public:
     long_ = (kBeatDt / 2.0) * evidence_ + (1.0 - kBeatDt / 2.0) * long_;
     shown_ = short_ > 0.0 || (shown_ && long_ > .02);
     confidence_ =
-        1.0 / (1.0 + rhythm_d::portableExp(-(-1.0543807556114948 + 31.820095025649806 * short_)));
+        1.0 / (1.0 + dsp::portableExp(-(-1.0543807556114948 + 31.820095025649806 * short_)));
     if (hardSilence) {
       short_ = long_ = confidence_ = 0.0;
       shown_ = false;
@@ -252,7 +252,7 @@ public:
     std::fill_n(out, 192u, 0.0f);
     for (std::uint32_t c = 0u; c < count_; ++c) {
       const double tempo = 60.0 / (kBeatDt * (low_ + c));
-      const double bin = 48.0 * rhythm_d::portableLog(tempo / 30.0) / 0.6931471805599453 - .5;
+      const double bin = 48.0 * dsp::portableLog(tempo / 30.0) / 0.6931471805599453 - .5;
       const auto left = static_cast<int>(std::floor(bin));
       const double fraction = bin - left;
       if (left >= 0 && left < 192)

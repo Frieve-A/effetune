@@ -105,6 +105,19 @@ test('release preflight rejects stale site inputs and generated DSP documentatio
   assert.ok(generatedDocs > siteInputs);
 });
 
+test('CI and release preflights accept the DSP npm package file allowlist', () => {
+  const manifest = JSON.parse(readFileSync(
+    path.join(repoRoot, 'dsp', 'bindings', 'js', 'package.json'), 'utf8'
+  ));
+  for (const source of [ciWorkflow, workflow]) {
+    const preflight = workflowJob(source, 'preflight');
+    const list = preflight.match(/expected_files = \[\s*([^\]]+)\]/)?.[1];
+    assert.ok(list, 'missing npm file allowlist');
+    const expected = Array.from(list.matchAll(/"([^"]+)"/g), match => match[1]);
+    assert.deepEqual(expected, manifest.files);
+  }
+});
+
 test('release acceptance runs published docs against clean wheel and npm candidates', () => {
   const acceptance = workflowJob(workflow, 'acceptance');
   const npmInit = acceptance.indexOf('npm init --yes');

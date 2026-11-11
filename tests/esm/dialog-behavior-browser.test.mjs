@@ -124,3 +124,44 @@ test('production dialogs fit desktop CSS zoom and Escape closes them from their 
     await browser.close();
   }
 });
+
+test('production audio settings controls stay reachable with enlarged display', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await createPage(browser);
+    await page.setViewportSize({ width: 480, height: 270 });
+    await page.evaluate(async () => {
+      window.uiManager = { t: key => key.split('.').at(-1) };
+      window.electronAPI = {
+        platform: 'win32',
+        getAudioDevices: async () => ({
+          success: true,
+          devices: [
+            { deviceId: 'default', kind: 'audioinput', label: 'Microphone' },
+            { deviceId: 'default', kind: 'audiooutput', label: 'Speaker' }
+          ]
+        })
+      };
+      const { showAudioConfigDialog } = await import('/js/electron/audioIntegration.js');
+      await showAudioConfigDialog(true, {});
+    });
+
+    const dialog = page.locator('.audio-config-dialog');
+    await dialog.locator('#replay-gain-mode').waitFor();
+    for (const zoom of [1.5, 3]) {
+      await page.evaluate(value => { document.body.style.zoom = value; }, zoom);
+      const apply = dialog.locator('#apply-button');
+      await apply.click({ trial: true, timeout: 2000 });
+      await apply.focus();
+      const input = dialog.locator('#input-device');
+      await input.focus();
+      const bounds = await input.boundingBox();
+      assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 270, `Audio input at ${zoom}× zoom ${JSON.stringify(bounds)}`);
+      await input.click({ trial: true, timeout: 2000 });
+    }
+    await dialog.locator('#cancel-button').click({ timeout: 2000 });
+    await dialog.waitFor({ state: 'hidden' });
+  } finally {
+    await browser.close();
+  }
+});

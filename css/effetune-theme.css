@@ -1,5 +1,8 @@
 :root {
     -webkit-tap-highlight-color: transparent;
+    --et-control-height-compact: 24px;
+    --et-control-height-field: 26px;
+    --et-control-height-navigation: 36px;
     --et-color-scheme: dark;
     --et-base: #171717;
     --et-text-primary: #f6f8fb;

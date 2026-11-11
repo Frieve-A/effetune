@@ -144,6 +144,9 @@ test('Windows release signing is mandatory before installers and artifact upload
     assert.doesNotMatch(workflows.ci, new RegExp(secret));
   }
   const pack = windows.indexOf('name: Build ECS application');
+  const rendererPower = windows.indexOf('npm run build:renderer-power', pack);
+  const ecs = windows.indexOf('node scripts/pack-ecs.mjs --output dist', pack);
+  assert.ok(pack < rendererPower && rendererPower < ecs, 'Windows ECS package requires the renderer power helper');
   const signing = windows.indexOf('name: Sign and verify Windows VMP');
   const installers = windows.indexOf('name: Package signed Windows installers');
   const upload = windows.indexOf('name: Upload Windows artifacts');
@@ -176,7 +179,9 @@ test('macOS ECS release signs VMP before ad-hoc signing and preserves it through
   assert.match(macos, /runner: macos-15-intel\s+arch: x64/);
   assert.match(macos, /runner: macos-15\s+arch: arm64/);
   assert.match(macos, /node scripts\/prepare-ecs\.mjs/);
-  assert.match(macos, /castlabs-evs==1\.3\.2/);
+  const evsPin = /castlabs-evs==(\d+\.\d+\.\d+)/;
+  assert.match(macos, evsPin);
+  assert.equal(macos.match(evsPin)[1], jobBlock(workflows.build, 'build-windows').match(evsPin)?.[1]);
   const signing = macos.indexOf('name: Build and verify macOS VMP application');
   const packaging = macos.indexOf('name: Package verified macOS DMG');
   const upload = macos.indexOf('name: Upload macOS artifacts');

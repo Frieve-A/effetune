@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { replaceGlobal } from '../helpers/global-test-utils.mjs';
 
 import { PipelineAnalyzerController } from '../../js/pipeline-analyzer/controller.js';
+import { adaptPipelineAnalysisResult } from '../../js/pipeline-analyzer/result-adapter.js';
 import { MAX_OUTPUT_SLOTS, PipelineAnalyzerUI } from '../../js/pipeline-analyzer/ui.js';
 
 // This DOM stress suite can consume substantial memory, so the repository runner
@@ -17,6 +18,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
   const analyzerCss = fs.readFileSync(new URL('../../css/pipeline-analyzer.css', import.meta.url), 'utf8');
   const sharedCss = fs.readFileSync(new URL('../../css/effetune.css', import.meta.url), 'utf8');
+  const themeCss = fs.readFileSync(new URL('../../css/effetune-theme.css', import.meta.url), 'utf8');
   const controlsCss = fs.readFileSync(new URL('../../css/parameter-controls.css', import.meta.url), 'utf8');
   const mobileCss = fs.readFileSync(new URL('../../css/effetune-mobile.css', import.meta.url), 'utf8');
   const uiSource = fs.readFileSync(new URL('../../js/pipeline-analyzer/ui.js', import.meta.url), 'utf8');
@@ -29,13 +31,15 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(html, /id="pipelineAnalyzerButton"[^>]*aria-controls="pipelineAnalyzerPanel"[^>]*aria-expanded="false"[^>]*aria-pressed="false"/);
   // The analyzer stylesheet loads lazily, so always-visible toolbar chrome is styled in css/effetune.css.
   assert.match(sharedCss, /\.pipeline-analyzer-button\s*\{[^}]*margin-left:\s*5px;/s);
-  assert.match(sharedCss, /\.pipeline-preset-button,\s*\.share-button,\s*\.pipeline-analyzer-button\s*\{[^}]*height:\s*24px;[^}]*padding:\s*4px 8px;/s);
+  assert.match(themeCss, /--et-control-height-compact:\s*24px;/);
+  assert.match(themeCss, /--et-control-height-field:\s*26px;/);
+  assert.match(sharedCss, /\.pipeline-preset-button,\s*\.share-button,\s*\.pipeline-analyzer-button\s*\{[^}]*height:\s*var\(--et-control-height-compact\);[^}]*padding:\s*4px 8px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-preset-button/);
   assert.match(analyzerCss, /\.pipeline-analyzer-header\s*\{[^}]*padding:\s*20px 20px 10px;/s);
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-header\s*\{/);
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{/);
   assert.match(analyzerCss, /\.pipeline-analyzer-title\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*normal;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-icon-button\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-icon-button\s*\{[^}]*width:\s*24px;[^}]*height:\s*var\(--et-control-height-compact\);/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*var\(--et-graph-base\);/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-graph,\s*\.pipeline-analyzer-hover-overlay\s*\{[^}]*position:\s*absolute;[^}]*top:\s*20px;[^}]*left:\s*20px;[^}]*width:\s*calc\(100% - 40px\);[^}]*height:\s*calc\(100% - 40px\);/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-hover-overlay\s*\{[^}]*pointer-events:\s*none;/s);
@@ -78,7 +82,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(controlsCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;/s);
   assert.match(controlsCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select[^{}]*\{[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
   assert.match(controlsCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],(?:\s*body:not\(\.layout-mobile\) \.multichannel-panel-ui input\[type="number"\],)?\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
-  assert.match(controlsCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
+  assert.match(controlsCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: var\(--et-control-height-field\);[^}]*min-height: var\(--et-control-height-field\);/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px)/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel select\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px|border-radius:\s*4px)/s);
   assert.doesNotMatch(analyzerCss, /pipeline-analyzer-(?:status|warnings|provenance|graph-empty|stale-badge)/);
@@ -922,6 +926,32 @@ uiTest('retains five two-curve graph views with synchronized hover and legend hi
       impulse: view
     }
   });
+});
+
+uiTest('wheel zoom keeps the impulse time under the pointer through redraws and limits', () => {
+  const fixture = createFixture();
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+  ui.setConfiguration({ graphView: 'impulse' });
+  const response = { impulse: new Float32Array(4000).fill(1), timeOriginSamples: -96 };
+  const result = adaptPipelineAnalysisResult({ sampleRate: 48000, before: response, after: response });
+  ui.setResult(result);
+  ui.graphSvg.getBoundingClientRect = () => ({ left: 30, top: 20, bottom: 220, width: 400, height: 200 });
+  const wheel = deltaY => {
+    let prevented = false;
+    ui.graphShell.dispatch('wheel', { deltaY, clientX: 150, clientY: 100, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    return ui.currentView().timeRange;
+  };
+  const initial = ui.currentView().timeRange;
+  const timeAtCursor = range => range.minimum + (range.maximum - range.minimum) * 0.3;
+  const zoomed = wheel(-100);
+  assert.ok(zoomed.maximum - zoomed.minimum < initial.maximum - initial.minimum);
+  assert.ok(Math.abs(timeAtCursor(zoomed) - timeAtCursor(initial)) < 1e-10);
+  assert.equal(ui.cursorX.textContent, '0.40 ms');
+  ui.setResult(result);
+  assert.deepEqual(ui.currentView().timeRange, zoomed);
+  wheel(100);
+  assert.deepEqual(wheel(100), initial);
 });
 
 uiTest('limits hover interpolation to finite adjacent points inside each curve span', () => {

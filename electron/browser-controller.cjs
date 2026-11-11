@@ -174,7 +174,7 @@ function normalizeBrowserSettings(value) {
   };
 }
 
-function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, openMusicFiles, themePreset, allowStartupCapture = false }) {
+function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, openMusicFiles, themePreset, systemAudioCapture, allowStartupCapture = false }) {
   const trusted = mainWindow.webContents;
   const chromiumUserAgent = trusted.getUserAgent().replace(/\sElectron\/\S+/g, '').trim();
   const defaultUserAgent = chromiumUserAgent.toLowerCase().includes(`${APP_NAME.toLowerCase()}/`) ?
@@ -743,7 +743,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   function prepareCapture() {
     muteCapture();
     if (!components?.whenReady) ensureView();
-    const token = { generation, frame: trusted.mainFrame, consumed: false,
+    const token = { generation, order: process.hrtime.bigint(), frame: trusted.mainFrame, consumed: false,
       allowWithoutGesture: allowStartupCapture === true, expires: Date.now() + CAPTURE_TIMEOUT_MS };
     allowStartupCapture = false;
     token.timer = setTimeout(() => {
@@ -754,13 +754,24 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     return { ok: true, generation };
   }
 
+  // The session has a single display-media handler, so it also serves System Audio. A trusted
+  // request takes the oldest unconsumed reservation of either kind and consumes it even when
+  // rejected, so that a later request cannot take a reservation of the other kind.
   captureSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    const token = reservation;
-    if (!token || token.consumed || (!request.userGesture && !token.allowWithoutGesture) || !request.videoRequested || !request.audioRequested ||
-      request.frame !== trusted.mainFrame || request.frame !== token.frame || token.expires < Date.now()) {
+    if (request.frame !== trusted.mainFrame) { callback({}); return; }
+    const token = reservation && !reservation.consumed ? reservation : null;
+    const systemAudioOrder = systemAudioCapture.pendingOrder();
+    if (systemAudioOrder !== null && (!token || systemAudioOrder < token.order)) {
+      await systemAudioCapture.handleRequest(request, callback);
+      return;
+    }
+    if (!token) { callback({}); return; }
+    token.consumed = true;
+    if ((!request.userGesture && !token.allowWithoutGesture) || !request.videoRequested || !request.audioRequested ||
+      request.frame !== token.frame || token.expires < Date.now()) {
+      muteCapture('captureFailed');
       callback({}); return;
     }
-    token.consumed = true;
     try { await prepareView(); }
     catch (failure) {
       console.error('Browser capture initialization failed:', failure);

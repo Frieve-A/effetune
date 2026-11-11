@@ -8,6 +8,14 @@ lang: fr
 
 Les effets de contrôle sont des outils utilitaires qui ne traitent pas directement l'audio. Ils servent à organiser et gérer l'Effect Pipeline lorsque la chaîne devient plus longue.
 
+## Live Audio Receive
+
+Reçoit à cet endroit le son en direct d’un autre EffeTune. Les effets précédents sont ignorés et les suivants traitent le son. La musique ordinaire part du début de la chaîne. Aucun paramètre à régler. Si le marqueur est absent ou désactivé, toute la chaîne est utilisée. Le flux reçu n’est pas renvoyé par Network Output.
+
+## Live Audio Send
+
+Envoie le son de cet endroit vers Network Output tout en le laissant passer dans les effets locaux suivants. Placez par exemple un EQ commun avant et un Room EQ local après. Activez Network Output et sélectionnez les appareils. Sans marqueur actif, la sortie finale est envoyée. Seul le premier marqueur actif de chaque type est utilisé ; les suivants l’indiquent. Aucun paramètre à régler.
+
 ## Section
 
 L'effet Section regroupe plusieurs effets afin de pouvoir contourner ou rétablir toute cette partie de la chaîne avec un seul basculement ON/OFF. Chaque effet conserve son propre état ON/OFF.

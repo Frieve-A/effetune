@@ -115,6 +115,14 @@
   "help:inputChannel": "Выберите канал, к которому подключён калибровочный микрофон для выбранного устройства ввода аудио.", // Help text for input channel
   "label:audioOutput": "Устройство для вывода аудио:", // Label for audio output device selection
   "help:audioOutput": "Выберите аудиоустройство, которое воспроизводит измерительный сигнал.", // Help text for audio output
+  "label:effectPipeline": "Effect Pipeline:",
+  "option:effectPipelineNone": "Нет",
+  "option:effectPipelineCurrent": "Текущий Effect Pipeline",
+  "help:effectPipeline": "Выберите «Текущий Effect Pipeline», чтобы воспроизводить тестовый сигнал через Effect Pipeline, который работал, когда эта страница была открыта из основного приложения. Частота дискретизации и число каналов устройства вывода устанавливаются по Effect Pipeline.",
+  "help:effectPipelineUnavailable": "Чтобы измерять через Effect Pipeline, откройте эту страницу из основного приложения, пока идёт обработка звука.",
+  "help:effectPipelineAndroid": "Измерение через Effect Pipeline недоступно на Android.",
+  "label:pipelineInputChannel": "Входной канал Effect Pipeline:",
+  "help:pipelineInputChannel": "Выберите входные каналы Effect Pipeline, на которые подаётся тестовый сигнал. Каждый выходной канал Effect Pipeline воспроизводится на канале устройства вывода с тем же номером.",
   "label:outputChannelCount": "Число каналов устройства вывода:",
   "help:outputChannelCount": "Укажите число каналов согласно конфигурации устройства вывода (6 для 5.1, 8 для 7.1). Тестовые сигналы и измерения всегда используют это число, даже при измерении только некоторых каналов.",
   "label:outputChannel": "Выходной канал:", // Label for output channel selection
@@ -192,9 +200,15 @@
   "button:exportTxt": "Экспорт параметров коррекции (TXT)", // Button to export txt
   "button:exportCSV": "Экспорт параметров коррекции (CSV)", // Button to export CSV
   "help:exportOptions": "Скопированные настройки коррекции частоты можно вставить в Effect Pipeline EffeTune с помощью Ctrl+V.", // Help text for export options
+  "message:correctionUnavailablePipeline": "Это измерение уже включает обработку Effect Pipeline, поэтому по нему нельзя создать настройки коррекции.",
   "title:measurementDetails": "Детали измерения", // Title for measurement details section
   "label:onset": "Начало отклика",
   "label:onsetEarliest": "раньше всех",
+  "label:effectPipelineBadge": "Pipeline",
+  "label:appliedEffectPipeline": "Effect Pipeline",
+  "status:effectPipelineNotApplied": "Не применялся",
+  "status:effectPipelineApplied": "Применён",
+  "status:effectPipelineAppliedPlugins": "Применён ({plugins})",
 
   // Dialogs
   "button:confirm": "Подтвердить", // Confirm button in dialog
@@ -220,6 +234,12 @@
   "error:interfaceCalibrationSampleRateMismatch": "У выбранной калибровки другая частота дискретизации. Выберите данные, записанные с той же частотой.",
   "error:interfaceCalibrationSweepRangeMismatch": "Выбранная калибровка не охватывает этот диапазон свипа. Сузьте диапазон или выберите другие данные.",
   "error:interfaceCalibrationProcessingFailed": "Не удалось завершить измерение с калибровкой. Проверьте подключение и настройки и повторите измерение этой точки.",
+  "error:pipelineUnavailable": "Effect Pipeline недоступен. Снова откройте эту страницу из основного приложения, пока идёт обработка звука, или выберите для Effect Pipeline значение «Нет».",
+  "error:pipelineSampleRateMismatch": "Не удалось выполнить измерение с частотой дискретизации Effect Pipeline. Установите для аудиоустройств ту же частоту дискретизации, что и в основном приложении, и повторите попытку.",
+  "error:pipelineInputChannelUnavailable": "Выбранного входного канала нет в Effect Pipeline. Выберите каналы в пределах числа каналов Effect Pipeline.",
+  "error:pipelineOutputChannelsUnavailable": "У выбранного устройства вывода меньше каналов, чем у Effect Pipeline. Выберите устройство вывода, которое используется в основном приложении, и повторите попытку.",
+  "error:pipelineClipping": "После прохождения через Effect Pipeline в тестовом сигнале возникнет клиппинг. Уменьшите уровень сигнала и повторите попытку.",
+  "error:pipelineRenderFailed": "Effect Pipeline не смог обработать тестовый сигнал. Вернитесь в основное приложение, снова откройте эту страницу и повторите попытку.",
   "error:measurementSetupFailed": "Не удалось подготовить измерение. Проверьте аудиоустройства и повторите попытку.",
   "error:levelAdjustmentFailed": "Не удалось подготовить аудиовход. Проверьте устройство ввода и повторите попытку.",
   "error:audioUnsupported": "Этот браузер не поддерживает аудиоизмерения. Используйте последнюю версию Chrome или Edge.",
@@ -275,6 +295,8 @@
   "option:sampleRate96000": "96 kHz", // Option for 96 kHz sample rate
   "option:sampleRate176400": "176.4 kHz", // Option for 176.4 kHz sample rate
   "option:sampleRate192000": "192 kHz", // Option for 192 kHz sample rate
+  "option:sampleRate352800": "352.8 kHz", // Option for 352.8 kHz sample rate
+  "option:sampleRate384000": "384 kHz", // Option for 384 kHz sample rate
 
   // Sweep length options
   "option:sweepLength16384": "16,384 (2¹⁴)", // Option for 16384 sweep length

@@ -110,6 +110,13 @@ class MeasurementDisplay {
             controls.appendChild(deleteBtn);
             
             header.appendChild(nameSpan);
+            if (measurement.effectPipeline) {
+                const badge = document.createElement('span');
+                badge.className = 'measurement-item-badge';
+                badge.dataset.i18n = 'label:effectPipelineBadge';
+                badge.textContent = i18n.t('label:effectPipelineBadge') || 'Pipeline';
+                header.appendChild(badge);
+            }
             header.appendChild(controls);
             
             const previewGraph = document.createElement('div');
@@ -282,6 +289,7 @@ class MeasurementDisplay {
         }
 
         this.updateChannelFilter(measurement);
+        this.uiManager.correctionHandler.syncCorrectionAvailability(measurement);
 
         // Loading a measurement resets the Frequency target independently of the active analysis tab.
         this.selectedPointIndex = 'all';
@@ -367,6 +375,16 @@ class MeasurementDisplay {
                 ]);
             }
         }
+        const pluginNames = measurement.effectPipeline?.pluginNames;
+        details.push([
+            i18n.t('label:appliedEffectPipeline') || 'Effect Pipeline',
+            !measurement.effectPipeline
+                ? i18n.t('status:effectPipelineNotApplied') || 'Not applied'
+                : pluginNames.length
+                    ? i18n.t('status:effectPipelineAppliedPlugins', { plugins: pluginNames.join(', ') }) ||
+                        `Applied (${pluginNames.join(', ')})`
+                    : i18n.t('status:effectPipelineApplied') || 'Applied'
+        ]);
         details.push(...this.buildOnsetDetailRows(measurement));
         return details;
     }

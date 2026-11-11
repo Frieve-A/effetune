@@ -83,6 +83,9 @@ function createConfigHarness(options = {}) {
   const openHomeCalls = [];
   const airPlayCalls = [];
   const airPlayStatusListeners = new Set();
+  const networkOutputCalls = [];
+  const networkOutputStatusListeners = new Set();
+  let networkOutputStatus = { enabled: false, localTrimMs: 0, localDelayMs: 0, targets: [], ...(options.networkOutputStatus || {}) };
   const receptionStates = [];
   let airPlayStatus = { enabled: false, available: true, state: 'off', ...(options.airPlayStatus || {}) };
   const openHomeRendererStates = [];
@@ -203,6 +206,31 @@ function createConfigHarness(options = {}) {
         airPlayStatusListeners.add(listener);
         return () => airPlayStatusListeners.delete(listener);
       }
+    },
+    networkOutputV1: {
+      async getStatus() {
+        networkOutputCalls.push(['getStatus']);
+        return structuredClone(networkOutputStatus);
+      },
+      async setConfiguration(patch) {
+        networkOutputCalls.push(['setConfiguration', structuredClone(patch)]);
+        if (options.networkOutputError) throw options.networkOutputError;
+        networkOutputStatus = { ...networkOutputStatus, ...patch };
+        if (patch.targets) {
+          networkOutputStatus.targets = patch.targets.map(target => ({
+            ...networkOutputStatus.targets.find(candidate => candidate.id === target.id), ...target
+          }));
+        }
+        return structuredClone(networkOutputStatus);
+      },
+      async resync() {
+        networkOutputCalls.push(['resync']);
+        return structuredClone(networkOutputStatus);
+      },
+      onStatus(listener) {
+        networkOutputStatusListeners.add(listener);
+        return () => networkOutputStatusListeners.delete(listener);
+      }
     }
   };
   const uiManager = {
@@ -240,6 +268,8 @@ function createConfigHarness(options = {}) {
     openHomeCalls,
     airPlayCalls,
     airPlayStatusListeners,
+    networkOutputCalls,
+    networkOutputStatusListeners,
     receptionStates,
     openHomeRendererStates,
     remoteControlCalls,
@@ -258,9 +288,149 @@ function createConfigHarness(options = {}) {
     emitAirPlayStatus(status) {
       airPlayStatus = { ...airPlayStatus, ...status };
       for (const listener of airPlayStatusListeners) listener({ ...airPlayStatus });
+    },
+    emitNetworkOutputStatus(status) {
+      networkOutputStatus = { ...networkOutputStatus, ...status };
+      for (const listener of networkOutputStatusListeners) listener(structuredClone(networkOutputStatus));
     }
   };
 }
+
+function networkOutputRow(harness, index) {
+  const row = harness.document.getElementById('network-output-targets').children[index];
+  const [enableLabel, state, delayLabel, note] = row.children;
+  const [enabled, type, name] = enableLabel.children;
+  return { enabled, type, name, state, delay: delayLabel.children[1], note };
+}
+
+const networkOutputTargets = [
+  { id: 'cast-1', type: 'cast', name: 'Kitchen', enabled: false, trimMs: 0, present: true, state: 'searching', note: null },
+  { id: 'upnp-1', type: 'upnp', name: 'Living Room', enabled: true, trimMs: 120, present: true, state: 'playing', note: null }
+];
+
+test('Network Output controls stay disabled until sending is enabled and then reflect speaker status', async () => {
+  const harness = createConfigHarness({ networkOutputStatus: { targets: networkOutputTargets } });
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const enable = harness.document.getElementById('network-output-enabled');
+    const localDelay = harness.document.getElementById('network-output-local-delay');
+    const resync = harness.document.getElementById('network-output-resync');
+    assert.equal(harness.document.getElementById('network-output-title').textContent, 'label:dialog.config.networkOutput.title');
+    assert.equal(enable.disabled, false);
+    assert.equal(enable.checked, false);
+    assert.equal(localDelay.disabled, true);
+    assert.equal(resync.disabled, true);
+    assert.equal(harness.document.getElementById('network-output-empty').textContent, '');
+    const living = networkOutputRow(harness, 1);
+    assert.equal(living.enabled.disabled, true);
+    assert.equal(living.enabled.checked, true);
+    assert.equal(living.type.textContent, 'UPnP AV');
+    assert.equal(living.name.textContent, 'Living Room');
+    assert.equal(living.state.textContent, '');
+    assert.equal(living.delay.value, '120');
+    assert.equal(living.delay.disabled, true);
+    assert.equal(living.delay.min, '0');
+    assert.equal(living.delay.max, '2000');
+
+    enable.checked = true;
+    await enable.dispatchEvent('change');
+    assert.deepEqual(harness.networkOutputCalls, [['getStatus'], ['setConfiguration', { enabled: true }]]);
+    assert.equal(enable.checked, true);
+    assert.equal(localDelay.disabled, false);
+    assert.equal(resync.disabled, false);
+    assert.equal(living.enabled.disabled, false);
+    assert.equal(living.state.textContent, 'label:dialog.config.networkOutput.status.playing');
+    assert.equal(living.state.getAttribute('data-state'), 'published');
+    assert.equal(living.note.textContent, '');
+    const kitchen = networkOutputRow(harness, 0);
+    assert.equal(kitchen.type.textContent, 'Chromecast');
+    assert.equal(kitchen.state.textContent, '');
+
+    harness.emitNetworkOutputStatus({
+      targets: [
+        { ...networkOutputTargets[0], enabled: true, state: 'unreachable', note: 'offline' },
+        { ...networkOutputTargets[1], state: 'connecting', note: 'startFailed' }
+      ]
+    });
+    assert.equal(kitchen.state.textContent, 'label:dialog.config.networkOutput.status.unreachable');
+    assert.equal(kitchen.state.getAttribute('data-state'), 'error');
+    assert.equal(kitchen.note.textContent, 'label:dialog.config.networkOutput.note.offline');
+    assert.equal(living.state.textContent, 'label:dialog.config.networkOutput.status.connecting');
+    assert.equal(living.note.textContent, 'label:dialog.config.networkOutput.note.startFailed');
+
+    harness.emitNetworkOutputStatus({ targets: [] });
+    assert.equal(harness.document.getElementById('network-output-targets').children.length, 0);
+    assert.equal(harness.document.getElementById('network-output-empty').textContent, 'label:dialog.config.networkOutput.empty');
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+    harness.document.getElementById('close-btn').dispatchEvent('click');
+    assert.equal(harness.networkOutputStatusListeners.size, 0);
+  });
+});
+
+test('Network Output delay edits send the full target list, reject out-of-range values, and resync', async () => {
+  const harness = createConfigHarness({ networkOutputStatus: { enabled: true, localTrimMs: -40, targets: networkOutputTargets } });
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const living = networkOutputRow(harness, 1);
+    const localDelay = harness.document.getElementById('network-output-local-delay');
+    assert.equal(localDelay.value, '-40');
+
+    living.delay.value = '2500';
+    await living.delay.dispatchEvent('change');
+    assert.equal(living.delay.value, '120');
+    living.delay.value = '-5';
+    await living.delay.dispatchEvent('change');
+    assert.equal(living.delay.value, '120');
+    localDelay.value = '-2001';
+    await localDelay.dispatchEvent('change');
+    assert.equal(localDelay.value, '-40');
+    assert.deepEqual(harness.networkOutputCalls, [['getStatus']]);
+
+    living.delay.value = '300';
+    await living.delay.dispatchEvent('change');
+    assert.deepEqual(harness.networkOutputCalls.at(-1), ['setConfiguration', { targets: [
+      { id: 'cast-1', type: 'cast', name: 'Kitchen', enabled: false, trimMs: 0 },
+      { id: 'upnp-1', type: 'upnp', name: 'Living Room', enabled: true, trimMs: 300 }
+    ] }]);
+    assert.equal(living.delay.value, '300');
+
+    const kitchen = networkOutputRow(harness, 0);
+    kitchen.enabled.checked = true;
+    await kitchen.enabled.dispatchEvent('change');
+    assert.deepEqual(harness.networkOutputCalls.at(-1), ['setConfiguration', { targets: [
+      { id: 'cast-1', type: 'cast', name: 'Kitchen', enabled: true, trimMs: 0 },
+      { id: 'upnp-1', type: 'upnp', name: 'Living Room', enabled: true, trimMs: 300 }
+    ] }]);
+    assert.equal(kitchen.state.textContent, 'label:dialog.config.networkOutput.status.searching');
+
+    localDelay.value = '250';
+    await localDelay.dispatchEvent('change');
+    assert.deepEqual(harness.networkOutputCalls.at(-1), ['setConfiguration', { localTrimMs: 250 }]);
+    assert.equal(localDelay.value, '250');
+
+    await harness.document.getElementById('network-output-resync').dispatchEvent('click');
+    assert.deepEqual(harness.networkOutputCalls.at(-1), ['resync']);
+    assert.equal(harness.document.getElementById('network-output-resync').disabled, false);
+    harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
+
+test('Network Output setting failures warn and keep the last confirmed state', async () => {
+  const harness = createConfigHarness({ networkOutputStatus: { targets: networkOutputTargets }, networkOutputError: new Error('busy') });
+  const warnings = [];
+  const console = createConsoleHarness({ warn: (...args) => warnings.push(args) });
+  await withGlobals({ window: harness.window, document: harness.document, console }, async () => {
+    await showConfigDialog(true, {});
+    const enable = harness.document.getElementById('network-output-enabled');
+    enable.checked = true;
+    await enable.dispatchEvent('change');
+    assert.equal(enable.checked, false);
+    assert.equal(enable.disabled, false);
+    assert.equal(harness.document.getElementById('network-output-resync').disabled, true);
+    assert.equal(warnings.length, 1);
+    harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
 
 test('Browser Config saves only the User-Agent patch, restores failed edits and reopens the saved value', async () => {
   const errors = [];

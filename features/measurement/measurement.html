@@ -93,6 +93,14 @@
                     </div>
                     <div class="explanation-text" data-i18n="help:audioOutput">Select the audio device that outputs the measurement signal.</div>
                     <div class="form-group parameter-row">
+                        <label for="effectPipeline"><span class="parameter-label-text" data-i18n="label:effectPipeline">Effect Pipeline:</span></label>
+                        <select id="effectPipeline" disabled>
+                            <option value="none" selected data-i18n="option:effectPipelineNone">None</option>
+                            <option value="current" data-i18n="option:effectPipelineCurrent">Current pipeline</option>
+                        </select>
+                    </div>
+                    <div id="effectPipelineHelp" class="explanation-text" data-i18n="help:effectPipelineUnavailable">To measure through the effect pipeline, open this page from the main app while audio processing is running.</div>
+                    <div class="form-group parameter-row">
                         <label for="outputChannelCount"><span class="parameter-label-text" data-i18n="label:outputChannelCount">Output Device Channels:</span></label>
                         <select id="outputChannelCount" required>
                             <option value="2" selected>2</option>
@@ -107,7 +115,7 @@
                     </div>
                     <div class="explanation-text" data-i18n="help:outputChannelCount">Match the output device's channel layout (6 for 5.1, 8 for 7.1). Test signals and measurements always use this channel count, even when measuring only some channels.</div>
                     <div class="form-group parameter-row">
-                        <label for="outputChannel"><span class="parameter-label-text" data-i18n="label:outputChannel">Output Channel:</span></label>
+                        <label for="outputChannel"><span id="outputChannelLabel" class="parameter-label-text" data-i18n="label:outputChannel">Output Channel:</span></label>
                         <div id="outputChannel" class="channel-checkbox-group">
                             <label class="all-channels-choice"><input type="checkbox" value="all" checked><span data-i18n="option:all">All Channels</span></label>
                             <div class="individual-channel-choices">
@@ -130,7 +138,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="explanation-text" data-i18n="help:outputChannel">Specify the channel (left/right speaker or headphones, etc.) to measure.</div>
+                    <div id="outputChannelHelp" class="explanation-text" data-i18n="help:outputChannel">Specify the channel (left/right speaker or headphones, etc.) to measure.</div>
                     <details id="advancedSettings" class="advanced-settings">
                         <summary data-i18n="title:advancedSettings">Advanced Settings</summary>
                         <div class="form-group parameter-row">
@@ -142,6 +150,8 @@
                                 <option value="96000" data-i18n="option:sampleRate96000">96 kHz</option>
                                 <option value="176400" data-i18n="option:sampleRate176400">176.4 kHz</option>
                                 <option value="192000" data-i18n="option:sampleRate192000">192 kHz</option>
+                                <option value="352800" data-i18n="option:sampleRate352800">352.8 kHz</option>
+                                <option value="384000" data-i18n="option:sampleRate384000">384 kHz</option>
                             </select>
                             <div class="explanation-text" data-i18n="help:sampleRate">Specify the sampling frequency when taking measurements.</div>
                         </div>
@@ -390,6 +400,7 @@
                             <div class="explanation-text2" data-i18n="help:eqBandCount">The number of bands of the parametric equalizer for correction. The more bands you have, the more detailed the frequency correction will be, but the processing load will increase.</div>
                         </div>
                     <div class="export-section">
+                        <p id="correctionUnavailableMessage" class="explanation-text" data-i18n="message:correctionUnavailablePipeline" hidden>This measurement already includes the effect pipeline's processing, so it cannot be used to create correction settings.</p>
                         <div class="export-actions-row">
                             <button id="copyPEQBtn" class="primary-btn" data-i18n="button:copyPEQ">Copy EffeTune PEQ settings to clipboard</button>
                             <button id="copyChannelPEQBtn" class="primary-btn" hidden data-i18n="button:copyChannelPEQ">Copy Channel PEQ Settings</button>

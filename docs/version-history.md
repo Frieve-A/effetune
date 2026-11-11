@@ -6,9 +6,12 @@ lang: en
 
 # Version History
 
-### Version 2.18.0 (TBD, 2026)
-- Added ReplayGain support to the music player
+### Version 2.18.0 (Nov 13, 2026)
+- Added System Audio input to the Windows desktop app, processing sound from other apps without a virtual audio device
 - Improved SoundFont Player compatibility and reduced processing load
+- Added ReplayGain support to the music player
+- Added sending processed audio to UPnP AV/DLNA and Chromecast speakers from the desktop app
+- Supports corrected measurements for acoustic characteristics measurement function
 - Various minor improvements
 
 ### Version 2.17.0 (Nov 6, 2026)

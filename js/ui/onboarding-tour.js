@@ -122,7 +122,13 @@ export class OnboardingTour {
         const selector = this.mobile && 'mobileTarget' in step ? step.mobileTarget : step.target;
         this.target = selector ? document.querySelector(selector) : null;
         if (!this.target && step.fallbackTarget) this.target = document.querySelector(step.fallbackTarget);
-        this.target?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+        if (this.target) {
+            // A tall desktop panel can extend below the viewport while its controls are already visible.
+            const { top } = this.target.getBoundingClientRect();
+            if (this.mobile || top < 0 || top >= window.innerHeight) {
+                this.target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+            }
+        }
         this.updateLabels();
         this.nextButton.focus();
     }

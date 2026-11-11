@@ -14,6 +14,8 @@ import {
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
+import i18n from '../i18n.js';
+import { activePipelineSnapshot, renderThroughPipeline } from './pipeline-render.js';
 import { createEssCapturePlan, analyzeEssRecording } from '../../../js/utils/measurement-dsp/ess.js';
 import { isAndroidHost } from '../../../js/android/bridge.js';
 import { captureAndroidSweep } from '../../../js/android/measurement.js';
@@ -51,6 +53,26 @@ function outputTimeReferenceForRoute(route, timing = null) {
     return 'audio-context';
 }
 
+function repeatedSweepLength(sweepBuffer, repeatCount) {
+    return (sweepBuffer.length + (sweepBuffer.tailSamples || 0)) * repeatCount;
+}
+
+// Writes each sweep channel, scaled by `gain`, once per ESS repetition. Targets without
+// a matching sweep channel stay silent.
+function writeRepeatedSweep(targets, sweepBuffer, repeatCount, gain = 1) {
+    const intervalSamples = sweepBuffer.length + (sweepBuffer.tailSamples || 0);
+    targets.forEach((target, channel) => {
+        let sourceChannel = sweepBuffer.channels[channel];
+        if (!(sourceChannel instanceof Float32Array) || sourceChannel.length !== sweepBuffer.length) {
+            return;
+        }
+        if (gain !== 1) sourceChannel = sourceChannel.map(sample => sample * gain);
+        for (let repeat = 0; repeat < repeatCount; repeat++) {
+            target.set(sourceChannel, repeat * intervalSamples);
+        }
+    });
+}
+
 function createRepeatedSweepAudioBuffer(
     audioContext,
     sweepBuffer,
@@ -58,30 +80,56 @@ function createRepeatedSweepAudioBuffer(
     outputChannels,
     sampleRate
 ) {
-    const intervalSamples = sweepBuffer.length + (sweepBuffer.tailSamples || 0);
-    const combinedBufferLength = intervalSamples * repeatCount;
     const combinedSweepBuffer = audioContext.createBuffer(
         outputChannels,
-        combinedBufferLength,
+        repeatedSweepLength(sweepBuffer, repeatCount),
         sampleRate
     );
-
-    for (let channel = 0; channel < outputChannels; channel++) {
-        const sourceChannel = sweepBuffer.channels[channel];
-        if (!(sourceChannel instanceof Float32Array) || sourceChannel.length !== sweepBuffer.length) {
-            continue;
-        }
-
-        const destinationChannel = combinedSweepBuffer.getChannelData(channel);
-        for (let repeat = 0; repeat < repeatCount; repeat++) {
-            destinationChannel.set(sourceChannel, repeat * intervalSamples);
-        }
-    }
-
+    writeRepeatedSweep(
+        Array.from({ length: outputChannels }, (_, channel) => combinedSweepBuffer.getChannelData(channel)),
+        sweepBuffer,
+        repeatCount
+    );
     return combinedSweepBuffer;
 }
 
+function peakAbsolute(channels) {
+    let peak = 0;
+    for (const channel of channels) {
+        for (let i = 0; i < channel.length; i++) {
+            const sample = channel[i] < 0 ? -channel[i] : channel[i];
+            if (sample > peak) peak = sample;
+        }
+    }
+    return peak;
+}
+
+// Renders the repeated sweep, with the signal level baked in, through the handed-over
+// effect pipeline and returns a playback buffer that maps every pipeline output 1:1 to
+// a device channel, or null when the rendered signal would clip. Pipeline input i
+// receives sweep channel i.
+async function createPipelineSweepAudioBuffer(controller, audioContext, sweepBuffer, repeatCount,
+    outputChannels, signalLevel, signal) {
+    const snapshot = activePipelineSnapshot(controller);
+    const length = repeatedSweepLength(sweepBuffer, repeatCount);
+    const input = Array.from({ length: snapshot.channelCount }, () => new Float32Array(length));
+    writeRepeatedSweep(input, sweepBuffer, repeatCount, Math.pow(10, signalLevel / 20));
+    const rendered = await controller.renderPipelineSignal(input, signal);
+    if (peakAbsolute(rendered) > 1) return null;
+    const buffer = audioContext.createBuffer(outputChannels, length, audioContext.sampleRate);
+    rendered.forEach((channel, index) => buffer.getChannelData(index).set(channel));
+    return buffer;
+}
+
 const AudioProcessing = {
+    /**
+     * Render test-signal channels offline through the handed-over effect pipeline.
+     * The input arrays are transferred to the worker and must not be reused.
+     */
+    renderPipelineSignal(input, signal) {
+        return renderThroughPipeline(this.pipelineHandoff.snapshot, input, { signal });
+    },
+
     createSweepMeasurementResult(processed, details) {
         return {
             ...details,
@@ -221,14 +269,45 @@ const AudioProcessing = {
                 elements.mediaStreamDestination = outputRoute.mediaStreamDestination;
                 console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
-                const combinedSweepBuffer = createRepeatedSweepAudioBuffer(
-                    audioContext,
-                    sweepBuffer,
-                    capturePlan.repeatCount,
-                    outputChannels,
-                    sampleRate
-                );
-                
+                let combinedSweepBuffer;
+                let playbackGain = Math.pow(10, signalLevel / 20);
+                if (activePipelineSnapshot(this)) {
+                    const abort = new AbortController();
+                    elements.cancelAnalysis = () => abort.abort();
+                    let failureKey = null;
+                    try {
+                        combinedSweepBuffer = await createPipelineSweepAudioBuffer(this, audioContext,
+                            sweepBuffer, capturePlan.repeatCount, outputChannels, signalLevel, abort.signal);
+                        if (!combinedSweepBuffer) failureKey = 'error:pipelineClipping';
+                    } catch (error) {
+                        if (!abort.signal.aborted) {
+                            console.error('The sweep could not be rendered through the effect pipeline:', error);
+                            failureKey = 'error:pipelineRenderFailed';
+                        }
+                    } finally {
+                        elements.cancelAnalysis = null;
+                    }
+                    if (operation.settled || this.activeSweepOperation !== operation) {
+                        releaseMeasurementOutputRoute(outputRoute);
+                        return;
+                    }
+                    if (abort.signal.aborted) throw new SweepCancelledError();
+                    if (failureKey) {
+                        this.showErrorNotification(i18n.t(failureKey));
+                        throw new SweepCancelledError();
+                    }
+                    // The signal level is already part of the rendered buffer.
+                    playbackGain = 1;
+                } else {
+                    combinedSweepBuffer = createRepeatedSweepAudioBuffer(
+                        audioContext,
+                        sweepBuffer,
+                        capturePlan.repeatCount,
+                        outputChannels,
+                        sampleRate
+                    );
+                }
+
                 // Calculate recording buffer length - match exactly with playback plus some padding
                 // Instead of using fixed delays, calculate exact timing:
                 // 0.5s pre-roll + isolated ESS repetitions and tails + 0.5s post-roll
@@ -396,9 +475,7 @@ const AudioProcessing = {
                         // Create gain node for output level control
                         const gainNode = audioContext.createGain();
                         
-                        // Convert dB to linear gain
-                        const linearGain = Math.pow(10, signalLevel / 20);
-                        gainNode.gain.value = linearGain;
+                        gainNode.gain.value = playbackGain;
                         gainNode.channelCount = outputChannels;
                         gainNode.channelCountMode = 'explicit';
                         gainNode.channelInterpretation = 'discrete';
@@ -722,6 +799,7 @@ const AudioProcessing = {
 export default AudioProcessing;
 export {
     createRepeatedSweepAudioBuffer,
+    createPipelineSweepAudioBuffer,
     scheduledPlaybackFrameForTime,
     outputTimeReferenceForRoute
 };

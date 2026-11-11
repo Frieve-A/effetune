@@ -96,6 +96,7 @@ export async function downloadLockedArchive(url, destination, sha256) {
   const maxStalledAttempts = 3;
   const chunks = [];
   let received = 0;
+  let furthestReceived = 0;
   let stalled = 0;
   for (;;) {
     const offset = received;
@@ -112,7 +113,9 @@ export async function downloadLockedArchive(url, destination, sha256) {
       }
       break;
     } catch (error) {
-      stalled = received > offset ? 0 : stalled + 1;
+      // A mirror that ignores Range can deliver a different partial length on each retry.
+      stalled = received > furthestReceived ? 0 : stalled + 1;
+      furthestReceived = Math.max(furthestReceived, received);
       if (error?.cause?.code !== 'UND_ERR_SOCKET' || stalled === maxStalledAttempts) throw error;
       console.warn(`Archive connection reset after ${received} bytes: ${url}; resuming.`);
       await delay(250 * (stalled + 1));
@@ -204,12 +207,12 @@ async function prepareSources() {
   return sources;
 }
 
-function buildMinimalWindowsCodec(toolchain) {
-  const sourceRoot = join(buildRoot, 'codec-source');
+function buildMinimalWindowsCodec(toolchain, codecSource) {
+  const sourceRoot = join(buildRoot, 'codec-source', codecSource.sha256.slice(0, 16));
   mkdirSync(sourceRoot, { recursive: true });
   const wrapperRoot = join(sourceRoot, lock.codec.sourceDirectory);
   const codecRoot = join(sourceRoot, `ffmpeg-${lock.codec.version}`);
-  const sourceArchive = join(buildRoot, 'source-cache', lock.codec.sourceArchive);
+  const sourceArchive = join(buildRoot, 'source-cache', codecSource.name);
   if (!existsSync(join(wrapperRoot, lock.codec.sourceTar))) {
     run('cmake', ['-E', 'tar', 'xf', sourceArchive], { cwd: sourceRoot });
   }
@@ -235,6 +238,7 @@ function buildMinimalWindowsCodec(toolchain) {
   }
   run(bash, ['--noprofile', '--norc', '-c', 'mingw32-make -j4 && mingw32-make install'],
     { cwd: codecRoot, env: environment });
+  return codecRoot;
 }
 
 function visualStudioEnvironment() {
@@ -304,7 +308,7 @@ function buildWindowsDiscovery(sourceRoot) {
   return sdkRoot;
 }
 
-async function packageWindowsSources(outputRoot, selection, sourceRoots) {
+async function packageWindowsSources(outputRoot, selection, sourceRoots, codecRoot) {
   const sourceOutput = join(outputRoot, 'source');
   mkdirSync(sourceOutput, { recursive: true });
   for (const entry of [...lock.archives, ...(lock.windowsSources || [])]) {
@@ -333,7 +337,7 @@ async function packageWindowsSources(outputRoot, selection, sourceRoots) {
   copyFileSync(join(sourceRoots.uxplay, 'LICENSE'), join(outputRoot, 'licenses', 'UxPlay-GPL-3.0.txt'));
   copyFileSync(join(sourceRoots.mdnsresponder, 'LICENSE'), join(outputRoot, 'licenses', 'mDNSResponder.txt'));
   cpSync(join(repositoryRoot, 'native', 'airplay-receiver', 'licenses'), join(outputRoot, 'licenses'), { recursive: true });
-  copyFileSync(join(buildRoot, 'codec-source', `ffmpeg-${lock.codec.version}`, 'COPYING.LGPLv2.1'),
+  copyFileSync(join(codecRoot, 'COPYING.LGPLv2.1'),
     join(outputRoot, 'licenses', 'FFmpeg-LGPL-2.1.txt'));
   const recipeRoot = join(sourceOutput, 'effetune-airplay-build');
   cpSync(join(repositoryRoot, 'native', 'airplay-receiver'), join(recipeRoot, 'native', 'airplay-receiver'), { recursive: true });
@@ -366,7 +370,7 @@ async function buildWindows(outputRoot) {
   const codecSource = lock.windowsSources.find(entry => entry.name === lock.codec.sourceArchive);
   if (!codecSource) throw new Error('The fixed FFmpeg source archive is missing from the lock.');
   await downloadLockedArchive(codecSource.url, join(buildRoot, 'source-cache', codecSource.name), codecSource.sha256);
-  buildMinimalWindowsCodec(toolchain);
+  const codecRoot = buildMinimalWindowsCodec(toolchain, codecSource);
   const sdk = buildWindowsDiscovery(sources.mdnsresponder);
   const environment = {
     ...process.env, PATH: `${join(toolchain, 'bin')};${process.env.PATH}`,
@@ -384,7 +388,7 @@ async function buildWindows(outputRoot) {
     run('cmake', ['--build', join(buildRoot, output), '--parallel', '4'], { env: environment });
   }
   const selection = collectWindowsRuntime(toolchain, outputRoot);
-  await packageWindowsSources(outputRoot, selection, sources);
+  await packageWindowsSources(outputRoot, selection, sources, codecRoot);
   const makensisOption = process.argv.indexOf('--makensis');
   const makensis = makensisOption >= 0 ? { path: process.argv[makensisOption + 1] } :
     await (await import('app-builder-lib/out/toolsets/windows.js')).getMakeNsisPath();

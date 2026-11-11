@@ -158,6 +158,7 @@ export class ExtensionAudioManager {
     this.mutationQueue = Promise.resolve();
     this.pendingMutations = 0;
     this.mutationGeneration = 0;
+    this.lastPluginSettings = new WeakMap();
     this.workletPort = new ExtensionWorkletPort(message => this.forwardPluginMessage(message));
     const audioContext = { sampleRate: 48000, destination: { channelCount: 2 } };
     this.workletNode = {
@@ -259,6 +260,13 @@ export class ExtensionAudioManager {
     this.request('workletMessage', { message });
   }
 
+  recordPluginSettings(plugin) {
+    const settings = stableStringify(getSerializablePluginStateShort(plugin));
+    if (this.lastPluginSettings.get(plugin) === settings) return false;
+    this.lastPluginSettings.set(plugin, settings);
+    return true;
+  }
+
   commitPowerTopologyMutation(message, { reason } = {}) {
     if (this.suppressMutations) return;
     if (reason === 'pipeline-master-bypass' && typeof message?.masterBypass === 'boolean') {
@@ -267,7 +275,8 @@ export class ExtensionAudioManager {
       return;
     }
     if (message?.type === 'updatePlugin') {
-      if (!this.pipelineA.some(plugin => plugin.id === message.plugin?.id)) return;
+      const plugin = this.pipelineA.find(item => item.id === message.plugin?.id);
+      if (!plugin || !this.recordPluginSettings(plugin)) return;
       this.forwardPluginMessage(message);
       return;
     }
@@ -818,6 +827,8 @@ export class ExtensionEditor {
         plugin.audioManager = this.audioManager;
         plugin.setWasmAssetTargetResolver?.(() => []);
         applySerializedState(plugin, state);
+        // A restored effect can prepare its editor graph asynchronously.
+        this.audioManager.recordPluginSettings(plugin);
         return plugin;
       });
       this.audioManager.pipelineA = plugins;

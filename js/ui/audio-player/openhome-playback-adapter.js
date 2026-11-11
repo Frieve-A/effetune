@@ -1,3 +1,5 @@
+import { NetworkLivePcm } from './network-live-pcm.js';
+
 export const MAX_QUEUE_LENGTH = 4096;
 const MAX_METADATA_LENGTH = 64 * 1024;
 const MAX_URI_LENGTH = 8192;
@@ -59,6 +61,9 @@ export class OpenHomePlaybackAdapter {
     this.suppressedStateKeys = new Set();
     this.publishScheduled = false;
     this.disposed = false;
+    this.liveSessionId = null;
+    this.liveSessionGeneration = audioPlayer?.audioManager?._networkReceiveSession?.generation ?? 0;
+    this.networkLive = new NetworkLivePcm(audioPlayer, bridge);
     this.actionContexts = new Map();
     this.stateListener = (_value, key) => this.handleStateChange(key);
     this.removeActionListener = null;
@@ -275,6 +280,7 @@ export class OpenHomePlaybackAdapter {
     const signal = context.abortController?.signal;
     if (!signal) return pending;
     let onAbort;
+    let timer;
     try {
       // Cancellation must settle the wait even if the underlying browser or
       // provider promise never settles. Its late result cannot resume this action.
@@ -284,10 +290,15 @@ export class OpenHomePlaybackAdapter {
           onAbort = () => reject(createActionError('action-cancelled'));
           signal.addEventListener('abort', onAbort, { once: true });
           if (signal.aborted) onAbort();
+          timer = setTimeout(() => {
+            if (context.playRequest) void Promise.resolve(this.audioPlayer.stop()).catch(() => {});
+            reject(createActionError('action-timeout'));
+          }, Math.max(0, context.deadlineEpochMs - this.now()));
         })
       ]);
     } finally {
       signal.removeEventListener('abort', onAbort);
+      clearTimeout(timer);
     }
   }
 
@@ -310,6 +321,8 @@ export class OpenHomePlaybackAdapter {
     if (!playerSnapshot) throw createActionError('action-failed');
     context.queueTransaction = {
       queue: [...this.queue],
+      queueSequence: this.queueSequence,
+      followsPlayerQueue: this.followsPlayerQueue,
       queueEntryIds: new Map(this.queueEntryIds),
       ownedQueueIds: new Set(this.ownedQueueIds),
       nextTrackId: this.nextTrackId,
@@ -364,6 +377,8 @@ export class OpenHomePlaybackAdapter {
     if (!transaction || transaction.rolledBack) return false;
     transaction.rolledBack = true;
     this.queue = [...transaction.queue];
+    this.queueSequence = transaction.queueSequence;
+    this.followsPlayerQueue = transaction.followsPlayerQueue;
     this.queueEntryIds = new Map(transaction.queueEntryIds);
     this.ownedQueueIds = new Set(transaction.ownedQueueIds);
     this.nextTrackId = transaction.nextTrackId;
@@ -374,6 +389,7 @@ export class OpenHomePlaybackAdapter {
 
     if (this.ownsQueueMutation(transaction) &&
         transaction.playbackManager.restorePlaybackQueueSnapshot(transaction.playerSnapshot)) {
+      this.queueSequence = transaction.playbackManager.sequence;
       const restoredCatalog = transaction.playerSnapshot.kind === 'catalog';
       if (!restoredCatalog) {
         transaction.playbackManager.syncPlaylistState(transaction.playerState.currentTrackIndex);
@@ -518,6 +534,19 @@ export class OpenHomePlaybackAdapter {
         return {};
       }
       const entry = this.createNetworkEntry(args);
+      if (entry.liveSessionId) {
+        await this.audioPlayer.stop();
+        this.assertActionActive(context);
+        this.networkLive.stop();
+        this.beginQueueMutation(context);
+        const id = this.allocateTrackId();
+        this.queue = [Object.freeze({ ...entry, id })];
+        this.syncQueueToPlayer(id, context);
+        this.bumpIdArrayToken();
+        context.queueTransaction.rollbackReady = true;
+        this.followsPlayerQueue = true;
+        return { newId: id };
+      }
       const wasLive = this.getPlayerState().liveInputActive === true;
       const wasPlaying = !wasLive && this.getPlayerState().isPlaying === true;
       this.beginQueueMutation(context);
@@ -633,7 +662,8 @@ export class OpenHomePlaybackAdapter {
       if (typeof summary[key] === 'string' && summary[key].trim()) meta[key] = summary[key].trim().slice(0, 4096);
     }
     if (typeof summary.duration === 'number' && Number.isFinite(summary.duration) && summary.duration > 0) meta.duration = summary.duration;
-    return { uri, playbackUrl, metadata, meta: Object.freeze(meta) };
+    const liveSessionId = typeof args.liveSessionId === 'string' ? args.liveSessionId : null;
+    return { uri, playbackUrl, metadata, liveSessionId, meta: Object.freeze(meta) };
   }
 
   async playNetworkTracks(tracks, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
@@ -1046,7 +1076,7 @@ export class OpenHomePlaybackAdapter {
         path: entry.playbackUrl, name: entry.meta.title, meta: entry.meta, sourceKind: 'openhome'
       };
       return { ...track, sourceKey, meta: { ...track.meta, openHomeQueueEntry: {
-        id: entry.id, uri: entry.uri, metadata: entry.metadata
+        id: entry.id, uri: entry.uri, metadata: entry.metadata, liveSessionId: entry.liveSessionId
       } }, ...(track.provider ? {
         provider: async () => ({ ...await track.provider(), sourceKey })
       } : {}) };
@@ -1174,6 +1204,7 @@ export class OpenHomePlaybackAdapter {
   handleStateChange(key) {
     if (!RELEVANT_STATE_KEYS.has(key) || this.disposed) return;
     const state = this.getPlayerState();
+    this.updateLiveSession(state);
     // A staged incoming queue also becomes shared when playback starts locally.
     if (!this.followsPlayerQueue && state.isPlaying === true && this.playerOwnsRemoteQueue()) {
       this.followsPlayerQueue = true;
@@ -1191,6 +1222,71 @@ export class OpenHomePlaybackAdapter {
     }
     this.bumpStateCounter(key);
     this.schedulePublish();
+  }
+
+  updateLiveSession(state) {
+    const entry = state.currentTrack?.meta?.openHomeQueueEntry;
+    const active = state.playbackMode === 'networkLive' && !state.liveInputActive && !state.isStopped &&
+      !state.playbackErrorTrack && state.isPlaying === true && Boolean(this.networkLive.source);
+    const id = active && typeof entry?.liveSessionId === 'string' ? entry.liveSessionId : null;
+    if (!id && this.liveSessionId) this.networkLive.stop();
+    if (id === this.liveSessionId) return;
+    this.liveSessionId = id;
+    this.liveSessionGeneration += 1;
+    this.audioPlayer?.audioManager?.setNetworkReceiveSession?.(Boolean(id), this.liveSessionGeneration, id);
+  }
+
+  async playClassifiedLive(isCurrent = () => true) {
+    const entry = this.queue.find(item => item.id === this.getCurrentOpenHomeId());
+    if (!entry?.liveSessionId || !await this.networkLive.start(entry, isCurrent) || !isCurrent()) return false;
+    const audioManager = this.audioPlayer.audioManager;
+    const generation = ++this.liveSessionGeneration;
+    audioManager.setNetworkReceiveSession(true, generation, entry.liveSessionId);
+    const signal = this.networkLive.controller?.signal;
+    const adopted = await new Promise(resolve => {
+      let timer;
+      const finish = value => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        audioManager.removeEventListener('networkRoute', onRoute);
+        resolve(value);
+      };
+      const onAbort = () => finish(false);
+      const onRoute = () => {
+        const route = audioManager.networkRoute;
+        if (route?.generation === generation && route.receiveActive) finish(true);
+      };
+      audioManager.addEventListener('networkRoute', onRoute);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(() => finish(false), 15000);
+      if (signal?.aborted) onAbort();
+      else onRoute();
+    });
+    if (!adopted || !isCurrent()) {
+      if (this.networkLive.controller?.signal === signal) this.networkLive.stop();
+      if (audioManager._networkReceiveSession?.generation === generation) {
+        audioManager.setNetworkReceiveSession(false, ++this.liveSessionGeneration);
+      }
+      return false;
+    }
+    const manager = this.audioPlayer.contextManager;
+    const ownership = manager.preparePlayerSourceOwnership();
+    if (!ownership) {
+      this.networkLive.stop();
+      if (audioManager._networkReceiveSession?.generation === generation) {
+        audioManager.setNetworkReceiveSession(false, ++this.liveSessionGeneration);
+      }
+      return false;
+    }
+    manager.commitPlayerSourceOwnership(this.networkLive.source, ownership);
+    this.networkLive.followReceiveRoute(generation);
+    this.liveSessionId = entry.liveSessionId;
+    this.audioPlayer.stateManager.updateState({ isPlaying: true, isStopped: false, isPaused: false,
+      isPlaybackPending: false, isTransitioning: false, playbackMode: 'networkLive', seekBarEnabled: false },
+    'Network live playback committed');
+    this.networkLive.activate();
+    this.networkLive.beginReporting();
+    return true;
   }
 
   flushSuppressedStateChanges() {
@@ -1225,6 +1321,8 @@ export class OpenHomePlaybackAdapter {
 
   dispose() {
     if (this.disposed) return;
+    this.updateLiveSession({});
+    this.networkLive.stop();
     this.disposed = true;
     this.removeActionListener?.();
     this.removeActionListener = null;

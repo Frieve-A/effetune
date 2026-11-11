@@ -447,7 +447,7 @@ body.view-library:not(.layout-mobile) .library-content {
 
 .library-entity-sort-select {
   max-width: min(240px, 34vw);
-  height: 30px;
+  height: 32px;
   padding: 0 28px 0 9px;
   color: var(--library-text);
   background: var(--library-input);

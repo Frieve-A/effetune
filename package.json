@@ -70,7 +70,7 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.2.3",
+    "electron": "^45.3.0",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
@@ -367,10 +367,12 @@
   },
   "dependencies": {
     "@mediabunny/flac-encoder": "1.65.2",
+    "bonjour-service": "1.4.4",
     "electron-updater": "6.8.11",
     "mediabunny": "1.65.2",
-    "music-metadata": "^12.3.5",
+    "music-metadata": "^12.4.0",
     "qrcode-generator": "^2.0.4",
+    "strtok3": "^10.7.0",
     "ws": "^8.22.1"
   },
   "overrides": {

@@ -108,7 +108,7 @@ Process up to four Chrome or Edge tabs with separate effect pipelines, URL-based
 
 To process audio from streaming services (Spotify, YouTube Music, etc.):
 
-In the desktop app, first try [Desktop Browser Setup](#desktop-browser-setup). To use a separate streaming app or a source that the built-in browser cannot play, use the audio-device setup below.
+In the desktop app, first try [Desktop Browser Setup](#desktop-browser-setup). To use a separate streaming app or a source that the built-in browser cannot play, the Windows desktop app can capture sound from other apps directly: in **Audio Configuration**, set **Output Device** to a device other than the Windows default output (for example, a USB DAC) and **Input Device** to **System Audio (sound from other apps)**. In the web app, on macOS, or with only one output device, use the virtual audio device setup below.
 
 1. Prerequisites:
    - Install a virtual audio device (e.g., VB Cable, Voice Meeter, or ASIO Link Tool)
@@ -528,6 +528,8 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Plays detected notes with SF2/SF3 SoundFonts and SFZ instruments | [Details](docs/plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Plays MIDI with SF2/SF3 SoundFonts or SFZ instruments, with 16 independent SF2/SF3 channels | [Details](docs/plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | Starts processing a live stream from another EffeTune at this position | [Details](docs/plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | Sends the sound at this position to Network Output while continuing through local effects | [Details](docs/plugins/control.md#live-audio-send) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |
 
 ## Technical Information

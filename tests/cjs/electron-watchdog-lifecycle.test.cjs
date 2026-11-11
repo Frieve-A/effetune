@@ -49,6 +49,8 @@ function createMainHarness() {
     openHomeControlHost: null,
     airPlayReceiverHost: null,
     disposeAirPlayIpc: null,
+    networkOutputHost: null,
+    disposeNetworkOutputIpc: null,
     disposeOpenHomeIpc: null,
     networkMusicHost: null,
     disposeNetworkMusicIpc: null,
@@ -72,7 +74,7 @@ function createMainHarness() {
   });
   vm.runInContext([
     sourceBetween('async function closeApplicationServices()', '// Keep the main window hidden'),
-    sourceBetween('// Renderer watchdog state', '// macOS only:'),
+    sourceBetween('// Renderer watchdog state', 'const disabledFeatures ='),
     sourceBetween("app.on('before-quit'", '// Export functions')
   ].join('\n'), context, { filename: mainPath });
   return {
@@ -147,6 +149,34 @@ test('late renderer pings and arm requests cannot restart monitoring during expl
   assert.equal(timers.size, 0);
   assert.deepEqual(lifecycle, ['quit-deadline']);
   await context.closeApplicationServices();
+});
+
+test('service shutdown releases the Network Output IPC and disposes its host once', async () => {
+  const harness = createMainHarness();
+  const { context } = harness;
+  const events = [];
+  context.networkOutputHost = { dispose: () => { events.push('dispose'); return Promise.resolve(); } };
+  context.disposeNetworkOutputIpc = () => events.push('ipc');
+  await Promise.all([context.closeApplicationServices(), context.closeApplicationServices()]);
+  assert.deepEqual(events, ['ipc', 'dispose']);
+  assert.equal(context.networkOutputHost, null);
+  assert.equal(context.disposeNetworkOutputIpc, null);
+});
+
+test('service shutdown closes the catalog and waits for every service even when a disposal fails', async () => {
+  const harness = createMainHarness();
+  const { context } = harness;
+  const events = [];
+  let finishOutput;
+  context.networkMusicHost = { dispose: async () => { throw new TypeError('music'); } };
+  context.networkOutputHost = { dispose: () => new Promise(resolve => { finishOutput = () => { events.push('output'); resolve(); }; }) };
+  context.closeLibraryCatalogRecovery = async () => { events.push('catalog'); };
+  const closing = context.closeApplicationServices();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(events, ['catalog']);
+  finishOutput();
+  await assert.rejects(closing, { name: 'TypeError', message: 'music' });
+  assert.deepEqual(events, ['catalog', 'output']);
 });
 
 test('remote IPC remains registered through service shutdown and is released only at will-quit', async () => {

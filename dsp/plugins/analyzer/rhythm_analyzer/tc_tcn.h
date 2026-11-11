@@ -11,13 +11,13 @@
 #include <bit>
 #include <cstdint>
 
-#include "portable_math.h"
+#include "effetune/dsp/portable_math.h"
 #include "tc_tcn_weights.h"
 
 namespace effetune::plugins::analyzer::rhythm_a3 {
 
 inline float tcElu(float x) noexcept {
-  return x > 0.0f ? x : static_cast<float>(rhythm_d::portableExp(static_cast<double>(x)) - 1.0);
+  return x > 0.0f ? x : static_cast<float>(dsp::portableExp(static_cast<double>(x)) - 1.0);
 }
 
 // binary16 code -> float, exact for every finite code. Normal codes: exponent and mantissa moved
@@ -119,15 +119,14 @@ public:
         logits[j] += tcHalfToFloat(tc::kTcnOutW[c * kOut + j]) * x;
     }
     for (std::uint32_t j = 0u; j < 2u; ++j)
-      out[j] =
-          static_cast<float>(1.0 / (1.0 + rhythm_d::portableExp(-static_cast<double>(logits[j]))));
+      out[j] = static_cast<float>(1.0 / (1.0 + dsp::portableExp(-static_cast<double>(logits[j]))));
     float top = logits[2];
     for (std::uint32_t j = 3u; j < kOut; ++j)
       top = logits[j] > top ? logits[j] : top;
     double e[kOut];
     double sum = 0.0;
     for (std::uint32_t j = 2u; j < kOut; ++j) {
-      e[j] = rhythm_d::portableExp(static_cast<double>(logits[j]) - static_cast<double>(top));
+      e[j] = dsp::portableExp(static_cast<double>(logits[j]) - static_cast<double>(top));
       sum += e[j];
     }
     for (std::uint32_t j = 2u; j < kOut; ++j)

@@ -116,6 +116,14 @@
   "help:inputChannel": "選択したオーディオ入力デバイスにキャリブレーションマイクが接続されているチャンネルを選択してください。", // 入力チャンネルのヘルプ
   "label:audioOutput": "オーディオ出力デバイス：", // オーディオ出力デバイス選択のラベル
   "help:audioOutput": "測定信号を出力するオーディオデバイスを選択してください。", // オーディオ出力のヘルプ
+  "label:effectPipeline": "エフェクトパイプライン：",
+  "option:effectPipelineNone": "なし",
+  "option:effectPipelineCurrent": "現在のパイプライン",
+  "help:effectPipeline": "「現在のパイプライン」を選ぶと、メインアプリからこのページを開いたときに動作していたエフェクトパイプラインを通してテスト信号を再生します。サンプリング周波数と出力デバイスのチャンネル数はパイプラインに合わせて固定されます。",
+  "help:effectPipelineUnavailable": "エフェクトパイプラインを通して測定するには、音声処理の動作中にメインアプリからこのページを開いてください。",
+  "help:effectPipelineAndroid": "Android ではエフェクトパイプラインを通した測定は使えません。",
+  "label:pipelineInputChannel": "パイプライン入力チャンネル：",
+  "help:pipelineInputChannel": "テスト信号を入れるパイプラインの入力チャンネルを選択してください。パイプラインの各出力チャンネルは、同じ番号の出力デバイスのチャンネルから再生されます。",
   "label:outputChannelCount": "出力デバイスのチャンネル数：",
   "help:outputChannelCount": "出力デバイスの構成に合わせて設定してください（5.1chは6、7.1chは8）。一部のチャンネルだけを測定する場合も、テスト信号と測定には常にこのチャンネル数を使用します。",
   "label:outputChannel": "出力チャンネル：", // 出力チャンネル選択のラベル
@@ -192,9 +200,15 @@
   "button:exportTxt": "補正パラメータをtxtでエクスポート", // txtエクスポート
   "button:exportCSV": "補正パラメータをCSVでエクスポート", // CSVエクスポート
   "help:exportOptions": "コピーした設定はEffeTuneのエフェクトパイプラインにCtrl+Vで貼り付けられます。", // エクスポートオプションのヘルプ
+  "message:correctionUnavailablePipeline": "この測定結果にはエフェクトパイプラインの処理がすでに含まれているため、補正設定の作成には使えません。",
   "title:measurementDetails": "測定詳細", // 測定詳細のタイトル
   "label:onset": "オンセット", // 保存されたインパルス応答の絶対オンセット
   "label:onsetEarliest": "最速", // 同時測定チャンネルのうち最も早く到達したもの
+  "label:effectPipelineBadge": "パイプライン",
+  "label:appliedEffectPipeline": "エフェクトパイプライン",
+  "status:effectPipelineNotApplied": "適用なし",
+  "status:effectPipelineApplied": "適用あり",
+  "status:effectPipelineAppliedPlugins": "適用あり（{plugins}）",
 
   // ダイアログ
   "button:confirm": "確定", // 確認ボタン
@@ -220,6 +234,12 @@
   "error:interfaceCalibrationSampleRateMismatch": "選択したキャリブレーションのサンプリング周波数が異なります。同じサンプリング周波数で記録したデータを選択してください。",
   "error:interfaceCalibrationSweepRangeMismatch": "選択したキャリブレーションは、このスイープ範囲をカバーしていません。スイープ範囲を狭めるか、別のデータを選択してください。",
   "error:interfaceCalibrationProcessingFailed": "キャリブレーションを適用した測定を完了できませんでした。接続と設定を確認して、この測定点をもう一度測定してください。",
+  "error:pipelineUnavailable": "エフェクトパイプラインを利用できません。音声処理の動作中にメインアプリからこのページを開き直すか、エフェクトパイプラインを「なし」にしてください。",
+  "error:pipelineSampleRateMismatch": "エフェクトパイプラインと同じサンプリング周波数で測定できませんでした。オーディオデバイスをメインアプリと同じサンプリング周波数に設定して、もう一度お試しください。",
+  "error:pipelineInputChannelUnavailable": "選択したパイプライン入力チャンネルはエフェクトパイプラインにありません。パイプラインのチャンネル数の範囲で選択してください。",
+  "error:pipelineOutputChannelsUnavailable": "選択した出力デバイスのチャンネル数がエフェクトパイプラインより少なくなっています。メインアプリで使っている出力デバイスを選択して、もう一度お試しください。",
+  "error:pipelineClipping": "エフェクトパイプラインを通すとテスト信号がクリップします。信号レベルを下げて、もう一度お試しください。",
+  "error:pipelineRenderFailed": "エフェクトパイプラインでテスト信号を処理できませんでした。メインアプリに戻ってこのページを開き直し、もう一度お試しください。",
   "error:measurementSetupFailed": "測定の準備ができませんでした。オーディオデバイスを確認して、もう一度お試しください。",
   "error:levelAdjustmentFailed": "音声入力の準備ができませんでした。入力デバイスを確認して、もう一度お試しください。",
   "error:audioUnsupported": "このブラウザーでは音声測定を実行できません。最新版のChromeまたはEdgeを使用してください。",
@@ -275,6 +295,8 @@
   "option:sampleRate96000": "96 kHz", // 96 kHzサンプルレートのオプション
   "option:sampleRate176400": "176.4 kHz", // 176.4 kHzサンプルレートのオプション
   "option:sampleRate192000": "192 kHz", // 192 kHzサンプルレートのオプション
+  "option:sampleRate352800": "352.8 kHz", // 352.8 kHzサンプルレートのオプション
+  "option:sampleRate384000": "384 kHz", // 384 kHzサンプルレートのオプション
   
   // スイープ長オプション
   "option:sweepLength16384": "16,384 (2¹⁴)", // 16384スイープ長のオプション

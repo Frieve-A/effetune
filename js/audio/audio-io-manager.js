@@ -1,5 +1,9 @@
-import { NO_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
+import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
 import { createAudioSessionTypeController } from './audio-session-type-controller.js';
+import {
+    evaluateSystemAudioGuard as evaluateSystemAudioOutputGuard,
+    getDefaultOutputGroupId
+} from './system-audio-guard.js';
 
 /**
  * Prefix used to identify the non-fatal mic-denied warning returned by initAudioInput().
@@ -37,6 +41,12 @@ export class AudioIOManager {
         this._inputAcquisitionGeneration = 0;
         this._pendingInputAcquisition = null;
         this.lastInputInitializationError = null;
+        // System Audio capture that was denied by the output guard or failed
+        // stays disabled for this session; a reset or restart re-evaluates it.
+        // The groupId of the Windows default output seen at capture time lets
+        // the controller notice when the default endpoint moves.
+        this.systemAudioDisabled = false;
+        this.systemAudioDefaultGroupId = null;
         // iOS gates background Web Audio and the OS now-playing session on
         // navigator.audioSession.type; the controller mirrors microphone
         // liveness into it and is null on every other host. The initial
@@ -204,14 +214,16 @@ export class AudioIOManager {
 
     getInputSnapshot() {
         this._refreshInputTrackState();
+        const selectedInputDeviceId = window.audioPreferences?.inputDeviceId ||
+            window.electronIntegration?.audioPreferences?.inputDeviceId;
         return {
             state: this.inputResourceState,
             inputAvailability: this.inputAvailability,
             inputAvailabilityRevision: this.inputAvailabilityRevision,
             inputGeneration: this.inputGeneration,
             inputResourceId: this.inputResourceId,
-            inputConfigured: (window.audioPreferences?.inputDeviceId ||
-                window.electronIntegration?.audioPreferences?.inputDeviceId) !== NO_AUDIO_INPUT_DEVICE_ID,
+            inputConfigured: selectedInputDeviceId !== NO_AUDIO_INPUT_DEVICE_ID &&
+                !(selectedInputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID && this.systemAudioDisabled),
             inputSourcePresent: !!this.inputSourceNode,
             inputRouteConnected: this.inputRouteConnected,
             trackState: this.inputResourceState === 'live'
@@ -343,11 +355,11 @@ export class AudioIOManager {
     async initAudioInput(preferencesOverride = null) {
         this.invalidatePendingInputAcquisition();
         const acquisitionGeneration = this._inputAcquisitionGeneration;
-        const acquireStream = constraints => {
+        const acquireStream = acquire => {
             if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
                 return Promise.reject(this._createStaleInputAcquisitionError());
             }
-            return this._getUserMediaWithTimeout(constraints).then(stream => {
+            return this._acquireStreamWithTimeout(acquire).then(stream => {
                 if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
                     this._stopStreamTracksOnce(stream);
                     throw this._createStaleInputAcquisitionError();
@@ -357,6 +369,8 @@ export class AudioIOManager {
         };
         try {
             this.lastInputInitializationError = null;
+            this.systemAudioDisabled = false;
+            this.systemAudioDefaultGroupId = null;
             this.inputResourceState = 'acquiring';
             this._syncAudioSessionType();
             this._setInputAvailability('unknown');
@@ -376,12 +390,25 @@ export class AudioIOManager {
             const preferences = preferencesOverride || await this._loadAudioPreferences();
             if (acquisitionGeneration !== this._inputAcquisitionGeneration) return '';
             if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
-                this.invalidatePendingInputAcquisition();
-                this.inputResourceState = 'not-configured';
-                this._syncAudioSessionType();
-                this.inputResourceId = null;
-                this.adoptSilentSourceFallback();
+                this._settleInputNotConfigured();
                 console.log('Audio input disabled by preference. Music file playback mode will still work.');
+                return '';
+            }
+
+            if (preferences?.inputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID) {
+                // System Audio never falls back to a microphone: a denied guard or
+                // a failed capture leaves the silent source in place for the session.
+                try {
+                    this._adoptInputStream(
+                        await acquireStream(() => this._acquireGuardedSystemAudioStream())
+                    );
+                } catch (error) {
+                    if (error?.name === 'AbortError') throw error;
+                    console.warn('System Audio capture failed:', error.name, error.message);
+                    this.lastInputInitializationError = error;
+                    this.markSystemAudioDisabled();
+                    this._settleInputNotConfigured();
+                }
                 return '';
             }
 
@@ -391,6 +418,8 @@ export class AudioIOManager {
                 console.log('No audio preferences found or no input device specified, using default audio input');
                 // Use default input device by not specifying deviceId
             }
+            const acquireMicrophone = () =>
+                acquireStream(() => navigator.mediaDevices.getUserMedia({ audio: audioConstraints }));
 
             // On macOS, trigger TCC permission dialog from the main process before getUserMedia.
             // We ignore the return value and let getUserMedia() be the final arbiter —
@@ -405,9 +434,7 @@ export class AudioIOManager {
             let lastMicError = null;
             let acquiredStream = null;
             try {
-                acquiredStream = await acquireStream({
-                    audio: audioConstraints
-                });
+                acquiredStream = await acquireMicrophone();
             } catch (error) {
                 if (error?.name === 'AbortError') throw error;
                 lastMicError = error;
@@ -416,9 +443,7 @@ export class AudioIOManager {
                     console.warn('Failed to use saved audio input device, falling back to default:', error.name, error.message);
                     delete audioConstraints.deviceId;
                     try {
-                        acquiredStream = await acquireStream({
-                            audio: audioConstraints
-                        });
+                        acquiredStream = await acquireMicrophone();
                         lastMicError = null;
                     } catch (innerError) {
                         if (innerError?.name === 'AbortError') throw innerError;
@@ -433,9 +458,7 @@ export class AudioIOManager {
                                 try {
                                     await window.electronAPI.clearMicrophonePermission();
                                     // Try one more time after clearing permissions
-                                    acquiredStream = await acquireStream({
-                                        audio: audioConstraints
-                                    });
+                                    acquiredStream = await acquireMicrophone();
                                     lastMicError = null;
                                 } catch (finalError) {
                                     if (finalError?.name === 'AbortError') throw finalError;
@@ -459,9 +482,7 @@ export class AudioIOManager {
                         try {
                             await window.electronAPI.clearMicrophonePermission();
                             // Try one more time after clearing permissions
-                            acquiredStream = await acquireStream({
-                                audio: audioConstraints
-                            });
+                            acquiredStream = await acquireMicrophone();
                             lastMicError = null;
                         } catch (finalError) {
                             if (finalError?.name === 'AbortError') throw finalError;
@@ -578,6 +599,98 @@ export class AudioIOManager {
         this.inputRouteConnected = false;
         this._setInputAvailability('unknown');
         return true;
+    }
+
+    /**
+     * Settle startup without a live input: record the not-configured state and
+     * feed the pipeline from the silent source.
+     */
+    _settleInputNotConfigured() {
+        this.invalidatePendingInputAcquisition();
+        this.inputResourceState = 'not-configured';
+        this._syncAudioSessionType();
+        this.inputResourceId = null;
+        this.adoptSilentSourceFallback();
+    }
+
+    markSystemAudioDisabled() {
+        this.systemAudioDisabled = true;
+        this.systemAudioDefaultGroupId = null;
+    }
+
+    /**
+     * Evaluate the System Audio guard against the output device actually
+     * applied. `defaultGroupId` identifies the current Windows default output.
+     */
+    async evaluateSystemAudioGuard() {
+        let outputs = [];
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            outputs = devices.filter(device => device.kind === 'audiooutput');
+        } catch (error) {
+            console.warn('Failed to enumerate audio outputs for System Audio:', error);
+        }
+        return {
+            ...evaluateSystemAudioOutputGuard(this.currentOutputDeviceId, outputs),
+            defaultGroupId: getDefaultOutputGroupId(outputs)
+        };
+    }
+
+    /**
+     * Re-evaluate the guard, then capture. A denied guard records the session
+     * disable so later resumes skip the capture, and the default output group
+     * is remembered on success so a moved default endpoint can be detected.
+     */
+    _acquireGuardedSystemAudioStream() {
+        return this.evaluateSystemAudioGuard().then(guard => {
+            if (!guard.allowed) {
+                this.markSystemAudioDisabled();
+                const error = new Error(`System Audio input unavailable (${guard.reason})`);
+                error.name = 'NotAllowedError';
+                throw error;
+            }
+            return this._acquireSystemAudioStream().then(stream => {
+                this.systemAudioDefaultGroupId = guard.defaultGroupId;
+                return stream;
+            });
+        });
+    }
+
+    /**
+     * Capture the system output through the Electron loopback handler. The
+     * main process arms the handler synchronously, so getDisplayMedia must be
+     * called on the same stack as prepareCapture().
+     */
+    _acquireSystemAudioStream() {
+        const prepared = window.electronAPI?.systemAudio?.prepareCapture?.();
+        if (prepared?.ok !== true) {
+            const error = new Error(`System Audio capture is unavailable (${prepared?.error || 'unsupported host'})`);
+            error.name = 'NotSupportedError';
+            return Promise.reject(error);
+        }
+        return navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: {
+                channelCount: 2,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        }).then(stream => {
+            // The loopback request needs a video track; EffeTune does not.
+            for (const track of stream.getVideoTracks()) {
+                track.stop();
+                stream.removeTrack?.(track);
+            }
+            const tracks = stream.getAudioTracks();
+            if (tracks.length === 0 || tracks.some(track => track.readyState !== 'live')) {
+                this._stopStreamTracksOnce(stream);
+                const error = new Error('System Audio capture has no live audio track');
+                error.name = 'NotReadableError';
+                throw error;
+            }
+            return stream;
+        });
     }
 
     async _initMultichannelMediaStreamOutput(preferences) {
@@ -994,26 +1107,35 @@ export class AudioIOManager {
     }
 
     /**
-     * getUserMedia with timeout — on macOS, getUserMedia can hang indefinitely when
-     * the audio system is in flux (HDMI re-re-connect, multi-display).  Apply a 5 s
-     * timeout so the renderer can fall back to silent-source mode and proceed instead
-     * of freezing.
+     * Run a media acquisition (`acquire` returns the stream promise) with a
+     * timeout — on macOS, getUserMedia can hang indefinitely when the audio
+     * system is in flux (HDMI re-re-connect, multi-display).  Apply a 5 s
+     * timeout so the renderer can fall back to silent-source mode and proceed
+     * instead of freezing.
      */
-    _getUserMediaWithTimeout(constraints, ms = 5000) {
+    _acquireStreamWithTimeout(acquire, ms = 5000) {
         return new Promise((resolve, reject) => {
             let settled = false;
             const timerId = setTimeout(() => {
                 if (settled) return;
                 settled = true;
-                const error = new Error(`getUserMedia timed out after ${ms}ms`);
+                const error = new Error(`Audio input acquisition timed out after ${ms}ms`);
                 error.name = 'TimeoutError';
                 reject(error);
             }, ms);
 
-            navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+            // Invoke synchronously so a caller inside a user activation keeps
+            // the native request on the activation stack.
+            let request;
+            try {
+                request = Promise.resolve(acquire());
+            } catch (error) {
+                request = Promise.reject(error);
+            }
+            request.then(stream => {
                 if (settled) {
-                    // getUserMedia cannot be cancelled. A result arriving after the
-                    // application deadline must never escape with live tracks.
+                    // A media request cannot be cancelled. A result arriving after
+                    // the application deadline must never escape with live tracks.
                     this._stopStreamTracksOnce(stream);
                     return;
                 }
@@ -1091,7 +1213,9 @@ export class AudioIOManager {
         timeoutMs = 5000,
         preferences = window.audioPreferences || window.electronIntegration?.audioPreferences
     } = {}) {
-        if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID) {
+        const systemAudioSelected = preferences?.inputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID;
+        if (preferences?.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID ||
+            (systemAudioSelected && this.systemAudioDisabled)) {
             this.invalidatePendingInputAcquisition();
             this.inputResourceState = 'not-configured';
             this._syncAudioSessionType();
@@ -1103,13 +1227,21 @@ export class AudioIOManager {
             error.name = 'NotAllowedError';
             return Promise.reject(error);
         }
-        const audio = {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false
-        };
-        if (preferences?.inputDeviceId) audio.deviceId = { exact: preferences.inputDeviceId };
-        const acquisitionKey = JSON.stringify(audio);
+        let acquisitionKey;
+        let acquire;
+        if (systemAudioSelected) {
+            acquisitionKey = SYSTEM_AUDIO_INPUT_DEVICE_ID;
+            acquire = () => this._acquireGuardedSystemAudioStream();
+        } else {
+            const audio = {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            };
+            if (preferences?.inputDeviceId) audio.deviceId = { exact: preferences.inputDeviceId };
+            acquisitionKey = JSON.stringify(audio);
+            acquire = () => navigator.mediaDevices.getUserMedia({ audio });
+        }
         if (this._pendingInputAcquisition?.key === acquisitionKey) {
             return this._pendingInputAcquisition.promise;
         }
@@ -1117,12 +1249,12 @@ export class AudioIOManager {
         const acquisitionGeneration = ++this._inputAcquisitionGeneration;
         this.inputResourceState = 'acquiring';
         // Synchronous property write, so the capture-compatible session type is
-        // in place before getUserMedia() below without leaving the activation stack.
+        // in place before the media request below without leaving the activation stack.
         this._syncAudioSessionType();
         this._setInputAvailability('unknown');
-        // Start getUserMedia before returning so a caller in a trusted event can
-        // keep the native request inside the activation stack.
-        const promise = this._getUserMediaWithTimeout({ audio }, timeoutMs).then(privateStream => {
+        // Start the media request before returning so a caller in a trusted
+        // event can keep the native request inside the activation stack.
+        const promise = this._acquireStreamWithTimeout(acquire, timeoutMs).then(privateStream => {
             if (acquisitionGeneration !== this._inputAcquisitionGeneration) {
                 this._stopStreamTracksOnce(privateStream);
                 throw this._createStaleInputAcquisitionError();

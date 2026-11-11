@@ -1,18 +1,21 @@
-// Tonal Balance EQ: toolchain-independent exp / log / sin / cos / tan.
-//
-// The analysis statistics and the cascade design are on the parity surface
-// (native and WASM builds must produce the same filter coefficients).  libm
-// results differ in the last bit between toolchains, so every design-time
-// transcendental goes through these range reductions plus polynomials, which
-// are built only from IEEE add, subtract, multiply, floor, frexp and ldexp.
-// sqrt is correctly rounded everywhere and needs no replacement.
-#ifndef EFFETUNE_TONAL_BALANCE_EQ_PORTABLE_MATH_H
-#define EFFETUNE_TONAL_BALANCE_EQ_PORTABLE_MATH_H
+#ifndef EFFETUNE_DSP_PORTABLE_MATH_H
+#define EFFETUNE_DSP_PORTABLE_MATH_H
 
 #include <cmath>
 #include <limits>
 
-namespace effetune::plugins::eq::tonal_balance {
+// Toolchain-independent exp / log / sin / cos / tan for the parity surface.
+//
+// The native reference build and the WebAssembly build link different libm
+// implementations, and their results differ in the last bit.  Kernels whose
+// native and WASM outputs must agree bit for bit cannot afford that: a one-bit
+// difference in a filter coefficient, an analysis statistic or a model
+// nonlinearity is enough to move a later quantizer or comparison by a whole
+// step.  Every such transcendental therefore goes through the range reductions
+// plus polynomials below, which are built only from IEEE add, subtract,
+// multiply, floor, frexp and ldexp, so every toolchain evaluates them
+// identically.  sqrt is correctly rounded everywhere and needs no replacement.
+namespace effetune::dsp {
 
 inline constexpr double kLn10 = 2.30258509299404568402;
 inline constexpr double kPi = 3.14159265358979323846;
@@ -32,7 +35,8 @@ inline constexpr double kPi = 3.14159265358979323846;
   const double index = std::floor(value * kInverseLn2 + 0.5);
   const double remainder = (value - index * kLn2High) - index * kLn2Low;
   // Taylor series through the thirteenth term.  With |remainder| <= ln(2) / 2
-  // the first omitted term is below 5e-18.
+  // the first omitted term is below 5e-18, so the result stays inside one unit
+  // in the last place.
   double series = 1.0 / 6227020800.0;
   series = series * remainder + 1.0 / 479001600.0;
   series = series * remainder + 1.0 / 39916800.0;
@@ -67,7 +71,8 @@ inline constexpr double kPi = 3.14159265358979323846;
     --exponent;
   }
   // log(m) = 2 * atanh((m - 1) / (m + 1)).  With m in [sqrt(1/2), sqrt(2)) the
-  // argument stays below 0.1716, so the term after s^25 is below 1e-22.
+  // argument stays below 0.1716, so the term after the one in s^25 is below
+  // 1e-22 and the series is exact to the last bit.
   const double s = (mantissa - 1.0) / (mantissa + 1.0);
   const double square = s * s;
   double series = 1.0 / 25.0;
@@ -87,13 +92,17 @@ inline constexpr double kPi = 3.14159265358979323846;
   return (scaled * kLn2High + 2.0 * s * series) + scaled * kLn2Low;
 }
 
+namespace portable_math_detail {
+
 struct QuarterTurn final {
   double remainder = 0.0;
   int quadrant = 0;
 };
 
-// Cody-Waite reduction against a three-way split of pi / 2.  Arguments stay
-// below 2 * pi (digital frequencies), so the index stays tiny.
+// Cody-Waite reduction against a three-way split of pi / 2.  The first two
+// parts carry 33 significant bits, so their products with the index stay exact
+// for indices below 2^20; callers pass filter-design angles of at most a few
+// hundred radians, which keeps the index far below that.
 [[nodiscard]] inline QuarterTurn reduceQuarterTurn(double value) noexcept {
   constexpr double kTwoOverPi = 0.63661977236758134308;
   constexpr double kHalfPiHigh = 1.57079632673412561417e+00;
@@ -136,7 +145,10 @@ struct QuarterTurn final {
   return 1.0 + square * series;
 }
 
+} // namespace portable_math_detail
+
 [[nodiscard]] inline double portableSin(double value) noexcept {
+  using namespace portable_math_detail;
   if (value != value || value == std::numeric_limits<double>::infinity() ||
       value == -std::numeric_limits<double>::infinity())
     return std::numeric_limits<double>::quiet_NaN();
@@ -154,6 +166,7 @@ struct QuarterTurn final {
 }
 
 [[nodiscard]] inline double portableCos(double value) noexcept {
+  using namespace portable_math_detail;
   if (value != value || value == std::numeric_limits<double>::infinity() ||
       value == -std::numeric_limits<double>::infinity())
     return std::numeric_limits<double>::quiet_NaN();
@@ -174,7 +187,8 @@ struct QuarterTurn final {
   return portableSin(value) / portableCos(value);
 }
 
-// 10^value through the portable exponential.
+// 10^value through the portable exponential, so decibel to ratio conversions
+// stay toolchain independent.
 [[nodiscard]] inline double portableDecadePower(double value) noexcept {
   return portableExp(value * kLn10);
 }
@@ -195,6 +209,14 @@ struct QuarterTurn final {
   return portableLog(value) * kInverseLn2;
 }
 
-} // namespace effetune::plugins::eq::tonal_balance
+// log(1 + x) for x >= 0 (Goldberg): exact to a few ulps, from portableLog.
+[[nodiscard]] inline double portableLog1p(double value) noexcept {
+  const double u = 1.0 + value;
+  if (u == 1.0)
+    return value;
+  return portableLog(u) * value / (u - 1.0);
+}
 
-#endif // EFFETUNE_TONAL_BALANCE_EQ_PORTABLE_MATH_H
+} // namespace effetune::dsp
+
+#endif // EFFETUNE_DSP_PORTABLE_MATH_H

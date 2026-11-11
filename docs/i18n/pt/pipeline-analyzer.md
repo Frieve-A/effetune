@@ -41,7 +41,7 @@ Use o seletor **Graph** acima do gráfico para alternar entre as vistas sem medi
 - **Phase:** Resposta de fase (graus) por frequência.
 - **Min Group Delay:** Atraso de grupo implícito na resposta de magnitude de fase mínima.
 - **Excess Group Delay:** Atraso de grupo restante após remover a parte de fase mínima (o gráfico é limitado a ±100 ms, enquanto as leituras do cursor mostram o valor real), facilitando identificar atraso puro e tempos de fase linear ou all-pass.
-- **Impulse:** Resposta ao impulso no domínio do tempo de `-2 ms` até **Impulse Range (ms)**, normalizada pelo pico.
+- **Impulse:** Resposta ao impulso no domínio do tempo de `-2 ms` até **Impulse Range (ms)**, normalizada pelo pico. Use a roda do mouse sobre o gráfico para ampliar ou reduzir a escala do eixo do tempo em torno do ponto sob o cursor.
 - **Distortion:** Com **Log Sweep**, mostra a distorção harmônica como porcentagem da fundamental ao longo das frequências. H2, H3 e THD (ordens 2–3) aparecem inicialmente; H4–H10 podem ser adicionadas sem repetir a medição. Quanto maior o valor, maior a distorção. Se esse gráfico não estiver disponível com outro sinal, selecione **Log Sweep**. Uma saída silenciosa ou sem dados válidos não permite calcular a distorção. As respostas de alto-falante salvas contribuem com sua resposta linear, não com a distorção do próprio alto-falante.
 - **Waterfall:** Mostra frequência, nível relativo (dB) e tempo de decaimento (ms). Em **Response**, escolha **After** (padrão) ou **Before** para examinar a saída do pipeline ou as respostas de alto-falante selecionadas antes do processamento. Cada vista é normalizada pelo próprio pico; compare a forma do decaimento, não os níveis absolutos. Arraste para girar o gráfico 3D e use a roda do mouse ou o gesto de pinça para ampliar ou reduzir.
 
@@ -49,6 +49,6 @@ Nos gráficos de frequência, fase, atraso de grupo e impulso, passe o cursor pa
 
 ## Como funciona a medição
 
-O Pipeline Analyzer captura o pipeline ativo, seu roteamento e quaisquer respostas de alto-falante selecionadas, compensando automaticamente em **After** a latência informada pelo pipeline. Para efeitos não lineares, modulados ou aleatórios, interprete o gráfico como um instantâneo das configurações e do **Level** atuais.
+O Pipeline Analyzer captura o pipeline ativo, seu roteamento e quaisquer respostas de alto-falante selecionadas, compensando automaticamente em **After** a latência informada pelo pipeline. Para efeitos não lineares, modulados ou aleatórios, interprete o gráfico como um instantâneo das configurações e do **Level** atuais. Para confirmar o resultado com um microfone, consulte a seção «Medir com o Pipeline de Efeitos» do [Acoustic Measurement](measurement.md).
 
 [← Voltar para o README](README.md)

@@ -10,13 +10,14 @@
 //     log power) and the growing-mean / EMA update every integrator uses,
 //   * the gate / integrator state machine (AnalysisEngine) that the kernel
 //     drives once per hop.
-// Design-time transcendentals go through portable_math.h (parity surface).
+// Design-time transcendentals go through effetune/dsp/portable_math.h (parity
+// surface: native and WASM builds must produce the same filter coefficients).
 #ifndef EFFETUNE_TONAL_BALANCE_EQ_ANALYSIS_H
 #define EFFETUNE_TONAL_BALANCE_EQ_ANALYSIS_H
 
 #include "effetune/dsp/biquad.h"
 #include "effetune/dsp/k_weighting.h"
-#include "portable_math.h"
+#include "effetune/dsp/portable_math.h"
 
 #include <array>
 #include <cmath>
@@ -26,6 +27,18 @@
 #include <vector>
 
 namespace effetune::plugins::eq::tonal_balance {
+
+using dsp::kLn10;
+using dsp::kPi;
+using dsp::portableCos;
+using dsp::portableDbPower;
+using dsp::portableDecadePower;
+using dsp::portableExp;
+using dsp::portableLog;
+using dsp::portableLog2;
+using dsp::portablePowerDb;
+using dsp::portableSin;
+using dsp::portableTan;
 
 inline constexpr std::uint32_t kBandCount = 41u;
 inline constexpr std::uint32_t kMaximumChannels = 16u;

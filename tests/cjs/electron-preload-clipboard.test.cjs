@@ -166,6 +166,25 @@ test('preload returns the Browser capture reservation synchronously', () => {
   assert.deepEqual(harness.sends, []);
 });
 
+test('preload returns the System Audio capture reservation synchronously', () => {
+  const harness = createPreloadHarness();
+  const syncCalls = [];
+  const reservation = { ok: false, error: 'unavailable' };
+  harness.electron.ipcRenderer.sendSync = (...args) => {
+    syncCalls.push(args);
+    return reservation;
+  };
+  loadPreload(harness);
+  const systemAudio = harness.exposed.electronAPI.systemAudio;
+
+  assert.equal(Object.isFrozen(systemAudio), true);
+  assert.deepEqual(Object.keys(systemAudio), ['prepareCapture']);
+  assert.equal(systemAudio.prepareCapture(), reservation);
+  assert.deepEqual(syncCalls, [['system-audio:prepare-capture']]);
+  assert.deepEqual(harness.invocations, []);
+  assert.deepEqual(harness.sends, []);
+});
+
 test('preload forwards Browser commands and results through their dedicated IPC channels', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -242,11 +261,11 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   harness.listeners.get('browser:focus-address')(event);
   assert.equal(focusRequests.length, 2);
   unsubscribeFocus();
-  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port']);
+  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port', 'network-output-v1:port']);
 
   assert.throws(() => browser.onState(null), TypeError);
   assert.throws(() => browser.onFocusAddress(null), TypeError);
-  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port']);
+  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port', 'network-output-v1:port']);
 });
 
 test('SFZ library preload forwards file and folder selection modes', async () => {
@@ -392,6 +411,7 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     upnpAvRemoteControl: true,
     upnpAvDeviceId: 'renderer-controlled-upnp-id',
     airPlayReceiver: true,
+    networkOutput: { enabled: true, localTrimMs: 0, targets: [] },
     remoteControlEnabled: true,
     remoteControlToken: 'renderer-controlled-token'
   };
@@ -407,6 +427,7 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     upnpAvRemoteControl: true,
     upnpAvDeviceId: 'renderer-controlled-upnp-id',
     airPlayReceiver: true,
+    networkOutput: { enabled: true, localTrimMs: 0, targets: [] },
     remoteControlEnabled: true,
     remoteControlToken: 'renderer-controlled-token'
   });
@@ -530,6 +551,45 @@ test('preload transfers only a single AirPlay port to the renderer without expos
     harness.listeners.get('airplay-v1:port')({ ports: [port], sender: 'private' });
   });
   assert.deepEqual(messages, [[{ type: 'effetune-airplay-v1-port' }, '*', [port]]]);
+});
+
+test('preload exposes the bounded Network Output bridge', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const bridge = harness.exposed.electronAPI.networkOutputV1;
+  await bridge.getStatus();
+  await bridge.setPickerOpen(true);
+  await bridge.setTargetEnabled('speaker', true);
+  await bridge.setConfiguration({ enabled: true });
+  await bridge.rendererReady();
+  await bridge.rendererUnavailable();
+  await bridge.resync();
+  assert.deepEqual(harness.invocations, [
+    ['network-output-v1:get-status', {}],
+    ['network-output-v1:set-picker-open', true],
+    ['network-output-v1:set-target-enabled', 'speaker', true],
+    ['network-output-v1:set-configuration', { enabled: true }],
+    ['network-output-v1:renderer-ready', {}],
+    ['network-output-v1:renderer-unavailable', {}],
+    ['network-output-v1:resync', {}]
+  ]);
+  assert.throws(() => bridge.setConfiguration(true), TypeError);
+  assert.throws(() => bridge.setConfiguration([]), TypeError);
+  assert.throws(() => bridge.onStatus(null), TypeError);
+  assert.equal(harness.invocations.length, 7);
+});
+
+test('preload transfers only a single Network Output port to the renderer without exposing IPC events', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const messages = [];
+  const port = {};
+  withPatchedProperty(globalThis, 'window', { postMessage: (...args) => messages.push(args) }, () => {
+    harness.listeners.get('network-output-v1:port')({ ports: [] });
+    harness.listeners.get('network-output-v1:port')({ ports: [port, {}] });
+    harness.listeners.get('network-output-v1:port')({ ports: [port], sender: 'private' });
+  });
+  assert.deepEqual(messages, [[{ type: 'effetune-network-output-v1-port' }, '*', [port]]]);
 });
 
 test('preload exposes the versioned remote control bridge', async () => {

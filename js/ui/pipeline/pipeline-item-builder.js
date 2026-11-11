@@ -17,6 +17,7 @@ export class PipelineItemBuilder {
         this.pluginManager = pipelineCore.pluginManager;
         this.expandedPlugins = pipelineCore.expandedPlugins;
         installParameterEditLock();
+        this.audioManager?.addEventListener?.('networkRoute', () => this.updateNetworkMarkerStatuses());
     }
 
     get pipelineManager() {
@@ -131,13 +132,20 @@ export class PipelineItemBuilder {
         const name = this.createPluginName(plugin);
         header.appendChild(name);
 
-        // Display bus routing info if set
-        this.addBusInfo(header, plugin, item);
+        const isNetworkMarker = ['NetworkSendPlugin', 'NetworkReceivePlugin'].includes(plugin.constructor.name);
+        if (isNetworkMarker) {
+            const status = document.createElement('span');
+            status.className = 'network-marker-status';
+            header.appendChild(status);
+            this.updateNetworkMarkerStatus(plugin, status);
+        } else {
+            this.addBusInfo(header, plugin, item);
+        }
 
         const actions = document.createElement('div');
         actions.className = 'plugin-header-actions';
         
-        if (!isSectionPlugin) {
+        if (!isSectionPlugin && !isNetworkMarker) {
             // Routing button
             const routingBtn = this.createRoutingButton(plugin);
             actions.appendChild(routingBtn);
@@ -226,6 +234,7 @@ export class PipelineItemBuilder {
 
             // Update UI display state for all plugins that might be affected by this change
             this.pipelineCore.updateAllPluginDisplayState();
+            this.updateNetworkMarkerStatuses();
             
             // Save state for undo/redo
             if (this.pipelineManager && this.pipelineManager.historyManager) {
@@ -233,6 +242,57 @@ export class PipelineItemBuilder {
             }
         };
         return toggle;
+    }
+
+    updateNetworkMarkerStatuses() {
+        for (const plugin of this.audioManager?.pipeline || []) {
+            const item = this.pipelineCore.pipelineList?.querySelector(`.pipeline-item[data-plugin-id="${plugin.id}"]`);
+            const status = item?.querySelector('.network-marker-status');
+            if (status) this.updateNetworkMarkerStatus(plugin, status);
+            this.updateNetworkReceiveExclusion(plugin, item);
+        }
+    }
+
+    updateNetworkReceiveExclusion(plugin, item) {
+        if (!item) return;
+        const pipeline = this.audioManager?.pipeline || [];
+        const route = this.audioManager?.hasLocalAudio === false ? null : this.audioManager?.networkRoute;
+        const receiveIndex = route?.receiveActive && route.receiveId != null
+            ? pipeline.findIndex(candidate => String(candidate.id) === String(route.receiveId)) : -1;
+        const index = pipeline.indexOf(plugin);
+        const excluded = receiveIndex >= 0 && index >= 0 && index < receiveIndex;
+        const ui = item.querySelector('.plugin-ui');
+        if (ui) ui.style.display = excluded ? 'none' : '';
+        const name = item.querySelector('.plugin-name');
+        if (name) {
+            this.pipelineCore.updatePluginNameDisplayState(plugin, name);
+            if (excluded) name.classList.add('plugin-disabled');
+        }
+    }
+
+    updateNetworkMarkerStatus(plugin, status) {
+        const type = plugin.constructor.name;
+        let sectionEnabled = true;
+        let first = null;
+        let eligible = false;
+        for (const candidate of this.audioManager?.pipeline || []) {
+            if (candidate.constructor.name === 'SectionPlugin') {
+                sectionEnabled = candidate.enabled !== false;
+            } else if (sectionEnabled && candidate.enabled !== false && candidate.constructor.name === type) {
+                first ??= candidate;
+                if (candidate === plugin) eligible = true;
+            }
+        }
+        eligible = eligible && this.audioManager?.masterBypass !== true;
+        const route = this.audioManager?.hasLocalAudio === false ? null : this.audioManager?.networkRoute;
+        const activeId = type === 'NetworkSendPlugin' ? route?.sendId : route?.receiveId;
+        let message = '';
+        if (eligible && first !== plugin) {
+            message = 'Another enabled marker is used';
+        } else if (eligible && activeId != null && String(activeId) === String(plugin.id)) {
+            message = type === 'NetworkSendPlugin' ? 'Selected send point' : 'Receiving live audio · Processing starts here';
+        }
+        status.textContent = message;
     }
 
     /**
@@ -653,6 +713,7 @@ export class PipelineItemBuilder {
     updatePluginUIState(plugin, item = document.querySelector(`.pipeline-item[data-plugin-id="${plugin.id}"]`)) {
         this.setPluginExpanded(plugin, plugin._uiCollapsed !== true, item);
         if (!item) return;
+        this.updateNetworkReceiveExclusion(plugin, item);
 
         const locked = plugin._uiLocked === true;
         const ui = item.querySelector('.plugin-ui');

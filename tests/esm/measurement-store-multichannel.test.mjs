@@ -254,3 +254,30 @@ test('MeasurementStore rewrites virtual impulse records to their parent point id
     ]);
     assert.equal((await store.getImpulseResponses(multi.id)).length, 0);
 });
+
+test('MeasurementStore hides records measured through the effect pipeline', async () => {
+    const multi = { ...multichannelMeasurement(), effectPipeline: { pluginNames: ['Room EQ'] } };
+    const single = {
+        id: 'measurement_pipeline',
+        name: 'Corrected',
+        timestamp: '2026-08-24T10:00:00.000Z',
+        outputChannel: 'left',
+        inputChannel: 'both',
+        sampleRate: 48000,
+        averageFrequencyResponse: [[100, 0]],
+        points: [{ pointId: 3, ir: { stored: true } }],
+        effectPipeline: { pluginNames: [] }
+    };
+    const store = new MeasurementStore(new MeasurementDatabase([multi, single], [
+        impulseResponse(multi.id, 11, 'left', 0.1),
+        impulseResponse(single.id, 3, 'left', 0.5)
+    ]));
+
+    assert.deepEqual(await store.refresh(), []);
+    assert.equal(await store.getMeasurement(single.id), null);
+    assert.equal(await store.getMeasurement(`${multi.id}::ch=left`), null);
+    assert.equal(await store.getImpulseResponse(single.id, 3), null);
+    assert.equal(await store.getImpulseResponse(`${multi.id}::ch=left`, 10), null);
+    assert.deepEqual(await store.getImpulseResponses(single.id), []);
+    assert.deepEqual(await store.getImpulseResponses(`${multi.id}::ch=left`), []);
+});

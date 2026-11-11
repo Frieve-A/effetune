@@ -914,16 +914,18 @@ test('save-config preserves Browser settings independently of stale renderer sna
 
 test('generic configuration saves cannot change network sharing, permissions, or device identities', async () => {
   const networkMusicSharing = { enabled: false, folderIds: ['shared'] };
-  await withHarness({ config: { networkMusicDeviceId: 'uuid:stable', networkMusicSharing, upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false } }, async ({ calls, ipcMain, moduleUnderTest }) => {
+  await withHarness({ config: { networkMusicDeviceId: 'uuid:stable', networkMusicSharing, upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false, networkOutput: { enabled: false, localTrimMs: 0, targets: [] } } }, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
     const result = await ipcMain.handlers.get('save-config')({}, {
       language: 'ja', networkMusicDeviceId: 'uuid:changed', networkMusicSharing: { enabled: true, folderIds: ['private'] },
-      upnpAvRemoteControl: true, upnpAvDeviceId: 'uuid:changed', airPlayReceiver: true
+      upnpAvRemoteControl: true, upnpAvDeviceId: 'uuid:changed', airPlayReceiver: true,
+      networkOutput: { enabled: true, localTrimMs: 500, targets: [{ id: 'x', type: 'upnp', name: 'x', enabled: true, trimMs: 0 }] }
     });
     assert.equal(result.success, true);
     assert.deepEqual(calls.find(call => call[0] === 'config.saveConfig')[1], {
       language: 'ja', networkMusicDeviceId: 'uuid:stable', networkMusicSharing,
-      upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false
+      upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false,
+      networkOutput: { enabled: false, localTrimMs: 0, targets: [] }
     });
   });
 });

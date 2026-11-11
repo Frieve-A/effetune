@@ -678,6 +678,7 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
         return originalFetch(...args);
       };
       }`);
+      let failures;
       try {
         const wasmFailure = await extensionRequest(controlPage, 'start', { tabId: sourceTabId });
         assert.equal(wasmFailure.sessions[0].status, 'error');
@@ -687,12 +688,13 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
         );
       } finally {
         await offscreenRuntime.removeInitializationScript(injection);
-        assert.ok(await offscreenRuntime.evaluate(`(() => {
+        failures = await offscreenRuntime.evaluate(`(() => {
           const failures = globalThis.__extensionSmokeWasmFailures;
           delete globalThis.__extensionSmokeWasmFailures;
           return failures;
-        })()`) >= 1);
+        })()`);
       }
+      assert.ok(failures >= 1, `The WASM fetch failure was not injected. Offscreen errors: ${JSON.stringify(offscreenRuntime.consoleErrors)}`);
       await waitAndConsumeExpectedRuntimeConsoleError(
         offscreenRuntime,
         exactConsoleDiagnostic(
@@ -713,6 +715,7 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
         }
       });
       }`);
+      let failures;
       try {
         const workletFailure = await extensionRequest(controlPage, 'start', { tabId: sourceTabId });
         assert.equal(workletFailure.sessions[0].status, 'error');
@@ -722,12 +725,13 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
         );
       } finally {
         await offscreenRuntime.removeInitializationScript(injection);
-        assert.ok(await offscreenRuntime.evaluate(`(() => {
+        failures = await offscreenRuntime.evaluate(`(() => {
           const failures = globalThis.__extensionSmokeWorkletFailures;
           delete globalThis.__extensionSmokeWorkletFailures;
           return failures;
-        })()`) >= 1);
+        })()`);
       }
+      assert.ok(failures >= 1, `The AudioWorklet failure was not injected. Offscreen errors: ${JSON.stringify(offscreenRuntime.consoleErrors)}`);
       await waitAndConsumeExpectedRuntimeConsoleError(
         offscreenRuntime,
         exactConsoleDiagnostic(

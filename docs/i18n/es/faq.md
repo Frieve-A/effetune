@@ -12,10 +12,8 @@ Para procesar el audio de una pestaña de Chrome o Edge, consulta la [guía de l
 
 ## Contenido
 1. Configuración inicial para streaming
-   1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
-   2. Enrutamiento del servicio de streaming (ejemplo con Spotify)
-   3. Configuración de audio de EffeTune
-   4. Comprobación de funcionamiento
+   1. System Audio (aplicación de escritorio para Windows)
+   2. Dispositivo de audio virtual (VB-CABLE)
 2. Solución de problemas
    1. Calidad de reproducción de audio
    2. Uso de CPU
@@ -37,24 +35,43 @@ Para procesar el audio de una pestaña de Chrome o Edge, consulta la [guía de l
 
 ## 1. Configuración inicial para streaming
 
-Ejemplo en Windows: Spotify → VB-CABLE → EffeTune → DAC/AMP. Los conceptos son similares para otros servicios y sistemas operativos.
+Para procesar el sonido de servicios de streaming y otras aplicaciones, hay que llevarlo a la entrada de EffeTune. En la aplicación de escritorio para Windows, si tienes dos dispositivos de salida, basta con elegir **System Audio**. En los demás casos, usa un dispositivo de audio virtual como VB-CABLE.
 
-### 1.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
+### 1.1. System Audio (aplicación de escritorio para Windows)
+
+**System Audio** captura el sonido que las demás aplicaciones reproducen por la salida predeterminada de Windows, así que no necesitas un dispositivo de audio virtual.
+
+La salida de EffeTune debe ser un dispositivo distinto de la salida predeterminada de Windows. Por ejemplo, deja como salida predeterminada de Windows los altavoces integrados o HDMI y elige tu DAC USB como salida de EffeTune.
+
+1. Abre **Configuración de audio** en el menú Configuración.
+2. **Dispositivo de salida:** elige tu DAC o tus altavoces. No elijas la salida predeterminada de Windows.
+3. **Dispositivo de entrada:** elige **System Audio (sonido de otras aplicaciones)**.
+4. Reproduce música en tu aplicación de streaming, activa y desactiva el **ON/OFF** principal de EffeTune y confirma que el sonido cambia.
+
+Mientras EffeTune usa System Audio, la salida predeterminada de Windows queda silenciada, de modo que las demás aplicaciones solo se oyen a través de EffeTune. El silencio se quita al elegir otra entrada o al cerrar EffeTune.
+
+Si el **Dispositivo de salida** es la salida predeterminada de Windows o el mismo dispositivo, no se puede elegir System Audio y **Configuración de audio** muestra el motivo. Si durante el uso la salida predeterminada de Windows pasa a ser el mismo dispositivo que la salida de EffeTune, o la captura se detiene, EffeTune cambia la entrada a silencio y muestra un mensaje. Elige un dispositivo de salida distinto de la salida predeterminada de Windows y vuelve a seleccionar System Audio en **Configuración de audio**.
+
+### 1.2. Dispositivo de audio virtual (VB-CABLE)
+
+Usa este método en la aplicación web, en macOS o si solo tienes un dispositivo de salida. Ejemplo en Windows: Spotify → VB-CABLE → EffeTune → DAC/AMP. Los conceptos son similares para otros servicios y sistemas operativos.
+
+#### 1.2.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
 Descarga el paquete de controladores VB-CABLE, ejecuta `VBCABLE_Setup_x64.exe` como administrador y reinicia el PC. Si la salida predeterminada del sistema cambió a **CABLE Input**, vuelve a seleccionar tus altavoces o DAC.
 
 Si con VB-CABLE aparece ruido de aliasing por encima de 20 kHz, la causa es su funcionamiento interno a 48 kHz. Solo para este problema, configura **CABLE Input** y **CABLE Output** en 24 bits, 96.000 Hz. Después abre `VBCABLE_ControlPanel.exe` como administrador, elige **Menu▸Internal Sample Rate = 96000 Hz** y pulsa **Restart Audio Engine**. Se requieren permisos de administrador para que este ajuste se conserve después de reiniciar el equipo. Este cambio afecta al propio VB-CABLE y no suele ser necesario para usar EffeTune a 96 kHz.
 
-### 1.2. Enrutamiento del servicio de streaming (ejemplo con Spotify)
+#### 1.2.2. Enrutamiento del servicio de streaming (ejemplo con Spotify)
 Abre **Configuración▸Sistema▸Sonido▸Mezclador de volumen** y asigna la salida de `Spotify.exe` a **CABLE Input**. Reproduce una pista para confirmar que no sale sonido por los altavoces.
 En macOS, usa **SoundSource** de Rogue Amoeba para asignar del mismo modo la salida de Spotify a **CABLE Input**.
 
-### 1.3. Configuración de audio de EffeTune
+#### 1.2.3. Configuración de audio de EffeTune
 Abre EffeTune y elige **Configuración de audio** en el menú Configuración.
 - **Dispositivo de entrada:** CABLE Output (VB-Audio Virtual Cable)
 - **Dispositivo de salida:** DAC/altavoces físicos
 - **Tasa de muestreo:** selecciona 96 kHz. Así se fija la frecuencia de procesamiento interna de EffeTune para reducir el aliasing audible en los efectos no lineales, y funciona con independencia de la frecuencia de muestreo del sistema operativo, del DAC o de VB-CABLE. Comprueba la Tasa de muestreo efectiva que muestra la aplicación; si el sonido se corta, reduce los efectos exigentes o baja la frecuencia de muestreo.
 
-### 1.4. Comprobación de funcionamiento
+#### 1.2.4. Comprobación de funcionamiento
 Con Spotify en reproducción, activa y desactiva el **ON/OFF** principal de EffeTune y confirma que el sonido cambia.
 
 ---
@@ -67,7 +84,7 @@ Con Spotify en reproducción, activa y desactiva el **ON/OFF** principal de Effe
 | ------ | ------ |
 | Cortes o fallos | Elige **Reiniciar audio** en el menú **Configuración** o en el menú adicional en móvil. En la aplicación de escritorio también puedes elegir **Recargar** en el menú **Ver**. Si es necesario, reduce el número de efectos activos. |
 | Distorsión o recorte | Inserta **Level Meter** al final de la cadena y mantén los niveles por debajo de 0 dBFS. Si es necesario, añade **Brickwall Limiter** antes de Level Meter. |
-| Ruido de aliasing por encima de 20 kHz al usar VB-CABLE | Su frecuencia interna puede seguir en 48 kHz. Aplica la configuración opcional de 96 kHz de la sección 1.1. |
+| Ruido de aliasing por encima de 20 kHz al usar VB-CABLE | Su frecuencia interna puede seguir en 48 kHz. Aplica la configuración opcional de 96 kHz de la sección 1.2.1. |
 
 ### 2.2. Alto uso de CPU
 Desactiva los efectos que no estés usando o elimínalos del **Effect Pipeline**.
@@ -83,6 +100,7 @@ Es posible que tus dispositivos de entrada y salida formen un bucle. Asegúrate 
 | El efecto no funciona | Confirma que el interruptor principal, cada efecto y cualquier **Section** están en **ON**. Restablece los parámetros si es necesario. |
 | No hay salida de audio | Revisa **Configuración de audio**. Si tu navegador no permite seleccionar un dispositivo de salida, comprueba que la salida predeterminada del sistema operativo y del navegador apunta a tu DAC/AMP. |
 | Otros reproductores indican "CABLE Input en uso" | Asegúrate de que ninguna otra aplicación esté usando **CABLE Input**. |
+| Las demás aplicaciones no suenan después de cerrar EffeTune | Tras usar **System Audio**, es posible que la salida predeterminada de Windows siga silenciada. Quita el silencio en la configuración de sonido de Windows. |
 
 Los efectos que requieren WebAssembly muestran un aviso en la parte superior de su panel cuando no pueden funcionar. Activa **Usar el procesamiento de audio WebAssembly** en **Configuración de audio**. Si ya está activado, elige **Reiniciar audio** o vuelve a cargar EffeTune. El aviso desaparece cuando el efecto vuelve a funcionar.
 
@@ -123,7 +141,7 @@ Actualmente, EffeTune admite hasta 16 canales de salida.
 | ¿Entrada surround (5.1ch, etc.)? | La API Web Audio limita la entrada a 2 canales. La salida y los efectos admiten hasta 16 canales. |
 | ¿Longitud recomendada de la cadena de efectos? | Usa tantos efectos como permita tu CPU sin causar cortes o alta latencia. |
 | ¿Cómo obtener la mejor calidad de sonido? | Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz, empieza con ajustes de efectos sutiles y vigila el margen con **Level Meter**. Si hay cortes, reduce primero los efectos exigentes o el número de efectos activos y baja la tasa solo si sigue siendo necesario. Añade **Brickwall Limiter** si hace falta. |
-| ¿Funciona con cualquier fuente? | Sí. Con un dispositivo de audio virtual puedes procesar streaming, archivos locales o equipos físicos. |
+| ¿Funciona con cualquier fuente? | Sí. Con **System Audio** (aplicación de escritorio para Windows) o un dispositivo de audio virtual puedes procesar el streaming y el sonido de otras aplicaciones, y con una entrada de audio, el de equipos físicos. |
 | ¿Puede EffeTune reproducir contenido protegido por DRM? | No de forma directa. EffeTune procesa audio, mientras que el contenido protegido está pensado para reproducirse únicamente en entornos autorizados por su proveedor y puede no estar disponible para aplicaciones de procesamiento de audio de terceros. Usa la aplicación o el sitio web oficial del proveedor y respeta sus condiciones y los métodos de salida de audio admitidos. EffeTune no elimina ni elude la protección del contenido. |
 | ¿Puedo usar solo el reproductor de archivos de música, sin entrada de audio? | Sí. Si al iniciar EffeTune el sonido del micrófono se filtra a los auriculares, elige **Ninguno (solo reproductor de archivos de música)** en **Dispositivo de entrada:** dentro de **Configuración de audio**. EffeTune mantiene la cadena de efectos activa con una fuente silenciosa, por lo que el reproductor y los efectos generadores de señal como **Oscillator** siguen funcionando. Si seleccionas una entrada de audio, puedes procesar el sonido de equipos externos conectados mediante una interfaz de audio USB o comprobar la señal de entrada con **Spectrum Analyzer**. |
 | ¿La aplicación web móvil puede procesar el audio de otras aplicaciones? | Normalmente no. Los navegadores móviles no ofrecen una entrada de loopback general para el audio de otras aplicaciones, por lo que en móvil EffeTune se usa principalmente con el reproductor integrado. |
@@ -139,7 +157,7 @@ Actualmente, EffeTune admite hasta 16 canales de salida.
 | ¿Por qué se ha puesto rojo el indicador de tasa de muestreo y canales? | EffeTune detectó que el procesamiento de los efectos activados no terminó a tiempo para funcionar en tiempo real. El aviso rojo desaparece unos 10 segundos después de que el procesamiento se recupere. Reduce el número de efectos activados. |
 | ¿El reproductor web recuerda la lista de reproducción? | Se guardan los ajustes de repetición y aleatorio, pero la selección normal de archivos no se restaura tras recargar debido a las restricciones del navegador. |
 | ¿Se puede reproducir en móvil con la pantalla apagada? | Depende del navegador y no se puede garantizar, especialmente en iOS. En entornos compatibles se usa Wake Lock, pero la reproducción en segundo plano no está garantizada. |
-| ¿En qué se diferencian los modos de ahorro de energía de EffeTune? | Abre **Configuración > Ahorro de energía** (aplicaciones Web/PWA y de escritorio). **Prioridad al procesamiento en segundo plano** mantiene activo el procesamiento de la entrada externa durante el silencio. En la aplicación de escritorio, también evita que Windows limite el procesamiento de audio para ahorrar energía y que macOS suspenda la aplicación mientras se reproduce sonido. **Ahorro de energía equilibrado (Predeterminado)** reduce el DSP y las actualizaciones visuales durante el silencio y mantiene conectada la entrada de audio seleccionada. **Máximo ahorro de energía** además libera la entrada de audio cuando permanece en silencio en segundo plano, o sin usar en el modo Reproductor, durante el tiempo configurado. La entrada no se reinicia cuando vuelve la señal; abre la aplicación y elige **Reanudar el procesamiento de audio** (o **Reanudar la entrada de audio**) en el menú. |
+| ¿En qué se diferencian los modos de ahorro de energía de EffeTune? | Abre **Configuración > Ahorro de energía** (aplicaciones Web/PWA y de escritorio). **Prioridad al procesamiento en segundo plano** mantiene activo el procesamiento de la entrada externa durante el silencio. En la aplicación de escritorio, también evita que Windows limite el procesamiento de audio para ahorrar energía y que macOS suspenda la aplicación mientras se reproduce sonido. **Ahorro de energía equilibrado (Predeterminado)** reduce el DSP y las actualizaciones visuales durante el silencio y mantiene conectada la entrada de audio seleccionada. **Máximo ahorro de energía** además libera la entrada de audio cuando permanece en silencio en segundo plano, o sin usar en el modo Reproductor, durante el tiempo configurado. La entrada no se reinicia cuando vuelve la señal; abre la aplicación y elige **Reanudar el procesamiento de audio** (o **Reanudar la entrada de audio**) en el menú. Mientras la entrada **System Audio** está liberada, las demás aplicaciones suenan directamente por la salida predeterminada de Windows hasta que reanudes. |
 | ¿Qué hace “Omitir el DSP de visualización cuando esté oculto”? | Está activado de forma predeterminada. Cuando los gráficos del analizador no están visibles (por ejemplo, al explorar la Biblioteca musical, usar el Reproductor mini, durante una prueba de doble ciego o con la ventana minimizada), EffeTune omite los efectos Analyzer para ahorrar CPU sin cambiar el sonido. Desactívalo si el historial del analizador debe seguir actualizándose en segundo plano. |
 | ¿Qué hace “Sincronizar elementos visuales con el audio”? | Alinea los gráficos y medidores con el sonido que escuchas. Está desactivado de forma predeterminada porque puede añadir latencia de audio (no disponible en la extensión de navegador). Con dispositivos Bluetooth o similares, los gráficos pueden seguir algo desfasados. |
 | ¿Qué cambian “Umbral de silencio” y “Detener la entrada de audio después de”? | **Umbral de silencio** (-90 a -20 dBFS en pasos de 10 dB) establece el nivel por debajo del cual el audio se trata como silencio; con un valor más bajo es menos probable que los pasajes suaves se traten como silencio. En **Máximo ahorro de energía**, **Detener la entrada de audio después de** (1/5/15 minutos o **Nunca**) define cuánto tiempo debe permanecer la entrada en silencio en segundo plano, o sin usar en el modo Reproductor, antes de que EffeTune la libere. |

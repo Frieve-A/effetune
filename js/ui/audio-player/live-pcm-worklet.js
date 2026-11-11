@@ -11,6 +11,10 @@ class LivePcmProcessor extends AudioWorkletProcessor {
       if (data.type === 'start') { this.generation = data.generation; this.core.reset(); this.announced = false; }
       if (data.generation !== this.generation) return;
       if (data.type === 'reset') { this.core.reset(data.startFrame); this.announced = false; }
+      if (data.type === 'position') {
+        this.port.postMessage({ type: 'position', generation: this.generation,
+          requestId: data.requestId, positionFrames: this.core.readPosition, started: this.core.started });
+      }
       if (data.type === 'pcm') {
         const accepted = this.core.push(data);
         this.port.postMessage({ type: 'credit', generation: this.generation, accepted });

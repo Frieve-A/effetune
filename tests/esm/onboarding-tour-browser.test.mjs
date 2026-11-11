@@ -1,19 +1,14 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright';
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import { startIsolatedStaticServer, stopIsolatedStaticServer } from '../../tools/run-power-browser-smoke.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const origin = 'https://effetune.test';
-const contentTypes = {
-    '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-    '.css': 'text/css', '.json': 'application/json', '.json5': 'application/json',
-    '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png'
-};
+// Chromium can stall AudioWorklet registration when every request is intercepted.
+let server;
+test.before(async () => { server = await startIsolatedStaticServer(); });
+test.after(async () => stopIsolatedStaticServer(server?.child));
 const steps = ['welcome', 'sound', 'effects', 'presets', 'item', 'bypass', 'save', 'views', 'settings', 'help'];
 const targets = {
     sound: '#openMusicButton', effects: '#pluginList', presets: '#systemPresetsTab',
@@ -62,27 +57,14 @@ async function openPage(browser, { mobile = false, config = {}, savedPipeline, s
             }
         });
     }, { config, savedPipeline, inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
-    await page.route(`${origin}/**`, async route => {
-        const pathname = new URL(route.request().url()).pathname;
-        if (localeGate && pathname === '/js/locales/ja.json5') {
+    if (localeGate) {
+        await page.route(url => url.origin === server.baseURL && url.pathname === '/js/locales/ja.json5', async route => {
             localeGate.requested.resolve();
             await localeGate.release.promise;
-        }
-        const file = path.resolve(root, `.${decodeURIComponent(pathname)}`);
-        const relative = path.relative(root, file);
-        if (relative.startsWith('..') || path.isAbsolute(relative)) {
-            return route.fulfill({ status: 403, body: '' });
-        }
-        try {
-            await route.fulfill({
-                contentType: contentTypes[path.extname(file)] || 'application/octet-stream',
-                body: await fs.readFile(file)
-            });
-        } catch {
-            await route.fulfill({ status: 404, body: '' });
-        }
-    });
-    await page.goto(`${origin}/effetune.html${search}`, { waitUntil: 'commit' });
+            await route.continue();
+        });
+    }
+    await page.goto(`${server.baseURL}/effetune.html${search}`, { waitUntil: 'commit' });
     return { page, errors };
 }
 
@@ -157,6 +139,9 @@ for (const mobile of [false, true]) {
             if (mobile) assert.equal(await page.evaluate(() => window.__tourStartupBody.includes('view-player')), true);
             for (const step of steps) {
                 await assertStep(page, step, mobile);
+                if (!mobile) {
+                    assert.equal(await page.evaluate(() => scrollY), 0, `${step} must keep the desktop page at the top`);
+                }
                 if (mobile && step === 'effects') {
                     await page.keyboard.press('Tab');
                     assert.equal(await page.evaluate(() => document.activeElement.closest('.onboarding-tour-card') !== null), true);

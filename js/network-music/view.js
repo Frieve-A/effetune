@@ -9,6 +9,7 @@ import { LIBRARY_NAV_VIEWS, VIEW_LABELS, FILE_SORT_COLUMNS, libraryNavItem, libr
 
 const LABELS = {
   'networkMusic.player': 'Playback device', 'networkMusic.library': 'Library',
+  'networkMusic.playerDescription': 'Choose the device that plays and processes the selected music. Another EffeTune device runs its own effects.',
   'networkMusic.local': 'This device', 'networkMusic.refresh': 'Refresh',
   'networkMusic.unavailable': 'Unavailable', 'networkMusic.connecting': 'Connecting',
   'networkMusic.back': 'Back', 'networkMusic.untitled': 'Untitled',
@@ -91,6 +92,7 @@ export class NetworkMusicView {
     this.root = this.element('div', 'network-playback-target');
     this.playerSelect = this.element('select', 'network-select');
     this.playerSelect.setAttribute('aria-label', this.label('networkMusic.player'));
+    this.playerSelect.setAttribute('aria-description', this.label('networkMusic.playerDescription'));
     this.playerSelect.addEventListener('change', () => {
       if (this.playerSelect.value === 'pwa-add-device' && this.registration) {
         this.playerSelect.value = this.controller.selectedPlayerId;
@@ -104,11 +106,13 @@ export class NetworkMusicView {
     this.refreshButton.className = 'header-button network-refresh-button';
     this.refreshButton.setAttribute('aria-label', this.label('networkMusic.refresh'));
     this.refreshButton.innerHTML = ICONS.refresh;
-    this.root.append(this.playerSelect, this.refreshButton);
+    const caption = this.element('span', 'header-caption', 'Player');
+    caption.setAttribute('aria-hidden', 'true');
+    this.root.append(caption, this.playerSelect, this.refreshButton);
     if (this.controller.api.isPwa) {
       this.registration = new PwaDeviceRegistration({ api: this.controller.api, uiManager: this.uiManager });
     }
-    openMusic.before(this.root);
+    (document.getElementById('networkOutputButton') ?? openMusic).before(this.root);
     this.remoteControlButton = document.getElementById('remoteControlButton');
     this.remoteControlHome = this.remoteControlButton?.parentNode;
     this.remoteControlNext = this.remoteControlButton?.nextSibling;
@@ -193,7 +197,9 @@ export class NetworkMusicView {
       select.dataset.signature = signature;
     }
     select.value = selectedId;
-    select.title = select.selectedOptions?.[0]?.textContent || '';
+    const selectedName = select.selectedOptions?.[0]?.textContent || '';
+    select.title = select === this.playerSelect
+      ? `${selectedName} — ${this.label('networkMusic.playerDescription')}` : selectedName;
   }
 
   render() {
@@ -956,6 +962,7 @@ export class NetworkMusicView {
     if (!this.root) return;
     if (this.localPlaybackNotice) this.localPlaybackNotice.textContent = this.t('networkMusic.libraryRequired');
     this.playerSelect.setAttribute('aria-label', this.label('networkMusic.player'));
+    this.playerSelect.setAttribute('aria-description', this.label('networkMusic.playerDescription'));
     this.refreshButton?.setAttribute('aria-label', this.label('networkMusic.refresh'));
     this.librarySelect?.setAttribute('aria-label', this.label('networkMusic.library'));
     if (this.libraryLabel) this.libraryLabel.title = this.t('networkMusic.library');

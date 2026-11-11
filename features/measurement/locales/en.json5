@@ -115,6 +115,14 @@
   "help:inputChannel": "Select the channel to which the calibration microphone is connected for the selected audio input device.", // Help text for input channel
   "label:audioOutput": "Audio Output Device:", // Label for audio output device selection
   "help:audioOutput": "Select the audio device that outputs the measurement signal.", // Help text for audio output
+  "label:effectPipeline": "Effect Pipeline:",
+  "option:effectPipelineNone": "None",
+  "option:effectPipelineCurrent": "Current pipeline",
+  "help:effectPipeline": "Choose Current pipeline to play the test signal through the effect pipeline that was running when this page was opened from the main app. Sampling Frequency and Output Device Channels are set to match the pipeline.",
+  "help:effectPipelineUnavailable": "To measure through the effect pipeline, open this page from the main app while audio processing is running.",
+  "help:effectPipelineAndroid": "Measuring through the effect pipeline is not available on Android.",
+  "label:pipelineInputChannel": "Pipeline Input Channel:",
+  "help:pipelineInputChannel": "Select the pipeline input channels that receive the test signal. Each pipeline output channel plays on the output device channel with the same number.",
   "label:outputChannelCount": "Output Device Channels:",
   "help:outputChannelCount": "Match the output device's channel layout (6 for 5.1, 8 for 7.1). Test signals and measurements always use this channel count, even when measuring only some channels.",
   "label:outputChannel": "Output Channel:", // Label for output channel selection
@@ -192,9 +200,15 @@
   "button:exportTxt": "Export Correction Parameters (txt)", // Button to export txt
   "button:exportCSV": "Export Correction Parameters (CSV)", // Button to export CSV
   "help:exportOptions": "The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.", // Help text for export options
+  "message:correctionUnavailablePipeline": "This measurement already includes the effect pipeline's processing, so it cannot be used to create correction settings.",
   "title:measurementDetails": "Measurement Details", // Title for measurement details section
   "label:onset": "Onset", // Absolute onset of the stored impulse response, per measurement point
   "label:onsetEarliest": "earliest", // Marks the channel that arrives first among simultaneously measured channels
+  "label:effectPipelineBadge": "Pipeline",
+  "label:appliedEffectPipeline": "Effect Pipeline",
+  "status:effectPipelineNotApplied": "Not applied",
+  "status:effectPipelineApplied": "Applied",
+  "status:effectPipelineAppliedPlugins": "Applied ({plugins})",
   
   // Dialogs
   "button:confirm": "Confirm", // Confirm button in dialog
@@ -220,6 +234,12 @@
   "error:interfaceCalibrationSampleRateMismatch": "The selected calibration uses a different sampling rate. Choose calibration data recorded at the same sampling rate.",
   "error:interfaceCalibrationSweepRangeMismatch": "The selected calibration does not cover this sweep range. Narrow the sweep range or choose different calibration data.",
   "error:interfaceCalibrationProcessingFailed": "The calibrated measurement could not be completed. Check the setup and measure this point again.",
+  "error:pipelineUnavailable": "The effect pipeline is not available. Open this page from the main app again while audio processing is running, or set Effect Pipeline to None.",
+  "error:pipelineSampleRateMismatch": "The measurement could not run at the effect pipeline's sampling frequency. Set the audio devices to the sampling frequency used in the main app and try again.",
+  "error:pipelineInputChannelUnavailable": "The selected Pipeline Input Channel is not in the effect pipeline. Select channels within the pipeline's channel count.",
+  "error:pipelineOutputChannelsUnavailable": "The selected output device has fewer channels than the effect pipeline. Choose the output device used in the main app and try again.",
+  "error:pipelineClipping": "The test signal would clip after passing through the effect pipeline. Lower Signal Level and try again.",
+  "error:pipelineRenderFailed": "The effect pipeline could not process the test signal. Return to the main app, open this page again, and try again.",
   "error:measurementSetupFailed": "The measurement could not be prepared. Check the audio devices and try again.",
   "error:levelAdjustmentFailed": "The audio input could not be prepared. Check the input device and try again.",
   "error:audioUnsupported": "This browser cannot run audio measurements. Use the latest Chrome or Edge.",
@@ -275,6 +295,8 @@
   "option:sampleRate96000": "96 kHz", // Option for 96 kHz sample rate
   "option:sampleRate176400": "176.4 kHz", // Option for 176.4 kHz sample rate
   "option:sampleRate192000": "192 kHz", // Option for 192 kHz sample rate
+  "option:sampleRate352800": "352.8 kHz", // Option for 352.8 kHz sample rate
+  "option:sampleRate384000": "384 kHz", // Option for 384 kHz sample rate
   
   // Sweep length options
   "option:sweepLength16384": "16,384 (2¹⁴)", // Option for 16384 sweep length

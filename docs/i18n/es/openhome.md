@@ -1,12 +1,12 @@
 ---
 title: "Música en red y control remoto (aplicación de escritorio) - EffeTune"
-description: "Reproduce música en red con EffeTune, recibe audio OpenHome, UPnP AV / DLNA y AirPlay, comparte música y controla la reproducción en tu red local."
+description: "Reproduce música en red con EffeTune, recibe audio OpenHome, UPnP AV / DLNA y AirPlay, envía el audio procesado a altavoces de red, comparte música y controla la reproducción en tu red local."
 lang: es
 ---
 
 # Música en red y control remoto (aplicación de escritorio)
 
-La aplicación de escritorio puede recibir música de otros dispositivos de la red local y procesarla con tus efectos de EffeTune. La recepción por OpenHome, UPnP AV / DLNA y AirPlay se configura por separado y empieza desactivada. Activa solo los métodos que utilices en **Configuración > Configuración... > Red**.
+La aplicación de escritorio puede recibir música de otros dispositivos de la red local y procesarla con tus efectos de EffeTune, y también enviar el sonido procesado a altavoces de red. La recepción por OpenHome, UPnP AV / DLNA y AirPlay y la salida de red se configuran por separado y empiezan desactivadas. Activa solo los métodos que utilices en **Configuración > Configuración... > Red**.
 
 ## Recibir música con OpenHome
 
@@ -44,6 +44,20 @@ El almacenamiento en búfer de la red y los efectos de EffeTune añaden latencia
 
 La detección AirPlay necesita Bonjour en Windows y macOS, o un servicio Avahi / DNS-SD activo en Linux. El instalador estándar de Windows añade el servicio de detección si hace falta; las versiones portátil y de Microsoft Store requieren que ya esté instalado. En Linux, instala el servicio Avahi / DNS-SD de tu distribución y actívalo con sus herramientas habituales de gestión de servicios. Si el receptor no está disponible, comprueba estos requisitos y el permiso del cortafuegos para redes privadas antes de reintentar. El Wi-Fi de invitados, las VPN o el aislamiento de red pueden impedir que los dispositivos se encuentren.
 
+## Enviar audio a altavoces de red
+
+La aplicación de escritorio puede reproducir la salida final de tu cadena de efectos, o el sonido en un marcador **Live Audio Send**, en altavoces UPnP AV / DLNA y dispositivos Chromecast al mismo tiempo que en este equipo. Abre **Configuración > Configuración... > Red > Salida de red** y activa **Enviar el audio a altavoces de red**. Los altavoces encontrados en la red aparecen en la lista; marca los que quieras usar. Cada fila indica si el altavoz está Buscando, Conectando, Reproduciendo o Sin respuesta, con una breve nota cuando algo requiere tu atención. Son compatibles los renderizadores UPnP AV / DLNA que aceptan un flujo continuo, los altavoces y pantallas Chromecast y los grupos de altavoces Chromecast.
+
+Para cambios rápidos, abre **Salida de red** junto a **Player** en la barra de herramientas de la aplicación de escritorio. Marca los altavoces que quieras escuchar y consulta su estado de conexión en la misma lista. Para escuchar solo en los altavoces de red, desmarca **Este equipo**. Vuelve a marcarlo para recuperar el sonido en el equipo. Los controles de retardo están en **Configuración... > Red > Salida de red**.
+
+Los altavoces de red empiezan a sonar un poco más tarde que este equipo, así que, mientras el envío está activado, EffeTune retrasa el sonido de este equipo unos dos segundos, o lo que necesite el dispositivo Chromecast más lento. EffeTune mide cuánto se retrasa cada dispositivo Chromecast y alinea automáticamente con él los demás altavoces y este equipo. Usa **Retardo (ms)** para ajustar con precisión cada altavoz y **Este equipo** hasta que suenen a la vez. Si los altavoces se desfasan durante una escucha larga, elige **Resincronizar** para reiniciarlos juntos.
+
+Con **Sincronizar elementos visuales con el audio** activado, los gráficos y medidores siguen el tiempo de reproducción común, antes de aplicar el **Retardo (ms)** de cada salida. Esto también funciona cuando **Este equipo** está desmarcado.
+
+Elige un grupo de altavoces Chromecast o los altavoces que lo forman, pero no ambos. El grupo mantiene sincronizados a sus propios miembros, y enviar a la vez al grupo y a sus miembros produce ecos. Los altavoces UPnP AV / DLNA que no aparezcan en la lista se pueden añadir con **Añadir un dispositivo de red manualmente**, como se explica más abajo.
+
+Mientras el envío está activado, la **Prueba de doble ciego** silencia los altavoces de red para que la prueba solo se oiga en este equipo. La corrección de sincronización visual de los ajustes de audio no se aplica, y los efectos de análisis como Spectrum Analyzer muestran el sonido unos dos segundos antes de que lo oigas en este equipo. El Visualizer sigue alineado con el sonido de este equipo.
+
 ## Elegir una biblioteca y un reproductor
 
 En la aplicación de escritorio, el selector **Library** de Music Library permite elegir **This device** o un servidor de música de la red local. Las bibliotecas compartidas de EffeTune ofrecen las categorías habituales, la búsqueda y la ordenación descritas en la [guía de Music Library](music-library.md). Los demás servidores de música muestran las categorías y la estructura de carpetas que publican; la búsqueda y la ordenación solo están disponibles si el servidor las admite.
@@ -53,6 +67,17 @@ Usa el selector de dispositivos de la parte superior para elegir **This device**
 Los reproductores OpenHome conservan su propia cola. Si un reproductor UPnP AV / DLNA no dispone de ella, el ordenador con EffeTune mantiene el orden elegido y envía la siguiente pista al terminar normalmente la anterior. Mantén encendidos ese ordenador y la fuente. Cambiar de destino no mueve esta secuencia. Si otro controlador sustituye la música, se desactiva el avance automático; tras una desconexión, vuelve a seleccionar la música. No se garantiza la reproducción sin pausas.
 
 También puedes añadir un [servidor Subsonic / OpenSubsonic](music-library.md#subsonic).
+
+### Reproducción directa y audio en directo
+
+Activa primero la recepción UPnP AV en B. También puedes usar una pista de una biblioteca compartida en ambos ejemplos.
+
+En los equipos de escritorio A y B puedes reproducir el mismo archivo de dos formas sin cambiar **Library**. Cambiar **Player** solo cambia el dispositivo controlado: la cola anterior sigue reproduciéndose.
+
+1. Para reproducir directamente en B, selecciona B en **Player** de A y abre el archivo con **Abrir archivos de música** en A. B procesa desde el inicio de su cadena. Detén B antes de probar el siguiente ejemplo.
+2. Para enviar audio desde A, coloca **Live Audio Send** en A y **Live Audio Receive** en B. Elige **Este dispositivo** en **Player** de A y abre el mismo archivo. Activa **Salida de red** en A y marca B. B procesa desde el marcador de recepción; si la ruta no está disponible, procesa desde el inicio. **Este equipo** controla la reproducción local de A independientemente de Player.
+
+La salida de red y sus controles de retardo afectan a A, independientemente de Player. El retardo ayuda a alinear las salidas, con una precisión que depende de los dispositivos y la red. En Web y Android, la selección de archivos reproduce localmente; usa una biblioteca de red para otro Player.
 
 ## Compartir carpetas de música
 
@@ -102,5 +127,13 @@ Si un dispositivo UPnP es accesible pero no aparece, usa **Añadir un dispositiv
 ## Límites de la reproducción en red
 
 La detección automática y compartir carpetas requieren la aplicación de escritorio. Los formatos y el desplazamiento dependen del reproductor y de la fuente. EffeTune no convierte el audio de red; un servidor Subsonic puede ofrecer una versión convertida. Las subpistas CUE no pueden enviarse como pistas independientes. No se garantizan la reproducción sin pausas ni la sincronización entre habitaciones. Si un dispositivo desaparece, comprueba que esté despierto, accesible y permitido en el cortafuegos de red privada, y actualiza la lista. Compartir se detiene al cerrar la aplicación de origen o suspender su ordenador.
+
+Al enviar audio a altavoces de red, ten en cuenta lo siguiente:
+
+- Los altavoces de distinto tipo, como un altavoz UPnP AV / DLNA y un dispositivo Chromecast, no se alinean automáticamente; ajusta **Retardo (ms)** de oído.
+- Los altavoces pueden desfasarse poco a poco durante una escucha larga. Elige **Resincronizar** para reiniciarlos juntos.
+- Los dispositivos Chromecast empiezan a sonar a los pocos segundos de iniciar el envío o de resincronizar. EffeTune mide cuánto se retrasa cada dispositivo y retiene este equipo y los demás altavoces para igualarlo. Un dispositivo que se retrasa más de seis segundos se reinicia automáticamente.
+- Si un dispositivo Chromecast alterna sin parar entre Conectando y Sin respuesta mientras tus otros altavoces suenan, es el propio dispositivo el que rechaza el flujo. En la app Google Home, comprueba que sus filtros de Digital Wellbeing permitan toda la música y reinicia el dispositivo.
+- EffeTune envía a los altavoces de red un flujo estéreo de 44,1 kHz y 16 bits, para que también puedan reproducirlo los receptores que solo aceptan frecuencias de muestreo de hasta 48 kHz. Las frecuencias de muestreo más altas de este equipo se convierten para la red; el sonido de este equipo no se ve afectado.
 
 [← Volver al README](README.md)

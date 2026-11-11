@@ -106,7 +106,7 @@ Traitez jusqu’à quatre onglets Chrome ou Edge avec des chaînes indépendante
 
 Pour traiter l'audio des services de streaming (Spotify, YouTube Music, etc.) :
 
-Dans l’application de bureau, essayez d’abord le [navigateur intégré](#navigateur-intégré-à-lapplication-de-bureau). Pour utiliser une application de streaming distincte ou une source que ce navigateur ne peut pas lire, suivez la configuration audio ci-dessous.
+Dans l’application de bureau, essayez d’abord le [navigateur intégré](#navigateur-intégré-à-lapplication-de-bureau). Pour utiliser une application de streaming distincte ou une source que ce navigateur ne peut pas lire, l’application de bureau Windows peut capturer directement le son des autres applications : dans **Configuration audio**, réglez **Périphérique de sortie** sur un périphérique autre que la sortie par défaut de Windows (par exemple un DAC USB) et **Périphérique d'entrée** sur **System Audio (son des autres applications)**. Dans l’application web, sous macOS ou avec un seul périphérique de sortie, suivez la configuration avec un périphérique audio virtuel ci-dessous.
 
 1. Prérequis :
    - Installer un périphérique audio virtuel (par exemple, VB Cable, Voice Meeter ou ASIO Link Tool)
@@ -524,6 +524,8 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Others    | Oscillator | Générateur de sons de test et de bruit pour vérifier enceintes/casques | [Détails](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Joue les notes détectées avec des SoundFonts SF2/SF3 et des instruments SFZ | [Détails](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Joue des morceaux MIDI avec des SoundFonts SF2/SF3 ou des instruments SFZ, avec 16 canaux SF2/SF3 indépendants | [Détails](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | Commence à traiter à cette position un flux en direct venant d’un autre EffeTune | [Détails](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | Envoie le son de cette position vers Sortie réseau tout en poursuivant les effets locaux | [Détails](plugins/control.md#live-audio-send) |
 | Control   | Section | Regroupe les effets pour contourner ou rétablir toute une section | [Détails](plugins/control.md) |
 
 ## Informations techniques

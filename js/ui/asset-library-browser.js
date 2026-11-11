@@ -37,7 +37,7 @@ function isTextEntryTarget(target) {
 export function openAssetLibraryBrowser({
   service, onLoad, audioManager, onClose, returnFocus, translate, formatBadge, decorateEntry,
   accept, folderAccept = accept, folderFallback = false, chooseFiles, chooseFolder, kind,
-  readOnly = false, canImport = !readOnly, canLoad = true, multipleFiles = true
+  readOnly = false, canImport = !readOnly, canLoad = true, multipleFiles = true, closeOnLoadStart = false
 } = {}) {
   if (!service) throw new TypeError('Asset library service is required.');
   const previousFocus = returnFocus ?? document.activeElement;
@@ -212,8 +212,12 @@ export function openAssetLibraryBrowser({
       load.disabled = Boolean(activeImport) || deleteInProgress;
       remove.disabled = Boolean(activeImport) || deleteInProgress;
       load.addEventListener('click', async () => {
+        if (closed || closeRequested || activeImport || deleteInProgress) return;
         try {
-          const loaded = await onLoad?.(entry);
+          const loading = onLoad?.(entry);
+          if (closeOnLoadStart) finishClose();
+          const loaded = await loading;
+          if (closed) return;
           if (loaded === false) {
             status.textContent = translate('error.load',
               'The impulse response could not be loaded. Try importing it again or choose another one.');

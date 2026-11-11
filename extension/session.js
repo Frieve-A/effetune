@@ -123,9 +123,12 @@ async function initializeAudio(plugins, sampleRate, masterBypass) {
 async function start(args) {
     status = 'starting'; error = null; publish();
     try {
-        stream = await audio.ioManager._getUserMediaWithTimeout({ audio: {
+        const constraints = { audio: {
             mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: args.streamId }
-        }, video: false }, 10000);
+        }, video: false };
+        stream = await audio.ioManager._acquireStreamWithTimeout(
+            () => navigator.mediaDevices.getUserMedia(constraints), 10000
+        );
         for (const track of stream.getTracks()) track.addEventListener('ended', () => {
             if (!stream || !['starting', 'processing'].includes(status)) return;
             console.info('Captured audio stream ended.');

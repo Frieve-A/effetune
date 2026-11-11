@@ -41,7 +41,7 @@ class NetworkMusicHost extends EventEmitter {
       }
       return catalog;
     };
-    this.queues = new Map(); this.playerGenerations = new Map(); this.localMedia = new Map(); this.containers = new Map(); this.containerKeys = new Map(); this.trackReferences = new Map(); this.configuring = Promise.resolve(); this.probing = new Set(); this.fileSources = new Map();
+    this.queues = new Map(); this.playerGenerations = new Map(); this.localMedia = new Map(); this.containers = new Map(); this.containerKeys = new Map(); this.trackReferences = new Map(); this.configuring = Promise.resolve(); this.stateRefresh = null; this.stateRefreshQueued = false; this.probing = new Set(); this.fileSources = new Map();
     const config = loadConfig();
     this.gatewayPermissions = { libraries: config.networkMusicGateway?.libraries === true, players: config.networkMusicGateway?.players === true };
     this.manualDevices = Array.isArray(config.networkMusicManualDevices) ? config.networkMusicManualDevices : [];
@@ -92,7 +92,15 @@ class NetworkMusicHost extends EventEmitter {
       sharing: { ...this.sharing, folderIds: [...this.sharing.folderIds], folders }
     };
   }
-  emitState() { void this.getState().then(state => this.emit('state', state)).catch(this.onDiagnostic); }
+  // Coalesce bursts (catalog scans, discovery changes) into one in-flight refresh plus one follow-up,
+  // so state reads never exceed the catalog's outstanding-request limit.
+  emitState() {
+    if (this.stateRefresh) { this.stateRefreshQueued = true; return; }
+    this.stateRefresh = this.getState().then(state => this.emit('state', state)).catch(this.onDiagnostic).finally(() => {
+      this.stateRefresh = null;
+      if (this.stateRefreshQueued) { this.stateRefreshQueued = false; this.emitState(); }
+    });
+  }
   async discover() { await this.discovery.start(); await this.discovery.search({ refresh: true }); return this.getState(); }
   async configure(request = {}) {
     if (request.subsonic) {

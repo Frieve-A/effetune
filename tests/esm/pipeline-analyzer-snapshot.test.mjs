@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
     buildPipelineAnalyzerSnapshot,
+    buildPipelineProcessingSnapshot,
     getAnalyzerAudioFormat,
     PipelineSnapshotError,
     StalePipelineAnalysisRunError
@@ -613,6 +614,42 @@ test('non-cloneable DSP modules are omitted while immutable bytes are copied', a
     });
     assert.equal(moduleResult.snapshot.dsp.module, module);
     assert.equal(moduleResult.snapshot.dsp.bytes, null);
+});
+
+test('measurement hand-off snapshot stores DSP bytes and names only effective plugins', async () => {
+    const moduleBytes = Uint8Array.from([0, 97, 115, 109, 1, 0, 0, 0]);
+    const sourceBytes = moduleBytes.buffer.slice(0);
+    const entries = [
+        plugin('RequiredWasmPlugin', 41, { name: 'Room EQ' }),
+        plugin('RequiredWasmPlugin', 42, { name: 'Disabled EQ', enabled: false })
+    ];
+    const { audioManager, workletSync } = harness(entries, {
+        enabledDspTypes: ['RequiredWasmPlugin'],
+        dspModuleInfo: {
+            module: new WebAssembly.Module(moduleBytes),
+            moduleCloneable: true,
+            bytes: sourceBytes,
+            simd: false
+        }
+    });
+    const result = await buildPipelineProcessingSnapshot({
+        audioManager,
+        workletSync,
+        resolveRequirements: () => ({ requiresWasm: true })
+    });
+
+    assert.deepEqual(result.pluginNames, ['Room EQ']);
+    assert.equal(result.snapshot.sampleRate, 48000);
+    assert.equal(result.snapshot.channelCount, 2);
+    assert.equal(result.snapshot.dsp.module, null);
+    assert.notEqual(result.snapshot.dsp.bytes, sourceBytes);
+    assert.deepEqual(
+        Array.from(new Uint8Array(result.snapshot.dsp.bytes)),
+        Array.from(moduleBytes)
+    );
+    for (const field of ['inputChannel', 'outputChannels', 'measurementSettings', 'warmupSamples']) {
+        assert.equal(field in result.snapshot, false, field);
+    }
 });
 
 test('snapshot freezes canonical measurement settings and participating outputs', async () => {

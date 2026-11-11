@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { setImmediate: delay } = require('node:timers/promises');
 const test = require('node:test');
+const { didl, didlItem } = require('../../electron/network-music-upnp.cjs');
+const { LIVE_KIND } = require('../../electron/network-output-live.cjs');
 
 const {
   ACTION_TIMEOUT_MS,
@@ -133,6 +135,42 @@ function registerRendererIpc(t, harness) {
   const invoke = (channel, ...args) => handlers.get(channel)({ sender: harness.window.webContents }, ...args);
   return { handlers, invoke, dispose };
 }
+
+test('live DIDL reaches the authorized UPnP action and feedback belongs to its accepted main-frame session', async t => {
+  const harness = createHarness({ upnpAvRemoteControl: true });
+  const { host, gateway, sends, window } = harness;
+  t.after(() => host.dispose());
+  await host.setRendererReady();
+  const uri = `http://192.168.1.2:3000/live/${'a'.repeat(32)}`;
+  const metadata = didl([didlItem({ id: 'effetune-network-output', uri, streamKind: LIVE_KIND })]);
+  const registrations = [];
+  gateway.register = async (target, options) => {
+    const token = String(registrations.length + 1).repeat(32);
+    registrations.push([target, options, token]);
+    return { token, playbackUrl: `http://127.0.0.1:43123/openhome-media/${token}` };
+  };
+  gateway.requestLiveFeedback = input => input;
+  window.webContents.mainFrame = {};
+  const { handlers } = registerRendererIpc(t, harness);
+  const report = handlers.get(CHANNELS.liveFeedback);
+  const owner = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
+  const action = { service: 'AVTransport', action: 'SetAVTransportURI', requestId: 'live1', args: { uri, metadata } };
+  await host.handleSidecarAction(action);
+  const sessionId = registrations[0][2];
+  const probe = { sessionId, connectionId: '1'.repeat(32) };
+  assert.deepEqual(registrations[0].slice(0, 2), [uri, { live: true }]);
+  assert.equal(sends.find(([channel]) => channel === CHANNELS.action)[1].args.liveSessionId, sessionId);
+  assert.equal(report(owner, probe), null, 'classification alone does not commit the registration');
+  assert.equal(host.handleRendererResponse({ requestId: 'live1', ok: true, result: {} }), true);
+  assert.throws(() => report({ ...owner, senderFrame: {} }, probe), { code: 'invalid-sender' });
+  assert.deepEqual(report(owner, probe), probe);
+
+  await host.handleSidecarAction({ ...action, requestId: 'ordinary', args: { uri, metadata: '', liveSessionId: sessionId } });
+  assert.equal(sends.filter(([channel]) => channel === CHANNELS.action).at(-1)[1].args.liveSessionId, undefined);
+  host.handleRendererResponse({ requestId: 'ordinary', ok: true, result: { newId: 4 } });
+  assert.equal(report(owner, probe), null);
+  assert.ok(gateway.releaseCalls.includes(sessionId));
+});
 
 test('sidecar diagnostics preserve bounded detail for the console mirror', async () => {
   const diagnostics = [];

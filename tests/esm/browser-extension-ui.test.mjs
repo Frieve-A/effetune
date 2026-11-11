@@ -203,13 +203,24 @@ test('editor audio adapter keeps parameter and structural mutations on their int
   const errors = [];
   const adapter = new ExtensionAudioManager(client, error => errors.push(error));
   adapter.suppressMutations = false;
-  adapter.pipelineA = [{
+  let gain = 1;
+  const plugin = {
     id: 11, name: 'Gain', enabled: true, inputBus: null, outputBus: null, channel: null,
-    getSerializableParameters: () => ({ gn: 1 })
-  }];
+    getSerializableParameters: () => ({ gn: gain })
+  };
+  adapter.pipelineA = [plugin];
+  adapter.recordPluginSettings(plugin);
 
-  const updatePlugin = { type: 'updatePlugin', plugin: { id: 11, type: 'GainPlugin' } };
-  adapter.commitPowerTopologyMutation(updatePlugin);
+  const edit = value => {
+    gain = value;
+    const message = { type: 'updatePlugin', plugin: { id: 11, type: 'GainPlugin', parameters: { gn: value } } };
+    adapter.commitPowerTopologyMutation(message);
+    return { command: 'workletMessage', args: { message } };
+  };
+  edit(1);
+  assert.equal(adapter.pendingMutations, 0);
+  const update = edit(2);
+  const revert = edit(1);
   await adapter.mutationQueue;
   adapter.commitPowerTopologyMutation({ type: 'updatePlugins', plugins: [] });
   await adapter.mutationQueue;
@@ -220,10 +231,10 @@ test('editor audio adapter keeps parameter and structural mutations on their int
   await adapter.mutationQueue;
 
   assert.equal(errors.length, 0);
-  assert.deepEqual(requests[0], { command: 'workletMessage', args: { message: updatePlugin } });
-  assert.equal(requests[1].command, 'setPipeline');
-  assert.deepEqual(requests[1].args.plugins, [{ nm: 'Gain', en: true, gn: 1, id: 11 }]);
-  assert.deepEqual(requests[2], { command: 'setBypass', args: { enabled: true } });
+  assert.deepEqual(requests.slice(0, 2), [update, revert]);
+  assert.equal(requests[2].command, 'setPipeline');
+  assert.deepEqual(requests[2].args.plugins, [{ nm: 'Gain', en: true, gn: 1, id: 11 }]);
+  assert.deepEqual(requests[3], { command: 'setBypass', args: { enabled: true } });
 });
 
 test('pipeline preset manager delegates extension persistence without touching local storage', async () => {

@@ -106,7 +106,7 @@ Web MIDI का उपयोग करने वाली वेबसाइट�
 
 स्ट्रीमिंग सेवाओं (Spotify, YouTube Music आदि) से ऑडियो प्रोसेस करने के लिए:
 
-डेस्कटॉप ऐप में पहले [अंतर्निहित ब्राउज़र](#डेस्कटॉप-ऐप-का-अंतर्निहित-ब्राउज़र) आज़माएँ। अलग स्ट्रीमिंग ऐप या ऐसा स्रोत इस्तेमाल करने के लिए जिसे अंतर्निहित ब्राउज़र नहीं चला सकता, नीचे दिया गया ऑडियो डिवाइस सेटअप अपनाएँ।
+डेस्कटॉप ऐप में पहले [अंतर्निहित ब्राउज़र](#डेस्कटॉप-ऐप-का-अंतर्निहित-ब्राउज़र) आज़माएँ। अलग स्ट्रीमिंग ऐप या ऐसा स्रोत इस्तेमाल करने के लिए जिसे अंतर्निहित ब्राउज़र नहीं चला सकता, Windows डेस्कटॉप ऐप दूसरे ऐप्स की आवाज़ सीधे कैप्चर कर सकता है: **ऑडियो विन्यास** में **आउटपुट डिवाइस** को Windows के डिफ़ॉल्ट आउटपुट के अलावा किसी दूसरे डिवाइस (जैसे USB DAC) पर और **इनपुट डिवाइस** को **System Audio (दूसरे ऐप्स की आवाज़)** पर सेट करें। वेब ऐप में, macOS पर, या केवल एक आउटपुट डिवाइस होने पर नीचे दिया गया वर्चुअल ऑडियो डिवाइस सेटअप अपनाएँ।
 
 1. पूर्व आवश्यकताएं:
    - कोई वर्चुअल ऑडियो डिवाइस इंस्टॉल करें (जैसे VB Cable, Voice Meeter, या ASIO Link Tool)
@@ -524,6 +524,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Others    | Oscillator | speakers/headphones जांचने के लिए test tone और noise generator | [विवरण](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | पहचाने गए नोटों को SF2/SF3 SoundFont और SFZ वाद्य से बजाता है | [विवरण](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | SF2/SF3 SoundFont या SFZ वाद्य से MIDI बजाता है; SF2/SF3 के 16 चैनलों पर स्वतंत्र ध्वनियाँ | [विवरण](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | किसी दूसरे EffeTune से आने वाली लाइव स्ट्रीम को इसी जगह से प्रोसेस करना शुरू करता है | [विवरण](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | इस जगह की आवाज़ नेटवर्क आउटपुट पर भेजता है और आगे के स्थानीय इफ़ेक्ट भी चलते रहते हैं | [विवरण](plugins/control.md#live-audio-send) |
 | Control   | Section | effects को group करता है ताकि पूरा section bypass या restore किया जा सके | [विवरण](plugins/control.md) |
 
 ## तकनीकी जानकारी

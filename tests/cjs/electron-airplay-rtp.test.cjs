@@ -34,10 +34,24 @@ test('AirPlay RTP reorders a bounded window and conceals only finite missing sam
   receiver.push(packet(5,8),4);
   receiver.flush(4 + REORDER_WAIT_MS);
   assert.equal(chunks[3].frameCount,2);
-  assert.deepEqual([...new Float32Array(chunks[3].planes[0])],[0,0]);
+  assert.deepEqual([...new Float32Array(chunks[3].planes[0])],[0.25,0]);
   receiver.push(packet(100,20000),50);
   assert.equal(resets.length,1);
   assert.equal(receiver.queuedFrames,0);
+});
+
+test('AirPlay RTP fades confirmed loss and recovery without changing frame positions', () => {
+  const chunks = [];
+  const receiver = new L16RtpReceiver({ onPcm: chunk => chunks.push(chunk) });
+  const samples = Array.from({ length: 300 }, () => [16384, -16384]);
+  receiver.push(packet(1, 0, samples), 0);
+  receiver.push(packet(3, 600, samples), 1);
+  receiver.flush(1 + REORDER_WAIT_MS);
+  assert.deepEqual(chunks.map(chunk => [chunk.startFrame, chunk.frameCount]), [[0, 300], [300, 300], [600, 300]]);
+  const values = chunks.flatMap(chunk => [...new Float32Array(chunk.planes[0])]);
+  for (let index = 1; index < values.length; index += 1) assert.ok(Math.abs(values[index] - values[index - 1]) < 0.003);
+  assert.equal(values[599], 0);
+  assert.equal(values[899], 0.5);
 });
 
 test('AirPlay RTP validates header, payload alignment, extension and padding bounds', () => {

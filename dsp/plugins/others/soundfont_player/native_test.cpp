@@ -2574,6 +2574,23 @@ void midiChannelAudioMeters() {
     CHECK(separate ? mixerPeak(state, 0) > 0 && mixerPeak(state, 1) > 0 : mixerPeak(state, 0) == 0);
   }
 }
+void midiVoiceStealTelemetry() {
+  Player player;
+  player.configure(0, 0, 1);
+  CHECK(player.events(
+            {event(0, 0x90, 60, 127), event(16, 0x80, 60, 0), event(32, 0x90, 61, 127)}) == ET_OK);
+  player.process();
+  auto state = readMixer(*player.kernel);
+  CHECK(mixerU16(state.data() + 4u) == 1u &&
+        mixerU16(state.data() + 6u) == 0u); // Release tail stolen.
+  state = readMixer(*player.kernel);
+  CHECK(mixerU16(state.data() + 4u) == 0u && mixerU16(state.data() + 6u) == 0u); // Reported once.
+  CHECK(player.events({event(0, 0x90, 62, 127)}) == ET_OK);
+  player.process();
+  state = readMixer(*player.kernel);
+  CHECK(mixerU16(state.data() + 4u) == 0u &&
+        mixerU16(state.data() + 6u) == 1u); // Held voice stolen.
+}
 void midiHeldKeyTelemetry() {
   const auto held = [](Player &player, unsigned key) {
     const auto state = readMixer(*player.kernel);
@@ -2584,6 +2601,10 @@ void midiHeldKeyTelemetry() {
   CHECK(player.events({event(0, 0x90, 60, 127), event(32, 0x90, 61, 127)}) == ET_OK);
   player.process();
   CHECK(held(player, 60) && held(player, 61)); // Stealing a voice does not release its input key.
+  {
+    const auto state = readMixer(*player.kernel);
+    CHECK(mixerU16(state.data() + 4u) == 0u && mixerU16(state.data() + 6u) == 0u);
+  } // The held-key reads above already consumed the steal report.
   CHECK(player.events({event(0, 0x80, 60, 0), event(0, 0xb0, 64, 127), event(13, 0x80, 61, 0)}) ==
         ET_OK);
   player.process();
@@ -3909,6 +3930,7 @@ int main() {
   sf2UnchangedFilterEvent();
   midiChannelAudioMeters();
   midiHeldKeyTelemetry();
+  midiVoiceStealTelemetry();
   previewVoiceOwnership();
   scriptBoundedMessages();
   scriptTerminalFailure();

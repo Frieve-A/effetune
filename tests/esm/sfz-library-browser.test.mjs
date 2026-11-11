@@ -27,6 +27,36 @@ async function library() {
   }, { onDiagnostic: null }).open();
 }
 
+test('SoundFont Library can close and restore focus while the selected bank is still loading', async () => {
+  await harness(async body => {
+    const entry = { id: 'a'.repeat(24), name: 'Piano.sf2' };
+    const loading = deferred();
+    const returnFocus = new Element('button');
+    let selected, closeCount = 0;
+    const modal = openSfzLibraryBrowser({
+      service: { list: async () => [entry] },
+      returnFocus,
+      closeOnLoadStart: true,
+      async onLoad(bank) {
+        selected = bank;
+        await loading.promise;
+      },
+      onClose() { closeCount++; }
+    });
+    await modal.render();
+
+    const click = button(rows(modal)[0], 'Load').click();
+    assert.equal(selected, entry);
+    assert.equal(body.children.length, 0);
+    assert.equal(returnFocus.focused, true);
+    assert.equal(closeCount, 1);
+
+    loading.resolve();
+    await click;
+    assert.equal(closeCount, 1);
+  });
+});
+
 test('SFZ library uses the IR layout without decay and filters, sorts, loads and bulk deletes', async () => {
   await harness(async body => {
     let entries = [

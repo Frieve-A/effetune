@@ -234,11 +234,12 @@
     <div class="title-container">
         <h1>Frieve EffeTune<img src="images/icon_64x64.png" class="title-icon" alt="EffeTune Icon" draggable="false"><div class="message-display" id="errorDisplay">Loading...</div></h1>
         <div class="header-buttons">
-            <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg></button>
-            <button class="header-button view-switch-button effect-pipeline-button active" id="effectPipelineButton" title="Effect Pipeline" aria-label="Effect Pipeline" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h4M10 17h4M6.5 10v4M17.5 10v4"/></svg></button>
-            <button class="header-button view-switch-button browser-button" id="browserButton" title="Browser" aria-label="Browser" aria-pressed="false" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18M7 5.5h1M10 5.5h1"/></svg></button>
-            <button class="header-button view-switch-button open-library-button" id="openLibraryButton" title="Music Library" aria-label="Music Library" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M4 19.5V5.2A2.2 2.2 0 0 1 6.2 3H20v16H6.2A2.2 2.2 0 0 0 4 21.2"/><path d="M8 7h8M8 11h6M8 15h7"/></svg></button>
-            <button class="header-button view-switch-button" id="visualizerButton" title="Visualizer" aria-label="Visualizer" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4m4-8v12m5-16v20m5-16v12m4-8v4"/></svg></button>
+            <button type="button" class="header-button network-output-button" id="networkOutputButton" title="Network Output" aria-label="Network Output" aria-haspopup="dialog" popovertarget="networkOutputPicker" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5M2 12a9 9 0 0 1 9 9M2 16a5 5 0 0 1 5 5M2 21h.01"/></svg></button>
+            <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg><span class="header-caption" aria-hidden="true">Open Files</span></button>
+            <button class="header-button view-switch-button effect-pipeline-button active" id="effectPipelineButton" title="Effect Pipeline" aria-label="Effect Pipeline" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h4M10 17h4M6.5 10v4M17.5 10v4"/></svg><span class="header-caption" aria-hidden="true">Effect Pipeline</span></button>
+            <button class="header-button view-switch-button browser-button" id="browserButton" title="Browser" aria-label="Browser" aria-pressed="false" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18M7 5.5h1M10 5.5h1"/></svg><span class="header-caption" aria-hidden="true">Browser</span></button>
+            <button class="header-button view-switch-button open-library-button" id="openLibraryButton" title="Music Library" aria-label="Music Library" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M4 19.5V5.2A2.2 2.2 0 0 1 6.2 3H20v16H6.2A2.2 2.2 0 0 0 4 21.2"/><path d="M8 7h8M8 11h6M8 15h7"/></svg><span class="header-caption" aria-hidden="true">Music Library</span></button>
+            <button class="header-button view-switch-button" id="visualizerButton" title="Visualizer" aria-label="Visualizer" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4m4-8v12m5-16v20m5-16v12m4-8v4"/></svg><span class="header-caption" aria-hidden="true">Visualizer</span></button>
             <div class="settings-menu-container">
                 <button class="header-button settings-menu-button" id="settingsMenuButton" title="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 0 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 8.97 1.7 1.7 0 0 0 20.93 10H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></button>
                 <div class="settings-menu" id="settingsMenu">
@@ -254,6 +255,17 @@
                     <install class="settings-menu-install" id="installAppElement" hidden></install>
                     <button type="button" class="settings-menu-item" id="installAppButton" hidden>Install App</button>
                 </div>
+            </div>
+        </div>
+        <div class="network-output-picker" id="networkOutputPicker" popover role="dialog" aria-labelledby="networkOutputPickerTitle">
+            <div class="preset-dialog-header">
+                <span id="networkOutputPickerTitle">Network Output</span>
+                <button type="button" class="preset-dialog-close" title="Close" aria-label="Close" popovertarget="networkOutputPicker" popovertargetaction="hide">✕</button>
+            </div>
+            <div class="preset-dialog-content">
+                <label class="network-output-enable"><input id="networkOutputPickerLocal" type="checkbox" disabled><span>This computer</span></label>
+                <div class="preset-dialog-section" id="networkOutputPickerTargets"></div>
+                <div class="network-output-note" id="networkOutputPickerMessage" role="status"></div>
             </div>
         </div>
         <div class="subtitle-container">
@@ -325,7 +337,7 @@
             </div>
             <div id="pipelineList">
                 <div class="pipeline-empty" id="pipelineEmpty">
-                    Drag plugins here to build your effect pipeline
+                    Drag effects here to build your effect pipeline
                 </div>
                 <!-- Columns and plugin items will be added here by JS -->
             </div>
@@ -384,6 +396,7 @@
     <link rel="modulepreload" href="js/audio/power-session-journal.js">
     <link rel="modulepreload" href="js/audio/power-snapshot.js">
     <link rel="modulepreload" href="js/audio/power-topology.js">
+    <link rel="modulepreload" href="js/audio/system-audio-guard.js">
     <link rel="modulepreload" href="js/audio/telemetry-hub.js">
     <link rel="modulepreload" href="js/audio/visual-sync.js">
     <link rel="modulepreload" href="js/browser/browser-media-info.js">
@@ -395,6 +408,8 @@
     <link rel="modulepreload" href="js/electron-watchdog.js">
     <link rel="modulepreload" href="js/electron/audio-preference-store.js">
     <link rel="modulepreload" href="js/electron/config-store.js">
+    <link rel="modulepreload" href="js/electron/networkOutputIntegration.js">
+    <link rel="modulepreload" href="js/electron/networkOutputPicker.js">
     <link rel="modulepreload" href="js/electron/power-config-store.js">
     <link rel="modulepreload" href="js/electron/webSettingsStorage.js">
     <link rel="modulepreload" href="js/ir-library/audio-header-metadata.js">

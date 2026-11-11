@@ -1,4 +1,5 @@
 import { getSettingsStorage } from './settings-storage.js';
+import { initNetworkOutputPicker } from './electron/networkOutputPicker.js';
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
 import { getAndroidBridge } from './android/bridge.js';
 import { getDsdPlaybackErrorKey } from './ui/audio-player/dsd-source.js';
@@ -52,6 +53,7 @@ function usesIOSFilePicker(windowRef = window) {
 
 const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
+const SLEEP_MODE_LABEL = 'Sleep Mode';
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
 const WEB_MUSIC_FILE_ACCEPT = `audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,${SCORE_EXTENSIONS.map(ext => `.${ext}`).join(',')},.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png`;
 const WEB_MUSIC_PICKER_TYPES = [{
@@ -330,6 +332,8 @@ export class UIManager {
         });
 
         // Initialize UI elements
+        this.networkOutputPicker = initNetworkOutputPicker(this);
+        this.initHeaderCaptions();
         this.initWhatsThisLink();
         this.initPipelineManager();
         this.initShareButton();
@@ -431,9 +435,7 @@ export class UIManager {
     updatePipelineLatency(samples) {
         if (!this.pipelineLatency) return;
         const normalizedSamples = Number.isInteger(samples) && samples >= 0 ? samples : 0;
-        this.pipelineLatency.textContent = this.t('ui.pipelineLatency', {
-            samples: normalizedSamples
-        });
+        this.pipelineLatency.textContent = `Total Delay: ${normalizedSamples} samples`;
     }
 
     updatePipelineCpuUsage(average) {
@@ -441,9 +443,7 @@ export class UIManager {
         const normalizedAverage = Number.isFinite(average) && average >= 0 ? average : 0;
         this.pipelineCpuAveragePercent = normalizedAverage;
         const averageLabel = normalizedAverage.toFixed(1);
-        const label = this.t('ui.pipelineCpuUsage', {
-            average: averageLabel
-        });
+        const label = `CPU: Avg ${averageLabel}%`;
 
         if (this.pipelineCpuValue) this.pipelineCpuValue.textContent = label;
         this.pipelineCpuUsage.setAttribute('aria-label', label);
@@ -1022,8 +1022,6 @@ export class UIManager {
     updateSleepModeDisplay(isSleepMode, sampleRate) {
         if (!this.sampleRate) return;
 
-        const sleepModeText = this.t('ui.sleepMode');
-        
         // Show the effective DSP output width, including MediaStream output.
         const channelCount = this.debugChannelCount ??
             this.audioManager.getOutputChannelCount?.() ??
@@ -1032,15 +1030,15 @@ export class UIManager {
 
         if (isSleepMode) {
             // Add sleep mode indicator if not already present
-            if (!this.sampleRate.textContent.includes(sleepModeText)) {
+            if (!this.sampleRate.textContent.includes(SLEEP_MODE_LABEL)) {
                 if (this.sampleRate) { // Added check
-                    this.sampleRate.textContent += ` - ${sleepModeText}`;
+                    this.sampleRate.textContent += ` - ${SLEEP_MODE_LABEL}`;
                 }
             }
         } else {
             // Remove sleep mode indicator and ensure sample rate is displayed correctly
             let currentText = this.sampleRate.textContent;
-            let updatedText = currentText.replace(` - ${sleepModeText}`, '');
+            let updatedText = currentText.replace(` - ${SLEEP_MODE_LABEL}`, '');
             if (this.sampleRate) { // Added check
                 this.sampleRate.textContent = updatedText;
             }
@@ -1069,8 +1067,7 @@ export class UIManager {
                 (this.audioManager.audioContext.destination.channelCount || 2);
 
             // Preserve sleep mode indicator if present
-            const sleepModeText = this.t('ui.sleepMode');
-            const isSleepMode = this.sampleRate.textContent.includes(sleepModeText);
+            const isSleepMode = this.sampleRate.textContent.includes(SLEEP_MODE_LABEL);
             
             // Set the basic sample rate text
             if (this.sampleRate) { // Added check
@@ -1083,7 +1080,7 @@ export class UIManager {
                 
                 // Add sleep mode text if needed
                 if (isSleepMode) {
-                    this.sampleRate.textContent += ` - ${sleepModeText}`;
+                    this.sampleRate.textContent += ` - ${SLEEP_MODE_LABEL}`;
                 }
             }
 
@@ -1318,6 +1315,7 @@ export class UIManager {
      * Update UI elements with translated text
      */
     updateUITexts() {
+        this.networkOutputPicker?.updateTexts();
         this.browserView?.updateUITexts();
         this.updateLoadingProgress(this.loadingProgressPercent);
         this.updateSampleRateStatus();
@@ -1495,7 +1493,7 @@ export class UIManager {
             message.className = 'pipeline-empty-message';
             pipelineEmpty.appendChild(message);
         }
-        message.textContent = this.t('ui.dragPluginsHere');
+        message.textContent = 'Drag effects here to build your effect pipeline';
         pipelineEmpty.querySelectorAll?.('.mobile-effects-open-music')?.forEach(button => button.remove());
     }
 
@@ -1639,6 +1637,28 @@ export class UIManager {
 
         // Delegate preset management to PipelineManager
         // PipelineManager already initializes these elements in its constructor
+    }
+
+    initHeaderCaptions() {
+        const header = document.querySelector('.title-container');
+        const buttons = header?.querySelector('.header-buttons');
+        const icon = header?.querySelector('.title-icon');
+        if (!buttons || !icon || typeof ResizeObserver === 'undefined') return;
+
+        const update = () => {
+            if (!document.body.classList.contains('layout-desktop')) return;
+
+            // Measure the full toolbar before deciding if it fits beside the title.
+            buttons.classList.add('show-captions');
+            const fits = buttons.getBoundingClientRect().left >= icon.getBoundingClientRect().right + 10;
+            buttons.classList.toggle('show-captions', fits);
+        };
+        const observer = new ResizeObserver(update);
+        observer.observe(header);
+        observer.observe(buttons);
+        observer.observe(icon);
+        this.layoutMode.onChange(update);
+        update();
     }
 
     /**

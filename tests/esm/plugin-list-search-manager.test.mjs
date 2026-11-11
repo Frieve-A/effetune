@@ -472,12 +472,12 @@ test('filterPlugins matches plugin names and categories, restores collapsed stat
     assert.equal(dynamics.querySelector('.collapse-indicator').textContent, '\u2335');
     assert.equal(delays.style.display, 'none');
     assert.equal(delays.querySelector('.plugin-category-items').style.display, 'none');
-    assert.equal(pluginList.querySelector('#effectCount').textContent, 'ui.effectsFound:1');
+    assert.equal(pluginList.querySelector('#effectCount').textContent, '1 effects found');
 
     manager.filterPlugins('equal');
     assert.equal(equalizers.style.display, '');
     assert.equal(equalizers.querySelectorAll('.plugin-item')[0].style.display, '');
-    assert.equal(pluginList.querySelector('#effectCount').textContent, 'ui.effectsFound:1');
+    assert.equal(pluginList.querySelector('#effectCount').textContent, '1 effects found');
 
     manager.filterPlugins('plain');
     assert.equal(noDecorations.style.display, '');
@@ -490,7 +490,7 @@ test('filterPlugins matches plugin names and categories, restores collapsed stat
       ['updateCategoryVisibility', 'delay'],
       ['updateCategoryVisibility', 'nodecor']
     ]);
-    assert.equal(pluginList.querySelector('#effectCount').textContent, 'ui.effectsAvailable:5');
+    assert.equal(pluginList.querySelector('#effectCount').textContent, '5 effects available');
 
     windowRef.uiManager = null;
     manager.filterPlugins('limiter');

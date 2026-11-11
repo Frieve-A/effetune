@@ -321,9 +321,11 @@ export class TelemetryHub {
             this.stats.coreDroppedFrames += message.droppedFrames;
         }
         try {
+            if (this.routeRevision != null && message.routeRevision !== this.routeRevision) return true;
             const result = parseTelemetryPacket(packet, message.bytes, parsedFrame => {
                 const source = this.sources.get(parsedFrame.tapId);
                 const frame = Object.freeze({ ...parsedFrame, ...(source ? { source } : {}),
+                    ...(message.visualizerTapStage ? { visualizerTapStage: message.visualizerTapStage } : {}),
                     ...((parsedFrame.frameType === TelemetryFrameType.TAP_SFZ_KEYSWITCHES ||
                         parsedFrame.frameType === TelemetryFrameType.TAP_SOUNDFONT_MIXER)
                         ? { subscription: this.subscribers.get(this._key(parsedFrame.tapId, parsedFrame.frameType)) } : {}),

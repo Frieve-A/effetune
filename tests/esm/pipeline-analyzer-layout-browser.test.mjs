@@ -156,11 +156,15 @@ test('Analyzer follows effect spacing, page scrolling, and header expansion', as
           });
           const activeFace = await buttonFace('#pipelineAnalyzerButton');
           assert.deepEqual(activeFace, await buttonFace('#referenceRemote'));
-          const effectButtonHeight = (await page.locator('#referenceEffect .toggle-button').boundingBox()).height;
+          const actionHeight = layout.mobile
+            ? (await page.locator('#referenceEffect .toggle-button').boundingBox()).height
+            : await page.evaluate(() => Number.parseFloat(
+              getComputedStyle(document.documentElement).getPropertyValue('--et-control-height-field')
+            ));
           for (const name of ['Add Output', 'Refresh measurements']) {
             const button = page.getByRole('button', { name, exact: true });
-            assert.equal((await button.boundingBox()).height, effectButtonHeight,
-              `${name} must match the standard Effect button height`);
+            assert.equal((await button.boundingBox()).height, actionHeight,
+              `${name} must match the standard control height for the layout`);
           }
           await page.evaluate(() => window.analyzer.setAudioFormat({ sampleRate: 48000, channelCount: 4 }));
           for (let output = 1; output < 4; output++) {

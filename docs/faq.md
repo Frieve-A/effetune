@@ -12,10 +12,8 @@ For audio from a Chrome or Edge tab, see the [Browser Extension guide](browser-e
 
 ## Contents
 1. Initial Setup for Streaming
-   1. Installing VB-CABLE and the optional 96 kHz aliasing fix
-   2. Streaming service routing (Spotify example)
-   3. EffeTune audio settings
-   4. Operation check
+   1. System Audio (Windows desktop app)
+   2. Virtual audio device (VB-CABLE)
 2. Troubleshooting
    1. Audio playback quality
    2. CPU usage
@@ -37,25 +35,44 @@ For audio from a Chrome or Edge tab, see the [Browser Extension guide](browser-e
 
 ## 1. Initial Setup for Streaming
 
-Windows example: Spotify → VB-CABLE → EffeTune → DAC/AMP. Concepts are similar for other services and OSes.
+To process sound from streaming services and other apps, route it to EffeTune's input. In the Windows desktop app with two output devices, choose **System Audio**. Otherwise, use a virtual audio device such as VB-CABLE.
 
-### 1.1. Installing VB-CABLE and the optional 96 kHz aliasing fix
+### 1.1. System Audio (Windows desktop app)
+
+**System Audio** captures the sound that other apps play through the Windows default output, so no virtual audio device is needed.
+
+It requires EffeTune's output to be a different device from the Windows default output. For example, keep the Windows default output on your built-in speakers or HDMI, and use your USB DAC as EffeTune's output.
+
+1. Open **Audio Configuration** from the Settings menu.
+2. **Output Device:** Choose your DAC or speakers. Do not choose the Windows default output.
+3. **Input Device:** Choose **System Audio (sound from other apps)**.
+4. Play music in your streaming app, toggle the master **ON/OFF** in EffeTune, and confirm the sound changes.
+
+While EffeTune uses System Audio, the Windows default output is muted, so other apps are heard only through EffeTune. The mute is lifted when you choose another input or quit EffeTune.
+
+If **Output Device** is the Windows default output or the same device, System Audio cannot be selected and Audio Configuration explains why. If the Windows default output later changes to EffeTune's output device, or the capture stops, EffeTune switches the input to silence and shows a message. Choose an output device other than the Windows default output, then select System Audio again in Audio Configuration.
+
+### 1.2. Virtual audio device (VB-CABLE)
+
+Use this method in the web app, on macOS, or when you have only one output device. Windows example: Spotify → VB-CABLE → EffeTune → DAC/AMP. Concepts are similar for other services and OSes.
+
+#### 1.2.1. Installing VB-CABLE and the optional 96 kHz aliasing fix
 
 Download the VB-CABLE Driver Pack45, run `VBCABLE_Setup_x64.exe` as administrator, and reboot. Installation may change the OS default output to **CABLE Input**; if so, change it back to your speakers or DAC.
 
 If using VB-CABLE produces aliasing noise above 20 kHz, its internal 48 kHz rate is the cause. For this specific problem, set both **CABLE Input** and **CABLE Output** formats to 24-bit, 96,000 Hz. Then launch `VBCABLE_ControlPanel.exe` as administrator, choose **Menu▸Internal Sample Rate = 96000 Hz**, and click **Restart Audio Engine**. Administrator access is required for this setting to remain after reboot. This changes VB-CABLE itself and is not required for normal use of EffeTune at 96 kHz.
 
-### 1.2. Streaming service routing (Spotify example)
+#### 1.2.2. Streaming service routing (Spotify example)
 Open **Settings▸System▸Sound▸Volume mixer**, and set `Spotify.exe` output to **CABLE Input**. Play a track to confirm silence from the speakers.
 On macOS, use Rogue Amoeba's **SoundSource** to assign Spotify output to **CABLE Input** in the same manner.
 
-### 1.3. EffeTune audio settings
+#### 1.2.3. EffeTune audio settings
 Open EffeTune and choose **Audio Configuration** from the Settings menu.
 - **Input Device:** CABLE Output (VB-Audio Virtual Cable)
 - **Output Device:** Physical DAC/Speakers
 - **Sample Rate:** Select 96 kHz. This sets EffeTune's internal processing rate to reduce audible aliasing in nonlinear effects and works independently of your OS, DAC, or VB-CABLE sample rate. Confirm the effective Sample Rate shown in the app; if playback drops out, reduce heavy effects or lower the sample rate.
 
-### 1.4. Operation check
+#### 1.2.4. Operation check
 With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the sound changes.
 
 ---
@@ -68,7 +85,7 @@ With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the s
 | ------ | ------ |
 | Dropouts or glitches | Choose **Reset Audio** from the Settings menu or mobile overflow menu. In the desktop app, you can also choose **Reload** from the **View** menu. Reduce the number of active effects if necessary. |
 | Distortion or clipping | Insert **Level Meter** at the end of the chain and keep levels below 0 dBFS. Add **Brickwall Limiter** before Level Meter if needed. |
-| Aliasing above 20 kHz when using VB-CABLE | Its internal rate may still be 48 kHz. Follow the optional 96 kHz procedure in section 1.1. |
+| Aliasing above 20 kHz when using VB-CABLE | Its internal rate may still be 48 kHz. Follow the optional 96 kHz procedure in section 1.2.1. |
 
 ### 2.2. High CPU usage
 Disable effects you're not using or remove them from the **Effect Pipeline**.
@@ -84,6 +101,7 @@ Your input and output devices may be looping back. Ensure EffeTune's output does
 | Effect not working | Confirm the master, each effect, and any **Section** are **ON**. Reset parameters if needed. |
 | No audio output | Check **Audio Configuration**. If your browser cannot select an output device, check that the OS and browser default output point to your DAC/AMP. |
 | Other players report "CABLE Input in use" | Ensure no other application is using **CABLE Input**. |
+| No sound from other apps after quitting EffeTune | The Windows default output may still be muted after using **System Audio**. Unmute it in Windows sound settings. |
 
 Effects that require WebAssembly show a notice at the top of their controls when they cannot run. In **Audio Configuration**, enable **Use WebAssembly audio processing**. If it is already enabled, choose **Reset Audio** or reload EffeTune. The notice disappears when the effect is running again.
 
@@ -124,7 +142,7 @@ EffeTune currently supports up to 16 output channels.
 | Surround input (5.1ch etc.)? | The Web Audio API limits input to 2 channels. Output and effects support up to 16 channels. |
 | Recommended effect chain length? | Use as many effects as your CPU allows without causing dropouts or high latency. |
 | How to get the best sound quality? | Set EffeTune's **Sample Rate** to 96 kHz, start with subtle effect settings, and monitor headroom with **Level Meter**. If playback drops out, first reduce demanding effects or the number of active effects, then lower the sample rate if needed. Add **Brickwall Limiter** if needed. |
-| Does it work with any source? | Yes. With a virtual audio device you can process streaming, local files, or physical equipment. |
+| Does it work with any source? | Yes. With **System Audio** (Windows desktop app) or a virtual audio device you can process streaming and other apps, and with an audio input you can process physical equipment. |
 | Can EffeTune play DRM-protected content? | Not directly. EffeTune processes audio, while protected content is designed to play only in environments authorized by its provider and may not be available to third-party audio processing apps. Use the provider's official app or website, following its terms and supported audio-output methods. EffeTune does not remove or bypass content protection. |
 | Can I use only the music file player without an audio input? | Yes. If microphone audio bleeds into your headphones or earphones after startup, open **Audio Configuration** and set **Input Device:** to **None (music file player only)**. EffeTune uses a silent source so the effect pipeline remains active for the player and signal-generating effects such as **Oscillator**. If you select an audio input instead, you can process sound from external equipment through a USB audio interface or monitor the input with **Spectrum Analyzer**. |
 | Can the mobile web app process audio from other apps? | Usually no. Mobile browsers do not provide a general loopback input from other apps, so mobile use is centered on EffeTune's music player. |
@@ -140,7 +158,7 @@ EffeTune currently supports up to 16 output channels.
 | Why did the sample-rate and channel indicator turn red? | EffeTune detected that enabled effect processing could not finish in real time. The red warning disappears about 10 seconds after processing recovers. Reduce the number of enabled effects. |
 | Does the web player remember my playlist? | Repeat/shuffle settings are saved, but the selected music files are not restored after reload because browsers do not keep normal file selections. |
 | Does mobile playback continue when the screen turns off? | Not reliably on all browsers, especially iOS. EffeTune uses Wake Lock where available, but background playback is browser-dependent. |
-| How do EffeTune's power-saving modes differ? | Open **Config > Power saving** (Web/PWA and desktop apps). **Background processing priority** keeps external-input processing active during silence. In the desktop app, it also prevents Windows from slowing audio processing to save power and keeps the macOS app from being suspended during playback. **Balanced power saving (Default)** reduces DSP and visual updates during silence while keeping the selected audio input connected. **Maximum power saving** also releases the audio input after it stays silent in the background or unused in Player mode for the configured delay. The input does not restart when a signal returns; open the app and choose **Resume audio processing** (or **Resume audio input**) from the menu. |
+| How do EffeTune's power-saving modes differ? | Open **Config > Power saving** (Web/PWA and desktop apps). **Background processing priority** keeps external-input processing active during silence. In the desktop app, it also prevents Windows from slowing audio processing to save power and keeps the macOS app from being suspended during playback. **Balanced power saving (Default)** reduces DSP and visual updates during silence while keeping the selected audio input connected. **Maximum power saving** also releases the audio input after it stays silent in the background or unused in Player mode for the configured delay. The input does not restart when a signal returns; open the app and choose **Resume audio processing** (or **Resume audio input**) from the menu. While a **System Audio** input is released, other apps play directly through the Windows default output until you resume. |
 | What does Skip display-only DSP when hidden do? | Enabled by default. When analyzer graphs are not visible (for example, while browsing Music Library, using Mini Player, during a Double Blind Test, or when the window is minimized), EffeTune bypasses Analyzer effects to save CPU without changing the sound. Turn it off if analyzer history must continue updating in the background. |
 | What does Sync Visuals to Audio do? | Aligns graphs and meters with the sound you hear. Off by default because it can add audio latency (unavailable in the browser extension). Bluetooth or similar devices may still leave the visuals slightly out of sync. |
 | What do Silence threshold and Stop audio input after change? | **Silence threshold** (-90 to -20 dBFS in 10 dB steps) sets the level below which audio is treated as silent; a lower value is less likely to treat quiet passages as silence. In **Maximum power saving**, **Stop audio input after** (1/5/15 minutes or **Never**) sets how long the input must stay silent in the background or unused in Player mode before EffeTune releases it. |

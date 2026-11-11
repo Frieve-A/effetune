@@ -4,6 +4,7 @@ export const LIVE_PREROLL_FRAMES = 5292;
 const TAPS = 64;
 const PHASES = 1024;
 const HALF = TAPS / 2;
+const FADE_SECONDS = 0.005;
 
 export class LivePcmCore {
   constructor(outputSampleRate) {
@@ -31,11 +32,17 @@ export class LivePcmCore {
   }
 
   reset(startFrame = 0) {
+    this.fadeRemaining = this.lastLeft || this.lastRight ? Math.ceil(this.outputSampleRate * FADE_SECONDS) : 0;
+    this.fadeLeft = this.lastLeft || 0;
+    this.fadeRight = this.lastRight || 0;
     this.readPosition = startFrame;
     this.writeFrame = startFrame;
     this.oldestFrame = startFrame;
     this.started = false;
     this.drift = 0;
+    this.driftIntegral = 0;
+    this.filteredError = 0;
+    this.playbackGain = 0;
   }
 
   push({ startFrame, frameCount, planes }) {
@@ -62,20 +69,42 @@ export class LivePcmCore {
   render(outputs) {
     const left = outputs[0], right = outputs[1];
     left.fill(0); right.fill(0);
+    const fadeFrames = Math.ceil(this.outputSampleRate * FADE_SECONDS);
+    let firstFrame = 0;
+    while (this.fadeRemaining > 0 && firstFrame < left.length) {
+      this.fadeRemaining -= 1;
+      const gain = this.fadeRemaining / fadeFrames;
+      left[firstFrame] = this.fadeLeft * gain;
+      right[firstFrame] = this.fadeRight * gain;
+      firstFrame += 1;
+    }
+    if (firstFrame > 0) {
+      this.lastLeft = left[firstFrame - 1];
+      this.lastRight = right[firstFrame - 1];
+    }
     if (!this.started) {
-      if (!this.buffered) return;
+      if (this.fadeRemaining > 0 || !this.buffered) return;
       this.started = true;
     }
-    const error = (this.bufferedFrames - LIVE_PREROLL_FRAMES) / LIVE_PREROLL_FRAMES;
-    const target = error * 0.002;
+    const seconds = (left.length - firstFrame) / this.outputSampleRate;
+    // Estimate the average occupancy during this quantum, not just its initial peak.
+    const averageBuffered = this.bufferedFrames - seconds * LIVE_SAMPLE_RATE * (1 + this.drift) / 2;
+    const error = (averageBuffered - LIVE_PREROLL_FRAMES) / LIVE_PREROLL_FRAMES;
+    this.filteredError += (error - this.filteredError) * (1 - Math.exp(-seconds / 2));
+    this.driftIntegral += this.filteredError * 0.00002 * seconds;
+    this.driftIntegral = this.driftIntegral < -0.002 ? -0.002 : this.driftIntegral > 0.002 ? 0.002 : this.driftIntegral;
+    const target = this.filteredError * 0.002 + this.driftIntegral;
     const bounded = target < -0.002 ? -0.002 : target > 0.002 ? 0.002 : target;
-    this.drift += (bounded - this.drift) * 0.002;
+    this.drift += (bounded - this.drift) * (1 - Math.exp(-seconds / 0.5));
     const step = LIVE_SAMPLE_RATE / this.outputSampleRate * (1 + this.drift);
-    for (let frame = 0; frame < left.length; frame += 1) {
+    for (let frame = firstFrame; frame < left.length; frame += 1) {
       const center = Math.floor(this.readPosition);
       if (center + HALF >= this.writeFrame) {
         this.started = false;
         this.underruns += 1;
+        this.drift = 0;
+        this.driftIntegral = 0;
+        this.filteredError = 0;
         break;
       }
       const phase = Math.floor((this.readPosition - center) * PHASES);
@@ -88,10 +117,17 @@ export class LivePcmCore {
         l += this.ring[0][index] * coefficient;
         r += this.ring[1][index] * coefficient;
       }
-      left[frame] = l; right[frame] = r;
+      const available = (this.writeFrame - HALF - this.readPosition) / step;
+      let gain = available < fadeFrames ? available / fadeFrames : 1;
+      const recovery = this.playbackGain + 1 / fadeFrames;
+      if (recovery < gain) gain = recovery;
+      this.playbackGain = gain;
+      left[frame] = l * gain; right[frame] = r * gain;
+      this.lastLeft = left[frame]; this.lastRight = right[frame];
       this.readPosition += step;
       const oldest = Math.floor(this.readPosition) - HALF;
       if (oldest > this.oldestFrame) this.oldestFrame = oldest;
     }
+    if (!this.started) { this.lastLeft = 0; this.lastRight = 0; this.playbackGain = 0; }
   }
 }

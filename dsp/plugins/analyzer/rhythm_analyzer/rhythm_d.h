@@ -8,14 +8,21 @@
 #include <vector>
 
 #include "decaying_max.h"
+#include "effetune/dsp/portable_math.h"
 #include "oblivious_tree_model.h"
-#include "portable_math.h"
 #include "rhythm_d_high.generated.h"
 #include "rhythm_d_low.generated.h"
 #include "rhythm_d_mid.generated.h"
 #include "rhythm_d_tables.h"
 
 namespace effetune::plugins::analyzer::rhythm_d {
+
+using dsp::portableCos;
+using dsp::portableDecadePower;
+using dsp::portableExp;
+using dsp::portableLog;
+using dsp::portableLog1p;
+using dsp::portableSin;
 
 // Rounds to the nearest IEEE binary16 value, ties to even (numpy's astype(float16) from float64).
 // Zero and NaN pass through; every input stays far below the binary16 overflow (65504), so no

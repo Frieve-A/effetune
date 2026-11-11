@@ -2310,6 +2310,8 @@ const MUTATION_MESSAGE_TYPES = new Set([
     'reorderPlugin',
     'reset',
     'setOutputDelay',
+    'setNetworkReceiveSession',
+    'setNetworkOutputLocalDelay',
     'dspEnableTypes',
     'dspModule'
 ]);
@@ -2331,6 +2333,92 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
 ]);
 const ET_DSP_MAX_CHANNELS = 16;
 const ET_DSP_DEFAULT_MAX_FRAMES = 128;
+// Network Output: the final stage sends 44.1 kHz / 16-bit stereo PCM to a
+// MessagePort in fixed-size packets and applies the local L0 delay stage.
+const NETWORK_OUTPUT_SAMPLE_RATE = 44100;
+const NETWORK_OUTPUT_PACKET_FRAMES = 2048;
+const NETWORK_OUTPUT_DELAY_CAPACITY_MS = 8000;
+const NETWORK_OUTPUT_RESAMPLER_TAPS = 64;
+const NETWORK_OUTPUT_RESAMPLER_PHASES = 1024;
+
+// Fixed-ratio windowed-sinc resampler from the context rate to 44.1 kHz for the
+// Network Output feed (64 taps, 1024 phases, Blackman window, per-phase unity gain).
+class NetworkOutputResampler {
+    constructor(sampleRate, maxFrameCount) {
+        const taps = NETWORK_OUTPUT_RESAMPLER_TAPS;
+        const phases = NETWORK_OUTPUT_RESAMPLER_PHASES;
+        const cutoff = 0.94 * (sampleRate > NETWORK_OUTPUT_SAMPLE_RATE
+            ? NETWORK_OUTPUT_SAMPLE_RATE / sampleRate : 1);
+        this.coefficients = new Float32Array(taps * phases);
+        for (let phase = 0; phase < phases; phase++) {
+            let sum = 0;
+            for (let tap = 0; tap < taps; tap++) {
+                const distance = tap - taps / 2 + 1 - phase / phases;
+                const angle = Math.PI * cutoff * distance;
+                const sinc = angle === 0 ? 1 : Math.sin(angle) / angle;
+                const window = 0.42 - 0.5 * Math.cos(2 * Math.PI * tap / (taps - 1)) +
+                    0.08 * Math.cos(4 * Math.PI * tap / (taps - 1));
+                const value = cutoff * sinc * window;
+                this.coefficients[phase * taps + tap] = value;
+                sum += value;
+            }
+            for (let tap = 0; tap < taps; tap++) this.coefficients[phase * taps + tap] /= sum;
+        }
+        this.step = sampleRate / NETWORK_OUTPUT_SAMPLE_RATE;
+        // The ring keeps every block plus the kernel span around the read position.
+        let ringFrames = 1;
+        while (ringFrames < maxFrameCount + 2 * taps) ringFrames <<= 1;
+        this.ringMask = ringFrames - 1;
+        this.ringLeft = new Float32Array(ringFrames);
+        this.ringRight = new Float32Array(ringFrames);
+        const outputCapacity = Math.ceil(maxFrameCount / this.step) + 2;
+        this.outLeft = new Float32Array(outputCapacity);
+        this.outRight = new Float32Array(outputCapacity);
+        this.writeFrame = 0;
+        this.readPosition = 0;
+    }
+
+    // Appends one block and renders every output frame it completes into
+    // outLeft/outRight. Returns the rendered frame count.
+    reset() {
+        this.writeFrame = 0;
+        this.readPosition = 0;
+    }
+
+    process(left, right, frameCount) {
+        const taps = NETWORK_OUTPUT_RESAMPLER_TAPS;
+        const phases = NETWORK_OUTPUT_RESAMPLER_PHASES;
+        const half = taps / 2;
+        const mask = this.ringMask;
+        for (let frame = 0; frame < frameCount; frame++) {
+            const index = (this.writeFrame + frame) & mask;
+            this.ringLeft[index] = left[frame];
+            this.ringRight[index] = right[frame];
+        }
+        this.writeFrame += frameCount;
+        let rendered = 0;
+        for (;;) {
+            const center = Math.floor(this.readPosition);
+            if (center + half >= this.writeFrame) break;
+            const phase = Math.floor((this.readPosition - center) * phases);
+            const base = phase * taps;
+            let l = 0, r = 0;
+            for (let tap = 0; tap < taps; tap++) {
+                const sourceFrame = center + tap - half + 1;
+                if (sourceFrame < 0) continue;
+                const index = sourceFrame & mask;
+                const coefficient = this.coefficients[base + tap];
+                l += this.ringLeft[index] * coefficient;
+                r += this.ringRight[index] * coefficient;
+            }
+            this.outLeft[rendered] = l;
+            this.outRight[rendered] = r;
+            rendered++;
+            this.readPosition += this.step;
+        }
+        return rendered;
+    }
+}
 // Plugin type whose analysis restarts at each track start of the player's playback.
 const ET_STREAM_BOUNDARY_ACTIONS = Object.freeze({
     RhythmAnalyzerPlugin: 'streamBoundaryInstance',
@@ -2474,6 +2562,16 @@ class PluginProcessor extends AudioWorkletProcessor {
             ? requestedMaxFrameCount
             : ET_DSP_DEFAULT_MAX_FRAMES;
         this.plugins = [];
+        this.executionPlugins = this.plugins;
+        this.networkSkippedIds = new Set();
+        this.networkReceiveSession = { active: false, generation: 0 };
+        this.networkRouteRevision = 0;
+        this.networkTapRevision = 0;
+        this.networkLocalDelayRevision = 0;
+        this.networkSendId = null;
+        this.networkReceiveId = null;
+        this.networkTap = [new Float32Array(this.maxFrameCount || ET_DSP_DEFAULT_MAX_FRAMES), new Float32Array(this.maxFrameCount || ET_DSP_DEFAULT_MAX_FRAMES)];
+        this.networkTapCaptured = false;
         this.frequencyPreview = { frequency: 0, sound: 'sine', gain: 0, targetGain: 0, phase: 0, buffers: [],
             noise: { frequency: 0, active: 0, fade: 1, filters: Array.from({ length: 2 }, () =>
                 ({ a1: 0, a2: 0, a3: 0, scale: 0, ic1eq: 0, ic2eq: 0 })) } };
@@ -2561,6 +2659,31 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.jsFallbackIntrinsicCapacityExceeded = false;
         this.outputDelaySamples = 0;
         this.outputDelayLine = null;
+        // Network Output final stage: the send feed and the local L0 delay stage.
+        // delayBuffer is allocated only while the L0 stage is active.
+        this.networkOutput = {
+            port: null,
+            localEnabled: true,
+            localGain: 1,
+            pendingGainRequest: 0,
+            sendPaused: false,
+            resampler: null,
+            packet: null,
+            packetFill: 0,
+            sourceEpoch: 0,
+            sourceFrame: 0,
+            sourceActive: false,
+            outstandingPackets: new Set(),
+            delayBuffer: null,
+            delayChannelCount: 0,
+            delayCapacity: 0,
+            delaySamples: 0,
+            delayTransition: null,
+            delayPending: null,
+            delayWritten: 0,
+            delayWriteIndex: 0
+        };
+        this.lastBlockZeroOutput = false;
         this.dspExecutionGeneration = 0;
         this.dspExecutionStates = new Map();
         this.dspExecutionRuntimeFallbacks = new Set();
@@ -2938,6 +3061,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                             this.prewarmBufferPoolViews();
                             // The output delay line is sized per channel.
                             this.setOutputDelay(this.outputDelaySamples);
+                            if (this.networkOutput.delayBuffer) this.allocateNetworkOutputDelay();
                             dspConfigurationChanged = true;
                             console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
                         }
@@ -3016,10 +3140,16 @@ class PluginProcessor extends AudioWorkletProcessor {
                     });
                     break;
                 case 'setVisualSync':
-                    this.visualSyncEnabled = data.enabled === true;
+                    if (this.visualSyncEnabled !== (data.enabled === true)) {
+                        this.visualSyncEnabled = data.enabled === true;
+                        this.updateNetworkRoute();
+                        this.publishNetworkPaths();
+                    }
                     break;
                 case 'setOutputDelay':
                     this.setOutputDelay(data.samples);
+                    this.updateNetworkRoute();
+                    this.publishNetworkPaths();
                     this.port.postMessage({
                         type: 'outputDelaySet',
                         requestId: data.requestId,
@@ -3068,6 +3198,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.masterBypass = false;
                     this.resetDspLatencyPlan();
                     this.setOutputDelay(0);
+                    this.updateNetworkRoute();
                     this.publishDspPipelineLatency(0, false);
                     break;
                 case 'frequencyPreview': {
@@ -3162,7 +3293,371 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'prepareTemporalStateAndResume':
                     this.prepareTemporalStateAndResume(data);
                     break;
+                case 'setNetworkReceiveSession':
+                    if (Number.isSafeInteger(data.generation) && data.generation >= this.networkReceiveSession.generation) {
+                        this.networkReceiveSession = { active: data.active === true, generation: data.generation };
+                        this._invalidatePowerSkipForMutation();
+                        this.refreshDspPipeline();
+                    }
+                    break;
+                case 'setNetworkOutputPort':
+                    this.setNetworkOutputPort(data.port ?? null);
+                    break;
+                case 'setNetworkOutputLocalDelay':
+                    this.setNetworkOutputLocalDelay(data.active === true, data.delayMs, data.localEnabled !== false, data.requestId);
+                    this.updateNetworkRoute();
+                    this.publishNetworkPaths();
+                    break;
+                case 'setNetworkOutputSendPaused': {
+                    const paused = data.paused === true;
+                    if (paused !== this.networkOutput.sendPaused) {
+                        if (paused && this.networkOutput.sourceActive) this.networkOutput.sourceEpoch++;
+                        this.networkOutput.sourceActive = false;
+                        this.networkOutput.sourceFrame = 0;
+                        this.networkOutput.packetFill = 0;
+                        this.networkOutput.resamplerOrigin = null;
+                        this.networkOutput.resampler?.reset();
+                    }
+                    this.networkOutput.sendPaused = paused;
+                    break;
+                }
             }
+    }
+
+    updateNetworkRoute() {
+        let sectionEnabled = true;
+        let sendId = null;
+        let receiveIndex = -1;
+        for (let index = 0; index < this.plugins.length; index++) {
+            const plugin = this.plugins[index];
+            if (plugin.type === 'SectionPlugin') { sectionEnabled = Boolean(plugin.enabled); continue; }
+            if (!plugin.enabled || !sectionEnabled || this.masterBypass) continue;
+            if (sendId === null && plugin.type === 'NetworkSendPlugin') sendId = plugin.id;
+            if (receiveIndex < 0 && plugin.type === 'NetworkReceivePlugin') receiveIndex = index;
+        }
+        const receiveId = this.networkReceiveSession.active && receiveIndex >= 0
+            ? this.plugins[receiveIndex].id : null;
+        const routing = this.plugins.map(plugin => [plugin.id, plugin.type, plugin.enabled,
+            plugin.inputBus, plugin.outputBus, plugin.channel]);
+        const tapKey = JSON.stringify([sendId, receiveId, this.networkReceiveSession.active,
+            this.networkReceiveSession.generation, this.outputDelaySamples, routing]);
+        if (tapKey !== this.networkTapKey) { this.networkTapKey = tapKey; this.networkTapRevision++; }
+        const markerRoute = sendId !== null || receiveId !== null;
+        const key = JSON.stringify([tapKey, markerRoute ? this.networkOutput.delaySamples : null,
+            markerRoute ? this.networkOutput.localEnabled : null,
+            Boolean(this.networkOutput.delayBuffer), this.visualSyncEnabled]);
+        if (key !== this.networkRouteKey) {
+            const skippedIds = new Set(receiveId === null ? [] : this.plugins.slice(0, receiveIndex).map(plugin => plugin.id));
+            this.networkRouteKey = key;
+            this.networkSendId = sendId;
+            this.networkReceiveId = receiveId;
+            this.executionPlugins = receiveId === null ? this.plugins : this.plugins.slice(receiveIndex);
+            this.advanceNetworkRouteRevision();
+            // Only plugins entering or leaving the prefix skipped by Receive change state here;
+            // ordinary additions and removals keep their own lifecycle.
+            for (const plugin of this.plugins) {
+                if (skippedIds.has(plugin.id) === this.networkSkippedIds.has(plugin.id)) continue;
+                this._resetTemporalPlugin(plugin.id);
+                const tap = this.spectrumTapState.get(plugin.id);
+                if (tap) this.resetSpectrumTapState(tap);
+            }
+            this.networkSkippedIds = skippedIds;
+            if (this.networkRouteReceiveActive !== this.networkReceiveSession.active) {
+                this.networkOutput.packetFill = 0;
+                if (this.networkOutput.port && globalThis.sampleRate !== NETWORK_OUTPUT_SAMPLE_RATE) {
+                    this.networkOutput.resampler = new NetworkOutputResampler(globalThis.sampleRate, this.maxFrameCount);
+                }
+                this.networkOutput.resamplerOrigin = null;
+                this.networkRouteReceiveActive = this.networkReceiveSession.active;
+            }
+            this.postNetworkRoute();
+        }
+        this.executionPlugins = receiveId === null ? this.plugins : this.plugins.slice(receiveIndex);
+    }
+
+    visualizerTapStage() {
+        if (!this.networkOutput?.delayBuffer) return 'pipeline';
+        if (!this.visualSyncEnabled) return 'local';
+        return this.networkSendId != null && !this.networkReceiveSession?.active ? 'send' : 'network';
+    }
+
+    postNetworkRoute() {
+        this.port.postMessage({ type: 'networkRoute', sendId: this.networkSendId, receiveId: this.networkReceiveId,
+            receiveActive: this.networkReceiveSession.active, generation: this.networkReceiveSession.generation,
+            revision: this.networkRouteRevision,
+            localDelaySamples: this.networkOutput.delayBuffer ? this.networkOutput.delaySamples : 0,
+            visualizerTapStage: this.visualizerTapStage() });
+    }
+
+    advanceNetworkRouteRevision() {
+        this.networkRouteRevision++;
+        for (const queued of this.messageQueue.values()) {
+            globalThis.MultiresSpectrum?.releaseMeasurements(queued.measurements);
+        }
+        this.messageQueue.clear();
+        this.dspTelemetryBacklogFrame = null;
+        if (this.dspLive && this.dspBinding && this.dspBoundaryPacket) {
+            for (let count = 0; count < 8; count++) {
+                if (this.dspBinding.telemetryRead(this.dspBoundaryPacket) <= 0) break;
+            }
+        }
+    }
+
+    setNetworkOutputPort(port) {
+        const feed = this.networkOutput;
+        if (feed.port && feed.port !== port) feed.port.close();
+        feed.port = port;
+        feed.outstandingPackets.clear();
+        if (port) {
+            port.onmessage = ({ data }) => {
+                if (feed.port !== port || data?.type !== 'pcm-ack' ||
+                    !Number.isSafeInteger(data.sourceEpoch) || !Number.isSafeInteger(data.sourceFrame)) return;
+                feed.outstandingPackets.delete(`${data.sourceEpoch}:${data.sourceFrame}`);
+            };
+        }
+        feed.packet = port ? new Int16Array(NETWORK_OUTPUT_PACKET_FRAMES * 2) : null;
+        feed.packetFill = 0;
+        feed.sourceEpoch++;
+        feed.sourceFrame = 0;
+        feed.sourceActive = false;
+        feed.resamplerOrigin = null;
+        feed.resampler = port && globalThis.sampleRate !== NETWORK_OUTPUT_SAMPLE_RATE
+            ? new NetworkOutputResampler(globalThis.sampleRate, this.maxFrameCount)
+            : null;
+    }
+
+    setNetworkOutputLocalDelay(active, delayMs, localEnabled = true, requestId = 0) {
+        const feed = this.networkOutput;
+        const previousEnabled = feed.localEnabled;
+        feed.localEnabled = localEnabled;
+        if (active && (!feed.delayBuffer || feed.delayChannelCount !== this.outputChannelCount)) {
+            this.allocateNetworkOutputDelay();
+            const requested = Math.round((Number.isFinite(delayMs) ? delayMs : 0) * globalThis.sampleRate / 1000);
+            const samples = requested < 0 ? 0 : requested > feed.delayCapacity ? feed.delayCapacity : requested;
+            if (samples) this.startNetworkDelayTransition({ active, samples, requestId });
+            else this.postNetworkDelayApplied(requestId);
+        } else if (feed.delayBuffer) {
+            const requested = Math.round((Number.isFinite(delayMs) ? delayMs : 0) * globalThis.sampleRate / 1000);
+            const samples = active ? (requested < 0 ? 0 : requested > feed.delayCapacity ? feed.delayCapacity : requested) : 0;
+            const target = { active, samples, requestId };
+            if (feed.delayTransition) feed.delayPending = target;
+            else if (samples !== feed.delaySamples || !active) this.startNetworkDelayTransition(target);
+            else this.postNetworkDelayApplied(requestId);
+        } else {
+            this.postNetworkDelayApplied(requestId);
+        }
+        if (previousEnabled !== localEnabled) this.networkLocalDelayRevision++;
+    }
+
+    startNetworkDelayTransition(target) {
+        this.networkOutput.delayTransition = { ...target, progress: 0 };
+    }
+
+    postNetworkDelayApplied(requestId) {
+        if (Number.isSafeInteger(requestId) && requestId > 0) {
+            if (this.networkOutput.localGain !== (this.networkOutput.localEnabled ? 1 : 0)) {
+                this.networkOutput.pendingGainRequest = requestId;
+                return;
+            }
+            this.port.postMessage({ type: 'networkDelayApplied', requestId,
+                localDelaySamples: this.networkOutput.delayBuffer ? this.networkOutput.delaySamples : 0 });
+        }
+    }
+
+    // One extra slot per channel lets the delay span the full capacity while
+    // every block is written before it is read (delay 0 passes the block through).
+    allocateNetworkOutputDelay() {
+        const feed = this.networkOutput;
+        const previous = feed.delayBuffer ? (feed.delayPending || feed.delayTransition ||
+            { active: true, samples: feed.delaySamples, requestId: 0 }) : null;
+        feed.delayCapacity = Math.round(NETWORK_OUTPUT_DELAY_CAPACITY_MS * globalThis.sampleRate / 1000);
+        feed.delayChannelCount = this.outputChannelCount;
+        feed.delayBuffer = new Float32Array((feed.delayCapacity + 1) * feed.delayChannelCount);
+        feed.delayWriteIndex = 0;
+        feed.delayWritten = 0;
+        feed.delaySamples = 0;
+        feed.delayTransition = null;
+        feed.delayPending = null;
+        if (previous?.active && previous.samples > 0) this.startNetworkDelayTransition(previous);
+    }
+
+    // Final stage after the transition gate: send PCM, tap the selected visualizer source, and delay local output.
+    processNetworkOutputStage(output, blockStart, frameCount) {
+        // Prototype-only processors in tests have no feed; the stage then has nothing to do.
+        const feed = this.networkOutput;
+        const channelCount = output?.length ?? 0;
+        if (!feed || channelCount === 0 || frameCount > this.maxFrameCount) return;
+        const sending = Boolean(feed.port && feed.outstandingPackets.size < 8 && !feed.sendPaused && !this.blockNetworkReceiveActive && !this.lastBlockZeroOutput &&
+            (!this.blockNetworkSendId || this.networkTapCaptured || this.lastBlockPowerSkipped));
+        if (sending !== feed.sourceActive) {
+            if (!sending) feed.sourceEpoch++;
+            feed.sourceFrame = 0;
+            feed.sourceActive = sending;
+            feed.packetFill = 0;
+            feed.resamplerOrigin = null;
+            feed.resampler?.reset();
+        }
+        if (sending) {
+            const left = this.networkTapCaptured ? this.networkTap[0] : output[0];
+            const right = this.networkTapCaptured ? this.networkTap[1] : (channelCount > 1 ? output[1] : output[0]);
+            if (feed.resampler) {
+                if (feed.resamplerOrigin === null) feed.resamplerOrigin = globalThis.currentFrame - feed.resampler.writeFrame;
+                const firstFrame = feed.resamplerOrigin + feed.resampler.readPosition;
+                const rendered = feed.resampler.process(left, right, frameCount);
+                this.writeNetworkOutputFrames(feed.resampler.outLeft, feed.resampler.outRight, rendered, firstFrame, feed.resampler.step);
+            } else {
+                this.writeNetworkOutputFrames(left, right, frameCount, globalThis.currentFrame, 1);
+            }
+        }
+        if (feed.delayBuffer) {
+            const stage = this.visualizerTapStage();
+            if (stage === 'send') {
+                if (sending && this.networkTapCaptured) this.tapVisualizerInstances(this.networkTap, 2, frameCount, blockStart);
+            } else if (stage === 'network') {
+                this.tapVisualizerInstances(output, channelCount, frameCount, blockStart);
+            }
+            this.applyNetworkOutputDelay(output, channelCount, frameCount);
+            if (stage === 'local') this.tapVisualizerInstances(output, channelCount, frameCount, blockStart);
+        }
+        const localTarget = feed.localEnabled ? 1 : 0;
+        if (feed.localGain !== localTarget) {
+            const step = 1 / 256;
+            const start = feed.localGain;
+            for (let channel = 0; channel < channelCount; channel++) {
+                let gain = start;
+                for (let frame = 0; frame < frameCount; frame++) {
+                    gain = localTarget ? (gain + step < 1 ? gain + step : 1) : (gain - step > 0 ? gain - step : 0);
+                    output[channel][frame] *= gain;
+                }
+            }
+            const gain = start + (localTarget ? step : -step) * frameCount;
+            feed.localGain = gain < 0 ? 0 : gain > 1 ? 1 : gain;
+            if (feed.localGain === localTarget && feed.pendingGainRequest) {
+                const requestId = feed.pendingGainRequest;
+                feed.pendingGainRequest = 0;
+                this.postNetworkDelayApplied(requestId);
+            }
+        } else if (!localTarget) {
+            for (let channel = 0; channel < channelCount; channel++) output[channel].fill(0, 0, frameCount);
+        }
+    }
+
+    // Clip, round to 16-bit without dither, interleave L/R and post full packets.
+    writeNetworkOutputFrames(left, right, frameCount, firstFrame = 0, frameStep = 1) {
+        const feed = this.networkOutput;
+        let packet = feed.packet;
+        let fill = feed.packetFill;
+        for (let frame = 0; frame < frameCount; frame++) {
+            if (fill === 0) {
+                if (feed.outstandingPackets.size >= 8) {
+                    feed.sourceEpoch++;
+                    feed.sourceFrame = 0;
+                    feed.sourceActive = false;
+                    feed.packetFill = 0;
+                    feed.resamplerOrigin = null;
+                    feed.resampler?.reset();
+                    return;
+                }
+                feed.packetFirstFrame = firstFrame + frame * frameStep;
+                feed.packetRouteRevision = this.blockNetworkRouteRevision;
+            }
+            feed.packetLastRouteRevision = this.blockNetworkRouteRevision;
+            const rawLeft = left[frame];
+            const rawRight = right[frame];
+            const l = rawLeft < -1 ? -1 : rawLeft > 1 ? 1 : rawLeft;
+            const r = rawRight < -1 ? -1 : rawRight > 1 ? 1 : rawRight;
+            packet[fill++] = Math.round(l < 0 ? l * 0x8000 : l * 0x7fff);
+            packet[fill++] = Math.round(r < 0 ? r * 0x8000 : r * 0x7fff);
+            if (fill === packet.length) {
+                // Post a structured clone (8 KiB) instead of transferring the buffer: a message that
+                // carries a transferred ArrayBuffer arrives empty at Electron's MessagePortMain, so the
+                // host would never see PCM. The packet buffer is reused for the next packet.
+                feed.outstandingPackets.add(`${feed.sourceEpoch}:${feed.sourceFrame}`);
+                feed.port.postMessage({
+                    type: 'pcm',
+                    sampleRate: NETWORK_OUTPUT_SAMPLE_RATE,
+                    channelCount: 2,
+                    frames: NETWORK_OUTPUT_PACKET_FRAMES,
+                    sourceEpoch: feed.sourceEpoch,
+                    sourceFrame: feed.sourceFrame,
+                    contextFrame: feed.packetFirstFrame,
+                    contextFrameStep: frameStep,
+                    contextSampleRate: globalThis.sampleRate,
+                    routeRevision: feed.packetRouteRevision,
+                    routeRevisionEnd: feed.packetLastRouteRevision,
+                    data: packet.buffer
+                });
+                feed.sourceFrame += NETWORK_OUTPUT_PACKET_FRAMES;
+                fill = 0;
+            }
+        }
+        feed.packetFill = fill;
+    }
+
+    applyNetworkOutputDelay(output, channelCount, frameCount) {
+        const feed = this.networkOutput;
+        const ring = feed.delayBuffer;
+        const ringLength = feed.delayCapacity + 1;
+        const delay = feed.delaySamples;
+        const transition = feed.delayTransition;
+        const transitionFrames = 256;
+        const channels = channelCount < feed.delayChannelCount ? channelCount : feed.delayChannelCount;
+        for (let channel = 0; channel < channels; channel++) {
+            const data = output[channel];
+            const base = channel * ringLength;
+            let write = feed.delayWriteIndex;
+            for (let frame = 0; frame < frameCount; frame++) {
+                ring[base + write] = data[frame];
+                let read = write - delay;
+                if (read < 0) read += ringLength;
+                let value = ring[base + read];
+                if (transition) {
+                    let targetRead = write - transition.samples;
+                    if (targetRead < 0) targetRead += ringLength;
+                    const progress = transition.progress + frame + 1;
+                    const mix = progress < transitionFrames ? progress / transitionFrames : 1;
+                    const age = feed.delayWritten + frame + 1 - transition.samples;
+                    const available = transition.samples === 0 ? 1 : age <= 0 ? 0 : age < transitionFrames ? age / transitionFrames : 1;
+                    value += (ring[base + targetRead] * available - value) * mix;
+                }
+                data[frame] = value;
+                write++;
+                if (write === ringLength) write = 0;
+            }
+        }
+        let next = feed.delayWriteIndex + frameCount;
+        if (next >= ringLength) next -= ringLength;
+        feed.delayWriteIndex = next;
+        feed.delayWritten += frameCount;
+        if (feed.delayWritten > feed.delayCapacity + transitionFrames) feed.delayWritten = feed.delayCapacity + transitionFrames;
+        if (transition) {
+            transition.progress += frameCount;
+            if (transition.progress >= transitionFrames &&
+                (transition.samples === 0 || feed.delayWritten >= transition.samples + transitionFrames)) {
+                feed.delaySamples = transition.samples;
+                feed.delayTransition = null;
+                this.networkLocalDelayRevision++;
+                const pending = feed.delayPending;
+                feed.delayPending = null;
+                if (pending && (pending.samples !== feed.delaySamples || !pending.active)) {
+                    this.startNetworkDelayTransition(pending);
+                } else if (!transition.active && !pending?.active) {
+                    feed.delayBuffer = null;
+                }
+                this.updateNetworkRoute();
+                this.publishNetworkPaths();
+                this.postNetworkDelayApplied(transition.requestId);
+                if (pending && !feed.delayTransition) this.postNetworkDelayApplied(pending.requestId);
+            }
+        }
+    }
+
+    // Stream boundaries follow the same path as the audio being analyzed.
+    visualizerTapInputDelay() {
+        const feed = this.networkOutput;
+        if (this.visualizerTapStage() === 'send') return this.dspLatencyPlan?.tapPositions?.[this.networkSendId]?.input ?? 0;
+        return (this.dspLatencyPlan?.totalSamples ?? 0) +
+            (feed.delayBuffer ? this.outputDelaySamples + (this.visualSyncEnabled ? 0 : feed.delaySamples) : 0);
     }
 
     _matchesPowerIdentity(data) {
@@ -3223,7 +3718,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     _getEnabledPowerPluginIds() {
         const ids = [];
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin?.type === 'SectionPlugin') {
                 sectionEnabled = plugin.enabled !== false;
                 continue;
@@ -3361,13 +3856,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                 boundary.done.add(plugin.id);
             }
         }
-        const visualizerFrame = boundary.frame + (this.dspLatencyPlan?.totalSamples ?? 0);
+        const visualizerInputDelay = this.visualizerTapInputDelay();
+        const visualizerFrame = boundary.frame + visualizerInputDelay;
         for (const [tapId, entry] of this.visualizerInstances) {
             const action = ET_STREAM_BOUNDARY_ACTIONS[entry.type];
             if (!action || boundary.done.has(tapId)) continue;
             if (entry.type === 'RhythmAnalyzerPlugin') {
                 if (!this.completeRhythmStreamBoundary(boundary, tapId, entry,
-                    this.dspLatencyPlan?.totalSamples ?? 0, completedBlockSize)) pending = true;
+                    visualizerInputDelay, completedBlockSize)) pending = true;
                 continue;
             }
             if (completedBlockSize !== null) {
@@ -5402,7 +5898,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     refreshJsFallbackAdmissions() {
-        const budget = this.captureJsFallbackAdmissions(this.plugins, this.jsFallbackBudgetScratch);
+        const budget = this.captureJsFallbackAdmissions(this.executionPlugins || this.plugins, this.jsFallbackBudgetScratch);
         const changed = !this.executionAdmissionSnapshotsEqual(
             this.jsFallbackAdmissions,
             budget.admissions
@@ -5436,7 +5932,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         return admissions.get(plugin.id) !== false;
     }
 
-    captureExecutionLatencySnapshot(plugins = this.plugins, admissions = this.jsFallbackAdmissions) {
+    captureExecutionLatencySnapshot(plugins = this.executionPlugins || this.plugins, admissions = this.jsFallbackAdmissions) {
         const snapshot = new Map();
         const sampleRate = this.dspSampleRate || globalThis.sampleRate;
         for (const plugin of plugins) {
@@ -5523,6 +6019,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     refreshDspPipeline(latencySnapshot = null) {
+        this.updateNetworkRoute();
         if (!(latencySnapshot instanceof Map)) {
             this.refreshJsFallbackAdmissions();
             latencySnapshot = this.captureExecutionLatencySnapshot();
@@ -5534,7 +6031,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             return;
         }
 
-        if (this.masterBypass) return;
+        if (this.masterBypass || this.networkSendId) return;
 
         // Compensation history must keep one owner when display routing changes.
         // Individual WASM effects still run on the hybrid path; graphs without
@@ -5547,7 +6044,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const nodes = [];
         let insideSection = false;
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin.type === 'SectionPlugin') {
                 insideSection = true;
                 sectionEnabled = Boolean(plugin.enabled);
@@ -5637,7 +6134,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         // The current plan is always the history: delay lines whose delays and
         // targets are unchanged keep their queued audio across any mutation.
         const plan = this.masterBypass ? null : this.computeDspLatencyPlan(
-            this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
+            this.executionPlugins || this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
         this.dspLatencyPlan = plan;
         let removedSource = false;
         for (const [consumer, producer] of analysisSources) {
@@ -5650,10 +6147,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.noteAnalysisProducers = new Set(analysisSources.values());
         if (removedSource && !this.masterBypass) {
             this.dspLatencyPlan = this.computeDspLatencyPlan(
-                this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
+                this.executionPlugins || this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
         }
         if (this.dspLive && this.dspBinding) {
-            for (const plugin of this.plugins) {
+            for (const plugin of (this.executionPlugins || this.plugins)) {
                 if (plugin.type !== 'SFZNotePlayerPlugin') continue;
                 const entry = this.wasmInstances.get(plugin.id);
                 if (!entry?.ready) continue;
@@ -5662,6 +6159,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 if (status !== 0) this.reportDspFailure('analysis-source', `status ${status}`);
             }
         }
+        this.publishNetworkPaths();
         if (this.dspLatencyPlan) {
             this.publishDspPipelineLatency(this.dspLatencyPlan.totalSamples,
                 this.dspLive || this.dspLatencyPlan.totalSamples > 0);
@@ -5670,12 +6168,112 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
+    // Trace one tap through the same bus, channel, and compensation operations
+    // used by the hybrid renderer. A null path means that sample cannot reach
+    // the output; latency is relative to the tapped sample, not pipeline input.
+    traceNetworkPath(startIndex, tap, nodes) {
+        const channels = this.outputChannelCount;
+        const paths = Array.from({ length: 5 }, () => Array(channels).fill(null));
+        const start = nodes[startIndex];
+        if (!start) return { localSamples: null, networkSamples: null };
+        const bus = tap === 'output' ? start.outputBus : start.inputBus;
+        for (let ch = start.first; ch < start.end; ch++) paths[bus][ch] = 0;
+        let networkSamples = null;
+        for (let index = tap === 'output' ? startIndex + 1 : startIndex; index < nodes.length; index++) {
+            const node = nodes[index];
+            if (node.plugin.id === this.networkSendId) {
+                for (let ch = 0; ch < channels && ch < 2; ch++) {
+                    const value = paths[0][ch];
+                    if (value !== null && (networkSamples === null || value > networkSamples)) networkSamples = value;
+                }
+            }
+            let incoming = null;
+            for (let ch = node.first; ch < node.end; ch++) {
+                const value = paths[node.inputBus][ch];
+                if (value === null) continue;
+                const aligned = value + (node.action?.inputDelays[ch] || 0);
+                if (incoming === null || aligned > incoming) incoming = aligned;
+            }
+            if (incoming !== null) incoming += node.latency;
+            for (let ch = node.first; ch < node.end; ch++) {
+                if (node.inputBus === node.outputBus) {
+                    paths[node.outputBus][ch] = incoming;
+                    continue;
+                }
+                let destination = paths[node.outputBus][ch];
+                let source = incoming;
+                const delay = node.action?.delays[ch] || 0;
+                if (node.action?.targets[ch] === 1 && destination !== null) destination += delay;
+                if (node.action?.targets[ch] === 2 && source !== null) source += delay;
+                paths[node.outputBus][ch] = destination === null ? source : source === null ? destination
+                    : destination > source ? destination : source;
+            }
+        }
+        let localSamples = null;
+        for (let ch = 0; ch < channels; ch++) {
+            const value = paths[0][ch];
+            if (value === null) continue;
+            const delayed = value + (this.dspLatencyPlan?.outputDelays[ch] || 0);
+            if (localSamples === null || delayed > localSamples) localSamples = delayed;
+        }
+        return { localSamples, networkSamples };
+    }
+
+    publishNetworkPaths() {
+        const nodes = [];
+        let sectionEnabled = true;
+        for (const plugin of (this.executionPlugins || this.plugins)) {
+            if (plugin.type === 'SectionPlugin') { sectionEnabled = Boolean(plugin.enabled); continue; }
+            if (!plugin.enabled || !sectionEnabled) continue;
+            const bypassed = this.isPluginExecutionBypassed(plugin);
+            const selection = workletRoutingSelection(plugin.channel, this.outputChannelCount, bypassed);
+            if (!selection || !Number.isInteger(plugin.inputBus) || plugin.inputBus < 0 || plugin.inputBus > 4 ||
+                !Number.isInteger(plugin.outputBus) || plugin.outputBus < 0 || plugin.outputBus > 4) continue;
+            nodes.push({ plugin, inputBus: plugin.inputBus, outputBus: plugin.outputBus,
+                first: selection.firstChannel, end: selection.firstChannel + selection.requiredChannels,
+                latency: bypassed ? 0 : (this.executionLatencySnapshot.get(plugin.id) || 0),
+                action: this.dspLatencyPlan?.nodeActions.get(plugin.id) });
+        }
+        const taps = {};
+        for (let index = 0; index < nodes.length; index++) {
+            const node = nodes[index];
+            taps[node.plugin.id] = {
+                input: this.traceNetworkPath(index, 'input', nodes),
+                output: this.traceNetworkPath(index, 'output', nodes)
+            };
+        }
+        const send = taps[this.networkSendId]?.input ?? null;
+        const receive = taps[this.networkReceiveId]?.input ?? null;
+        const localDelaySamples = this.networkOutput.delayBuffer ? this.networkOutput.delaySamples : 0;
+        const tapKey = JSON.stringify({ send, receive, taps, outputDelaySamples: this.outputDelaySamples });
+        if (this.networkPathsTapKey !== undefined && tapKey !== this.networkPathsTapKey &&
+            this.networkPathsTapRevision === this.networkTapRevision) this.networkTapRevision++;
+        this.networkPathsTapKey = tapKey;
+        this.networkPathsTapRevision = this.networkTapRevision;
+        const visualizerTapStage = this.visualizerTapStage();
+        const key = JSON.stringify({ tapKey, localDelaySamples, visualizerTapStage });
+        if (key !== this.networkPathsKey || this.networkPathsRevision !== this.networkRouteRevision) {
+            if ((this.networkSendId !== null || this.networkReceiveId !== null) &&
+                this.networkPathsKey !== undefined && key !== this.networkPathsKey &&
+                this.networkPathsRevision === this.networkRouteRevision) {
+                this.advanceNetworkRouteRevision();
+                this.postNetworkRoute();
+            }
+            this.networkPathsKey = key;
+            this.networkPathsRevision = this.networkRouteRevision;
+            this.port.postMessage({ type: 'networkPaths', revision: this.networkRouteRevision,
+                sampleRate: this.dspSampleRate || globalThis.sampleRate,
+                tapRevision: this.networkTapRevision, outputDelaySamples: this.outputDelaySamples, localDelaySamples,
+                localDelayRevision: this.networkLocalDelayRevision, visualizerTapStage, send, receive, taps });
+        }
+    }
+
     findNoteAnalysisSources() {
         const sources = new Map();
         if (!this.dspLive || this.masterBypass) return sources;
         const active = [];
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin.type === 'SectionPlugin') {
                 sectionEnabled = Boolean(plugin.enabled);
             } else if (plugin.enabled && sectionEnabled) {
@@ -6015,7 +6613,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             frameCount > this.maxFrameCount) {
             return ET_DSP_PIPELINE_FALLBACK;
         }
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin.type !== 'RhythmAnalyzerPlugin') continue;
             const entry = this.wasmInstances.get(plugin.id);
             const delay = this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0;
@@ -6060,7 +6658,7 @@ class PluginProcessor extends AudioWorkletProcessor {
     finishDspPipelineBlock(output, combinedBuffer, outputChannelCount, blockSize, sampleRate, time) {
         let insideSection = false;
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin.type === 'SectionPlugin') {
                 insideSection = true;
                 sectionEnabled = Boolean(plugin.enabled);
@@ -6169,9 +6767,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const packet = packetView.buffer;
                 this.port.postMessage({
                     type: 'dspTelemetry',
+                    routeRevision: this.networkRouteRevision,
                     endFrame,
                     mixerEndFrame,
                     contextFrameOffset: this.telemetryContextFrameOffset,
+                    visualizerTapStage: this.visualizerTapStage(),
                     packet,
                     bytes,
                     recycle: pooled,
@@ -6252,12 +6852,13 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     normalizePluginConfig(pluginConfig, previousPlugin = null) {
         const params = pluginConfig?.parameters ?? {};
+        const networkMarker = pluginConfig?.type === 'NetworkSendPlugin' || pluginConfig?.type === 'NetworkReceivePlugin';
         this.prepareSpectrumAnalyzerContext(pluginConfig);
         return {
             ...pluginConfig,
-            inputBus: params.inputBus ?? pluginConfig?.inputBus ?? 0,
-            outputBus: params.outputBus ?? pluginConfig?.outputBus ?? 0,
-            channel: params.channel ?? pluginConfig?.channel ?? null,
+            inputBus: networkMarker ? 0 : (params.inputBus ?? pluginConfig?.inputBus ?? 0),
+            outputBus: networkMarker ? 0 : (params.outputBus ?? pluginConfig?.outputBus ?? 0),
+            channel: networkMarker ? null : (params.channel ?? pluginConfig?.channel ?? null),
             // Partial updates omit the flag; only an explicit false clears it.
             assetPending: pluginConfig?.assetPending ?? previousPlugin?.assetPending === true,
             executionCapabilities: typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__
@@ -6267,6 +6868,12 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     captureVisualizerTap(output, channelCount, frameCount, blockStartFrame) {
+        // While the L0 stage is active the final stage taps its output instead.
+        if (this.networkOutput?.delayBuffer) return;
+        this.tapVisualizerInstances(output, channelCount, frameCount, blockStartFrame);
+    }
+
+    tapVisualizerInstances(output, channelCount, frameCount, blockStartFrame) {
         if (!this.dspLive || this.visualizerInstances.size === 0 ||
             frameCount > this.maxFrameCount) return;
         const scratch = this.bufferPool?.stereo;
@@ -6286,7 +6893,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const time = blockStartFrame / (this.dspSampleRate || globalThis.sampleRate);
                 const status = entry.type === 'RhythmAnalyzerPlugin'
                     ? this.processRhythmStreamBlock(tapId, entry, ptr, 2, frameCount, time,
-                        this.dspLatencyPlan?.totalSamples ?? 0)
+                        this.visualizerTapInputDelay())
                     : this.dspBinding.instanceProcess(entry.id, ptr, 2, frameCount, time);
                 if (status !== 0) {
                     this.dspBinding.destroyInstance(entry.id);
@@ -6403,6 +7010,8 @@ class PluginProcessor extends AudioWorkletProcessor {
     // M: would applying this message be audible as a discontinuity?
     mutationDiscontinuity(data) {
         switch (data.type) {
+            case 'setNetworkReceiveSession': return true;
+            case 'setNetworkOutputLocalDelay': return false;
             case 'dspEnableTypes': {
                 if (!this.dspLive) return false;
                 const types = new Set((Array.isArray(data.types) ? data.types : [])
@@ -6421,6 +7030,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (data.type === 'updatePlugins' && data.gate === true) return true;
         if (next.outputDelaySamples !== this.outputDelaySamples) return true;
         if (next.plugins === this.plugins) return false;
+        if (next.plugins.some(plugin => plugin.type === 'NetworkSendPlugin' || plugin.type === 'NetworkReceivePlugin') ||
+            this.plugins.some(plugin => plugin.type === 'NetworkSendPlugin' || plugin.type === 'NetworkReceivePlugin')) return true;
         return this.candidatePlanDiscontinuity(next.plugins);
     }
 
@@ -6628,7 +7239,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (bypassed !== true) return false;
         let insideSection = false;
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of (this.executionPlugins || this.plugins)) {
             if (plugin.type === 'SectionPlugin') {
                 insideSection = true;
                 sectionEnabled = Boolean(plugin.enabled);
@@ -7061,6 +7672,11 @@ class PluginProcessor extends AudioWorkletProcessor {
         // including EOF packets drained before or after the transport commit.
         this.telemetryContextFrameOffset = globalThis.currentFrame - blockStart;
         this.lastBlockPowerSkipped = false;
+        this.lastBlockZeroOutput = false;
+        this.networkTapCaptured = false;
+        this.blockNetworkReceiveActive = this.networkReceiveSession.active;
+        this.blockNetworkSendId = this.networkSendId;
+        this.blockNetworkRouteRevision = this.networkTapRevision;
         if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize);
         if (inputBlockSize || outputBlockSize) this.processMidiTransport(blockStart, blockSize);
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
@@ -7071,11 +7687,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.notifySfzSampleStreamPolls(this.sfzProcessEndFrame);
         const paused = this.midiScheduler?.finishPause(this.currentFrame);
         if (paused) this.port.postMessage({ type: 'midiPauseReady', generation: paused.generation, position: paused.position });
-        if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize, true);
         if (!this.lastBlockPowerSkipped && this.hasExecutionLatencyDrift()) {
             this.refreshDspPipelineForLatencyChange();
         }
         if (this.transition.phase !== 'open') this.applyTransitionGain(outputs[0], blockStart, blockSize);
+        this.processNetworkOutputStage(outputs[0], blockStart, blockSize);
+        // The final-stage visualizer tap is part of the actual execution path, so the
+        // completed-quantum sweep for skipped instances runs after it.
+        if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize, true);
         if (this.outputReadyRequests.length !== 0) this.answerOutputReady();
         if (this.visualizerTapNeedsPump) this.pumpDspTelemetry(blockSize);
         this.finishPipelineCpuMeasurement(startedAt, blockSize);
@@ -7564,6 +8183,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 gain -= step;
                 if (gain < 0) gain = 0;
                 for (let channel = 0; channel < channelCount; channel++) output[channel][frame] *= gain;
+                if (this.networkTapCaptured) { this.networkTap[0][frame] *= gain; this.networkTap[1][frame] *= gain; }
             }
             transition.gain = gain;
             if (gain === 0 || this.lastBlockPowerSkipped) this.commitTransitionQueue();
@@ -7580,6 +8200,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (start < 0) start = 0;
             if (start > frameCount) start = frameCount;
             for (let channel = 0; channel < channelCount; channel++) output[channel].fill(0, 0, start);
+            if (this.networkTapCaptured) { this.networkTap[0].fill(0, 0, start); this.networkTap[1].fill(0, 0, start); }
             if (start === frameCount) return;
             transition.phase = 'opening';
         }
@@ -7587,6 +8208,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             gain += step;
             if (gain > 1) gain = 1;
             for (let channel = 0; channel < channelCount; channel++) output[channel][frame] *= gain;
+            if (this.networkTapCaptured) { this.networkTap[0][frame] *= gain; this.networkTap[1][frame] *= gain; }
         }
         transition.gain = gain;
         if (gain === 1) transition.phase = 'open';
@@ -7692,8 +8314,15 @@ class PluginProcessor extends AudioWorkletProcessor {
     processPipeline(inputs, outputs, parameters) {
         this.flushDeferredDspAssetStages();
         this.pollDspAssetStates();
-        const input = this._mixFrequencyPreview(inputs[0]);
         const output = outputs[0];
+        let input = this.networkReceiveId === null ? this._mixFrequencyPreview(inputs[0]) : inputs[0];
+        if (this.networkReceiveId !== null && (!input?.[0] || input[0].length === 0) && output?.[0]?.length) {
+            const frames = output[0].length;
+            if (!this.networkSilentInput || this.networkSilentInput[0].length !== frames) {
+                this.networkSilentInput = [new Float32Array(frames), new Float32Array(frames)];
+            }
+            input = this.networkSilentInput;
+        }
 
         // --- 1. Basic Checks & Early Exit ---
         // Check if input/output streams exist and have data
@@ -7724,7 +8353,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const currentFrame = this.currentFrame;
         const sampleRate = globalThis.sampleRate; // Standard way to get sample rate in AudioWorklet
         const audioLevelMonitoring = this.audioLevelMonitoring;
-        const plugins = this.plugins; // Array of plugin configurations
+        const plugins = this.executionPlugins || this.plugins; // Array of plugin configurations
         const pluginProcessors = this.pluginProcessors; // Map of compiled processor functions
         const pluginContexts = this.pluginContexts; // Map for plugin state/context
         const port = this.port; // For messaging back to the main thread
@@ -7811,6 +8440,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 }
             } else if (directive === 'zero-output-transport') {
                 this._zeroPowerOutput(output);
+                this.lastBlockZeroOutput = true;
                 power.counters.zeroOutputQuanta++;
                 power.skippedFrameCount += blockSize;
                 this._finishPowerRender(powerInputPower, 0, blockSize);
@@ -8110,6 +8740,15 @@ class PluginProcessor extends AudioWorkletProcessor {
             // Skip disabled or section-disabled plugins
             if (!plugin.enabled || (insideSection && !activeSectionEnabled)) {
                 continue;
+            }
+            if (plugin.id === this.networkSendId && blockSize <= this.networkTap[0].length) {
+                const main = busBuffers.get(0);
+                const rightOffset = outputChannelCount > 1 ? blockSize : 0;
+                for (let frame = 0; frame < blockSize; frame++) {
+                    this.networkTap[0][frame] = main[frame];
+                    this.networkTap[1][frame] = main[rightOffset + frame];
+                }
+                this.networkTapCaptured = true;
             }
             let executionBypassed = this.isPluginExecutionBypassed(plugin);
 
@@ -8625,6 +9264,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                         packet.bytes.set(frame.bytes, 16);
                         port.postMessage({ type: 'dspTelemetry', packet: packet.bytes.buffer,
                             bytes: 16 + frame.bytes.length, droppedFrames: 0,
+                            routeRevision: this.networkRouteRevision,
                             endFrame: globalThis.currentFrame + blockSize }, [packet.bytes.buffer]);
                     }
                     analysisContext.multiresSpectrum.release(analysisContext.multiresFrame);
@@ -8651,13 +9291,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                         messageQueue.clear();
                     }
                     // Send current message immediately
-                    port.postMessage({ type: this.visualSyncEnabled ? 'processBufferSynced' : 'processBuffer', pluginId: plugin.id, measurements, endFrame: globalThis.currentFrame + blockSize });
+                    port.postMessage({ type: this.visualSyncEnabled ? 'processBufferSynced' : 'processBuffer', pluginId: plugin.id, measurements, routeRevision: this.networkRouteRevision, endFrame: globalThis.currentFrame + blockSize });
                     globalThis.MultiresSpectrum?.releaseMeasurements(measurements);
                     lastMessageTime = currentTimeMs; // Update last sent time
                 } else {
                     // Queue the message if interval hasn't passed
                     globalThis.MultiresSpectrum?.releaseMeasurements(messageQueue.get(plugin.id)?.measurements);
-                    messageQueue.set(plugin.id, { measurements, endFrame: globalThis.currentFrame + blockSize });
+                    messageQueue.set(plugin.id, { measurements, routeRevision: this.networkRouteRevision, endFrame: globalThis.currentFrame + blockSize });
                 }
                 // Clear measurements after handling to avoid re-sending.
                 result.measurements = null;

@@ -40,9 +40,13 @@ test('dialogs fit small viewports and their last action remains reachable', asyn
       for (const mobile of [false, true]) {
         for (const [overlay, dialog] of [...dialogs, ['dialog-overlay', 'dialog-content']]) {
           const measurement = dialog === 'dialog-content';
+          const longContent = '<div style="height:900px;min-height:900px;flex-shrink:0">Long content</div>';
+          const content = dialog === 'audio-config-dialog'
+            ? `<div class="audio-config-content"><div class="audio-config-column">${longContent}</div></div>`
+            : longContent;
           await page.setContent(`<body class="${mobile ? 'layout-mobile' : 'layout-desktop'}">
             <div class="${overlay}"><section class="${dialog}" id="dialog">
-              <h2>Settings</h2><div style="height:900px;min-height:900px;flex-shrink:0">Long content</div>
+              <h2>Settings</h2>${content}
               <div class="dialog-buttons" style="flex-shrink:0"><button id="last">Apply</button></div>
             </section></div></body>`);
           await page.addStyleTag({ content: measurement
@@ -62,7 +66,9 @@ test('dialogs fit small viewports and their last action remains reachable', asyn
             assert.ok(bounds.x >= -1 && bounds.y >= -1, `${label}: top/left`);
             assert.ok(bounds.x + bounds.width <= viewport.width + 1, `${label}: right`);
             assert.ok(bounds.y + bounds.height <= viewport.height + 1, `${label}: bottom`);
-            await page.locator('#last').click({ timeout: 2000 });
+            await page.locator('#last').click({ timeout: 2000 }).catch(error => {
+              throw new Error(`${label}: last action is unreachable`, { cause: error });
+            });
             const action = await page.locator('#last').boundingBox();
             assert.ok(action.y >= 0 && action.y + action.height <= viewport.height + 1, `${label}: action`);
           }
@@ -108,29 +114,6 @@ test('anchored dialogs stay on screen after opening at the bottom right and resi
         assert.ok(bounds.y + bounds.height <= viewport.height + 1, selector);
       }
     }
-  } finally {
-    await browser.close();
-  }
-});
-
-test('audio settings cancel and apply can be reached with enlarged display', async () => {
-  const source = read('../../js/electron/audioIntegration.js');
-  const html = source.split('const dialogHTML = `')[1].split('`;')[0]
-    .replace(/\$\{t\('([^']+)'\)\}/g, '$1')
-    .replace(/\$\{[^}]+\}/g, '');
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport: { width: 480, height: 270 } });
-    await page.setContent(`<div class="modal-overlay">${html}</div>`);
-    await page.addStyleTag({ content: css });
-    for (const button of ['#cancel-button', '#apply-button']) {
-      await page.locator(button).click();
-      const bounds = await page.locator(button).boundingBox();
-      assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 270);
-    }
-    await page.locator('#input-device').focus();
-    const first = await page.locator('#input-device').boundingBox();
-    assert.ok(first.y >= 0 && first.y + first.height <= 270);
   } finally {
     await browser.close();
   }

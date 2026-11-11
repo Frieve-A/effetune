@@ -1000,6 +1000,7 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
               .map(device => ({
                 deviceId: device.deviceId,
                 kind: device.kind,
+                groupId: device.groupId,
                 label: device.label || (device.kind === 'audioinput' ? 'Microphone ' : 'Speaker ') + device.deviceId.substring(0, 5)
               }));
             
@@ -1123,7 +1124,7 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
       if (Object.hasOwn(stored, 'browser')) current.browser = stored.browser;
       else delete current.browser;
       // Network hosts own their independently saved permissions and identities.
-      for (const key of ['networkMusicDeviceId', 'networkMusicSharing', 'networkMusicSources', 'networkMusicGateway', 'networkMusicManualDevices', 'upnpAvRemoteControl', 'upnpAvDeviceId', 'airPlayReceiver', 'remoteControlConnection']) {
+      for (const key of ['networkMusicDeviceId', 'networkMusicSharing', 'networkMusicSources', 'networkMusicGateway', 'networkMusicManualDevices', 'upnpAvRemoteControl', 'upnpAvDeviceId', 'airPlayReceiver', 'remoteControlConnection', 'networkOutput']) {
         if (Object.hasOwn(stored, key)) current[key] = stored[key];
         else delete current[key];
       }

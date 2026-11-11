@@ -92,11 +92,11 @@ public:
       queues_ = std::make_unique<Queues>();
     constexpr double pi = 3.141592653589793;
     const double omega = 2.0 * pi * 2000.0 / hostRate_,
-                 r = rhythm_d::portableExp(-1.0 / (.006 * hostRate_));
-    const double amplitude = .31622776601683794 * rhythm_d::portableExp(.0005 / .006);
-    clickA_ = 2.0 * r * rhythm_d::portableCos(omega);
+                 r = dsp::portableExp(-1.0 / (.006 * hostRate_));
+    const double amplitude = .31622776601683794 * dsp::portableExp(.0005 / .006);
+    clickA_ = 2.0 * r * dsp::portableCos(omega);
     clickB_ = r * r;
-    clickStart_ = -amplitude * rhythm_d::portableSin(omega) / r;
+    clickStart_ = -amplitude * dsp::portableSin(omega) / r;
     clickAttack_ = static_cast<std::uint32_t>(std::ceil(.0005 * hostRate_));
     clickLength_ = static_cast<std::uint32_t>(std::ceil(.06 * hostRate_));
     minimum_ = maximum_ = 0.0;
@@ -299,7 +299,7 @@ public:
     for (std::uint32_t block = 0u; block < 16u; ++block) {
       for (std::uint32_t i = 0u; i < frames; ++i)
         audio[i] = audio[frames + i] =
-            static_cast<float>(.1 * rhythm_d::portableSin((block * frames + i) * .1));
+            static_cast<float>(.1 * dsp::portableSin((block * frames + i) * .1));
       process(audio.data(), 2u, frames, {static_cast<double>(block * frames) / hostRate_});
     }
     reset();

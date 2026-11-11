@@ -10,6 +10,12 @@ function requestResult(request) {
     });
 }
 
+// Records measured through the effect pipeline already include its correction, so
+// they must never feed correction design (Room EQ, XTC, speaker IR selection).
+function isUncorrectedMeasurement(measurement) {
+    return measurement?.effectPipeline === undefined;
+}
+
 function isMultiChannelMeasurement(measurement) {
     return Array.isArray(measurement?.outputChannels) && measurement.outputChannels.length > 1;
 }
@@ -78,7 +84,7 @@ export class MeasurementStore {
         const transaction = this.database.transaction([MEASUREMENT_STORE], 'readonly');
         const records = await requestResult(transaction.objectStore(MEASUREMENT_STORE).getAll());
         records.sort((left, right) => String(right.timestamp || '').localeCompare(String(left.timestamp || '')));
-        this.measurements = records;
+        this.measurements = records.filter(isUncorrectedMeasurement);
         return this.listMeasurements();
     }
 
@@ -122,7 +128,8 @@ export class MeasurementStore {
 
     async _getStoredMeasurement(id) {
         const transaction = this.database.transaction([MEASUREMENT_STORE], 'readonly');
-        return await requestResult(transaction.objectStore(MEASUREMENT_STORE).get(id)) || null;
+        const measurement = await requestResult(transaction.objectStore(MEASUREMENT_STORE).get(id));
+        return measurement && isUncorrectedMeasurement(measurement) ? measurement : null;
     }
 
     async _getStoredImpulseResponses(id) {
@@ -164,7 +171,8 @@ export class MeasurementStore {
                 ? normalizeVirtualImpulseResponse(record, id, pointId)
                 : null;
         }
-        if (isMultiChannelMeasurement(await this._getStoredMeasurement(id))) return null;
+        const measurement = await this._getStoredMeasurement(id);
+        if (!measurement || isMultiChannelMeasurement(measurement)) return null;
         const transaction = this.database.transaction([IR_STORE], 'readonly');
         return await requestResult(transaction.objectStore(IR_STORE).get([id, pointId])) || null;
     }
@@ -189,7 +197,8 @@ export class MeasurementStore {
                     : [];
             });
         }
-        if (isMultiChannelMeasurement(await this._getStoredMeasurement(id))) return [];
+        const measurement = await this._getStoredMeasurement(id);
+        if (!measurement || isMultiChannelMeasurement(measurement)) return [];
         return this._getStoredImpulseResponses(id);
     }
 

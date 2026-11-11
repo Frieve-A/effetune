@@ -79,6 +79,7 @@ jobs:
           ):
               raise SystemExit("unexpected npm project URLs")
           expected_files = [
+              "bin/",
               "dist/",
               "LICENSE",
               "README.md",

@@ -965,11 +965,13 @@ test('measurement analysis tabs preserve selection, calculation and exports in t
                         slider: Number(input.slider.value), valid: input.validity.valid };
                 }) };
         });
-        const assertImpulseView = async () => {
+        const assertImpulseView = async ({ fractional = false } = {}) => {
             const view = await readImpulseView();
             for (const field of view.fields) {
-                assert.equal(field.number, field.value); assert.equal(field.applied, field.value);
-                assert.equal(field.slider, field.value); assert.equal(field.valid, true);
+                assert.equal(field.number, fractional ? Number(field.value.toFixed(2)) : field.value);
+                assert.equal(field.applied, field.value);
+                assert.ok(Math.abs(field.slider - field.value) < 1e-9);
+                assert.equal(field.valid, true);
             }
             return view;
         };
@@ -977,9 +979,22 @@ test('measurement analysis tabs preserve selection, calculation and exports in t
         const fullView = await assertImpulseView();
         assert.deepEqual([fullView.min, fullView.max], [-2.67, 338.67]);
         assert.ok(fullView.min <= fullView.observedMin && fullView.max >= fullView.observedMax);
-        await page.locator('#impulseResponseZoomIn').click(); await assertImpulseView();
-        const irCanvas = page.locator('#impulseResponseGraph'); await irCanvas.hover(); await page.mouse.wheel(0, -100);
-        await assertImpulseView();
+        await page.locator('#impulseResponseZoomIn').click();
+        const beforeWheel = await assertImpulseView();
+        const irCanvas = page.locator('#impulseResponseGraph');
+        const cursor = await page.evaluate(() => {
+            const p = window.analysisFixture.ui.analysisController.plots.impulse;
+            const rect = p.canvas.getBoundingClientRect();
+            const left = rect.left + p.plot.left;
+            const x = Math.round(left + p.plot.width * 0.23);
+            return { x, y: Math.round(rect.top + rect.height / 2), fraction: (x - left) / p.plot.width };
+        });
+        await page.mouse.move(cursor.x, cursor.y);
+        await page.mouse.wheel(0, -100);
+        await page.waitForFunction(min => window.analysisFixture.ui.analysisController.settings.impulse.xMin > min, beforeWheel.min);
+        const afterWheel = await assertImpulseView({ fractional: true });
+        const timeAtCursor = view => view.min + (view.max - view.min) * cursor.fraction;
+        assert.ok(Math.abs(timeAtCursor(afterWheel) - timeAtCursor(beforeWheel)) < 1e-4);
         const pan = await page.evaluate(() => {
             const c = window.analysisFixture.ui.analysisController, p = c.plots.impulse;
             Object.assign(c.settings.impulse, { yMin: -0.000001, yMax: 0.000001 }); c.validateSettings('impulse'); c.syncControls('impulse'); c.draw();

@@ -168,31 +168,18 @@ export async function createPluginProcessorHost(sampleRate, channelCount) {
     return new PluginProcessorHost(capturedProcessorClass, { channelCount });
 }
 
-function validateSnapshot(snapshot) {
+// Validates the offline-processing part shared by 'analyze' and 'render' requests.
+function validateProcessingSnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') throw new TypeError('Analyzer snapshot is missing');
-    const { sampleRate, channelCount, inputChannel, outputChannels } = snapshot;
+    const { sampleRate, channelCount } = snapshot;
     if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0) {
         throw new TypeError('Analyzer sample rate is invalid');
     }
     if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
         throw new TypeError('Analyzer channel count is invalid');
     }
-    if (!Number.isInteger(inputChannel) || inputChannel < 0 || inputChannel >= channelCount) {
-        throw new TypeError('Analyzer input channel is invalid');
-    }
-    if (!Array.isArray(outputChannels) || outputChannels.length < 1 || outputChannels.length > 4 ||
-        new Set(outputChannels).size !== outputChannels.length ||
-        outputChannels.some(channel => !Number.isInteger(channel) || channel < 0 || channel >= channelCount)) {
-        throw new TypeError('Analyzer output channels are invalid');
-    }
     if (!Array.isArray(snapshot.plugins) || !Array.isArray(snapshot.processors)) {
         throw new TypeError('Analyzer pipeline snapshot is invalid');
-    }
-    const normalizedMeasurement = normalizeMeasurementSettings(snapshot.measurementSettings);
-    if (!snapshot.measurementSettings || Object.entries(normalizedMeasurement).some(
-        ([key, value]) => snapshot.measurementSettings[key] !== value
-    )) {
-        throw new TypeError('Analyzer measurement settings are invalid');
     }
     const expectedBypassPluginIds = snapshot.expectedWasmBypassPluginIds ?? [];
     const expectedBypassReasons = snapshot.expectedWasmBypassReasons ?? [];
@@ -201,6 +188,25 @@ function validateSnapshot(snapshot) {
         expectedBypassReasons.some(entry => !entry || typeof entry.reason !== 'string' ||
             !expectedBypassPluginIds.includes(entry.pluginId))) {
         throw new TypeError('Analyzer expected WASM bypass reasons are invalid');
+    }
+}
+
+function validateAnalyzerSnapshot(snapshot) {
+    validateProcessingSnapshot(snapshot);
+    const { channelCount, inputChannel, outputChannels } = snapshot;
+    if (!Number.isInteger(inputChannel) || inputChannel < 0 || inputChannel >= channelCount) {
+        throw new TypeError('Analyzer input channel is invalid');
+    }
+    if (!Array.isArray(outputChannels) || outputChannels.length < 1 || outputChannels.length > 4 ||
+        new Set(outputChannels).size !== outputChannels.length ||
+        outputChannels.some(channel => !Number.isInteger(channel) || channel < 0 || channel >= channelCount)) {
+        throw new TypeError('Analyzer output channels are invalid');
+    }
+    const normalizedMeasurement = normalizeMeasurementSettings(snapshot.measurementSettings);
+    if (!snapshot.measurementSettings || Object.entries(normalizedMeasurement).some(
+        ([key, value]) => snapshot.measurementSettings[key] !== value
+    )) {
+        throw new TypeError('Analyzer measurement settings are invalid');
     }
     const warmupSamples = snapshot.warmupSamples ?? 0;
     if (!Number.isSafeInteger(warmupSamples) || warmupSamples < 0 ||
@@ -380,6 +386,14 @@ async function resetProcessorState(host) {
     if (acknowledgement.ok !== true) {
         throw new AnalysisWorkerError('reset-failed', 'Processor state could not be reset');
     }
+}
+
+// Shared by 'analyze' and 'render': a host loaded with the snapshot pipeline in a reset state.
+async function preparePipelineHost(snapshot) {
+    const host = await createPluginProcessorHost(snapshot.sampleRate, snapshot.channelCount);
+    const warnings = await prepareProcessor(host, snapshot);
+    await resetProcessorState(host);
+    return { host, warnings };
 }
 
 async function queryReportedLatency(host) {
@@ -767,15 +781,13 @@ function addWaterfallAnalysis(result) {
 
 export async function runAnalysisRequest(request, post = () => {}) {
     const snapshot = request?.snapshot;
-    validateSnapshot(snapshot);
+    validateAnalyzerSnapshot(snapshot);
     const token = {
         activationEpoch: request.activationEpoch,
         runGeneration: request.runGeneration
     };
     postProgress(post, token, 'preparing');
-    const host = await createPluginProcessorHost(snapshot.sampleRate, snapshot.channelCount);
-    const preparationWarnings = await prepareProcessor(host, snapshot);
-    await resetProcessorState(host);
+    const { host, warnings: preparationWarnings } = await preparePipelineHost(snapshot);
 
     for (let processed = 0; processed < (snapshot.warmupSamples || 0);
         processed += ANALYSIS_QUANTUM_SIZE) {
@@ -805,6 +817,47 @@ export async function runAnalysisRequest(request, post = () => {}) {
     }));
 }
 
+// Renders N-channel input through the snapshot pipeline. The reported latency is
+// compensated by processing extra zeros after the input and dropping that many leading
+// output samples, so the output is time-aligned with the input and has the same length.
+export async function runRenderRequest(request) {
+    const snapshot = request?.snapshot;
+    validateProcessingSnapshot(snapshot);
+    const { channelCount } = snapshot;
+    const input = request.input;
+    const frameCount = Array.isArray(input) && input[0] instanceof Float32Array ? input[0].length : 0;
+    if (frameCount === 0 || input.length !== channelCount ||
+        input.some(channel => !(channel instanceof Float32Array) || channel.length !== frameCount)) {
+        throw new TypeError('Render input must hold one equal-length buffer per pipeline channel');
+    }
+    const { host, warnings } = await preparePipelineHost(snapshot);
+    const reportedLatency = await queryReportedLatency(host);
+    const totalFrames = frameCount + reportedLatency;
+    const channels = Array.from({ length: channelCount }, (_, channel) => channel);
+    const output = channels.map(() => new Float32Array(frameCount));
+    for (let processed = 0; processed < totalFrames; processed += ANALYSIS_QUANTUM_SIZE) {
+        const block = channels.map(channel => {
+            const samples = new Float32Array(ANALYSIS_QUANTUM_SIZE);
+            if (processed < frameCount) {
+                samples.set(input[channel].subarray(processed, processed + ANALYSIS_QUANTUM_SIZE));
+            }
+            return samples;
+        });
+        const rendered = host.processBlock(block);
+        const remaining = totalFrames - processed;
+        const validFrames = remaining < ANALYSIS_QUANTUM_SIZE ? remaining : ANALYSIS_QUANTUM_SIZE;
+        assertFiniteSelectedOutput(rendered, channels, validFrames);
+        const firstFrame = reportedLatency > processed ? reportedLatency - processed : 0;
+        for (const channel of channels) {
+            output[channel].set(
+                rendered[channel].subarray(firstFrame, validFrames),
+                processed + firstFrame - reportedLatency
+            );
+        }
+    }
+    return { output, reportedLatency, warnings };
+}
+
 function collectTransferBuffers(value, buffers = new Set()) {
     if (ArrayBuffer.isView(value)) {
         buffers.add(value.buffer);
@@ -817,12 +870,19 @@ function collectTransferBuffers(value, buffers = new Set()) {
 export function installAnalysisWorker(scope = globalThis) {
     scope.onmessage = async event => {
         const request = event.data;
-        if (request?.type !== 'analyze') return;
-        const token = {
-            activationEpoch: request.activationEpoch,
-            runGeneration: request.runGeneration
-        };
+        if (request?.type !== 'analyze' && request?.type !== 'render') return;
+        const token = request.type === 'render'
+            ? { requestId: request.requestId }
+            : { activationEpoch: request.activationEpoch, runGeneration: request.runGeneration };
         try {
+            if (request.type === 'render') {
+                const rendered = await runRenderRequest(request);
+                scope.postMessage(
+                    { type: 'rendered', ...token, ...rendered },
+                    collectTransferBuffers(rendered.output)
+                );
+                return;
+            }
             const result = await runAnalysisRequest(request, message => scope.postMessage(message));
             scope.postMessage({ type: 'result', ...token, result }, collectTransferBuffers(result));
         } catch (error) {

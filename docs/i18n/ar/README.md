@@ -106,7 +106,7 @@
 
 لمعالجة الصوت من خدمات البث (Spotify، YouTube Music، إلخ):
 
-في تطبيق سطح المكتب، جرّب أولًا [المتصفح المدمج](#المتصفح-المدمج-في-تطبيق-سطح-المكتب). لاستخدام تطبيق بث مستقل أو مصدر لا يستطيع المتصفح المدمج تشغيله، اتبع إعداد جهاز الصوت أدناه.
+في تطبيق سطح المكتب، جرّب أولًا [المتصفح المدمج](#المتصفح-المدمج-في-تطبيق-سطح-المكتب). لاستخدام تطبيق بث مستقل أو مصدر لا يستطيع المتصفح المدمج تشغيله، يمكن لتطبيق سطح المكتب على Windows التقاط الصوت من التطبيقات الأخرى مباشرةً: في **إعدادات الصوت**، اضبط **جهاز الإخراج** على جهاز غير جهاز الإخراج الافتراضي في Windows (مثل USB DAC)، واضبط **جهاز الإدخال** على **System Audio (صوت التطبيقات الأخرى)**. في تطبيق الويب أو على macOS أو عند وجود جهاز إخراج واحد فقط، اتبع إعداد جهاز الصوت الافتراضي أدناه.
 
 1. المتطلبات:
    - تثبيت جهاز صوتي افتراضي (مثل VB Cable، Voice Meeter، أو ASIO Link Tool)
@@ -524,6 +524,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Others | Oscillator | مولد نغمات وضوضاء اختبار لفحص السماعات أو سماعات الرأس | [تفاصيل](plugins/others.md#oscillator) |
 | Others | SoundFont Note Player | يعزف النغمات المكتشفة باستخدام SoundFont SF2/SF3 وآلات SFZ | [تفاصيل](plugins/others.md#sfz-note-player) |
 | Others | SoundFont Player | يشغّل MIDI باستخدام SoundFont SF2/SF3 أو آلات SFZ، مع 16 قناة SF2/SF3 مستقلة | [تفاصيل](plugins/others.md#soundfont-player) |
+| Control | Live Audio Receive | يبدأ معالجة البث الحي القادم من EffeTune آخر من هذا الموضع | [تفاصيل](plugins/control.md#live-audio-receive) |
+| Control | Live Audio Send | يرسل الصوت عند هذا الموضع إلى إخراج الشبكة مع متابعة المؤثرات المحلية | [تفاصيل](plugins/control.md#live-audio-send) |
 | Control | Section | يجمع التأثيرات بحيث يمكن تجاوز قسم كامل أو إعادته | [تفاصيل](plugins/control.md) |
 
 ## المعلومات التقنية

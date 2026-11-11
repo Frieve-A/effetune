@@ -11,7 +11,7 @@
 
 .ir-library-dialog button {
     box-sizing: border-box;
-    min-height: 26px;
+    min-height: var(--et-control-height-field);
     padding: 4px 10px;
     border: 1px solid var(--et-surface-32);
     border-radius: 4px;
@@ -93,13 +93,18 @@
 }
 
 .ir-library-controls {
+    --ir-library-control-height: 30px;
     margin-top: 12px;
+}
+
+.ir-library-controls button {
+    min-height: var(--ir-library-control-height);
 }
 
 .ir-library-controls input[type="search"],
 .ir-library-controls select {
     box-sizing: border-box;
-    min-height: 30px;
+    min-height: var(--ir-library-control-height);
     padding: 4px 8px;
     border: 1px solid var(--et-surface-28);
     border-radius: 4px;

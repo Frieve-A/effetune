@@ -6,7 +6,7 @@ import { CHANNEL_COLORS, channelColor } from '../channel-colors.js';
 import { resolveAnalysisRecord, getAnalysisCapabilities, getValidHarmonicAnalysis, resolveDisplayedResponse,
     resolveDisplayedChannelCurves, resolveResponseSweepBand, aggregateLevelWarnings } from '../measurement-model.js';
 import { responseReferenceDb } from '../response-normalization.js';
-import { findImpulsePeak, getImpulseTimeBounds, clampImpulseView } from './impulse-response-plot.js';
+import { findImpulsePeak, getImpulseTimeBounds, clampImpulseView, zoomImpulseView } from './impulse-response-plot.js';
 import { AnalysisPlot, distortionValue } from './analysis-plot.js';
 import { copyGraphImage } from './graph-image-copy.js';
 import { WATERFALL_VIEW_DEFAULTS } from './waterfall-surface.js';
@@ -153,7 +153,15 @@ export default class AnalysisController {
             this.setImpulseView(minimum + s.origin + Math.max(0, maximum - minimum - duration) * Number(event.target.value) / 1000, duration);
         });
         const canvas = this.plots.impulse.canvas;
-        canvas.addEventListener('wheel', event => { event.preventDefault(); this.zoomImpulse(event.deltaY < 0 ? 0.8 : 1.25); }, { passive: false });
+        canvas.addEventListener('wheel', event => {
+            const { state, plot } = this.plots.impulse;
+            if (!event.deltaY || !state || !plot) return;
+            const rect = canvas.getBoundingClientRect();
+            const fraction = (event.clientX - rect.left - plot.left) / plot.width;
+            if (fraction < 0 || fraction > 1) return;
+            event.preventDefault();
+            this.zoomImpulse(event.deltaY < 0 ? 0.8 : 1.25, fraction);
+        }, { passive: false });
         canvas.addEventListener('pointerdown', event => {
             const plot = this.plots.impulse, state = plot.state;
             if (event.button !== 0 || !this.record || !state || !plot.plot) return;
@@ -895,21 +903,29 @@ export default class AnalysisController {
         this.syncControls(tab); this.refresh();
     }
 
-    zoomImpulse(factor) {
+    zoomImpulse(factor, fraction) {
         if (!this.record) return;
         const s = this.settings.impulse;
         const oldDuration = s.xMax - s.xMin;
-        this.setImpulseView(s.xMin + s.origin + oldDuration * (1 - factor) / 2, oldDuration * factor);
+        const start = s.xMin + s.origin;
+        if (fraction === undefined) {
+            this.setImpulseView(start + oldDuration * (1 - factor) / 2, oldDuration * factor);
+        } else {
+            this.setImpulseView(start, oldDuration, { factor, fraction });
+        }
     }
 
-    setImpulseView(startMs, durationMs) {
+    setImpulseView(startMs, durationMs, zoom) {
         const bounds = getImpulseTimeBounds(this.record);
         if (!bounds) return;
         const s = this.settings.impulse;
         const [minimum] = this.controlRange('impulse', 'xMin'), [, maximum] = this.controlRange('impulse', 'xMax');
-        const view = clampImpulseView(startMs, durationMs, { ...bounds, minMs: minimum + s.origin, maxMs: maximum + s.origin });
+        const viewportBounds = { ...bounds, minMs: minimum + s.origin, maxMs: maximum + s.origin };
+        const view = zoom ? zoomImpulseView(startMs, durationMs, zoom.factor, zoom.fraction, viewportBounds)
+            : clampImpulseView(startMs, durationMs, viewportBounds);
+        if (zoom && view.durationMs === durationMs) return;
         s.xMin = view.startMs - s.origin; s.xMax = s.xMin + view.durationMs;
-        this.validateSettings('impulse');
+        if (!zoom) this.validateSettings('impulse');
         this.syncControls('impulse'); this.draw();
     }
 

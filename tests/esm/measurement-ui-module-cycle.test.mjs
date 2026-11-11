@@ -473,6 +473,8 @@ test('showScreen cleans up only when leaving an audio-active screen', () => {
     querySelector: () => null,
     body: { classList: { contains: () => false } }
   };
+  const originalWindow = globalThis.window;
+  globalThis.window = { scrollTo: () => {} };
   try {
     const manager = {
       currentScreen: 'levelAdjustmentScreen',
@@ -491,6 +493,7 @@ test('showScreen cleans up only when leaving an audio-active screen', () => {
     assert.equal(manager.cleanupCalls, 2);
   } finally {
     globalThis.document = originalDocument;
+    globalThis.window = originalWindow;
   }
 });
 

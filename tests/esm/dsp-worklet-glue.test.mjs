@@ -757,6 +757,7 @@ test('SFZ analysis links require an unchanged upstream note input and survive di
   processor.wasmInstances.set(2, { id: 102, ready: true });
   processor.wasmInstances.set(3, { id: 103, ready: true });
   processor.plugins = [producer, display, consumer];
+  processor.updateNetworkRoute();
   processor.rebuildDspLatencyPlan(new Map([[1, 0], [2, 0], [3, 0]]));
   assert.equal(processor.isDisplayOnlyDsp(producer), false);
   assert.equal(processor.isDisplayOnlyDsp(display), true);
@@ -777,6 +778,7 @@ test('SFZ analysis links require an unchanged upstream note input and survive di
     Object.assign(display, { type: 'LevelMeterPlugin', inputBus: 0 });
     processor.wasmInstances.get(1).ready = true;
     processor.plugins = [producer, display, consumer];
+    processor.updateNetworkRoute();
     mutate();
     processor.rebuildDspLatencyPlan(new Map([[1, 0], [2, 0], [3, 0]]));
     assert.deepEqual(harness.binding.calls.filter(call => call[0] === 'instanceSetAnalysisSource').at(-1),
@@ -785,6 +787,7 @@ test('SFZ analysis links require an unchanged upstream note input and survive di
   Object.assign(producer, { inputBus: 0, channel: 'A', enabled: true, parameters: { mn: 28, mx: 91 } });
   Object.assign(display, { type: 'LevelMeterPlugin', inputBus: 0 });
   processor.plugins = [producer, display, consumer];
+  processor.updateNetworkRoute();
   processor.rebuildDspLatencyPlan(new Map([[1, 32], [2, 0], [3, 0]]));
   assert.equal(processor.noteAnalysisProducers.size, 0, 'Unequal aligned inputs must unlink');
 });
@@ -3614,6 +3617,8 @@ test('Frequency Shifter capacity bypass reports zero latency and restores it on 
 test('worklet transfers telemetry packets, accepts pool returns, and falls back after memory growth', async () => {
   const binding = createBinding({ telemetryBytes: [32], telemetryDroppedFrames: 4 });
   const harness = await createWorkletHarness({ binding });
+  // Establish the initial network route first; a route change drains queued telemetry.
+  harness.processor.updateNetworkRoute();
   await harness.send({ type: 'dspModule', bytes: new ArrayBuffer(16) });
   assert.equal(harness.factories[0].payload.byteLength, 16);
   assert.equal(harness.processor.dspPacketPool.length, 3);
@@ -7618,6 +7623,7 @@ test('visual sync tap distances follow serial latency and disabled sections', as
   h.processor.plugins = [pluginConfig({ id: 1 }), pluginConfig({ id: 2 }),
     pluginConfig({ id: 3, enabled: false }),
     pluginConfig({ id: 4, type: 'SectionPlugin', enabled: false }), pluginConfig({ id: 5 })];
+  h.processor.updateNetworkRoute();
   h.processor.rebuildDspLatencyPlan(new Map([[1, 64], [2, 128], [3, 999], [5, 999]]));
   const message = messagesOf(h.posts, 'dspLatency').at(-1).message;
   assert.equal(message.samples, 192);
@@ -7634,6 +7640,7 @@ test('visual sync tap distances follow serial latency and disabled sections', as
 test('latency telemetry identifies recreated WASM analyzers even when their delays are unchanged', async () => {
   const h = await createWorkletHarness();
   h.processor.plugins = [pluginConfig({ id: 7 })];
+  h.processor.updateNetworkRoute();
   h.processor.dspLive = true;
   h.processor.wasmInstances.set(7, { id: 100, ready: true });
   h.processor.rebuildDspLatencyPlan(new Map([[7, 0]]));

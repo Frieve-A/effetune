@@ -51,7 +51,10 @@ test('real header and sole Player retain their geometry and destination ownershi
         import { StateManager } from './js/ui/audio-player/state-manager.js';
         import { NetworkMusicController } from './js/network-music/controller.js';
         import { NetworkMusicView } from './js/network-music/view.js';
+        import { UIManager } from './js/ui-manager.js';
+        import { openMusicFile } from './js/electron/presetIntegration.js';
         const commands = [];
+        const localFiles = [];
         const notifications = [];
         const messages = [];
         const local = { playbackManager: {}, contextManager: {} };
@@ -62,7 +65,12 @@ test('real header and sole Player retain their geometry and destination ownershi
           t: key => 'JA:' + key, setError: (...args) => notifications.push(args),
           showTransientMessage: (...args) => messages.push(args)
         };
-        window.electronAPI = { remoteClient: { getConnection: async () => ({ registered: false }) } };
+        window.electronAPI = { remoteClient: { getConnection: async () => ({ registered: false }) },
+          openPlaybackSelection: async () => ({ accepted: true, kind: 'files', descriptors: [{ path: 'song.flac' }] }) };
+        window.electronIntegration = { isElectronEnvironment: () => true, openMusicFile: () => openMusicFile(true) };
+        uiManager.audioManager = { isAndroid: false };
+        local.loadFiles = (files, append) => localFiles.push({ files, append });
+        uiManager.createAudioPlayer = UIManager.prototype.createAudioPlayer;
         local.ui = new AudioPlayerUI(local);
         local.ui.createPlayerUI();
         const container = local.ui.container;
@@ -75,8 +83,8 @@ test('real header and sole Player retain their geometry and destination ownershi
         controller.applyState({ players: [{ id: 'room', name: 'Living room' }], libraries: [], sharing: {} });
         const view = uiManager.networkMusicView = new NetworkMusicView({ controller, uiManager });
         view.mount();
-        document.getElementById('openMusicButton').addEventListener('click', () => controller.playFiles(['song.flac']));
-        window.fixture = { local, controller, view, commands, notifications, messages, api, container };
+        UIManager.prototype.initOpenMusicButton.call(uiManager);
+        window.fixture = { local, controller, view, commands, localFiles, notifications, messages, api, container };
       `
     },
     bundle: true, write: false, format: 'iife', platform: 'browser'
@@ -109,8 +117,13 @@ test('real header and sole Player retain their geometry and destination ownershi
       assert.deepEqual(await page.evaluate(() => fixture.notifications), [['networkMusic.error', true]]);
       assert.equal(await page.evaluate(() => fixture.messages.length), 1, 'failed discovery must not show success feedback');
       await page.evaluate(() => { fixture.notifications.length = 0; });
+      await page.locator('#openMusicButton').click();
+      await page.waitForFunction(() => fixture.localFiles.length === 1);
+      assert.deepEqual(await page.evaluate(() => fixture.localFiles), [{ files: [{ path: 'song.flac' }], append: false }]);
       await page.selectOption('.network-playback-target select', 'room');
       await page.waitForFunction(() => document.querySelector('.track-name')?.textContent === 'Artist - Remote song');
+      assert.deepEqual(await page.evaluate(() => fixture.commands), [], 'selecting a destination must not start playback');
+      assert.equal(await page.evaluate(() => fixture.localFiles.length), 1);
       const renamedPlayer = await page.evaluate(() => {
         const { controller, view, commands } = fixture;
         const playback = view.playbackAdapter;
@@ -156,10 +169,9 @@ test('real header and sole Player retain their geometry and destination ownershi
         await page.screenshot({ path: `${process.env.NETWORK_MUSIC_SCREENSHOT_DIR}/network-player-${width}.png`, fullPage: true });
       }
       assert.ok(geometry.select.left >= 0 && geometry.open.right <= width);
-      if (mobile) {
-        assert.equal(geometry.select.height, geometry.open.height);
-        assert.equal(geometry.refresh.height, geometry.open.height);
-      }
+      assert.equal(geometry.select.height, geometry.open.height);
+      assert.equal(geometry.refresh.height, geometry.open.height);
+      assert.equal(geometry.refresh.width, geometry.refresh.height);
       assert.equal(geometry.select.top + geometry.select.height / 2, geometry.open.top + geometry.open.height / 2);
       assert.equal(geometry.refresh.top + geometry.refresh.height / 2, geometry.open.top + geometry.open.height / 2);
       assert.ok(geometry.select.right < geometry.refresh.left);
@@ -169,12 +181,15 @@ test('real header and sole Player retain their geometry and destination ownershi
       await page.locator('.network-playback-target select').focus();
       await page.keyboard.press('Tab');
       assert.equal(await page.locator('.network-refresh-button').evaluate(element => element === document.activeElement), true);
-      assert.equal(await page.locator('.network-playback-target select').getAttribute('title'), 'Bedroom PC');
+      assert.equal(await page.locator('.network-playback-target select').getAttribute('title'), 'Bedroom PC — JA:networkMusic.playerDescription');
       assert.equal(await page.locator('.network-playback-target select').getAttribute('aria-label'), 'JA:networkMusic.player');
       assert.equal(await page.locator('.network-effects .pipeline-title, .network-effects form').count(), 0);
       await page.locator('.play-pause-button').click();
       await page.locator('#openMusicButton').click();
+      await page.waitForFunction(() => fixture.commands.length === 2);
       assert.deepEqual(await page.evaluate(() => fixture.commands.map(command => [command.playerId, command.action || command.operationKind])), [['room', 'pause'], ['room', 'play']]);
+      assert.deepEqual(await page.evaluate(() => fixture.commands[1].filePaths), ['song.flac']);
+      assert.equal(await page.evaluate(() => fixture.localFiles.length), 1);
       await page.evaluate(() => fixture.local.stateManager.updateState({ currentTrackName: 'Local changed' }));
       assert.equal(await page.locator('.track-name').innerText(), 'Artist - Remote song');
       if (process.env.NETWORK_MUSIC_SCREENSHOT_DIR) {
@@ -250,7 +265,7 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       const view = uiManager.networkMusicView = new NetworkMusicView({ controller, uiManager });
       view.mount();
       view.attachLibrary(library);
-      window.fixture = { library, view, controller, api, manager, tracks, commands, requests, notifications, AudioPlayerUI };
+      window.fixture = { library, view, controller, api, manager, tracks, commands, requests, notifications, AudioPlayerUI, NetworkMusicController };
     ` }, bundle: true, write: false, format: 'iife', platform: 'browser'
   });
   const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
@@ -295,8 +310,8 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
         assert.equal(librarySelect.height, librarySearch.height);
         const refresh = await page.locator('.network-refresh-button').boundingBox();
         const libraryRefresh = await page.locator('.library-main:not(.network-library-main) .library-rescan').boundingBox();
-        assert.equal(refresh.width, libraryRefresh.width);
-        assert.equal(refresh.height, libraryRefresh.height);
+        assert.equal(refresh.width, refresh.height);
+        assert.equal(libraryRefresh.width, libraryRefresh.height);
         assert.equal(await page.locator('.network-refresh-button svg').evaluate(element => element.outerHTML),
           await page.locator('.library-main:not(.network-library-main) .library-rescan svg').evaluate(element => element.outerHTML));
         assert.equal((await metrics('.network-refresh-button')).background,
@@ -724,6 +739,38 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
         await page.waitForFunction(() => document.querySelector('.library-main:not(.network-library-main) .library-paged-error'));
         await screenshot('library-local-error');
       }
+      // Exercise the actual Library Play entry through both destination routes.
+      await page.evaluate(() => {
+        const { controller, api, view } = fixture;
+        fixture.routed = [];
+        controller.playItems = fixture.NetworkMusicController.prototype.playItems;
+        controller.state.players = [{ id: 'room', name: 'Room' }];
+        api.networkMusicResolveTrack = async item => ({ ...item, resolved: true });
+        api.networkMusicPlayerCommand = async request => { fixture.routed.push({ remote: request }); };
+        api.networkMusicGetPlayerState = async () => ({ queue: [] });
+        window.uiManager.audioPlayer = { activateOpenHomePlaybackAdapter: () => ({
+          playNetworkTracks: async (tracks, operation, _current, startIndex) => {
+            fixture.routed.push({ local: { tracks, operation, startIndex } });
+          }
+        }) };
+        view.showPlayer = async () => {};
+        controller.selectLibrary('rich');
+      });
+      await page.locator('.network-library-nav [data-view="tracks"]').click();
+      await page.waitForFunction(() => fixture.view.libraryRows?.length === 3);
+      await page.evaluate(() => fixture.controller.selectPlayer('local'));
+      await page.locator('.network-library-main .library-paged-play').click();
+      await page.waitForFunction(() => fixture.routed.length === 1);
+      assert.equal(await page.evaluate(() => fixture.routed[0].local.tracks.length), 3);
+      assert.equal(await page.evaluate(() => fixture.routed[0].local.operation), 'play');
+      await page.selectOption('.network-playback-target select', 'room');
+      await page.waitForFunction(() => fixture.controller.playerStates.has('room'));
+      assert.equal(await page.evaluate(() => fixture.controller.selectedLibraryId), 'rich');
+      assert.equal(await page.evaluate(() => fixture.routed.length), 1, 'selecting a player does not play the library');
+      await page.locator('.network-library-main .library-paged-play').click();
+      await page.waitForFunction(() => fixture.routed.length === 2);
+      assert.deepEqual(await page.evaluate(() => [fixture.routed[1].remote.playerId, fixture.routed[1].remote.action,
+        fixture.routed[1].remote.items.length]), ['room', 'replace', 3]);
       assert.deepEqual(errors, []);
       await page.close();
     }

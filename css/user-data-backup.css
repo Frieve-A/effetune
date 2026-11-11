@@ -191,7 +191,7 @@
 }
 
 .backup-restore-group-header button {
-    min-height: 28px;
+    min-height: var(--et-control-height-field);
     padding: 3px 9px;
     font-size: 12px;
 }

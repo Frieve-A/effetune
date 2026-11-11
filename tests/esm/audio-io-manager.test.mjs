@@ -5,7 +5,10 @@ import {
   AudioIOManager,
   MIC_DENIED_PREFIX
 } from '../../js/audio/audio-io-manager.js';
-import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import {
+  NO_AUDIO_INPUT_DEVICE_ID,
+  SYSTEM_AUDIO_INPUT_DEVICE_ID
+} from '../../js/audio/audio-device-constants.js';
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -178,6 +181,29 @@ function createStream(id = 'mic') {
   return { id, tracks, getTracks: () => tracks };
 }
 
+function createDisplayStream(id = 'display', { audioReadyState = 'live' } = {}) {
+  const makeTrack = kind => ({
+    kind,
+    readyState: kind === 'audio' ? audioReadyState : 'live',
+    stopped: false,
+    stop() { this.stopped = true; this.readyState = 'ended'; },
+    addEventListener() {},
+    removeEventListener() {}
+  });
+  let tracks = [makeTrack('video'), makeTrack('audio')];
+  const stream = {
+    id,
+    get tracks() { return tracks; },
+    videoTrack: tracks[0],
+    audioTrack: tracks[1],
+    getTracks: () => tracks,
+    getAudioTracks: () => tracks.filter(track => track.kind === 'audio'),
+    getVideoTracks: () => tracks.filter(track => track.kind === 'video'),
+    removeTrack(track) { tracks = tracks.filter(entry => entry !== track); }
+  };
+  return stream;
+}
+
 function createWindow(calls, options = {}) {
   let preferences = options.preferences ?? null;
   return {
@@ -219,6 +245,12 @@ function createNavigator(calls, options = {}) {
         if (next) return next;
         if (options.getUserMediaReject) throw options.getUserMediaReject;
         return createStream();
+      },
+      getDisplayMedia: async constraints => {
+        calls.push(['getDisplayMedia', JSON.parse(JSON.stringify(constraints))]);
+        const next = options.getDisplayMediaQueue?.shift?.();
+        if (next instanceof Error) throw next;
+        return next ?? createDisplayStream();
       },
       enumerateDevices: async () => {
         calls.push(['enumerateDevices']);
@@ -896,7 +928,9 @@ test('fallback source, output reapply, timeout wrappers, polling, and cleanup ma
   });
 
   await withAudioIO({}, async ({ manager }) => {
-    const stream = await manager._getUserMediaWithTimeout({ audio: true }, 20);
+    const stream = await manager._acquireStreamWithTimeout(
+      () => navigator.mediaDevices.getUserMedia({ audio: true }), 20
+    );
     assert.equal(stream.id, 'mic');
   });
 
@@ -905,7 +939,9 @@ test('fallback source, output reapply, timeout wrappers, polling, and cleanup ma
       getUserMediaQueue: [new Promise(() => {})]
     }
   }, async ({ manager }) => {
-    await assert.rejects(manager._getUserMediaWithTimeout({ audio: true }, 1), /timed out/);
+    await assert.rejects(manager._acquireStreamWithTimeout(
+      () => navigator.mediaDevices.getUserMedia({ audio: true }), 1
+    ), /timed out/);
   });
 
   await withAudioIO({}, async ({ manager, intervals, windowRef }) => {
@@ -1401,7 +1437,9 @@ test('late getUserMedia results are stopped and input-only release preserves non
       getUserMediaQueue: [new Promise(resolve => { resolveLateStream = resolve; })]
     }
   }, async ({ manager }) => {
-    await assert.rejects(manager._getUserMediaWithTimeout({ audio: true }, 1), /timed out/);
+    await assert.rejects(manager._acquireStreamWithTimeout(
+      () => navigator.mediaDevices.getUserMedia({ audio: true }), 1
+    ), /timed out/);
     resolveLateStream(lateStream);
     await Promise.resolve();
     await Promise.resolve();
@@ -1523,7 +1561,9 @@ test('plain getUserMedia acquisition remains independent of power delegate start
       isControllerEnabled: () => true,
       getInputConfigRevision: () => 1
     };
-    const acquired = await manager._getUserMediaWithTimeout({ audio: true }, 100);
+    const acquired = await manager._acquireStreamWithTimeout(
+      () => navigator.mediaDevices.getUserMedia({ audio: true }), 100
+    );
     assert.equal(acquired, stream);
     assert.equal(calls.some(call => call[0] === 'getUserMedia'), true);
   });
@@ -1631,5 +1671,164 @@ test('adopting a replacement input releases the previous live stream', async () 
     assert.equal(secondStream.tracks[0].stopped, false);
     assert.equal(manager.inputStream, secondStream);
     assert.ok(calls.some(call => call[0] === 'disconnect' && call[1] === 'mediaStreamSource'));
+  });
+});
+
+const systemAudioOutputs = [
+  { kind: 'audiooutput', deviceId: 'default', groupId: 'group-speakers' },
+  { kind: 'audiooutput', deviceId: 'speakers', groupId: 'group-speakers' },
+  { kind: 'audiooutput', deviceId: 'dac', groupId: 'group-dac' },
+  { kind: 'audioinput', deviceId: 'mic', groupId: 'group-mic' }
+];
+
+function systemAudioOptions({ prepareResult = { ok: true }, devices = systemAudioOutputs, navigator = {} } = {}) {
+  return {
+    window: {
+      electronAPI: { systemAudio: { prepareCapture: () => prepareResult } },
+      audioPreferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }
+    },
+    navigator: { devices, ...navigator }
+  };
+}
+
+test('System Audio startup captures through getDisplayMedia when the output differs from the default', async () => {
+  const displayStream = createDisplayStream('loopback');
+  await withAudioIO(systemAudioOptions({
+    navigator: { getDisplayMediaQueue: [displayStream] }
+  }), async ({ manager, calls }) => {
+    manager.currentOutputDeviceId = 'dac';
+    assert.equal(await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }), '');
+
+    assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+    const request = calls.find(call => call[0] === 'getDisplayMedia')[1];
+    assert.equal(request.video, true);
+    assert.equal(request.audio.channelCount, 2);
+    assert.equal(request.audio.echoCancellation, false);
+    assert.equal(displayStream.videoTrack.stopped, true);
+    assert.equal(displayStream.audioTrack.stopped, false);
+    assert.equal(manager.inputStream, displayStream);
+    assert.equal(manager.sourceNode.name, 'mediaStreamSource');
+    assert.equal(manager.getInputSnapshot().state, 'live');
+    assert.equal(manager.getInputSnapshot().inputConfigured, true);
+    assert.equal(manager.systemAudioDisabled, false);
+    assert.equal(manager.systemAudioDefaultGroupId, 'group-speakers');
+  });
+});
+
+test('System Audio startup is denied without a microphone fallback when the output is the default', async () => {
+  for (const outputDeviceId of ['default', 'speakers', 'missing']) {
+    await withAudioIO(systemAudioOptions(), async ({ manager, calls }) => {
+      manager.currentOutputDeviceId = outputDeviceId;
+      assert.equal(await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }), '');
+
+      assert.equal(calls.some(call => call[0] === 'getDisplayMedia'), false);
+      assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+      assert.equal(manager.inputStream, null);
+      assert.equal(manager.sourceNode, manager.silentInputGainNode);
+      assert.equal(manager.systemAudioDisabled, true);
+      assert.equal(manager.systemAudioDefaultGroupId, null);
+      assert.equal(manager.lastInputInitializationError.name, 'NotAllowedError');
+      const snapshot = manager.getInputSnapshot();
+      assert.equal(snapshot.state, 'not-configured');
+      assert.equal(snapshot.inputConfigured, false);
+    });
+  }
+});
+
+test('System Audio startup is denied when the output sink failure falls back to the default output', async () => {
+  const base = systemAudioOptions({
+    navigator: { getDisplayMediaQueue: [createDisplayStream('loopback')] }
+  });
+  await withAudioIO({
+    ...base,
+    context: { audioContext: { contextSetSinkId: true, contextSetSinkIdReject: true } },
+    window: {
+      ...base.window,
+      electron: true,
+      preferences: { outputDeviceId: 'dac', outputChannels: 2 }
+    }
+  }, async ({ manager, calls }) => {
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    assert.equal(await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }), '');
+
+    assert.equal(calls.some(call => call[0] === 'getDisplayMedia'), false);
+    assert.equal(manager.systemAudioDisabled, true);
+    assert.equal(manager.getInputSnapshot().inputConfigured, false);
+  });
+});
+
+test('System Audio capture failures leave the silent source without a microphone fallback', async () => {
+  const failures = [
+    { options: systemAudioOptions({ prepareResult: { ok: false, error: 'unavailable' } }),
+      errorName: 'NotSupportedError', displayMediaCalled: false },
+    { options: systemAudioOptions({
+      navigator: { getDisplayMediaQueue: [createDisplayStream('dead', { audioReadyState: 'ended' })] }
+    }), errorName: 'NotReadableError', displayMediaCalled: true },
+    { options: systemAudioOptions({
+      navigator: { getDisplayMediaQueue: [permissionError('NotAllowedError')] }
+    }), errorName: 'NotAllowedError', displayMediaCalled: true }
+  ];
+  for (const { options, errorName, displayMediaCalled } of failures) {
+    await withAudioIO(options, async ({ manager, calls }) => {
+      manager.currentOutputDeviceId = 'dac';
+      assert.equal(await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }), '');
+
+      assert.equal(calls.some(call => call[0] === 'getDisplayMedia'), displayMediaCalled);
+      assert.equal(calls.some(call => call[0] === 'getUserMedia'), false);
+      assert.equal(manager.lastInputInitializationError.name, errorName);
+      assert.equal(manager.inputStream, null);
+      assert.equal(manager.sourceNode, manager.silentInputGainNode);
+      assert.equal(manager.systemAudioDisabled, true);
+      assert.equal(manager.getInputSnapshot().state, 'not-configured');
+      assert.equal(manager.getInputSnapshot().inputConfigured, false);
+    });
+  }
+});
+
+test('System Audio reacquisition re-evaluates the guard and honors the session disable record', async () => {
+  const displayStream = createDisplayStream('reacquired');
+  await withAudioIO(systemAudioOptions({
+    navigator: { getDisplayMediaQueue: [displayStream] }
+  }), async ({ manager, calls }) => {
+    manager.currentOutputDeviceId = 'dac';
+    const silentSource = manager.ensureSilentSourceFallback();
+    assert.equal(manager.adoptSilentSourceFallback(silentSource), true);
+
+    const snapshot = await manager.beginReacquireAudioInput({ requireVisible: false, timeoutMs: 100 });
+    assert.equal(snapshot.state, 'live');
+    assert.equal(manager.inputStream, displayStream);
+    assert.equal(manager.sourceNode, silentSource);
+    assert.equal(calls.filter(call => call[0] === 'getDisplayMedia').length, 1);
+    assert.equal(manager.systemAudioDefaultGroupId, 'group-speakers');
+
+    manager.releaseAudioInput({ reason: 'test' });
+    manager.currentOutputDeviceId = 'default';
+    await assert.rejects(
+      manager.beginReacquireAudioInput({ requireVisible: false, timeoutMs: 100 }),
+      { name: 'NotAllowedError' }
+    );
+    assert.equal(calls.filter(call => call[0] === 'getDisplayMedia').length, 1);
+    assert.equal(manager.systemAudioDisabled, true);
+    assert.equal(manager.getInputSnapshot().inputConfigured, false);
+
+    manager.currentOutputDeviceId = 'dac';
+    const disabled = await manager.beginReacquireAudioInput({ requireVisible: false, timeoutMs: 100 });
+    assert.equal(disabled.state, 'not-configured');
+    assert.equal(calls.filter(call => call[0] === 'getDisplayMedia').length, 1);
+  });
+});
+
+test('System Audio startup clears the session disable record before deciding again', async () => {
+  await withAudioIO(systemAudioOptions(), async ({ manager, calls }) => {
+    manager.currentOutputDeviceId = 'default';
+    await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID });
+    assert.equal(manager.systemAudioDisabled, true);
+
+    manager.currentOutputDeviceId = 'dac';
+    await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID });
+    assert.equal(manager.systemAudioDisabled, false);
+    assert.equal(calls.filter(call => call[0] === 'getDisplayMedia').length, 1);
+    assert.equal(manager.getInputSnapshot().state, 'live');
   });
 });

@@ -106,7 +106,7 @@ EffeTune 专为想要获得更理想听音体验的音频爱好者而设计。�
 
 处理流媒体服务（如 Spotify、YouTube Music 等）的音频：
 
-桌面版可先尝试[内置浏览器](#桌面版内置浏览器)。如需使用独立的流媒体应用，或内置浏览器无法播放的音源，请按下方说明配置音频设备。
+桌面版可先尝试[内置浏览器](#桌面版内置浏览器)。如需使用独立的流媒体应用，或内置浏览器无法播放的音源，Windows 桌面版可以直接捕获其他应用的声音：在 **音频设置** 中，将 **输出设备** 设为 Windows 默认输出以外的设备（例如 USB DAC），并将 **输入设备** 设为 **System Audio（其他应用的声音）**。使用网页版、macOS，或只有一个输出设备时，请按下方说明配置虚拟音频设备。
 
 1. 前提条件：
    - 安装虚拟音频设备（例如 VB Cable、Voice Meeter 或 ASIO Link Tool）
@@ -525,6 +525,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | 使用 SF2/SF3 SoundFont 和 SFZ 乐器演奏检测到的音符 | [详情](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | 使用 SF2/SF3 SoundFont 或 SFZ 乐器播放 MIDI，SF2/SF3 支持 16 个独立音色通道 | [详情](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | 从此位置开始处理来自另一台 EffeTune 的实时音频流 | [详情](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | 将此位置的声音发送到网络输出，同时继续经过本地效果 | [详情](plugins/control.md#live-audio-send) |
 | Control   | Section | 将效果分组，让整个区段可被旁路或恢复 | [详情](plugins/control.md) |
 
 ## 技术信息

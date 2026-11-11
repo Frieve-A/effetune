@@ -41,7 +41,7 @@ Use the **Graph** selector above the plot to switch views without remeasuring:
 - **Phase:** Phase response (degrees) versus frequency.
 - **Min Group Delay:** Group delay implied by the minimum-phase magnitude response.
 - **Excess Group Delay:** Remaining group delay after removing the minimum-phase part (the plot is limited to ±100 ms, while cursor readouts show the actual value), making pure delay and linear-phase or all-pass timing easy to spot.
-- **Impulse:** Time-domain impulse response from `-2 ms` to **Impulse Range (ms)**, normalized to its peak.
+- **Impulse:** Time-domain impulse response from `-2 ms` to **Impulse Range (ms)**, normalized to its peak. Use the mouse wheel over the graph to zoom the time axis around the point under the cursor.
 - **Distortion:** With **Log Sweep**, shows harmonic distortion as a percentage of the fundamental across frequency. H2, H3, and THD (orders 2–3) are shown initially; H4–H10 can be added without remeasuring. Larger values mean more distortion. Select **Log Sweep** if this graph is unavailable with another signal. A silent or otherwise invalid measured output cannot provide distortion data. Saved speaker responses contribute their linear response, not any distortion from the speaker itself.
 - **Waterfall:** Shows frequency, relative level (dB), and decay time (ms). Choose **After** (default) or **Before** under **Response** to inspect the pipeline output or the selected speaker responses before processing. Each view is normalized to its own peak, so compare the decay shape rather than absolute levels. Drag to rotate the 3D plot; use the mouse wheel or pinch to zoom.
 
@@ -49,6 +49,6 @@ On the frequency, phase, group-delay, and impulse graphs, hover to read **Before
 
 ## How the measurement works
 
-Pipeline Analyzer captures the active pipeline, its routing, and any selected speaker responses, and automatically compensates **After** for latency reported by the pipeline. For nonlinear, modulated, or random effects, treat the plot as a snapshot at the current settings and **Level**.
+Pipeline Analyzer captures the active pipeline, its routing, and any selected speaker responses, and automatically compensates **After** for latency reported by the pipeline. For nonlinear, modulated, or random effects, treat the plot as a snapshot at the current settings and **Level**. To confirm the result with a microphone, see [Measuring with the Effect Pipeline](measurement.md#measuring-with-the-effect-pipeline) in Acoustic Measurement.
 
 [← Back to README](../README.md)

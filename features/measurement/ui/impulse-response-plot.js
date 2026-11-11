@@ -22,22 +22,38 @@ function getImpulseTimeBounds(record) {
     };
 }
 
+function minimumImpulseDuration(bounds) {
+    const totalDurationMs = bounds.maxMs - bounds.minMs;
+    return Math.min(
+        totalDurationMs,
+        Math.max(bounds.samplePeriodMs * 2, totalDurationMs / 100000, 0.01)
+    );
+}
+
 function clampImpulseView(startMs, durationMs, bounds) {
     if (!bounds) return null;
     const totalDurationMs = bounds.maxMs - bounds.minMs;
-    const minimumDurationMs = Math.min(
-        totalDurationMs,
-        Math.max(bounds.samplePeriodMs * 2, totalDurationMs / 100000)
-    );
     const clampedDurationMs = Math.min(
         totalDurationMs,
-        Math.max(minimumDurationMs, durationMs)
+        Math.max(minimumImpulseDuration(bounds), durationMs)
     );
     const latestStartMs = bounds.maxMs - clampedDurationMs;
     return {
         startMs: Math.min(latestStartMs, Math.max(bounds.minMs, startMs)),
         durationMs: clampedDurationMs
     };
+}
+
+function zoomImpulseView(startMs, durationMs, factor, fraction, bounds) {
+    const anchorMs = startMs + fraction * durationMs;
+    // Limit the span on both sides of the anchor so hitting an edge never shifts it.
+    const maximumDurationMs = Math.max(durationMs, Math.min(
+        fraction > 0 ? (anchorMs - bounds.minMs) / fraction : Infinity,
+        fraction < 1 ? (bounds.maxMs - anchorMs) / (1 - fraction) : Infinity
+    ));
+    const nextDurationMs = Math.min(maximumDurationMs,
+        Math.max(Math.min(durationMs, minimumImpulseDuration(bounds)), durationMs * factor));
+    return { startMs: startMs + fraction * (durationMs - nextDurationMs), durationMs: nextDurationMs };
 }
 
 function createDefaultImpulseView(record) {
@@ -123,6 +139,7 @@ function getNiceTimeTickInterval(durationMs) {
 export {
     DEFAULT_VIEW_DURATION_MS,
     clampImpulseView,
+    zoomImpulseView,
     createDefaultImpulseView,
     findImpulsePeak,
     getImpulseTimeBounds,

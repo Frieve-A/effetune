@@ -677,6 +677,7 @@ test('renders and updates pipeline delay and CPU usage meters', async () => {
     manager.updatePipelineLatency(Number.NaN);
     assert.equal(label.textContent, 'Total Delay: 0 samples');
 
+    manager.translations['ui.pipelineCpuUsage'] = 'Translated CPU {average}';
     audioManager.listeners.get('pipelineCpuUsage')({ average: 24.25 });
     assert.equal(cpuValue.textContent, 'CPU: Avg 24.3%');
     assert.equal(cpuFill.style.width, '24.25%');
@@ -1255,7 +1256,7 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     observer.listener([{ type: 'characterData' }]);
     assert.match(manager.sampleRate.textContent, /Hz/);
     manager.audioManager.listeners.get('sleepModeChanged')?.({ isSleepMode: true, sampleRate: 48000 });
-    assert.match(manager.sampleRate.textContent, /Sleep/);
+    assert.match(manager.sampleRate.textContent, / - Sleep Mode$/);
     manager.sampleRate.textContent = '48000 Hz';
     manager.audioManager.powerPolicyController = { isControllerEnabled: () => true };
     manager.audioManager.listeners.get('sleepModeChanged')?.({ isSleepMode: true, sampleRate: 48000 });
@@ -1267,7 +1268,7 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     manager.sampleRate = sampleRateElement;
     manager.sampleRate.textContent = '48000 Hz';
     manager.updateSleepModeDisplay(true, 48000);
-    assert.match(manager.sampleRate.textContent, /Sleep/);
+    assert.equal(manager.sampleRate.textContent, '48000 Hz - Sleep Mode');
     manager.audioManager.audioContext.destination.channelCount = 6;
     manager.sampleRate.textContent = 'Sleep';
     manager.updateSleepModeDisplay(false, 96000);
@@ -1291,13 +1292,12 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     manager.audioManager.audioContext.sampleRate = 44100;
     manager.updateSampleRateDisplay();
     assert.equal(manager.sampleRate.classList.contains('low-sample-rate'), true);
-    manager.sampleRate.textContent = '48000 Hz - Sleep';
+    manager.sampleRate.textContent = '48000 Hz - Sleep Mode';
     manager.audioManager.audioContext.destination.channelCount = 6;
     manager.audioManager.audioContext.sampleRate = 96000;
     manager.updateSampleRateDisplay();
     assert.equal(manager.sampleRate.classList.contains('low-sample-rate'), false);
-    assert.match(manager.sampleRate.textContent, /Sleep/);
-    assert.match(manager.sampleRate.textContent, /6ch/);
+    assert.equal(manager.sampleRate.textContent, '96000 Hz 6ch - Sleep Mode');
     manager.sampleRate.textContent = '48000 Hz';
     manager.audioManager.audioContext = { sampleRate: 88200, destination: { channelCount: 4 } };
     manager.audioManager.listeners.get('audioGraphRebuilt')?.({
@@ -1331,7 +1331,7 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     assert.equal(browserButton['aria-label'], 'ブラウザ');
     assert.equal(manager.shareButton.textContent, '');
     assert.equal(manager.shareButton['aria-label'], manager.t('ui.title.sharePipeline'));
-    assert.equal(manager.pipelineEmpty.querySelector('.pipeline-empty-message').textContent, 'Drop here');
+    assert.equal(manager.pipelineEmpty.querySelector('.pipeline-empty-message').textContent, 'Drag effects here to build your effect pipeline');
     assert.equal(manager.pipelineEmpty.querySelector('.mobile-effects-open-music'), null);
     assert.equal(calls.some(call => call[0] === 'doubleBlind.updateTexts'), true);
     assert.equal(manager.pluginListManager.dragMessage.textContent, 'Drag effect');
@@ -2298,7 +2298,7 @@ test('startup progress uses the current overlay, clamps percentages, and transla
   });
 });
 
-test('pipeline delay uses confirmed totals during pending changes and translated redraws', async () => {
+test('pipeline delay uses confirmed totals and stays in English on redraw', async () => {
   await withUIHarness({}, async ({ audioManager, document, manager }) => {
     const label = document.getElementById('pipelineLatency');
     const notify = totalSamples => {
@@ -2317,12 +2317,12 @@ test('pipeline delay uses confirmed totals during pending changes and translated
     assert.equal(label.textContent, 'Total Delay: 5384 samples');
     manager.translations['ui.pipelineLatency'] = 'Delay: {samples}';
     manager.updateUITexts();
-    assert.equal(label.textContent, 'Delay: 5384');
+    assert.equal(label.textContent, 'Total Delay: 5384 samples');
 
     notify(384);
-    assert.equal(label.textContent, 'Delay: 384');
+    assert.equal(label.textContent, 'Total Delay: 384 samples');
     manager.updateUITexts();
-    assert.equal(label.textContent, 'Delay: 384');
+    assert.equal(label.textContent, 'Total Delay: 384 samples');
   });
 });
 

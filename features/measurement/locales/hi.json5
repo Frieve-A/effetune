@@ -115,6 +115,14 @@
 "help:inputChannel": "चयनित ऑडियो इनपुट डिवाइस के लिए उस चैनल का चयन करें जिसमें कैलिब्रेशन माइक्रोफोन जुड़ा है।", // Help text for input channel
 "label:audioOutput": "ऑडियो आउटपुट डिवाइस:", // Label for audio output device selection
 "help:audioOutput": "उस ऑडियो डिवाइस का चयन करें जो माप संकेत आउटपुट करता है।", // Help text for audio output
+"label:effectPipeline": "इफेक्ट पाइपलाइन:",
+"option:effectPipelineNone": "कोई नहीं",
+"option:effectPipelineCurrent": "वर्तमान पाइपलाइन",
+"help:effectPipeline": "मुख्य ऐप से यह पेज खोलते समय चल रही इफेक्ट पाइपलाइन से होकर टेस्ट सिग्नल चलाने के लिए वर्तमान पाइपलाइन चुनें। नमूना आवृत्ति और आउटपुट डिवाइस के चैनलों की संख्या पाइपलाइन के अनुसार तय हो जाती है।",
+"help:effectPipelineUnavailable": "इफेक्ट पाइपलाइन से होकर मापने के लिए, ऑडियो प्रोसेसिंग चलते समय मुख्य ऐप से यह पेज खोलें।",
+"help:effectPipelineAndroid": "Android पर इफेक्ट पाइपलाइन से होकर माप उपलब्ध नहीं है।",
+"label:pipelineInputChannel": "पाइपलाइन इनपुट चैनल:",
+"help:pipelineInputChannel": "वे पाइपलाइन इनपुट चैनल चुनें जिनमें टेस्ट सिग्नल जाएगा। पाइपलाइन का हर आउटपुट चैनल उसी नंबर वाले आउटपुट डिवाइस चैनल पर बजता है।",
   "label:outputChannelCount": "आउटपुट डिवाइस के चैनलों की संख्या:",
   "help:outputChannelCount": "आउटपुट डिवाइस की व्यवस्था के अनुसार संख्या चुनें (5.1 के लिए 6, 7.1 के लिए 8)। केवल कुछ चैनल मापने पर भी परीक्षण संकेत और मापन हमेशा इसी संख्या का उपयोग करते हैं।",
 "label:outputChannel": "आउटपुट चैनल:", // Label for output channel selection
@@ -192,9 +200,15 @@
 "button:exportTxt": "सुधार पैरामीटर निर्यात करें (TXT)", // Button to export txt
 "button:exportCSV": "सुधार पैरामीटर निर्यात करें (CSV)", // Button to export CSV
 "help:exportOptions": "कॉपी की गई फ्रीक्वेंसी सुधार सेटिंग्स को Ctrl+V द्वारा EffeTune के इफेक्ट पाइपलाइन में चिपकाया जा सकता है।", // Help text for export options
+"message:correctionUnavailablePipeline": "इस माप में इफेक्ट पाइपलाइन की प्रोसेसिंग पहले से शामिल है, इसलिए इससे सुधार सेटिंग्स नहीं बनाई जा सकतीं।",
 "title:measurementDetails": "माप विवरण", // Title for measurement details section
 "label:onset": "ऑनसेट",
 "label:onsetEarliest": "सबसे पहले",
+"label:effectPipelineBadge": "पाइपलाइन",
+"label:appliedEffectPipeline": "इफेक्ट पाइपलाइन",
+"status:effectPipelineNotApplied": "लागू नहीं",
+"status:effectPipelineApplied": "लागू",
+"status:effectPipelineAppliedPlugins": "लागू ({plugins})",
 
 // Dialogs
 "button:confirm": "पुष्टि करें", // Confirm button in dialog
@@ -220,6 +234,12 @@
 "error:interfaceCalibrationSampleRateMismatch": "चुने हुए कैलिब्रेशन का sampling rate अलग है। उसी sampling rate पर रिकॉर्ड किया हुआ data चुनें।",
 "error:interfaceCalibrationSweepRangeMismatch": "चुना हुआ कैलिब्रेशन इस sweep range को cover नहीं करता। range कम करें या दूसरा data चुनें।",
 "error:interfaceCalibrationProcessingFailed": "कैलिब्रेशन वाला माप पूरा नहीं हो सका। setup जाँचें और इस बिंदु को फिर से मापें।",
+"error:pipelineUnavailable": "इफेक्ट पाइपलाइन उपलब्ध नहीं है। ऑडियो प्रोसेसिंग चलते समय मुख्य ऐप से यह पेज फिर से खोलें, या इफेक्ट पाइपलाइन को कोई नहीं पर सेट करें।",
+"error:pipelineSampleRateMismatch": "इफेक्ट पाइपलाइन की नमूना आवृत्ति पर माप नहीं हो सका। ऑडियो डिवाइस को मुख्य ऐप वाली नमूना आवृत्ति पर सेट करें और फिर प्रयास करें।",
+"error:pipelineInputChannelUnavailable": "चुना गया पाइपलाइन इनपुट चैनल इफेक्ट पाइपलाइन में मौजूद नहीं है। पाइपलाइन के चैनलों की संख्या के भीतर चैनल चुनें।",
+"error:pipelineOutputChannelsUnavailable": "चुने गए आउटपुट डिवाइस में इफेक्ट पाइपलाइन से कम चैनल हैं। मुख्य ऐप में इस्तेमाल होने वाला आउटपुट डिवाइस चुनें और फिर प्रयास करें।",
+"error:pipelineClipping": "इफेक्ट पाइपलाइन से गुज़रने के बाद टेस्ट सिग्नल क्लिप हो जाएगा। सिग्नल स्तर कम करें और फिर प्रयास करें।",
+"error:pipelineRenderFailed": "इफेक्ट पाइपलाइन टेस्ट सिग्नल को प्रोसेस नहीं कर सकी। मुख्य ऐप पर लौटें, यह पेज फिर से खोलें और फिर प्रयास करें।",
 "error:measurementSetupFailed": "माप की तैयारी नहीं हो सकी। ऑडियो devices जाँचें और फिर प्रयास करें।",
 "error:levelAdjustmentFailed": "ऑडियो input तैयार नहीं हो सका। input device जाँचें और फिर प्रयास करें।",
 "error:audioUnsupported": "यह browser audio measurement नहीं चला सकता। Chrome या Edge का नवीनतम version इस्तेमाल करें।",
@@ -275,6 +295,8 @@
 "option:sampleRate96000": "96 kHz", // Option for 96 kHz sample rate
 "option:sampleRate176400": "176.4 kHz", // Option for 176.4 kHz sample rate
 "option:sampleRate192000": "192 kHz", // Option for 192 kHz sample rate
+"option:sampleRate352800": "352.8 kHz", // Option for 352.8 kHz sample rate
+"option:sampleRate384000": "384 kHz", // Option for 384 kHz sample rate
 
 // Sweep length options
 "option:sweepLength16384": "16,384 (2¹⁴)", // Option for 16384 sweep length

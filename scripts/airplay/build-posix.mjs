@@ -46,7 +46,7 @@ async function preparePrivateSources({ lock, buildRoot, downloadLockedArchive, r
     if (!entry) throw new Error(`Missing locked AirPlay source: ${base}`);
     const archive = join(buildRoot, 'source-cache', entry.name);
     await downloadLockedArchive(entry.url, archive, entry.sha256);
-    const directory = join(buildRoot, 'posix-sources', base);
+    const directory = join(buildRoot, 'posix-sources', `${base}-${entry.sha256.slice(0, 16)}`);
     mkdirSync(directory, { recursive: true });
     const wrapper = join(directory, 'source-wrapper.tar');
     writeFileSync(wrapper, zstdDecompressSync(readFileSync(archive)));
@@ -222,7 +222,9 @@ export async function buildPosixAirPlay({ platform, architecture, root, buildRoo
   }
   if (dirname(resolve(outputRoot)) !== resolve(buildRoot)) throw new Error('Invalid AirPlay output directory');
   const { sources, archives } = await preparePrivateSources({ lock, buildRoot, downloadLockedArchive, run });
-  const workRoot = join(buildRoot, `posix-build-${platform}-${architecture}`);
+  // CMake and Meson cache absolute source paths, which change with locked archives.
+  const lockKey = createHash('sha256').update(JSON.stringify(lock)).digest('hex').slice(0, 16);
+  const workRoot = join(buildRoot, `posix-build-${platform}-${architecture}-${lockKey}`);
   const prefix = join(workRoot, 'prefix');
   mkdirSync(prefix, { recursive: true });
   const sysrootLibraries = linuxSysroot ? [join(linuxSysroot, 'usr', 'lib', 'x86_64-linux-gnu'), join(linuxSysroot, 'lib', 'x86_64-linux-gnu')] : [];

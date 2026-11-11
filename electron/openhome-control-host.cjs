@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const { OpenHomeMediaGateway } = require('./openhome-media-gateway.cjs');
 const { OpenHomeSidecarManager } = require('./openhome-sidecar-manager.cjs');
+const { isLiveNetworkOutput, readFeedbackRequest } = require('./network-output-live.cjs');
 
 const CHANNELS = Object.freeze({
   getStatus: 'openhome-v1:get-status',
@@ -15,6 +16,7 @@ const CHANNELS = Object.freeze({
   response: 'openhome-v1:response',
   resetAck: 'openhome-v1:reset-ack',
   state: 'openhome-v1:state',
+  liveFeedback: 'openhome-v1:live-feedback',
   action: 'openhome-v1:action',
   cancel: 'openhome-v1:cancel',
   reset: 'openhome-v1:reset',
@@ -67,6 +69,9 @@ class OpenHomeControlHost {
     this.actionDispatch = Promise.resolve();
     this.tokensByTrackId = new Map();
     this.artworkTokensByTrackId = new Map();
+    this.liveRegistrationToken = null;
+    this.mediaActionSequence = 0;
+    this.lastMediaRegistrationSequence = 0;
     this.deferredRegistrationTokens = new Set();
     this.pendingReset = null;
     this.resetSequence = 0;
@@ -206,6 +211,7 @@ class OpenHomeControlHost {
       }
       this.setAppConfig(next);
       this[property] = enabled;
+      if (property === 'upnpAvEnabled' && !enabled) this.releaseLiveRegistration();
       const anyEnabled = this.enabled || this.upnpAvEnabled;
       if (wasRunning && anyEnabled) {
         if (disableTransition) this.finishDisableTransition(true);
@@ -376,6 +382,7 @@ class OpenHomeControlHost {
       actionEpoch: this.actionEpoch,
       deadlineEpochMs,
       timeoutMs,
+      mediaActionSequence: action.service === 'AVTransport' && action.action === 'SetAVTransportURI' ? ++this.mediaActionSequence : null,
       registration: null,
       artworkRegistration: null,
       timer: null
@@ -401,14 +408,17 @@ class OpenHomeControlHost {
 
       if ((action.service === 'Playlist' && action.action === 'Insert') ||
           (action.service === 'AVTransport' && action.action === 'SetAVTransportURI' && action.args.uri)) {
-        const registration = await this.gateway.register(action.args.uri);
+        const live = !pending.local && this.upnpAvEnabled && action.service === 'AVTransport' &&
+          isLiveNetworkOutput(action.args.uri, action.args.metadata);
+        const registration = live ? await this.gateway.register(action.args.uri, { live }) : await this.gateway.register(action.args.uri);
         if (!this.isCurrentAction(pending)) {
           this.gateway.release(registration.token);
           this.failRevokedLocalAction(pending);
           return;
         }
         pending.registration = registration;
-        const artworkUri = extractDidlAlbumArtUri(action.args.metadata);
+        pending.liveRegistration = live;
+        const artworkUri = live ? '' : extractDidlAlbumArtUri(action.args.metadata);
         if (artworkUri) {
           try {
             pending.artworkRegistration = await this.gateway.register(artworkUri);
@@ -420,11 +430,14 @@ class OpenHomeControlHost {
           if (!this.failRevokedLocalAction(pending)) this.releasePendingRegistration(pending);
           return;
         }
+        const mediaArgs = { ...action.args };
+        delete mediaArgs.liveSessionId;
         rendererAction = Object.freeze({
           ...rendererAction,
           args: Object.freeze({
-            ...action.args,
+            ...mediaArgs,
             playbackUrl: registration.playbackUrl,
+            ...(live ? { liveSessionId: registration.token } : {}),
             ...(pending.artworkRegistration
               ? { artworkUrl: pending.artworkRegistration.playbackUrl }
               : {})
@@ -521,6 +534,16 @@ class OpenHomeControlHost {
   commitMediaRegistration(pending, result) {
     const action = pending.action;
     if (action.service === 'AVTransport' && action.action === 'SetAVTransportURI') {
+      if (pending.mediaActionSequence < this.lastMediaRegistrationSequence) {
+        this.releasePendingRegistration(pending);
+        return;
+      }
+      this.lastMediaRegistrationSequence = pending.mediaActionSequence;
+      if (pending.liveRegistration) {
+        this.releaseLiveRegistration();
+        this.liveRegistrationToken = pending.registration.token;
+        return;
+      }
       this.releaseAllRegistrations();
       if (pending.registration && Number.isSafeInteger(result?.newId) && result.newId > 0) {
         this.tokensByTrackId.set(result.newId, pending.registration.token);
@@ -577,12 +600,26 @@ class OpenHomeControlHost {
   }
 
   releaseAllRegistrations() {
+    this.releaseLiveRegistration();
     for (const token of this.tokensByTrackId.values()) this.gateway.release(token);
     for (const token of this.artworkTokensByTrackId.values()) this.gateway.release(token);
     for (const token of this.deferredRegistrationTokens) this.gateway.release(token);
     this.tokensByTrackId.clear();
     this.artworkTokensByTrackId.clear();
     this.deferredRegistrationTokens.clear();
+  }
+
+  releaseLiveRegistration() {
+    if (!this.liveRegistrationToken) return;
+    this.gateway.release(this.liveRegistrationToken);
+    this.liveRegistrationToken = null;
+  }
+
+  requestLiveFeedback(input) {
+    const message = readFeedbackRequest(input);
+    if (!message || !this.upnpAvEnabled || this.getDesiredServiceMode() !== 'running' ||
+        message.sessionId !== this.liveRegistrationToken) return null;
+    return this.gateway.requestLiveFeedback(message);
   }
 
   advanceLifecycle(pendingCode = null) {
@@ -777,12 +814,14 @@ function registerOpenHomeIpc({ ipcMain, host, getMainWindow }) {
     [CHANNELS.rendererUnavailable, () => host.setRendererUnavailable()],
     [CHANNELS.response, (_event, response) => host.handleRendererResponse(response)],
     [CHANNELS.resetAck, (_event, ack) => host.handleRendererResetAck(ack)],
-    [CHANNELS.state, (_event, snapshot) => host.publishState(snapshot)]
+    [CHANNELS.state, (_event, snapshot) => host.publishState(snapshot)],
+    [CHANNELS.liveFeedback, (_event, request) => host.requestLiveFeedback(request)]
   ]);
   for (const [channel, handler] of handlers) {
     ipcMain.handle(channel, (event, ...args) => {
       const window = getMainWindow();
-      if (!window?.webContents || event.sender !== window.webContents) {
+      if (!window?.webContents || event.sender !== window.webContents ||
+          (channel === CHANNELS.liveFeedback && event.senderFrame !== window.webContents.mainFrame)) {
         throw createHostError('invalid-sender');
       }
       return handler(event, ...args);

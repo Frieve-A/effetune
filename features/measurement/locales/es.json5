@@ -115,6 +115,14 @@
 "help:inputChannel": "Selecciona el canal al que está conectado el micrófono de calibración para el dispositivo de entrada de audio seleccionado.", // Help text for input channel
 "label:audioOutput": "Dispositivo de salida de audio:", // Label for audio output device selection
 "help:audioOutput": "Selecciona el dispositivo de audio que emite la señal de medición.", // Help text for audio output
+"label:effectPipeline": "Pipeline de Efectos:",
+"option:effectPipelineNone": "Ninguno",
+"option:effectPipelineCurrent": "Pipeline actual",
+"help:effectPipeline": "Elige Pipeline actual para reproducir la señal de prueba a través del Pipeline de Efectos que estaba en marcha cuando se abrió esta página desde la aplicación principal. La frecuencia de muestreo y el número de canales del dispositivo de salida se ajustan al pipeline.",
+"help:effectPipelineUnavailable": "Para medir a través del Pipeline de Efectos, abre esta página desde la aplicación principal mientras el procesamiento de audio está en marcha.",
+"help:effectPipelineAndroid": "La medición a través del Pipeline de Efectos no está disponible en Android.",
+"label:pipelineInputChannel": "Canal de entrada del pipeline:",
+"help:pipelineInputChannel": "Selecciona los canales de entrada del pipeline que reciben la señal de prueba. Cada canal de salida del pipeline se reproduce en el canal del dispositivo de salida con el mismo número.",
   "label:outputChannelCount": "Número de canales del dispositivo de salida:",
   "help:outputChannelCount": "Ajusta este valor a la configuración del dispositivo de salida (6 para 5.1 y 8 para 7.1). Las señales de prueba y las mediciones siempre usan este número, aunque solo midas algunos canales.",
 "label:outputChannel": "Canal de salida:", // Label for output channel selection
@@ -192,9 +200,15 @@
 "button:exportTxt": "Exportar parámetros de corrección (TXT)", // Button to export txt
 "button:exportCSV": "Exportar parámetros de corrección (CSV)", // Button to export CSV
 "help:exportOptions": "Los ajustes de corrección de frecuencia copiados se pueden pegar en el Pipeline de Efectos de EffeTune con Ctrl+V.", // Help text for export options
+"message:correctionUnavailablePipeline": "Esta medición ya incluye el procesamiento del Pipeline de Efectos, por lo que no se puede usar para crear ajustes de corrección.",
 "title:measurementDetails": "Detalles de la medición", // Title for measurement details section
 "label:onset": "Inicio de la respuesta",
 "label:onsetEarliest": "más temprano",
+"label:effectPipelineBadge": "Pipeline",
+"label:appliedEffectPipeline": "Pipeline de Efectos",
+"status:effectPipelineNotApplied": "No aplicado",
+"status:effectPipelineApplied": "Aplicado",
+"status:effectPipelineAppliedPlugins": "Aplicado ({plugins})",
 
 // Dialogs
 "button:confirm": "Confirmar", // Confirm button in dialog
@@ -220,6 +234,12 @@
 "error:interfaceCalibrationSampleRateMismatch": "La calibración seleccionada usa otra frecuencia de muestreo. Elige datos grabados con la misma frecuencia de muestreo.",
 "error:interfaceCalibrationSweepRangeMismatch": "La calibración seleccionada no cubre este rango de barrido. Reduce el rango o elige otros datos.",
 "error:interfaceCalibrationProcessingFailed": "No se pudo completar la medición calibrada. Revisa la configuración y vuelve a medir este punto.",
+"error:pipelineUnavailable": "El Pipeline de Efectos no está disponible. Vuelve a abrir esta página desde la aplicación principal mientras el procesamiento de audio está en marcha, o elige Ninguno en Pipeline de Efectos.",
+"error:pipelineSampleRateMismatch": "No se pudo medir a la frecuencia de muestreo del Pipeline de Efectos. Configura los dispositivos de audio a la frecuencia de muestreo de la aplicación principal e inténtalo de nuevo.",
+"error:pipelineInputChannelUnavailable": "El canal de entrada del pipeline seleccionado no existe en el Pipeline de Efectos. Elige canales dentro del número de canales del pipeline.",
+"error:pipelineOutputChannelsUnavailable": "El dispositivo de salida seleccionado tiene menos canales que el Pipeline de Efectos. Elige el dispositivo de salida que usas en la aplicación principal e inténtalo de nuevo.",
+"error:pipelineClipping": "La señal de prueba saturaría al pasar por el Pipeline de Efectos. Baja el nivel de señal e inténtalo de nuevo.",
+"error:pipelineRenderFailed": "El Pipeline de Efectos no pudo procesar la señal de prueba. Vuelve a la aplicación principal, abre de nuevo esta página e inténtalo otra vez.",
 "error:measurementSetupFailed": "No se pudo preparar la medición. Comprueba los dispositivos de audio y vuelve a intentarlo.",
 "error:levelAdjustmentFailed": "No se pudo preparar la entrada de audio. Comprueba el dispositivo de entrada y vuelve a intentarlo.",
 "error:audioUnsupported": "Este navegador no permite realizar mediciones de audio. Usa la versión más reciente de Chrome o Edge.",
@@ -275,6 +295,8 @@
 "option:sampleRate96000": "96 kHz", // Option for 96 kHz sample rate
 "option:sampleRate176400": "176.4 kHz", // Option for 176.4 kHz sample rate
 "option:sampleRate192000": "192 kHz", // Option for 192 kHz sample rate
+"option:sampleRate352800": "352.8 kHz", // Option for 352.8 kHz sample rate
+"option:sampleRate384000": "384 kHz", // Option for 384 kHz sample rate
 
 // Sweep length options
 "option:sweepLength16384": "16,384 (2¹⁴)", // Option for 16384 sweep length

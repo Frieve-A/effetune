@@ -87,6 +87,16 @@ test('IR scrollbar follows rendered viewport, origin and available observation i
     assert.equal(slider.value, 625);
     controller.zoomImpulse(0.5);
     assert.ok(Math.abs(slider.value - 550 / 900 * 1000) < 1e-10);
+    const fraction = 0.23789;
+    const impulse = controller.settings.impulse;
+    const timeAtCursor = () => impulse.origin + impulse.xMin + fraction * (impulse.xMax - impulse.xMin);
+    const anchoredTime = timeAtCursor();
+    controller.zoomImpulse(0.8, fraction);
+    assert.ok(Math.abs(impulse.xMax - impulse.xMin - 80) < 1e-10);
+    assert.ok(Math.abs(timeAtCursor() - anchoredTime) < 1e-10);
+    controller.zoomImpulse(1.25, fraction);
+    assert.ok(Math.abs(impulse.xMin - 350) < 1e-10);
+    assert.ok(Math.abs(timeAtCursor() - anchoredTime) < 1e-10);
     Object.assign(controller.settings.impulse, { xMin: -200, xMax: 800 });
     controller.draw();
     assert.equal(slider.disabled, true);

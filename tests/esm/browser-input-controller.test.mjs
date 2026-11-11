@@ -168,6 +168,17 @@ test('releasing Browser playback mutes before its silent handoff and track stop'
     });
 });
 
+test('a failed capture still reports its error when the cleanup mute fails', async () => {
+    await withBrowser(async ({ input, api, setStream }) => {
+        const states = [];
+        input.onChange = state => states.push(state);
+        setStream(Promise.reject(new Error('capture failed')));
+        api.setCaptureState = async () => ({ ok: false });
+        assert.equal(await input.select(), false);
+        assert.deepEqual(states, ['acquiring', 'error']);
+    });
+});
+
 test('a superseded capture stops its late tracks without replacing the selected device', async () => {
     await withBrowser(async ({ input, setStream }) => {
         const late = deferred();

@@ -13,7 +13,8 @@ import {
   pickPlayerPreferences,
   saveAudioPreferences
 } from './audio-preference-store.js';
-import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
+import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
+import { evaluateSystemAudioGuard } from '../audio/system-audio-guard.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 import { bindMidiDeviceSettings } from '../midi/device-settings.js';
 export { isPlayerPreferenceOnlyChange, loadAudioPreferences, saveAudioPreferences };
@@ -56,6 +57,7 @@ export async function getAudioDevices(isElectron) {
         return devices.map(device => ({
           deviceId: device.deviceId,
           kind: device.kind,
+          groupId: device.groupId,
           label: device.label || (device.kind === 'audioinput'
             ? 'Microphone (no permission)'
             : device.kind === 'audiooutput'
@@ -128,12 +130,11 @@ function replaceOptions(select, devices, selectedValue) {
     : (devices[0]?.deviceId || 'default');
 }
 
-function getSelectedInputDeviceId(devices, selectedValue) {
-  if (devices.some(device => device.deviceId === selectedValue)) {
+function getSelectedInputDeviceId(options, selectedValue, physicalInputs) {
+  if (options.some(device => device.deviceId === selectedValue)) {
     return selectedValue;
   }
-  return devices.find(device => device.deviceId !== NO_AUDIO_INPUT_DEVICE_ID)?.deviceId ||
-    NO_AUDIO_INPUT_DEVICE_ID;
+  return physicalInputs[0]?.deviceId || NO_AUDIO_INPUT_DEVICE_ID;
 }
 
 function audioPipelineConfigurationEqual(left, right) {
@@ -221,69 +222,83 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       return;
     }
     const t = window.uiManager.t.bind(window.uiManager);
+    // System Audio captures the Windows default output through the desktop app.
+    const systemAudioOffered = isElectron && window.electronAPI?.platform === 'win32';
     const inputDeviceOptions = [
       {
         deviceId: NO_AUDIO_INPUT_DEVICE_ID,
         kind: 'audioinput',
         label: t('dialog.audioConfig.inputDevice.none')
       },
+      ...(systemAudioOffered ? [{
+        deviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID,
+        kind: 'audioinput',
+        label: t('dialog.audioConfig.inputDevice.systemAudio')
+      }] : []),
       ...inputDevices
     ];
     
     // Create dialog HTML
     const dialogHTML = `
-      <div class="audio-config-dialog">
+      <div class="audio-config-dialog${androidHost ? '' : ' audio-config-dialog-wide'}">
         <h2>${t('dialog.audioConfig.title')}</h2>
-        <div class="device-section">
-          <label for="input-device">${t('dialog.audioConfig.inputDevice')}</label>
-          <select id="input-device"></select>
-          <div class="checkbox-container">
-            <input type="checkbox" id="use-input-with-player" ${audioPreferences?.useInputWithPlayer ? 'checked' : ''}>
-            <label for="use-input-with-player">${t('dialog.audioConfig.useInputWithPlayer')}</label>
+        <div class="audio-config-content">
+          <div class="audio-config-column">
+            <div class="device-section">
+              <label for="input-device">${t('dialog.audioConfig.inputDevice')}</label>
+              <select id="input-device"></select>
+              ${systemAudioOffered ? '<div class="device-help" id="input-device-help"></div>' : ''}
+              <div class="checkbox-container">
+                <input type="checkbox" id="use-input-with-player" ${audioPreferences?.useInputWithPlayer ? 'checked' : ''}>
+                <label for="use-input-with-player">${t('dialog.audioConfig.useInputWithPlayer')}</label>
+              </div>
+            </div>
+            <div class="device-section">
+              <label for="output-device">${t('dialog.audioConfig.outputDevice')}</label>
+              <select id="output-device"></select>
+              <div class="device-help" id="output-device-support-message"></div>
+            </div>
+            <div class="device-section">
+              <label for="output-channels">${t('dialog.audioConfig.outputChannels')}</label>
+              <select id="output-channels"></select>
+              <div class="checkbox-container">
+                <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
+                <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
+              </div>
+              <div class="checkbox-container">
+                <input type="checkbox" id="gapless-playback" ${audioPreferences?.gaplessPlayback !== false ? 'checked' : ''}>
+                <label for="gapless-playback">${t('dialog.audioConfig.gaplessPlayback')}</label>
+              </div>
+            </div>
+            <div class="device-section">
+              <label for="sample-rate">${t('dialog.audioConfig.sampleRate')}</label>
+              <select id="sample-rate"></select>
+            </div>
+            <div class="device-section">
+              <label for="latency">${t('dialog.audioConfig.latency')}</label>
+              <select id="latency"></select>
+            </div>
           </div>
-        </div>
-        ${!androidHost ? `<div class="device-section">
-          <label for="midi-input-device">${t('dialog.audioConfig.midiInput')}</label>
-          <select id="midi-input-device"></select>
-          <label for="midi-output-device">${t('dialog.audioConfig.midiOutput')}</label>
-          <select id="midi-output-device"></select>
-          <button type="button" id="refresh-midi-devices">${t('dialog.audioConfig.midiDevices.refresh')}</button>
-          <div class="device-help" id="midi-device-help"></div>
-        </div>` : ''}
-        <div class="device-section">
-          <label for="output-device">${t('dialog.audioConfig.outputDevice')}</label>
-          <select id="output-device"></select>
-          <div class="device-help" id="output-device-support-message"></div>
-        </div>
-        <div class="device-section">
-          <label for="output-channels">${t('dialog.audioConfig.outputChannels')}</label>
-          <select id="output-channels"></select>
-          <div class="checkbox-container">
-            <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
-            <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="gapless-playback" ${audioPreferences?.gaplessPlayback !== false ? 'checked' : ''}>
-            <label for="gapless-playback">${t('dialog.audioConfig.gaplessPlayback')}</label>
-          </div>
-        </div>
-        ${!androidHost ? `<div class="device-section">
-          <label for="replay-gain-mode">${t('dialog.audioConfig.replayGain')}</label>
-          <select id="replay-gain-mode"></select>
-          <label for="replay-gain-preamp">${t('dialog.audioConfig.replayGainPreamp')}</label>
-          <input type="number" id="replay-gain-preamp" min="-15" max="15" step="0.5" value="${audioPreferences.replayGainPreampDb}">
-          <div class="checkbox-container">
-            <input type="checkbox" id="replay-gain-prevent-clipping" ${audioPreferences.replayGainPreventClipping ? 'checked' : ''}>
-            <label for="replay-gain-prevent-clipping">${t('dialog.audioConfig.replayGainPreventClipping')}</label>
-          </div>
-        </div>` : ''}
-        <div class="device-section">
-          <label for="sample-rate">${t('dialog.audioConfig.sampleRate')}</label>
-          <select id="sample-rate"></select>
-        </div>
-        <div class="device-section">
-          <label for="latency">${t('dialog.audioConfig.latency')}</label>
-          <select id="latency"></select>
+          ${!androidHost ? `<div class="audio-config-column">
+            <div class="device-section">
+              <label for="midi-input-device">${t('dialog.audioConfig.midiInput')}</label>
+              <select id="midi-input-device"></select>
+              <label for="midi-output-device">${t('dialog.audioConfig.midiOutput')}</label>
+              <select id="midi-output-device"></select>
+              <button type="button" id="refresh-midi-devices" class="header-button">${t('dialog.audioConfig.midiDevices.refresh')}</button>
+              <div class="device-help" id="midi-device-help"></div>
+            </div>
+            <div class="device-section">
+              <label for="replay-gain-mode">${t('dialog.audioConfig.replayGain')}</label>
+              <select id="replay-gain-mode"></select>
+              <label for="replay-gain-preamp">${t('dialog.audioConfig.replayGainPreamp')}</label>
+              <input type="number" id="replay-gain-preamp" min="-15" max="15" step="0.5" value="${audioPreferences.replayGainPreampDb}">
+              <div class="checkbox-container">
+                <input type="checkbox" id="replay-gain-prevent-clipping" ${audioPreferences.replayGainPreventClipping ? 'checked' : ''}>
+                <label for="replay-gain-prevent-clipping">${t('dialog.audioConfig.replayGainPreventClipping')}</label>
+              </div>
+            </div>
+          </div>` : ''}
         </div>
         <div class="dialog-buttons">
           <button id="cancel-button">${t('dialog.audioConfig.cancel')}</button>
@@ -322,20 +337,49 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         max-height: calc(100% - 32px);
         box-sizing: border-box;
         overflow: auto;
+        display: flex;
+        flex-direction: column;
         color: var(--et-text-primary);
       }
-      .device-section {
-        margin-bottom: 15px;
+      .audio-config-dialog h2 {
+        margin: 0 0 16px;
       }
-      .device-section label {
+      .audio-config-content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        min-height: 0;
+        overflow: auto;
+        border-top: 1px solid var(--et-surface-20);
+        padding: 16px 4px;
+      }
+      @media (min-width: 701px) {
+        body:not(.layout-mobile) .audio-config-dialog-wide {
+          width: 760px;
+        }
+        body:not(.layout-mobile) .audio-config-dialog-wide .audio-config-content {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 24px;
+        }
+        body:not(.layout-mobile) .audio-config-column + .audio-config-column {
+          border-inline-start: 1px solid var(--et-surface-20);
+          padding-inline-start: 24px;
+        }
+      }
+      .audio-config-dialog .device-section {
+        margin-bottom: 15px;
+        overflow-wrap: anywhere;
+      }
+      .audio-config-column:last-child .device-section:last-child {
+        margin-bottom: 0;
+      }
+      .audio-config-dialog .device-section label {
         display: block;
         margin-bottom: 5px;
       }
-      .device-section select + label {
+      .audio-config-dialog .device-section select + label {
         margin-top: 10px;
       }
-      .device-section select,
-      .device-section input[type="number"] {
+      .audio-config-dialog .device-section :is(select, input[type="number"]) {
         width: 100%;
         box-sizing: border-box;
         padding: 8px;
@@ -344,45 +388,55 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         border: 1px solid var(--et-surface-20);
         border-radius: 4px;
       }
-      .device-help {
+      .audio-config-dialog :is(#midi-input-device, #midi-output-device, #refresh-midi-devices) {
+        min-height: 35px;
+      }
+      .audio-config-dialog #refresh-midi-devices {
+        box-sizing: border-box;
+        margin-top: 8px;
+        max-width: 100%;
+        padding: 4px 10px;
+        white-space: normal;
+      }
+      body.layout-mobile .audio-config-dialog :is(#midi-input-device, #midi-output-device, #refresh-midi-devices) {
+        min-height: var(--et-mobile-control-height);
+      }
+      .audio-config-dialog .device-help {
         color: var(--et-surface-74);
         font-size: 12px;
         line-height: 1.35;
         margin-top: 6px;
-        min-height: 16px;
         white-space: pre-line;
       }
-      .checkbox-container {
+      .audio-config-dialog .device-help:empty {
+        display: none;
+      }
+      .audio-config-dialog .checkbox-container {
         margin-top: 8px;
         display: flex;
         align-items: center;
+        gap: 8px;
       }
-      .checkbox-container input[type="checkbox"] {
-        margin-right: 8px;
+      .audio-config-dialog .checkbox-container input {
+        flex-shrink: 0;
       }
-      .checkbox-container label {
-        display: inline;
+      .audio-config-dialog .checkbox-container label {
         margin-bottom: 0;
       }
-      .dialog-buttons {
+      .audio-config-dialog .dialog-buttons {
+        flex-shrink: 0;
         display: flex;
+        flex-wrap: wrap;
         justify-content: flex-end;
-        margin-top: 20px;
+        gap: 10px;
+        padding-top: 16px;
+        border-top: 1px solid var(--et-surface-20);
       }
-      .dialog-buttons button {
+      .audio-config-dialog .dialog-buttons button {
         padding: 8px 16px;
-        margin-left: 10px;
         border: none;
         border-radius: 4px;
         cursor: pointer;
-      }
-      #cancel-button {
-        background-color: var(--et-surface-28);
-        color: var(--et-text-primary);
-      }
-      #apply-button {
-        background-color: var(--et-accent);
-        color: var(--et-on-accent);
       }
     `;
     document.head.appendChild(styleElement);
@@ -396,7 +450,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     replaceOptions(
       inputSelect,
       inputDeviceOptions,
-      getSelectedInputDeviceId(inputDeviceOptions, audioPreferences?.inputDeviceId || 'default')
+      getSelectedInputDeviceId(inputDeviceOptions, audioPreferences?.inputDeviceId || 'default', inputDevices)
     );
     replaceOptions(outputSelect, outputDevices, audioPreferences?.outputDeviceId || 'default');
     replaceValueOptions(
@@ -453,7 +507,25 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       outputSelect.value = 'default';
       supportMessage.textContent = outputSupport.reasonKey ? t(outputSupport.reasonKey) : '';
     }
-    
+    if (systemAudioOffered) {
+      const systemAudioOption = Array.from(inputSelect.children)
+        .find(option => option.value === SYSTEM_AUDIO_INPUT_DEVICE_ID);
+      const inputHelp = document.getElementById('input-device-help');
+      // Capturing the output EffeTune plays through would mute it, so the
+      // option stays unavailable until another output device is selected.
+      const updateSystemAudioAvailability = () => {
+        const outputDeviceId = outputSelect.disabled ? 'default' : outputSelect.value;
+        const { allowed } = evaluateSystemAudioGuard(outputDeviceId, outputDevices);
+        systemAudioOption.disabled = !allowed;
+        inputHelp.textContent = allowed ? '' : t('dialog.audioConfig.inputDevice.systemAudioUnavailable');
+        if (!allowed && inputSelect.value === SYSTEM_AUDIO_INPUT_DEVICE_ID) {
+          inputSelect.value = NO_AUDIO_INPUT_DEVICE_ID;
+        }
+      };
+      outputSelect.addEventListener('change', updateSystemAudioAvailability);
+      updateSystemAudioAvailability();
+    }
+
     let dialogClosed = false;
     let applyInProgress = true;
     let cleanupMidiSettings;

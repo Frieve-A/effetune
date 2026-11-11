@@ -22,7 +22,7 @@ body.layout-mobile .sfz-note-player-plugin-ui .sfz-controls .parameter-row input
 }
 .sfz-note-player-plugin-ui button {
     box-sizing: border-box;
-    min-height: 26px;
+    min-height: var(--et-control-height-field);
     padding: 4px 10px;
     border: 1px solid var(--et-surface-32);
     border-radius: 4px;

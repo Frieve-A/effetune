@@ -72,7 +72,7 @@ function player(options = {}) {
       row.appendChild(select); return row;
     }
   }
-  vm.runInNewContext(`${instrumentSource}\n${playerSource}`, { PluginBase, window, document, console, performance });
+  vm.runInNewContext(`${instrumentSource}\n${playerSource}`, { PluginBase, window, document, console, performance, setTimeout, clearTimeout });
   return new window.SoundFontPlayerPlugin();
 }
 const bank = presets => ({ format: 'sf2', descriptor: { footprintBytes: 8 * 1048576 }, presets, sampleCount: 2 });
@@ -114,9 +114,11 @@ test('SoundFont Player enables automatic fallback by default and saves the choic
   assert.equal(packSoundFontPlayerPluginParams(restored.getWorkletPluginData().parameters)[4], 0);
 });
 
-function telemetry({ voices = 2, limit = 64, bank = 0, program = 0, note = 60, flags = 0, peak = 0 } = {}) {
+function telemetry({ voices = 2, limit = 64, bank = 0, program = 0, note = 60, flags = 0, peak = 0,
+  stolenReleased = 0, stolenHeld = 0 } = {}) {
   const payload = new DataView(new ArrayBuffer(584));
   payload.setUint16(0, voices, true); payload.setUint16(2, limit, true);
+  payload.setUint16(4, stolenReleased, true); payload.setUint16(6, stolenHeld, true);
   for (let channel = 0; channel < 16; channel++) {
     const row = 8 + channel * 32;
     payload.setUint16(row, bank, true); payload.setUint8(row + 2, program);
@@ -139,6 +141,29 @@ test('SoundFont patch menus follow the effective percussion bank on any channel 
   plugin.handleMixerTelemetry(telemetry({ bank: 0, program: 0 }));
   assert.deepEqual(Array.from(plugin._mixerRows[9].presets, preset => preset.bank), [0]);
   assert.equal(plugin._mixerRows[9].patch.value, '0');
+});
+
+test('SoundFont Player colors the Voices readout for three seconds after voice stealing', () => {
+  const plugin = player();
+  plugin.createUI();
+  plugin.handleMixerTelemetry(telemetry());
+  assert.equal(plugin._voiceMeter.attributes['data-shortage'], undefined);
+  plugin.handleMixerTelemetry(telemetry({ stolenReleased: 1 }));
+  assert.equal(plugin._voiceMeter.getAttribute('data-shortage'), 'released', 'cutting a release tail shows the warning color');
+  plugin.handleMixerTelemetry(telemetry());
+  assert.equal(plugin._voiceMeter.getAttribute('data-shortage'), 'released', 'the color holds past the frame that reported it');
+  plugin.handleMixerTelemetry(telemetry({ stolenHeld: 1, stolenReleased: 1 }));
+  assert.equal(plugin._voiceMeter.getAttribute('data-shortage'), 'held', 'stopping a held voice outranks release tails');
+  plugin.handleMixerTelemetry(telemetry({ stolenReleased: 1 }));
+  assert.equal(plugin._voiceMeter.getAttribute('data-shortage'), 'held');
+  plugin._voiceShortage.held = performance.now() - 1;
+  plugin._applyVoiceShortage();
+  assert.equal(plugin._voiceMeter.getAttribute('data-shortage'), 'released', 'an expired held steal falls back to the newer release steal');
+  plugin._resetMixerFlashes();
+  assert.equal(plugin._voiceMeter.attributes['data-shortage'], undefined, 'a new song clears the warning');
+  assert.equal(plugin._voiceShortageTimer, null);
+  assert.match(playerCss, /\.soundfont-voice-meter\[data-shortage\] \{ --soundfont-shortage: var\(--et-warning\); \}/);
+  assert.match(playerCss, /\.soundfont-voice-meter\[data-shortage="held"\] \{ --soundfont-shortage: var\(--et-danger\); \}/);
 });
 
 test('SoundFont Player stores configuration but never mixer performance state', async () => {

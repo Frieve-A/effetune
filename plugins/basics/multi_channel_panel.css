@@ -70,7 +70,10 @@
 }
 
 .multichannel-panel-mute-button, .multichannel-panel-solo-button {
-    padding: 8px 10px;
+    box-sizing: border-box;
+    width: var(--et-control-height-field);
+    height: var(--et-control-height-field);
+    padding: 0;
 }
 
 .multichannel-panel-ui input[type="range"] {

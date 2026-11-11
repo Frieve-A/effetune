@@ -1,4 +1,5 @@
 const loadedContexts = new WeakSet();
+const FADE_SECONDS = 0.005;
 
 export class AirPlayPlayback {
   constructor(audioPlayer, { windowRef = globalThis.window, bridge = windowRef?.electronAPI?.airPlayV1,
@@ -112,7 +113,10 @@ export class AirPlayPlayback {
       const ownership = manager.preparePlayerSourceOwnership();
       if (!ownership || !manager.ensurePipelineSourceConnected(this.source)) throw new Error('Live ownership failed');
       manager.commitPlayerSourceOwnership(this.source, ownership);
-      this.source.gain.value = 1;
+      const gain = this.source.gain;
+      const now = this.audioPlayer.audioContext.currentTime;
+      gain.setValueAtTime(0, now);
+      gain.linearRampToValueAtTime(1, now + FADE_SECONDS);
       this.active = true;
       if (!this.audioPlayer.ui?.container) this.audioPlayer.ui?.createPlayerUI?.();
       this.audioPlayer.stateManager.updateState({ liveInputActive: true, currentTrack: null, currentTrackName: 'AirPlay',
@@ -152,10 +156,28 @@ export class AirPlayPlayback {
         if (!silence) throw new Error('Silent source handoff failed');
         manager.setManagedSourceNode(silence);
       }
-      this.node?.port.postMessage({ type: 'end', generation: this.generation });
-      manager.releasePipelineSource(this.source);
-      this.node?.disconnect();
-      this.node?.port.close();
+      const source = this.source, node = this.node, generation = this.generation;
+      const cleanup = () => {
+        node?.port.postMessage({ type: 'end', generation });
+        manager.releasePipelineSource(source);
+        node?.disconnect();
+        node?.port.close();
+      };
+      if (wasActive && this.audioPlayer.audioContext.state === 'running') {
+        const context = this.audioPlayer.audioContext;
+        const now = context.currentTime;
+        const gain = source.gain;
+        if (typeof gain.cancelAndHoldAtTime === 'function') gain.cancelAndHoldAtTime(now);
+        else { gain.cancelScheduledValues(now); gain.setValueAtTime(gain.value, now); }
+        const endTime = now + FADE_SECONDS;
+        gain.linearRampToValueAtTime(0, endTime);
+        const waitForRenderedFade = () => {
+          const remaining = endTime - context.currentTime;
+          if (context.state !== 'running' || remaining <= 0) cleanup();
+          else setTimeout(waitForRenderedFade, remaining * 1000);
+        };
+        setTimeout(waitForRenderedFade, FADE_SECONDS * 1000);
+      } else cleanup();
     }
     this.source = null;
     this.node = null;

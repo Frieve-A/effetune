@@ -17,6 +17,10 @@ test('Electron bootstrap keeps OpenHome off by default and gates it on renderer 
   assert.match(source, /did-start-navigation[\s\S]*openHomeControlHost\?\.setRendererUnavailable\(\)/);
   assert.match(source, /render-process-gone[\s\S]*openHomeControlHost\?\.setRendererUnavailable\(\)/);
   assert.match(source, /mainWindow\.on\('closed'[\s\S]*openHomeControlHost\?\.setRendererUnavailable\(\)/);
+  assert.match(source, /networkOutput:\s*\{ enabled: false, localTrimMs: 0, targets: \[\] \}/);
+  assert.match(source, /did-start-navigation[\s\S]*networkOutputHost\?\.setRendererUnavailable\(\)/);
+  assert.match(source, /render-process-gone[\s\S]*networkOutputHost\?\.setRendererUnavailable\(\)/);
+  assert.match(source, /mainWindow\.on\('closed'[\s\S]*networkOutputHost\?\.setRendererUnavailable\(\)/);
 });
 
 test('Electron network traces require explicit opt-in while failures remain visible', () => {
@@ -92,7 +96,7 @@ test('desktop decoder fallback preserves switches and limits the MIDI workaround
 
 test('desktop startup keeps background audio priority before readiness on every platform', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
-  const start = source.indexOf('// macOS only: tell Chromium');
+  const start = source.indexOf('const disabledFeatures =');
   const end = source.indexOf('function presentMainWindow', start);
   assert.ok(start >= 0 && end > start);
   assert.ok(end < source.indexOf('app.whenReady()'));
@@ -121,7 +125,7 @@ test('Electron shutdown awaits OpenHome and catalog cleanup through one idempote
   const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
 
   assert.match(source, /if \(appServicesClosePromise\) return appServicesClosePromise/);
-  assert.match(source, /appServicesClosePromise = Promise\.all\(\[[\s\S]*closeLibraryCatalogRecovery\(\)[\s\S]*openHomeHost\?\.dispose\(\)/);
+  assert.match(source, /appServicesClosePromise = Promise\.allSettled\(\[[\s\S]*closeLibraryCatalogRecovery\(\)[\s\S]*openHomeHost\?\.dispose\(\)/);
   assert.match(source, /app\.on\('before-quit'[\s\S]*closeApplicationServices\(\)/);
 });
 
@@ -145,6 +149,7 @@ test('Windows power resume notifies the current registered window without a glob
   const notifications = [];
   const availability = [];
   const airPlayAvailability = [];
+  const networkOutputAvailability = [];
   const powerMonitor = new EventEmitter();
   const makeWindow = name => ({
     isDestroyed: () => false,
@@ -171,6 +176,12 @@ test('Windows power resume notifies the current registered window without a glob
         return Promise.resolve();
       }
     },
+    networkOutputHost: {
+      setEnvironmentAvailable(available) {
+        networkOutputAvailability.push(available);
+        return Promise.resolve();
+      }
+    },
     console
   }, { filename: mainPath });
 
@@ -188,6 +199,7 @@ test('Windows power resume notifies the current registered window without a glob
   assert.deepEqual(notifications, [['first', 'system-resume'], ['replacement', 'system-resume']]);
   assert.deepEqual(availability, [false, true, true, true, true, true]);
   assert.deepEqual(airPlayAvailability, availability);
+  assert.deepEqual(networkOutputAvailability, availability);
 });
 
 test('Electron splash generates a valid module import from an installation path containing an apostrophe', () => {

@@ -106,7 +106,7 @@ Processe até quatro abas do Chrome ou Edge com cadeias independentes, predefini
 
 Para processar áudio de serviços de streaming (Spotify, YouTube Music, etc.):
 
-No aplicativo desktop, experimente primeiro o [navegador integrado](#navegador-integrado-do-aplicativo-desktop). Para usar um aplicativo de streaming separado ou uma fonte que o navegador integrado não reproduz, siga a configuração de áudio abaixo.
+No aplicativo desktop, experimente primeiro o [navegador integrado](#navegador-integrado-do-aplicativo-desktop). Para usar um aplicativo de streaming separado ou uma fonte que o navegador integrado não reproduz, o aplicativo desktop para Windows pode capturar diretamente o som de outros aplicativos: em **Configuração de Áudio**, defina **Dispositivo de Saída** como um dispositivo diferente da saída padrão do Windows (por exemplo, um DAC USB) e **Dispositivo de Entrada** como **System Audio (som de outros aplicativos)**. No aplicativo web, no macOS ou com apenas um dispositivo de saída, siga a configuração com dispositivo de áudio virtual abaixo.
 
 1. Pré-requisitos:
    - Instale um dispositivo de áudio virtual (por exemplo, VB Cable, Voice Meeter ou ASIO Link Tool)
@@ -524,6 +524,8 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Others    | Oscillator | Gerador de tons de teste e ruído para verificar alto-falantes/fones | [Detalhes](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Toca as notas detectadas com SoundFonts SF2/SF3 e instrumentos SFZ | [Detalhes](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Reproduz MIDI com SoundFonts SF2/SF3 ou instrumentos SFZ, com 16 canais SF2/SF3 independentes | [Detalhes](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | Começa a processar nesta posição uma transmissão ao vivo de outro EffeTune | [Detalhes](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | Envia o som desta posição para a Saída de rede e continua pelos efeitos locais | [Detalhes](plugins/control.md#live-audio-send) |
 | Control   | Section | Agrupa efeitos para que uma seção inteira possa ser colocada em bypass ou restaurada | [Detalhes](plugins/control.md) |
 
 ## Informações Técnicas

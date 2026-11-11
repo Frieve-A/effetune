@@ -133,4 +133,6 @@ spatial/stereo_blend: Stereo Blend | Spatial | StereoBlendPlugin
 others/oscillator: Oscillator | Others | OscillatorPlugin
 others/sfz_note_player: SoundFont Note Player | Others | SFZNotePlayerPlugin | css
 others/soundfont_player: SoundFont Player | Others | SoundFontPlayerPlugin | css
+control/network_receive: Live Audio Receive | Control | NetworkReceivePlugin
+control/network_send: Live Audio Send | Control | NetworkSendPlugin
 control/section: Section | Control | SectionPlugin

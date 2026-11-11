@@ -671,7 +671,8 @@ The workflow downloads the official ECS 45.2.1+wvcus archive for the runner's
 architecture and verifies its pinned SHA-256. Linux packages that runtime as an
 AppImage, retaining the separate GPG signing and OpenHome provenance checks.
 
-Windows authenticates with `castlabs-evs==1.3.2` using environment variables and
+Windows uses environment variables to authenticate with the Castlabs EVS CLI
+pinned in the desktop build workflow and
 `--no-ask`. It signs and verifies `dist/win-unpacked`, packages that directory
 with `--prepackaged`, and verifies VMP again before uploading artifacts.
 macOS authenticates with the same client, finalizes the application resources,

@@ -81,8 +81,8 @@ public:
         float sum = 0.0f;
         for (std::uint32_t i = 0u; i < filter.count; ++i)
           sum += magnitude_[filter.first + i] * tc::kFilterWeights[filter.offset + i];
-        const float log = static_cast<float>(
-            rhythm_d::portableLog(static_cast<double>(1.0f + sum)) / 2.30258509299404568402);
+        const float log = static_cast<float>(dsp::portableLog(static_cast<double>(1.0f + sum)) /
+                                             2.30258509299404568402);
         const float difference = log - previous_[b];
         features_[b] = log;
         features_[250u + b] = difference > 0.0f ? difference : 0.0f;

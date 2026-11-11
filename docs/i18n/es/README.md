@@ -106,7 +106,7 @@ Procesa hasta cuatro pestañas de Chrome o Edge con cadenas independientes, prea
 
 Para procesar audio de servicios de streaming (Spotify, YouTube Music, etc.):
 
-En la aplicación de escritorio, prueba primero el [navegador integrado](#navegador-integrado-de-la-aplicación-de-escritorio). Si usas una aplicación de streaming independiente o una fuente que el navegador integrado no puede reproducir, sigue la configuración de audio que se indica a continuación.
+En la aplicación de escritorio, prueba primero el [navegador integrado](#navegador-integrado-de-la-aplicación-de-escritorio). Si usas una aplicación de streaming independiente o una fuente que el navegador integrado no puede reproducir, la aplicación de escritorio para Windows puede capturar directamente el sonido de otras aplicaciones: en **Configuración de audio**, elige en **Dispositivo de salida** un dispositivo distinto de la salida predeterminada de Windows (por ejemplo, un DAC USB) y en **Dispositivo de entrada**, **System Audio (sonido de otras aplicaciones)**. En la aplicación web, en macOS o si solo tienes un dispositivo de salida, sigue la configuración con un dispositivo de audio virtual que se indica a continuación.
 
 1. Requisitos:
    - Instala un dispositivo de audio virtual (por ejemplo, VB Cable, Voice Meeter o ASIO Link Tool)
@@ -524,6 +524,8 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Others    | Oscillator | Generador de tonos de prueba y ruido para comprobar altavoces/auriculares | [Detalles](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Reproduce las notas detectadas con SoundFonts SF2/SF3 e instrumentos SFZ | [Detalles](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Reproduce MIDI con SoundFonts SF2/SF3 o instrumentos SFZ, con 16 canales SF2/SF3 independientes | [Detalles](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | Empieza a procesar en esta posición una transmisión en directo de otro EffeTune | [Detalles](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | Envía el sonido de esta posición a Salida de red y sigue por los efectos locales | [Detalles](plugins/control.md#live-audio-send) |
 | Control   | Section | Agrupa efectos para poder omitir o restaurar una sección completa | [Detalles](plugins/control.md) |
 
 ## Información Técnica

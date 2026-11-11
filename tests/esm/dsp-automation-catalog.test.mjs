@@ -52,7 +52,7 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 113);
+  assert.equal(entries.length, 115);
   assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 95);
   assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1036);
   for (const effect of specs) {
@@ -86,11 +86,12 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    '722b549d5e57f009884ae71d42eb104f61c57b8aefe4cd32a8e07eacdfd718f2'
+    '661dfb4d157567f7123b86698c9143d0296640fba375a31b46232e034562b62d'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
-    'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'NoteSpectrogramPlugin',
+    'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'NetworkReceivePlugin', 'NetworkSendPlugin',
+    'NoteSpectrogramPlugin',
     'OscilloscopePlugin', 'PitchMeterPlugin', 'PolarityInversionPlugin', 'RhythmAnalyzerPlugin', 'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin', 'StereoMeterPlugin'
   ]);

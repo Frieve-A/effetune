@@ -35,17 +35,17 @@
     {
       "name": "mingw-w64-ucrt-x86_64-crt",
       "base": "mingw-w64-crt",
-      "version": "14.0.0.r569.g34eeafb7d-1",
-      "file": "mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
-      "sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+      "version": "14.0.0.r598.ge3d18511f-1",
+      "file": "mingw-w64-ucrt-x86_64-crt-14.0.0.r598.ge3d18511f-1-any.pkg.tar.zst",
+      "sha256": "e863d0d1c5cef1269738f23dcc155b9b0d161d198b93d9d5aa481cb3a2f2cf53",
       "license": "spdx:ZPL-2.1"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-ffmpeg",
       "base": "mingw-w64-ffmpeg",
-      "version": "9.0.2-1",
-      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.0.2-1-any.pkg.tar.zst",
-      "sha256": "fa38d677cc6373180d9650e675c503d28fb6e60b99eb630a97866051afa953b2",
+      "version": "9.0.2-3",
+      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.0.2-3-any.pkg.tar.zst",
+      "sha256": "846090a3277f249103705bbc48f3d7b49737463f279d6a5963050cd67ec3eb21",
       "license": "spdx:GPL-3.0-or-later",
       "sourceOnly": true
     },
@@ -87,57 +87,57 @@
     {
       "name": "mingw-w64-ucrt-x86_64-gst-libav",
       "base": "mingw-w64-gst-libav",
-      "version": "1.28.8-1",
-      "file": "mingw-w64-ucrt-x86_64-gst-libav-1.28.8-1-any.pkg.tar.zst",
-      "sha256": "e0f9b4b570252b7a697c67dff03c2a99a4d90523dcaef3e36ad8a3d5bf4bbc95",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gst-libav-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "f17a9ca00491fb79b625983cd6dd6183f17955234ce67e2219788607732f5c4e",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gst-plugins-bad",
       "base": "mingw-w64-gst-plugins-bad",
-      "version": "1.28.8-3",
-      "file": "mingw-w64-ucrt-x86_64-gst-plugins-bad-1.28.8-3-any.pkg.tar.zst",
-      "sha256": "363b38ee92532e0049f4764e20efdac8e13f8750a0037b1c73fbdd7010fb85a2",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gst-plugins-bad-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "f04c30bdbcadff038d3312dfdd6b4e76708d8f4ab0a52d709b729298822ded3f",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gst-plugins-bad-libs",
       "base": "mingw-w64-gst-plugins-bad",
-      "version": "1.28.8-3",
-      "file": "mingw-w64-ucrt-x86_64-gst-plugins-bad-libs-1.28.8-3-any.pkg.tar.zst",
-      "sha256": "4825e648fa0c10b17cdddaedc84aba9a1d869429acbe675762066dc889aaec5d",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gst-plugins-bad-libs-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "e4be89729c41a54b30ab895f93c65fc0c2b54a4dd68effab21a290b9937649cf",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gst-plugins-base",
       "base": "mingw-w64-gst-plugins-base",
-      "version": "1.28.8-1",
-      "file": "mingw-w64-ucrt-x86_64-gst-plugins-base-1.28.8-1-any.pkg.tar.zst",
-      "sha256": "2c6e937a3e551eea5a139c47896517bb6fa6a00dfefcf3a0968e3175c1ba4eaf",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gst-plugins-base-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "9418fdedcfd4c10a0ab7d76e8e4feb4cc6eb655743112734af19a06dfb3c7b14",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gst-plugins-good",
       "base": "mingw-w64-gst-plugins-good",
-      "version": "1.28.8-1",
-      "file": "mingw-w64-ucrt-x86_64-gst-plugins-good-1.28.8-1-any.pkg.tar.zst",
-      "sha256": "258f9192bcb65dd7ee79f3298784d5355b16fcd62fb7060789a1194f8010e3a5",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gst-plugins-good-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "32c5006d8601b921364fdec356643def77366ecc3696f0a9c80ceae171829e37",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gstreamer",
       "base": "mingw-w64-gstreamer",
-      "version": "1.28.8-1",
-      "file": "mingw-w64-ucrt-x86_64-gstreamer-1.28.8-1-any.pkg.tar.zst",
-      "sha256": "db13c201cbc385aebf23916b971ae0aaf4aeabb53c07f2ca232a644886b82e1b",
+      "version": "1.28.9-1",
+      "file": "mingw-w64-ucrt-x86_64-gstreamer-1.28.9-1-any.pkg.tar.zst",
+      "sha256": "6bed23fb42240048523179c55f254aab1cab196c39cab013e08d7526673a131a",
       "license": "spdx:LGPL-2.1-or-later"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-headers",
       "base": "mingw-w64-headers",
-      "version": "14.0.0.r569.g34eeafb7d-1",
-      "file": "mingw-w64-ucrt-x86_64-headers-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
-      "sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
+      "version": "14.0.0.r598.ge3d18511f-1",
+      "file": "mingw-w64-ucrt-x86_64-headers-14.0.0.r598.ge3d18511f-1-any.pkg.tar.zst",
+      "sha256": "b3cec87298555a7c6694bd4d421d586d08a1cb47bc5bc76e79602cbf4421d3c9",
       "license": "spdx:ZPL-2.1 AND LGPL-2.1-or-later"
     },
     {
@@ -167,9 +167,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-libiconv",
       "base": "mingw-w64-libiconv",
-      "version": "1.19-1",
-      "file": "mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
-      "sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+      "version": "1.19.1-1",
+      "file": "mingw-w64-ucrt-x86_64-libiconv-1.19.1-1-any.pkg.tar.zst",
+      "sha256": "8a45dc317a285a036bddd79e01505d67b79e44ff49fc3f6e7177a5ea98d098cf",
       "license": [
         "spdx:LGPL-2.1-or-later",
         "documentation:spdx:GPL-3.0-or-later"
@@ -194,9 +194,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-libwinpthread",
       "base": "mingw-w64-winpthreads",
-      "version": "14.0.0.r569.g34eeafb7d-1",
-      "file": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
-      "sha256": "b4ebe2826e848c5e790e06ea7b37d3e0594e005f42382b0506886f17df8127da",
+      "version": "14.0.0.r598.ge3d18511f-1",
+      "file": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r598.ge3d18511f-1-any.pkg.tar.zst",
+      "sha256": "c35d6be83d141c8cfbb61f1637dd4b53aac8f5562d766aa26d0741c40bad4e4d",
       "license": "spdx:MIT AND BSD-3-Clause"
     },
     {
@@ -234,9 +234,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-pcre2",
       "base": "mingw-w64-pcre2",
-      "version": "10.49-1",
-      "file": "mingw-w64-ucrt-x86_64-pcre2-10.49-1-any.pkg.tar.zst",
-      "sha256": "63172179db724ac71e2439a7981134c1bcab8049bdddfd349b32b8f76ed52d1e",
+      "version": "10.49-2",
+      "file": "mingw-w64-ucrt-x86_64-pcre2-10.49-2-any.pkg.tar.zst",
+      "sha256": "44ca7a873b71f1e6ce2b7b671d60bc067249009bd6c732733caa822153ebc4f9",
       "license": "spdx:BSD-3-Clause"
     },
     {
@@ -258,17 +258,17 @@
     {
       "name": "mingw-w64-ucrt-x86_64-winpthreads",
       "base": "mingw-w64-winpthreads",
-      "version": "14.0.0.r569.g34eeafb7d-1",
-      "file": "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
-      "sha256": "7c610b0ed967d277530c2f50bb7c9ce5760056324901fbc8e0df9912e75a0aa8",
+      "version": "14.0.0.r598.ge3d18511f-1",
+      "file": "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r598.ge3d18511f-1-any.pkg.tar.zst",
+      "sha256": "282485a1e453e972b86639cedcf43686e0000dfe5eff0421e47a4405ecdd85ce",
       "license": "spdx:MIT AND BSD-3-Clause"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-zlib",
       "base": "mingw-w64-zlib",
-      "version": "1.3.2-3",
-      "file": "mingw-w64-ucrt-x86_64-zlib-1.3.2-3-any.pkg.tar.zst",
-      "sha256": "130e6ef04c654fc2150a177600aa5ed0035087665a893479d2c85ba7485d5704",
+      "version": "1.4-2",
+      "file": "mingw-w64-ucrt-x86_64-zlib-1.4-2-any.pkg.tar.zst",
+      "sha256": "172541cf5e2391a402f092104988699b0163129d22be1d6b4b201bfb84af6fcf",
       "license": "spdx:Zlib"
     },
     {
@@ -290,9 +290,9 @@
   ],
   "windowsSources": [
     {
-      "name": "mingw-w64-ffmpeg-9.0.2-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.0.2-1.src.tar.zst",
-      "sha256": "91c40f70437632e425638cf5786d5b49cad6d3cf84c384a63cd090781a3063d0"
+      "name": "mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
+      "sha256": "b1ae15944aac72df605c7a87650f65cf778acb595f0bb2ece80c3228979f1e56"
     },
     {
       "name": "mingw-w64-gcc-16.2.0-6.src.tar.zst",
@@ -310,29 +310,29 @@
       "sha256": "ac3bc00e4079e6b51dd0a1fb9ccc420fff033b4e9095e4487dbf6cf01312cee6"
     },
     {
-      "name": "mingw-w64-gst-libav-1.28.8-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-libav-1.28.8-1.src.tar.zst",
-      "sha256": "b4e8f9be50ea7ffdd504c4f022fa58d40995edb4630ea1994e8c0e9691923d59"
+      "name": "mingw-w64-gst-libav-1.28.9-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-libav-1.28.9-1.src.tar.zst",
+      "sha256": "4bacd1fc0011c17be3abbefe4b6d5b5050eec097e38e4d15092c4d4d275a1ea3"
     },
     {
-      "name": "mingw-w64-gst-plugins-bad-1.28.8-3.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-bad-1.28.8-3.src.tar.zst",
-      "sha256": "bff63c41cb435ebbb2a8dad5f81a7c2d45c56bb2bdb6f53ca5730a90ff25688e"
+      "name": "mingw-w64-gst-plugins-bad-1.28.9-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-bad-1.28.9-1.src.tar.zst",
+      "sha256": "9d1d6393f754b79af319a8f1b6875d9a3f143f83395d4648f94e466c1c82799e"
     },
     {
-      "name": "mingw-w64-gst-plugins-base-1.28.8-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-base-1.28.8-1.src.tar.zst",
-      "sha256": "ffb5dbea35ff2e41018c519c84194f0ff7f9c63dd85e7fba6a2ce94dbeaad07a"
+      "name": "mingw-w64-gst-plugins-base-1.28.9-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-base-1.28.9-1.src.tar.zst",
+      "sha256": "ec8f2f718adea7b097332a50a4e7b7081933c8929552b347d4c5468342b6257e"
     },
     {
-      "name": "mingw-w64-gst-plugins-good-1.28.8-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-good-1.28.8-1.src.tar.zst",
-      "sha256": "9d7336e565acbb4c6e2c65a865100c33ed0b8b0bdcb8c7fa09af3d4cfe603d5e"
+      "name": "mingw-w64-gst-plugins-good-1.28.9-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gst-plugins-good-1.28.9-1.src.tar.zst",
+      "sha256": "8dba1354c286fa0b262b422a0862398b7db36be7f645458f6c47962faa8eb447"
     },
     {
-      "name": "mingw-w64-gstreamer-1.28.8-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gstreamer-1.28.8-1.src.tar.zst",
-      "sha256": "c5331bd61a2e5b4cb11d83fb82e9c5dae8748b902722c86cfffd364ecca56313"
+      "name": "mingw-w64-gstreamer-1.28.9-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gstreamer-1.28.9-1.src.tar.zst",
+      "sha256": "d406876e95a88c85a6a8e20bd25bd987a28721a0d0979cc0e58c268c3e9e775a"
     },
     {
       "name": "mingw-w64-libffi-3.8.0-1.src.tar.zst",
@@ -340,9 +340,9 @@
       "sha256": "641ea78ce0333839eab5262656f03fdcfd8496d7388bd7b27e4f0638aeed9adf"
     },
     {
-      "name": "mingw-w64-libiconv-1.19-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libiconv-1.19-1.src.tar.zst",
-      "sha256": "74428280c17094da5b702c29b2e1a0abae59556ea5dfdd65705cc8ccc1e000fb"
+      "name": "mingw-w64-libiconv-1.19.1-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libiconv-1.19.1-1.src.tar.zst",
+      "sha256": "ed46bb1b524ad9bd9d843091bf7b18ab23e5cd21fef6de743c8c943bdc11dabe"
     },
     {
       "name": "mingw-w64-libplist-2.7.0-4.src.tar.zst",
@@ -360,24 +360,24 @@
       "sha256": "06fab88f8411649e216a0834ef347c006436ae153a221a67b1f5cd455bd16278"
     },
     {
-      "name": "mingw-w64-pcre2-10.49-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-pcre2-10.49-1.src.tar.zst",
-      "sha256": "b02f0d5070b7d7f6db5c8ba9b009f28c1a07b9b52aaf7964dc0c8b098e4088d1"
+      "name": "mingw-w64-pcre2-10.49-2.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-pcre2-10.49-2.src.tar.zst",
+      "sha256": "a0834cd8808867aaa3d0065eefcb12a2be09735a6c398c3da9301187e8517ead"
     },
     {
-      "name": "mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
-      "sha256": "8f43ac029183d5afea64dfbb4692729bd7fd8c087de550d32deab1d061fe2a36"
+      "name": "mingw-w64-winpthreads-14.0.0.r598.ge3d18511f-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r598.ge3d18511f-1.src.tar.zst",
+      "sha256": "1da3dad4f6916d0c23e8fe76c38ed79946fb32078f94047c0475229b8112a1db"
     },
     {
-      "name": "mingw-w64-zlib-1.3.2-3.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-3.src.tar.zst",
-      "sha256": "4b7839ab2826d3e3d27fe46150d2180a1f561f4d03c9e82aeb4b056180561f00"
+      "name": "mingw-w64-zlib-1.4-2.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.4-2.src.tar.zst",
+      "sha256": "28415621a0f6c16bc20b0ce50cd1ae3632dd9f27bdc5776ab3ec18e8d2f00dcd"
     }
   ],
   "codec": {
     "version": "9.0.2",
-    "sourceArchive": "mingw-w64-ffmpeg-9.0.2-1.src.tar.zst",
+    "sourceArchive": "mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
     "sourceDirectory": "mingw-w64-ffmpeg",
     "sourceTar": "ffmpeg-9.0.2.tar.xz",
     "configure": [

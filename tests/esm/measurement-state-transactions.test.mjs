@@ -1705,7 +1705,8 @@ test('back, select, start-new, and save-finish transitions have one cleanup boun
         initializeAudio: async () => {},
         populateAudioDevices: async () => {},
         selectSavedAudioDevices: () => {}
-    } };
+    }, scrollTo: (...args) => { scrollCalls.push(args); } };
+    const scrollCalls = [];
 
     const manager = new UIManager();
     let cleanupCalls = 0;
@@ -1714,6 +1715,7 @@ test('back, select, start-new, and save-finish transitions have one cleanup boun
     manager.currentScreen = 'levelAdjustmentScreen';
     manager.showScreen('measurementConfigScreen');
     assert.equal(cleanupCalls, 1, 'Back cleans up once');
+    assert.deepEqual(scrollCalls, [[0, 0]], 'Screen changes return to the top of the page');
 
     manager.currentScreen = 'sweepMeasurementScreen';
     manager.measurementDisplay.updateSelectedMeasurementHighlight = () => {};

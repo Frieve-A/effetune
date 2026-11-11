@@ -2,6 +2,7 @@ import { getSettingsStorage } from './settings-storage.js';
 import { LIBRARY_STYLESHEET } from './utils/app-stylesheets.js';
 import { PluginManager } from './plugin-manager.js';
 import { AudioManager } from './audio-manager.js';
+import { NetworkOutputIntegration } from './electron/networkOutputIntegration.js';
 import { AndroidAudioManager } from './android/audio-manager.js';
 import { isAndroidHost } from './android/bridge.js';
 import { UIManager } from './ui-manager.js';
@@ -320,6 +321,29 @@ function applyInitialStartupViewClass(config, windowRef = window) {
     addDocumentBodyClass(documentRef, 'view-library');
 }
 
+// A suspended or monitoring context can leave WebAssembly assets unready for the whole
+// default wait, so the hand-off gives up early and lets navigation proceed.
+const MEASUREMENT_HANDOFF_ASSET_TIMEOUT_MS = 2000;
+
+async function saveMeasurementPipelineHandoff(audioManager, workletSync) {
+    const [{ buildPipelineProcessingSnapshot }, handoffStore] = await Promise.all([
+        import('./pipeline-analyzer/pipeline-snapshot.js'),
+        import('./pipeline-analyzer/pipeline-handoff-store.js')
+    ]);
+    try {
+        await handoffStore.putPipelineHandoff(await buildPipelineProcessingSnapshot({
+            audioManager,
+            workletSync,
+            assetTimeoutMs: MEASUREMENT_HANDOFF_ASSET_TIMEOUT_MS
+        }));
+    } catch (error) {
+        // Never leave an entry from an earlier navigation for the measurement page to pick up.
+        await handoffStore.clearPipelineHandoff().catch(clearError =>
+            console.warn('Failed to clear the previous pipeline hand-off:', clearError));
+        throw error;
+    }
+}
+
 class App {
     constructor(dependencies = {}) {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
@@ -333,6 +357,9 @@ class App {
         // Initialize core components
         this.pluginManager = dependencies.pluginManager || new PluginManagerClass();
         this.audioManager = dependencies.audioManager || new AudioManagerClass();
+        // Lives as long as the app so the worklet keeps its Network Output port
+        // across player open/close cycles (no-op outside Electron).
+        this.networkOutputIntegration = new NetworkOutputIntegration(this.audioManager);
         
         // Initialize UI components
         this.uiManager = dependencies.uiManager || new UIManagerClass(this.pluginManager, this.audioManager);
@@ -344,6 +371,11 @@ class App {
             return loadConfig(isElectron);
         });
         this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
+        this.savePipelineHandoff = dependencies.savePipelineHandoff ||
+            (() => saveMeasurementPipelineHandoff(
+                this.audioManager,
+                this.uiManager.pipelineManager?.core?.workletSync
+            ));
 
         // Set pipeline manager reference in audio manager
         this.audioManager.pipelineManager = this.uiManager.pipelineManager;
@@ -358,6 +390,7 @@ class App {
         this._disconnectDebounceTimer = null;
         // Guard against concurrent handleOutputDeviceChange executions
         this._deviceChangeInProgress = false;
+        this._deviceChangePending = false;
         // App-start timestamp — used to skip auto-relaunch immediately after launch
         // to prevent infinite relaunch loops when HDMI is unstable at startup
         this._appStartTime = Date.now();
@@ -401,6 +434,7 @@ class App {
             window.electronIntegration?.isElectronEnvironment?.() === true;
 
         if (isElectron && window.electronAPI?.openFrequencyResponseMeasurement) {
+            await this.handOffPipelineToMeasurement();
             const fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
             let opened = false;
             try {
@@ -441,8 +475,19 @@ class App {
             this.uiManager.setError('error.featureNavigationFailed', true);
             return;
         }
+        await this.handOffPipelineToMeasurement();
         await this.audioManager.fadeOutOutputForTeardown?.();
         window.location.href = path;
+    }
+
+    // Runs while the live pipeline is still intact. A failure only leaves the measurement
+    // page without the pipeline option, so it is logged and navigation continues.
+    async handOffPipelineToMeasurement() {
+        try {
+            await this.savePipelineHandoff();
+        } catch (error) {
+            console.warn('The effect pipeline could not be handed to the measurement page:', error);
+        }
     }
 
     async prepareWebUpdate() {
@@ -1510,18 +1555,31 @@ class App {
             return;
         }
 
+        // A change arriving mid-run is coalesced into one more pass so the
+        // last devicechange is always evaluated after the run in progress.
         if (this._deviceChangeInProgress) {
+            this._deviceChangePending = true;
             return;
         }
         this._deviceChangeInProgress = true;
         try {
-            await this._handleOutputDeviceChangeImpl();
+            do {
+                this._deviceChangePending = false;
+                await this._handleOutputDeviceChangeImpl();
+            } while (this._deviceChangePending);
         } finally {
             this._deviceChangeInProgress = false;
         }
     }
 
     async _handleOutputDeviceChangeImpl() {
+        await this._reconcileOutputDevice();
+        // A moved Windows default output changes what System Audio captures
+        // and mutes; the controller swaps the capture only when it is selected.
+        await this.audioManager?.powerPolicyController?.handleSystemAudioOutputChange?.();
+    }
+
+    async _reconcileOutputDevice() {
         let prefs;
         try {
             prefs = await window.electronIntegration.loadAudioPreferences();

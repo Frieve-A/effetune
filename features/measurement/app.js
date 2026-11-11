@@ -25,6 +25,7 @@ import {
 } from './audio-utils/channel-selection.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
 import { essFrequencyLimit } from './measurement-model.js';
+import { takePipelineHandoffOnce } from '../../js/pipeline-analyzer/pipeline-handoff-store.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -246,7 +247,14 @@ async function initializeApp() {
         
         // Check browser audio support and limitations
         checkBrowserAudioSupport();
-        
+
+        // Take the effect pipeline handed over by the main app; a reload finds none.
+        try {
+            measurementController.pipelineHandoff = await takePipelineHandoffOnce();
+        } catch (error) {
+            console.warn('Effect pipeline hand-off could not be read:', error);
+        }
+
         // Initialize UI last (after data is loaded)
         await uiManager.initialize();
         
@@ -373,6 +381,7 @@ function setupEventConnections() {
             inputChannel: document.getElementById('inputChannel').value,
             outputChannel: outputChannels.length > 1 ? 'multi' : outputChannels[0],
             ...(outputChannels.length > 1 ? { outputChannels } : {}),
+            ...(document.getElementById('effectPipeline')?.value === 'current' ? { effectPipeline: true } : {}),
             ...(interfaceCalibration ? { interfaceCalibration } : {}),
             ...(interfaceCalibrations?.length ? { interfaceCalibrations } : {})
         };
@@ -662,8 +671,10 @@ function saveUserSettings(event) {
         sweepLength: document.getElementById('sweepLength').value,
         sweepBand: getSweepBandConfiguration(),
         averaging: document.getElementById('averaging').value,
+        // Values locked by the Effect Pipeline selection are not user preferences.
+        ...window.app.uiManager?.effectPipelineRestoreValues
     };
-    
+
     // Save audio devices if available
     const audioInput = document.getElementById('audioInput');
     const audioOutput = document.getElementById('audioOutput');

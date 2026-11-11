@@ -8,6 +8,13 @@ import i18n from '../i18n.js';
 import { createGraphGeometry } from '../graph-geometry.js';
 import { resolveDisplayedResponse, resolveResponseSweepBand } from '../measurement-model.js';
 
+// Correction design inputs and the correction export buttons.
+const CORRECTION_CONTROL_IDS = Object.freeze([
+    'smoothing', 'smoothingValue', 'targetLowFreqSlider', 'targetLowFreqValue',
+    'targetHighFreqSlider', 'targetHighFreqValue', 'eqBandCount', 'eqBandCountValue',
+    'copyPEQBtn', 'copyChannelPEQBtn', 'exportTxtBtn', 'exportCSVBtn'
+]);
+
 export function smoothingToBinsPerOct(smoothing) {
     return 3 + smoothing * 21;
 }
@@ -311,6 +318,21 @@ class CorrectionHandler {
         }
     }
 
+    /**
+     * Disable correction design and export for results measured through the effect pipeline,
+     * which already include the pipeline's processing and would be corrected twice.
+     * @param {Object} measurement - Selected measurement record
+     */
+    syncCorrectionAvailability(measurement) {
+        const unavailable = Boolean(measurement?.effectPipeline);
+        for (const id of CORRECTION_CONTROL_IDS) {
+            const element = document.getElementById(id);
+            if (element) element.disabled = unavailable;
+        }
+        const message = document.getElementById('correctionUnavailableMessage');
+        if (message) message.hidden = !unavailable;
+    }
+
     getCorrectionTarget() {
         const measurementId = this.uiManager.selectedMeasurementId;
         return { measurementId, measurement: dataStorage.getMeasurementById(measurementId),
@@ -355,7 +377,7 @@ class CorrectionHandler {
      */
     async calculatePEQParameters(settings, expectedGeneration = this.uiManager.measurementStateGeneration, target = this.getCorrectionTarget()) {
         const { measurement, channel } = target;
-        if (!measurement) return [];
+        if (!measurement || measurement.effectPipeline) return [];
         if (!this.isCurrentTarget(target, expectedGeneration)) return [];
         
         // Correction uses the selected channel averaged across measurement points.

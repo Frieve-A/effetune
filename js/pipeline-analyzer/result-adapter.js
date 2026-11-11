@@ -14,7 +14,7 @@ const FREQUENCY_MAX_HZ = 40000;
 const FREQUENCY_TICKS_HZ = Object.freeze([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
 const FREQUENCY_MAGNITUDE_RANGE_DB = Object.freeze({ minimum: -20, maximum: 20 });
 const FREQUENCY_MAGNITUDE_TICKS_DB = Object.freeze([18, 12, 6, 0, -6, -12, -18]);
-const IMPULSE_TIME_TICK_INTERVALS_MS = Object.freeze([0.5, 1, 5, 10]);
+const IMPULSE_TIME_TICK_INTERVALS_MS = Object.freeze([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 5, 10]);
 export const MAGNITUDE_DISPLAY_FLOOR_DB = -120;
 const DEFAULT_DISPLAY_SETTINGS = Object.freeze({ smoothingOct: 0.17, impulseRangeMs: 6 });
 const SMOOTHING_GRID_SPACING_OCTAVES = 0.01;
@@ -94,7 +94,7 @@ function impulseTimeTicks(startMs, endMs) {
     const spanMs = endMs - startMs;
     const interval = IMPULSE_TIME_TICK_INTERVALS_MS.find(value => spanMs / value <= 10) ||
         IMPULSE_TIME_TICK_INTERVALS_MS[IMPULSE_TIME_TICK_INTERVALS_MS.length - 1];
-    const digits = interval < 1 ? 1 : 0;
+    const digits = Math.max(0, -Math.floor(Math.log10(interval)));
     const ticks = [];
     for (let index = Math.floor(startMs / interval) + 1; index * interval < endMs; index += 1) {
         const time = index * interval;
@@ -339,6 +339,38 @@ function viewCurves(curves, makePoints) {
     }));
 }
 
+export function createPipelineImpulseView(result, timeRange, divisors) {
+    const curves = [
+        { id: 'before', label: 'Before', color: BEFORE_IMPULSE_COLOR },
+        { id: 'after', label: 'After', color: AFTER_COLOR }
+    ].map(curve => {
+        const response = result[curve.id];
+        return {
+            ...curve,
+            shortLabel: curve.label,
+            opacity: 1,
+            points: impulsePoints({
+                impulse: response.impulse,
+                timeOriginSamples: Number.isSafeInteger(response.timeOriginSamples) ? response.timeOriginSamples : 0
+            }, result.sampleRate, timeRange, divisors[curve.id])
+        };
+    });
+    return {
+        timeRange,
+        xLabel: 'Time (ms)',
+        yLabel: 'Amplitude',
+        xTicks: impulseTimeTicks(timeRange.minimum, timeRange.maximum),
+        yTicks: [
+            { position: 0, label: '' },
+            { position: 0.25, label: '0.5' },
+            { position: 0.5, label: '0' },
+            { position: 0.75, label: '-0.5' },
+            { position: 1, label: '' }
+        ],
+        curves
+    };
+}
+
 function measurementAnalysisViews(result) {
     const xMax = result.measurement?.endFrequency ?? Math.min(20000, result.sampleRate * 0.49);
     const data = result.after.distortion;
@@ -482,10 +514,10 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         : automaticExcessDelayRange.maximum;
     const excessDelayRange = { minimum: -excessDelayLimit, maximum: excessDelayLimit };
     const timeRange = { minimum: -2, maximum: displaySettings.impulseRangeMs };
-    const impulseSources = styledSources(BEFORE_IMPULSE_COLOR, AFTER_COLOR, 1).map(curve => ({
-        ...curve,
-        impulseDivisor: impulseDivisor(curve.impulse)
-    }));
+    const impulseDivisors = {
+        before: impulseDivisor(result.before.impulse),
+        after: impulseDivisor(result.after.impulse)
+    };
 
     const groupDelayView = (label, curves, range, clampToRange = true) => ({
         xLabel: 'Frequency (Hz)',
@@ -551,24 +583,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             excessDelayRange,
             false
         ),
-        impulse: {
-            xLabel: 'Time (ms)',
-            yLabel: 'Amplitude',
-            xTicks: impulseTimeTicks(timeRange.minimum, timeRange.maximum),
-            yTicks: [
-                { position: 0, label: '' },
-                { position: 0.25, label: '0.5' },
-                { position: 0.5, label: '0' },
-                { position: 0.75, label: '-0.5' },
-                { position: 1, label: '' }
-            ],
-            curves: viewCurves(impulseSources, curve => impulsePoints(
-                curve,
-                sampleRate,
-                timeRange,
-                curve.impulseDivisor
-            ))
-        },
+        impulse: createPipelineImpulseView(result, timeRange, impulseDivisors),
         ...measurementAnalysisViews(result)
     };
 
@@ -582,11 +597,11 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             impulseRangeMs: displaySettings.impulseRangeMs,
             before: Object.freeze({
                 frequencyNormalizationDb: frequencySources[0].frequencyNormalizationDb,
-                impulseDivisor: impulseSources[0].impulseDivisor
+                impulseDivisor: impulseDivisors.before
             }),
             after: Object.freeze({
                 frequencyNormalizationDb: frequencySources[1].frequencyNormalizationDb,
-                impulseDivisor: impulseSources[1].impulseDivisor
+                impulseDivisor: impulseDivisors.after
             })
         }),
         provenance: { ...provenance },

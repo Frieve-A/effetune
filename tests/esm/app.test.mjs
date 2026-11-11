@@ -452,7 +452,11 @@ function createDependencies(calls, options = {}) {
       if (options.resetReject) throw new Error('reset failed');
     }
   };
-  return { audioManager, pipelineManager, pluginManager, uiManager };
+  async function savePipelineHandoff() {
+    calls.push(['pipelineHandoff.save']);
+    if (options.pipelineHandoffReject) throw new Error('hand-off failed');
+  }
+  return { audioManager, pipelineManager, pluginManager, uiManager, savePipelineHandoff };
 }
 
 function createImportElectronAPI(importCalls, overrides = {}) {
@@ -1549,6 +1553,59 @@ test('feature navigation snapshots and restores both pipelines before startup po
   });
 });
 
+test('measurement navigation hands off the pipeline before fade-out and navigates even when it fails', async () => {
+  for (const pipelineHandoffReject of [false, true]) {
+    await withAppModule({ href: '/effetune.html' }, async ({ calls, mod, window }) => {
+      window.electronIntegration = { isElectron: false };
+      const deps = createDependencies(calls, {
+        pipelineA: [createPlugin('Measured')],
+        pipelineHandoffReject
+      });
+      const save = deps.savePipelineHandoff;
+      deps.savePipelineHandoff = async () => {
+        calls.push(['href.atSave', window.location.href]);
+        await save();
+      };
+      deps.audioManager.fadeOutOutputForTeardown = async () => { calls.push(['fade.out']); };
+      const app = new mod.App(deps);
+
+      await app.openFeaturePage('features/measurement/measurement.html');
+
+      const names = calls.map(call => call[0]);
+      assert.ok(names.indexOf('pipelineHandoff.save') < names.indexOf('fade.out'));
+      assert.deepEqual(calls.find(call => call[0] === 'href.atSave'), ['href.atSave', '/effetune.html']);
+      assert.equal(window.location.href, 'features/measurement/measurement.html');
+      assert.equal(
+        calls.some(call => call[0] === 'console.warn' && /handed to the measurement page/.test(call[1])),
+        pipelineHandoffReject
+      );
+    });
+  }
+
+  const order = [];
+  await withAppModule({
+    electronAPI: {
+      async openFrequencyResponseMeasurement() {
+        order.push('electron.openMeasurement');
+        return { success: true };
+      }
+    }
+  }, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    const deps = createDependencies(calls);
+    deps.savePipelineHandoff = async () => {
+      order.push('pipelineHandoff.save');
+      throw new Error('hand-off failed');
+    };
+    deps.audioManager.fadeOutOutputForTeardown = async () => { order.push('fade.out'); };
+    const app = new mod.App(deps);
+
+    await app.openFeaturePage('features/measurement/measurement.html');
+
+    assert.deepEqual(order, ['pipelineHandoff.save', 'fade.out', 'electron.openMeasurement']);
+  });
+});
+
 test('event listeners, output-device changes, relaunch, and command-line music coordinate app state', async () => {
   await withAppModule({
     pendingMusicFiles: [
@@ -2114,6 +2171,19 @@ test('event listeners and update notifications stay recoverable', async () => {
     app._deviceChangeInProgress = true;
     await app.handleOutputDeviceChange();
     app._deviceChangeInProgress = false;
+
+    // A change arriving mid-run is re-evaluated once after the run finishes.
+    let runs = 0;
+    app._handleOutputDeviceChangeImpl = async () => {
+      runs += 1;
+      if (runs === 1) {
+        await app.handleOutputDeviceChange();
+        await app.handleOutputDeviceChange();
+      }
+    };
+    await app.handleOutputDeviceChange();
+    assert.equal(runs, 2);
+    assert.equal(app._deviceChangeInProgress, false);
   });
 });
 

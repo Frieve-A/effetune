@@ -303,6 +303,10 @@ export class PipelineRoutingDialog {
      * @param {Object} plugin - The plugin to update bus info for
      */
     updateBusInfo(plugin, { saveHistory = true } = {}) {
+        if (['NetworkSendPlugin', 'NetworkReceivePlugin'].includes(plugin.constructor.name)) {
+            this.pipelineCore.pipelineList?.querySelector(`.pipeline-item[data-plugin-id='${plugin.id}'] .bus-info`)?.remove();
+            return;
+        }
         const dialog = document.querySelector('.routing-dialog');
         if (dialog?.dataset.pluginId === String(plugin.id)) {
             for (const select of dialog.querySelectorAll('select[data-routing-key]')) {

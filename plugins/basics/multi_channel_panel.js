@@ -878,8 +878,6 @@ class MultiChannelPanelPlugin extends PluginBase {
             muteButton.className = 'multichannel-panel-mute-button';
             muteButton.textContent = 'M';
             muteButton.title = `Mute Channel ${ch + 1}`;
-            muteButton.style.width = '21px';
-            muteButton.style.height = '21px';
             this._styleChannelButton(muteButton, this.m[ch], 'mute'); // Muted color
             muteButton.addEventListener('click', () => {
                 this.setMute(ch, !this.m[ch]);
@@ -893,8 +891,6 @@ class MultiChannelPanelPlugin extends PluginBase {
             soloButton.className = 'multichannel-panel-solo-button';
             soloButton.textContent = 'S';
             soloButton.title = `Solo Channel ${ch + 1}`;
-            soloButton.style.width = '21px';
-            soloButton.style.height = '21px';
             this._styleChannelButton(soloButton, this.s[ch], 'solo'); // Soloed color
             soloButton.addEventListener('click', () => {
                 this.setSolo(ch, !this.s[ch]);

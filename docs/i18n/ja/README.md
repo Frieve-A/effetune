@@ -106,7 +106,7 @@ Web MIDIを使うサイトからは、**EffeTune** という名前のMIDI出力�
 
 ストリーミングサービス（Spotify、YouTube Musicなど）からオーディオを処理するには：
 
-デスクトップ版では、まず[内蔵ブラウザ](#デスクトップ版の内蔵ブラウザ)をお試しください。独立したストリーミングアプリや、内蔵ブラウザで再生できない音源を使う場合は、以下の音声デバイス設定を利用できます。
+デスクトップ版では、まず[内蔵ブラウザ](#デスクトップ版の内蔵ブラウザ)をお試しください。独立したストリーミングアプリや、内蔵ブラウザで再生できない音源を使う場合、Windows版デスクトップアプリでは他のアプリの音を直接取り込めます。**オーディオ設定** で、**出力デバイス** をWindowsの既定の出力以外のデバイス（USB DACなど）に、**入力デバイス** を **System Audio（他のアプリの音）** に設定してください。Web版やmacOSの場合、または出力デバイスが1つしかない場合は、以下の仮想オーディオデバイスの設定を利用してください。
 
 1. 前提条件：
    - 仮想オーディオデバイスをインストールする（例: VB Cable、Voice Meeter、または ASIO Link Tool）。
@@ -531,6 +531,8 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Others    | Oscillator | スピーカーやヘッドホン確認用のテストトーン/ノイズジェネレーター | [詳細](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | 検出した音符をSF2/SF3 SoundFontやSFZ音源で再生 | [詳細](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | SF2/SF3 SoundFontやSFZ音源でMIDIを再生。SF2/SF3は16チャンネルを独立した音色で演奏 | [詳細](plugins/others.md#soundfont-player) |
+| Control   | Live Audio Receive | 別のEffeTuneから届いたライブ音声をこの位置から処理 | [詳細](plugins/control.md#live-audio-receive) |
+| Control   | Live Audio Send | この位置の音をネットワーク出力へ送り、後続のローカルエフェクトも通す | [詳細](plugins/control.md#live-audio-send) |
 | Control   | Section | 複数のエフェクトをグループ化し、セクション全体をバイパスまたは復帰 | [詳細](plugins/control.md) |
 
 ## 技術情報

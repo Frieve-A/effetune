@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import { startIsolatedStaticServer, stopIsolatedStaticServer } from '../../tools/run-power-browser-smoke.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const origin = 'https://effetune.test';
-const contentTypes = {
-  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.css': 'text/css', '.json': 'application/json', '.json5': 'application/json',
-  '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png'
-};
+let server;
+test.before(async () => { server = await startIsolatedStaticServer(); });
+test.after(async () => stopIsolatedStaticServer(server?.child));
 
 function deferred() {
   let resolve;
@@ -100,25 +94,14 @@ for (const startupView of ['effects', 'library']) {
         };
         requestAnimationFrame(observe);
       }, { view: startupView, inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
-      await page.route(`${origin}/**`, async route => {
-        const pathname = new URL(route.request().url()).pathname;
-        const gate = gates.get(pathname);
-        if (gate) {
+      for (const [resource, gate] of gates) {
+        await page.route(url => url.origin === server.baseURL && url.pathname === resource, async route => {
           gate.requested.resolve();
           await gate.release.promise;
-        }
-        const file = path.resolve(root, `.${decodeURIComponent(pathname)}`);
-        if (!file.startsWith(root)) return route.fulfill({ status: 403, body: '' });
-        try {
-          await route.fulfill({
-            contentType: contentTypes[path.extname(file)] || 'application/octet-stream',
-            body: await fs.readFile(file)
-          });
-        } catch {
-          await route.fulfill({ status: 404, body: '' });
-        }
-      });
-      await page.goto(`${origin}/effetune.html`, { waitUntil: 'commit' });
+          await route.continue();
+        });
+      }
+      await page.goto(`${server.baseURL}/effetune.html`, { waitUntil: 'commit' });
       await page.locator('#pipelineList').waitFor({ state: 'attached' });
       await assertPreparing(page);
       await page.setViewportSize({ width: 1920, height: 1080 });
@@ -182,26 +165,10 @@ test('application static import failure reveals a useful startup error', { timeo
     page.on('console', message => {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
-    await page.route(`${origin}/**`, async route => {
-      const pathname = new URL(route.request().url()).pathname;
-      if (pathname === '/js/plugin-manager.js') {
-        await route.fulfill({ status: 500, contentType: 'text/javascript', body: '' });
-        return;
-      }
+    await page.route(url => url.origin === server.baseURL && url.pathname === '/js/plugin-manager.js', route =>
+      route.fulfill({ status: 500, contentType: 'text/javascript', body: '' }));
 
-      const file = path.resolve(root, `.${decodeURIComponent(pathname)}`);
-      if (!file.startsWith(root)) return route.fulfill({ status: 403, body: '' });
-      try {
-        await route.fulfill({
-          contentType: contentTypes[path.extname(file)] || 'application/octet-stream',
-          body: await fs.readFile(file)
-        });
-      } catch {
-        await route.fulfill({ status: 404, body: '' });
-      }
-    });
-
-    await page.goto(`${origin}/effetune.html`, { waitUntil: 'commit' });
+    await page.goto(`${server.baseURL}/effetune.html`, { waitUntil: 'commit' });
     await page.waitForFunction(() =>
       !document.documentElement.classList.contains('app-starting')
     );

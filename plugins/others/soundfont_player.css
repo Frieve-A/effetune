@@ -12,6 +12,10 @@
 .soundfont-voice-meter > span { color: var(--et-text-secondary); font: 11px Arial, sans-serif; }
 .soundfont-voice-meter > strong { color: var(--et-text-primary); font: 14px Arial, sans-serif; font-variant-numeric: tabular-nums; }
 .soundfont-voice-bar { height: 4px; background: linear-gradient(var(--et-accent), var(--et-accent)) left / 0% 100% no-repeat var(--et-graph-tone-13); }
+.soundfont-voice-meter[data-shortage] { --soundfont-shortage: var(--et-warning); }
+.soundfont-voice-meter[data-shortage="held"] { --soundfont-shortage: var(--et-danger); }
+.soundfont-voice-meter[data-shortage] > strong { color: var(--soundfont-shortage); }
+.soundfont-voice-meter[data-shortage] > .soundfont-voice-bar { background-image: linear-gradient(var(--soundfont-shortage), var(--soundfont-shortage)); box-shadow: 0 0 7px color-mix(in srgb, var(--soundfont-shortage) 70%, transparent); }
 .soundfont-mixer-scroll { --matrix-cell-padding: 4px; --matrix-visible-rows: 16; }
 .soundfont-mixer { min-width: 900px; }
 .soundfont-mixer-header { font-size: 11px; }
@@ -23,7 +27,7 @@
 .soundfont-channel-level-fill { position: absolute; inset: 0; clip-path: inset(0 100% 0 0); background: linear-gradient(to right, #008000 0% 75%, #808000 75% 87.5%, #800000 87.5% 100%); } /* theme-allow: Meter colors distinguish signal level bands. */
 .soundfont-channel-level::after { position: absolute; inset: 0; content: ""; pointer-events: none; background: repeating-linear-gradient(to right, transparent 0 calc(12.5% - 1px), var(--et-graph-grid-soft) calc(12.5% - 1px) 12.5%); clip-path: inset(0 1px 0 0); }
 .soundfont-channel-level-peak { position: absolute; z-index: 1; left: 0; top: 0; bottom: 0; width: 2px; transform: translateX(-100%); opacity: 0; background: var(--et-text-primary); }
-.soundfont-bank-row button { box-sizing: border-box; min-height: 26px; padding: 4px 10px; border: 1px solid var(--et-surface-34); border-radius: 4px; background: var(--et-control-gradient); color: var(--et-text-primary); font: inherit; cursor: pointer; }
+.soundfont-bank-row button { box-sizing: border-box; min-height: var(--et-control-height-field); padding: 4px 10px; border: 1px solid var(--et-surface-34); border-radius: 4px; background: var(--et-control-gradient); color: var(--et-text-primary); font: inherit; cursor: pointer; }
 .soundfont-bank-row button:hover:not(:disabled) { background: var(--et-control-hover-gradient); }
 .soundfont-player-plugin-ui button:disabled, .soundfont-mixer-knob[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .soundfont-mixer-row .matrix-button { min-width: 0; width: 100%; padding: 0; }
@@ -32,5 +36,6 @@
 .soundfont-mixer-knob > span::before { position: absolute; content: ""; top: -3px; left: calc(50% - 1.5px); height: 6px; width: 3px; border-radius: 1.5px; background: var(--et-accent); }
 .soundfont-bank-row button:focus-visible, .soundfont-mixer-row :is(button, select, input, .soundfont-mixer-knob):focus-visible { outline: 2px solid var(--et-accent); outline-offset: 1px; }
 body.layout-mobile .soundfont-player-plugin-ui .soundfont-bank-row { flex-wrap: wrap; }
+body.layout-mobile .soundfont-bank-row button { min-height: var(--et-mobile-control-height); }
 body.layout-mobile .soundfont-bank-name { flex-basis: 100%; order: 1; }
 body.layout-mobile .soundfont-mixer { width: 900px; table-layout: fixed; }

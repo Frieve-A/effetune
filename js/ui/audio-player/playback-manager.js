@@ -1653,6 +1653,10 @@ export class PlaybackManager {
       return false;
     }
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    if (state?.currentTrack?.meta?.openHomeQueueEntry?.liveSessionId) {
+      const started = await this.audioPlayer.openHomePlaybackAdapter?.playClassifiedLive?.(isCurrent);
+      return this.isActivePlayRequest(request) && started === true;
+    }
     const currentOrdinal = state?.currentTrackIndex ??
       this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0;
     if (this.canResumeCurrentTrack(state, currentOrdinal)) {
@@ -1673,6 +1677,7 @@ export class PlaybackManager {
    */
   async pause() {
     this.invalidateActivePlayRequest();
+    this.audioPlayer.openHomePlaybackAdapter?.networkLive?.stop();
     this.pendingTransport.invalidate();
     this.cancelPlaybackPending();
     if (this.audioPlayer.contextManager?.hasActiveGraphRebuildRequest?.() !== true) {
@@ -1712,6 +1717,7 @@ export class PlaybackManager {
    */
   async stop() {
     this.invalidateActivePlayRequest();
+    this.audioPlayer.openHomePlaybackAdapter?.networkLive?.stop();
     this.pendingTransport.invalidate();
     this.cancelPlaybackPending();
     const graphRebuildActive = this.audioPlayer.contextManager?.hasActiveGraphRebuildRequest?.() === true;

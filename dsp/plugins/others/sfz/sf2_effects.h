@@ -38,8 +38,10 @@ public:
     if (!required || required > maximumBytes)
       return false;
     const PrepareInfo stereo{info.sampleRate, 2, info.maxFrames};
-    constexpr std::array<float, 8> chorus{1, .65F, 15, 4, 2, 80, 0, 100};
-    constexpr std::array<float, 13> reverb{1.2F, 8, 10, 20, 5, 6, 100, 3, .3F, 100, 100, 0, 100};
+    // Tuned against FluidSynth 2.6.2 defaults at full send: equal wet/dry
+    // energy, 3-voice 0.2 Hz chorus, and a reverb decaying about 23 dB/s.
+    constexpr std::array<float, 8> chorus{1, .2F, 15, 4.25F, 3, 100, 0, 100};
+    constexpr std::array<float, 13> reverb{3, 8, 5, 27, 24, 0, 20, 3, .3F, 100, 52, 0, 200};
     if (!chorus_.prepare(et_kernel_descriptor_ChorusPlugin(), stereo, chorus.data(),
                          chorus.size()) ||
         !reverb_.prepare(et_kernel_descriptor_FDNReverbPlugin(), stereo, reverb.data(),
@@ -67,10 +69,15 @@ public:
     if (!prepared_ || !chorus || !reverb || !frames || frames > maxFrames_)
       return;
     chorus_.process(chorus, frames, quietLimit_, info);
+    // The chorus kernel's wet mix tops out near -3.5 dB; FluidSynth returns +6 dB.
+    if (chorus_.active)
+      for (std::size_t i = 0; i < static_cast<std::size_t>(frames) * 2; ++i)
+        chorus[i] *= kChorusReturnGain;
     reverb_.process(reverb, frames, quietLimit_, info);
   }
 
 private:
+  static constexpr float kChorusReturnGain = 3;
   struct Effect {
     NothrowStorage<std::max_align_t> storage;
     const KernelDescriptor *descriptor = nullptr;

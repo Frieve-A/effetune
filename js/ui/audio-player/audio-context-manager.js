@@ -53,6 +53,9 @@ const FULL_DECODE_RESERVATION_PROFILE = Object.freeze({
   nextPcmByteCap: FULL_BUFFER_PCM_BYTE_CAP
 });
 const PLAYBACK_BACKEND_ADAPTERS = Object.freeze({
+  networkLive: Object.freeze({ play: 'playNetworkLive', pause: 'pauseNetworkLive', stop: 'stopNetworkLive',
+    seek: 'stopNetworkLive', getSource: manager => manager.audioPlayer.openHomePlaybackAdapter?.networkLive?.source ?? null,
+    getTime: () => 0 }),
   midi: Object.freeze({ play: 'playMidi', pause: 'pauseMidi', stop: 'stopMidi', seek: 'seekMidi',
     getSource: manager => manager.midiSource, getTime: manager => manager.getCurrentMidiTime() }),
   bufferSource: Object.freeze({
@@ -248,6 +251,22 @@ export class AudioContextManager {
       throw new Error(`Unsupported playback backend operation: ${operation}`);
     }
     return this[method](...args);
+  }
+
+  async playNetworkLive(_stopToken, isCurrent) {
+    return this.audioPlayer.openHomePlaybackAdapter?.playClassifiedLive?.(isCurrent) ?? false;
+  }
+
+  async stopNetworkLive() {
+    this.audioPlayer.openHomePlaybackAdapter?.networkLive?.stop();
+    this.updateState({ currentTrackPosition: 0, isPlaying: false, isPaused: false, isStopped: true,
+      isTransitioning: false, transitionType: null }, 'Network live playback stopped');
+  }
+
+  async pauseNetworkLive() {
+    this.audioPlayer.openHomePlaybackAdapter?.networkLive?.stop();
+    this.updateState({ isPlaying: false, isPaused: true, isStopped: false,
+      isTransitioning: false, transitionType: null }, 'Network live playback paused');
   }
 
   /**
@@ -566,7 +585,7 @@ export class AudioContextManager {
   }
 
   replaceCanonicalInputSource(sourceNode) {
-    if (this.getUseInputWithPlayer() && sourceNode &&
+    if (this.shouldMixInputWithPlayer() && sourceNode &&
         !this.ensurePipelineSourceConnected(sourceNode)) {
       return false;
     }
@@ -643,8 +662,16 @@ export class AudioContextManager {
     return preferences?.useInputWithPlayer === true;
   }
 
+  shouldMixInputWithPlayer() {
+    const route = this.audioManager.networkRoute;
+    const session = this.audioManager._networkReceiveSession;
+    const receiving = route?.receiveActive === true && route.receiveId != null &&
+      session?.active === true && route.generation === session.generation;
+    return this.getUseInputWithPlayer() && !receiving;
+  }
+
   getPlaybackResumeKind() {
-    return this.getUseInputWithPlayer() ? 'mixed-play' : 'player-only-play';
+    return this.shouldMixInputWithPlayer() ? 'mixed-play' : 'player-only-play';
   }
 
   getPlaybackIntentIdentity(sourceGeneration, intendedPosition = 0, intent = null) {

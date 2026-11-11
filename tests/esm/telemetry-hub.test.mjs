@@ -28,6 +28,21 @@ function createPacket(frames) {
   return buffer;
 }
 
+test('stale route telemetry is returned without dispatch', () => {
+  const posts = [];
+  const received = [];
+  const hub = new TelemetryHub({ port: { postMessage: message => posts.push(message) } });
+  hub.routeRevision = 3;
+  hub.subscribe(42, TelemetryFrameType.TAP_LEVEL, frame => received.push(frame.sequence));
+  const packet = createPacket([{ frameType: TelemetryFrameType.TAP_LEVEL, tapId: 42,
+    sequence: 7, payload: new Uint8Array(0) }]);
+  hub.handleMessage({ type: 'dspTelemetry', packet, bytes: packet.byteLength, routeRevision: 2 });
+  assert.deepEqual(received, []);
+  assert.equal(posts.length, 1);
+  hub.handleMessage({ type: 'dspTelemetry', packet, bytes: packet.byteLength, routeRevision: 3 });
+  assert.deepEqual(received, [7]);
+});
+
 test('Phase Select EQ uses the next unassigned telemetry frame type', () => {
   assert.equal(TelemetryFrameType.TAP_PHASE_SELECT_MAP, 20);
 });

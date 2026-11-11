@@ -3,6 +3,7 @@ const {
   BrowserWindow,
   WebContentsView,
   components,
+  desktopCapturer,
   session,
   Tray,
   Menu,
@@ -45,6 +46,7 @@ const { createStartupPresentation } = require('./startup-presentation.cjs');
 const ipcHandlers = require('./ipc-handlers');
 const visualizerFeed = require('./visualizer-feed');
 const { createBrowserController } = require('./browser-controller.cjs');
+const { createSystemAudioCapture } = require('./system-audio-capture.cjs');
 const fileHandlers = require('./file-handlers');
 const fileAccess = require('./file-access.cjs');
 const { queueAutoRestart } = require('./relaunch');
@@ -66,9 +68,11 @@ const {
 } = require('./openhome-control-host.cjs');
 const { createAirPlayReceiverHost } = require('./airplay-receiver.cjs');
 const { registerAirPlayIpc } = require('./airplay-ipc.cjs');
+const { NetworkOutputHost, sanitizeConfiguration: sanitizeNetworkOutputConfiguration } = require('./network-output-host.cjs');
+const { registerNetworkOutputIpc } = require('./network-output-ipc.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
-const { NetworkMusicHost, registerNetworkMusicIpc, logNetworkMusicDiagnostic } = require('./network-music-host.cjs');
+const { NetworkMusicHost, registerNetworkMusicIpc, logNetworkMusicDiagnostic, supportsProtocol, routeAddress } = require('./network-music-host.cjs');
 const { registerIntegratedRemoteClientIpc } = require('./remote-client-window.cjs');
 const releaseVersionModulePromise = import(pathToFileURL(
   path.join(__dirname, '../js/release-version.mjs')
@@ -164,6 +168,8 @@ let libraryCatalogClosePromise = null;
 let openHomeControlHost = null;
 let airPlayReceiverHost = null;
 let disposeAirPlayIpc = null;
+let networkOutputHost = null;
+let disposeNetworkOutputIpc = null;
 let networkMusicHost = null;
 let disposeNetworkMusicIpc = null;
 let disposeIntegratedRemoteClientIpc = null;
@@ -296,6 +302,8 @@ async function closeApplicationServices() {
   disposeOpenHomeIpc = null;
   disposeAirPlayIpc?.();
   disposeAirPlayIpc = null;
+  disposeNetworkOutputIpc?.();
+  disposeNetworkOutputIpc = null;
   disposeNetworkMusicIpc?.();
   disposeNetworkMusicIpc = null;
   disposeIntegratedRemoteClientIpc?.();
@@ -306,21 +314,29 @@ async function closeApplicationServices() {
   openHomeControlHost = null;
   const airPlayHost = airPlayReceiverHost;
   airPlayReceiverHost = null;
+  const outputHost = networkOutputHost;
+  networkOutputHost = null;
   const remoteHost = remoteControlHost;
   remoteControlHost = null;
   const playbackSource = alacPlaybackSource;
   alacPlaybackSource = null;
-  appServicesClosePromise = Promise.all([
-    Promise.resolve(musicHost?.dispose()).then(() => closeLibraryCatalogRecovery()),
+  // Wait for every service, and close the catalog even when another disposal fails,
+  // so quitting never kills the catalog utility while its database is still open.
+  appServicesClosePromise = Promise.allSettled([
+    Promise.resolve(musicHost?.dispose()).finally(() => closeLibraryCatalogRecovery()),
     openHomeHost?.dispose(),
     airPlayHost?.dispose(),
+    outputHost?.dispose(),
     remoteHost?.dispose(),
     playbackSource?.dispose()
-  ]);
+  ]).then(results => {
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) throw failure.reason;
+  });
   return appServicesClosePromise;
 }
 
-// Keep the main window hidden until the renderer has prepared its initial view.
+// Keep the main window hidden until the splash closes or the renderer is prepared.
 let pendingMainWindowShow = false;
 let splashWindow = null;
 let splashCloseTimer = null;
@@ -408,6 +424,9 @@ function updateOpenHomeEnvironmentAvailability(available) {
   void airPlayReceiverHost?.setEnvironmentAvailable(available)?.catch(error => {
     console.error('AirPlay power lifecycle diagnostic:', error);
   });
+  void networkOutputHost?.setEnvironmentAvailable(available)?.catch(error => {
+    console.error('Network output power lifecycle diagnostic:', error);
+  });
   const host = openHomeControlHost;
   if (!host) return;
   void host.setEnvironmentAvailable(available).catch(error => {
@@ -465,18 +484,6 @@ ipcMain.handle('renderer-watchdog-disarm', (_event, reason) => {
   return { success: true };
 });
 
-// macOS only: tell Chromium to auto-approve getUserMedia() without showing its
-// own permission UI.  The actual hardware access still goes through macOS TCC,
-// so the system-level microphone permission is still respected and the
-// menu-bar indicator appears when audio is captured.
-// Not applied on Windows/Linux because those platforms have no equivalent
-// system-level dialog, so silently auto-granting media-stream access there
-// would weaken the security posture without a corresponding benefit.
-// Must be set before app.ready.
-if (process.platform === 'darwin') {
-  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-}
-
 const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
   .split(',')
   .map(feature => feature.trim())
@@ -527,6 +534,30 @@ function presentMainWindow(mainWindow) {
   mainWindow.show();
   mainWindow.focus();
   return true;
+}
+
+// Present the initial window once: when the splash closes, or earlier when the
+// renderer finishes preparing. An unprepared renderer shows its loading screen.
+function presentStartupMainWindow(mainWindow) {
+  if (!pendingMainWindowShow || isAppQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+  pendingMainWindowShow = false;
+  if (constants.getAppConfig().startMinimized) {
+    if (constants.getAppConfig().minimizeToTray) {
+      mainWindow.hide();
+      createTray();
+    } else {
+      mainWindow.minimize();
+    }
+    windowState.markRestoreComplete();
+  } else {
+    windowState.showWindowInRestoredState(mainWindow);
+  }
+  if (startupUpdateCheckPending) {
+    startupUpdateCheckPending = false;
+    if (constants.getAppConfig().checkForUpdatesOnStartup !== false) {
+      void checkForUpdates();
+    }
+  }
 }
 
 function sendWindowVisibilityState(mainWindow) {
@@ -590,6 +621,8 @@ function createWindow() {
   constants.setMainWindow(mainWindow);
   ipcHandlers.setMainWindow(mainWindow);
   fileHandlers.setMainWindow(mainWindow);
+  const systemAudioCapture = createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer });
+  mainWindow.once('closed', systemAudioCapture.dispose);
 
   // Allow renderer to access microphone via getUserMedia on file:// origin.
   // Without both handlers, Chromium falls back to its default content-settings
@@ -612,7 +645,7 @@ function createWindow() {
   });
 
   browserController = createBrowserController({
-    mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, components,
+    mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, components, systemAudioCapture,
     translate: createLibraryDialogTranslator({
       getLanguagePreference: () => constants.getAppConfig()?.language,
       getSystemLocale: () => app.getLocale()
@@ -638,6 +671,7 @@ function createWindow() {
       disarmRendererWatchdog(`navigation:${url}`);
       void openHomeControlHost?.setRendererUnavailable();
       void airPlayReceiverHost?.setRendererUnavailable();
+      void networkOutputHost?.setRendererUnavailable();
       remoteControlHost?.setRendererUnavailable();
     }
   });
@@ -645,6 +679,7 @@ function createWindow() {
     stopDesktopAudioPower();
     void openHomeControlHost?.setRendererUnavailable();
     void airPlayReceiverHost?.setRendererUnavailable();
+    void networkOutputHost?.setRendererUnavailable();
     remoteControlHost?.setRendererUnavailable();
   });
 
@@ -670,27 +705,7 @@ function createWindow() {
     window: mainWindow,
     ipcMain,
     isQuitting: () => isAppQuitting,
-    present: () => {
-      if (isAppQuitting || mainWindow.isDestroyed()) return;
-      pendingMainWindowShow = false;
-      if (constants.getAppConfig().startMinimized) {
-        if (constants.getAppConfig().minimizeToTray) {
-          mainWindow.hide();
-          createTray();
-        } else {
-          mainWindow.minimize();
-        }
-        windowState.markRestoreComplete();
-      } else {
-        windowState.showWindowInRestoredState(mainWindow);
-      }
-      if (startupUpdateCheckPending) {
-        startupUpdateCheckPending = false;
-        if (constants.getAppConfig().checkForUpdatesOnStartup !== false) {
-          void checkForUpdates();
-        }
-      }
-    }
+    present: () => presentStartupMainWindow(mainWindow)
   });
 
   const shouldLoadPipelineState = !constants.getCommandLinePresetFile() && constants.getShouldLoadPipelineState();
@@ -880,6 +895,7 @@ function createWindow() {
     pendingMainWindowShow = false;
     void openHomeControlHost?.setRendererUnavailable();
     void airPlayReceiverHost?.setRendererUnavailable();
+    void networkOutputHost?.setRendererUnavailable();
     constants.setMainWindow(null);
   });
 }
@@ -1039,8 +1055,6 @@ function createSplashScreen() {
     frame: false,
     transparent: true,
     resizable: false,
-    parent: constants.getMainWindow(),
-    modal: true,
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -1170,10 +1184,13 @@ function createSplashScreen() {
       return;
     }
     
-    // Position the splash over the main window's final restored bounds,
-    // whether the application has finished preparing or is still hidden.
+    // The splash is created before the main window so it appears without waiting
+    // for window and service setup. The main window exists by now: keep the
+    // splash above it and position it over the main window's final restored
+    // bounds, whether the application has finished preparing or is still hidden.
     const mainWindow = constants.getMainWindow();
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      splashWindow.setParentWindow(mainWindow);
       const mainBounds = windowState.getSplashTargetBounds();
       const splashBounds = splashWindow.getBounds();
       
@@ -1199,6 +1216,7 @@ function createSplashScreen() {
     } catch (error) {
       if (error.code !== 'ENOENT') console.error('Error removing temporary splash file:', error);
     }
+    presentStartupMainWindow(constants.getMainWindow());
   });
 }
 
@@ -1340,7 +1358,8 @@ async function initializeApp() {
     hardwareAcceleration: true,
     openHomeRemoteControl: false,
     upnpAvRemoteControl: false,
-    airPlayReceiver: false
+    airPlayReceiver: false,
+    networkOutput: { enabled: false, localTrimMs: 0, targets: [] }
   };
   const cfg = { ...cfgDefaults, ...configModule.loadConfig() };
   delete cfg.graphicsFallbackPending;
@@ -1357,6 +1376,10 @@ async function initializeApp() {
     constants.setShouldLoadPipelineState(true);
   } else if (cfg.pipelineStartup === 'preset') {
     constants.setShouldLoadPipelineState(false);
+  }
+  // Show the splash as soon as its theme is known, before service and window setup.
+  if (!process.argv.includes(constants.AUTO_RESTART_FLAG) && !cfg.startMinimized) {
+    createSplashScreen();
   }
 
   // Register the lightweight recovery endpoint before creating the renderer.
@@ -1439,7 +1462,9 @@ async function initializeApp() {
   const localPlayer = new LocalOpenHomePlayer(openHomeControlHost);
   networkMusicHost = new NetworkMusicHost({
     localPlayer,
-    getFriendlyName: () => openHomeControlHost.getFriendlyName(),
+    // Bind the host itself: shutdown clears openHomeControlHost before the music
+    // server sends its final SSDP byebye, which still needs the friendly name.
+    getFriendlyName: openHomeControlHost.getFriendlyName.bind(openHomeControlHost),
     getCatalog: async (initialize = true) => {
       if (initialize) await libraryCatalogRecovery.initialize();
       else if (!libraryCatalogUtilityHost) return null;
@@ -1453,6 +1478,30 @@ async function initializeApp() {
   disposeNetworkMusicIpc = registerNetworkMusicIpc({ ipcMain, host: networkMusicHost, getMainWindow: () => constants.getMainWindow() });
   disposeIntegratedRemoteClientIpc = registerIntegratedRemoteClientIpc({ ipcMain, app, getMainWindow: () => constants.getMainWindow(), getPairingEndpoint: playerId => networkMusicHost?.discovery.remoteControlEndpoint(playerId) });
   void networkMusicHost.start().catch(error => console.error('Network music startup diagnostic:', error));
+
+  // Network Output (network-output-v1): streams the processed mix to UPnP
+  // renderers and Cast devices. Shares the UPnP discovery of the music host.
+  networkOutputHost = new NetworkOutputHost({
+    discovery: networkMusicHost.discovery,
+    routeAddress, supportsProtocol,
+    getOwnDeviceIds: () => {
+      const { openHomeDeviceId, upnpAvDeviceId } = openHomeControlHost.ensureDeviceId();
+      return [openHomeDeviceId, upnpAvDeviceId].filter(Boolean).map(id => `uuid:${id}`);
+    },
+    onDiagnostic: (diagnostic, detail) => console.error('Network output diagnostic:', diagnostic, detail),
+    onStatus: status => {
+      const window = constants.getMainWindow();
+      if (window?.webContents && !window.webContents.isDestroyed()) {
+        window.webContents.send('network-output-v1:status', status);
+      }
+    }
+  });
+  disposeNetworkOutputIpc = registerNetworkOutputIpc({
+    ipcMain, MessageChannelMain, host: networkOutputHost,
+    getMainWindow: () => constants.getMainWindow(),
+    config: configModule, constants
+  });
+  void networkOutputHost.setConfiguration(sanitizeNetworkOutputConfiguration(cfg.networkOutput, networkOutputHost.onDiagnostic)).catch(error => console.error('Network output startup diagnostic:', error));
 
   // LAN remote control (remote-v1). IPC is always registered; the server
   // runs while Settings > Remote Control is on (or EFFETUNE_REMOTE=1 / --remote).
@@ -1507,10 +1556,6 @@ async function initializeApp() {
     alacPlaybackSource
   });
   createWindow();
-  if (!process.argv.includes(constants.AUTO_RESTART_FLAG) && !constants.getAppConfig().startMinimized) {
-    createSplashScreen();
-  }
-
 }
 
 // Initialize global variables
@@ -1684,7 +1729,7 @@ app.on('before-quit', (event) => {
   void windowsRendererPower?.dispose();
   stopWatchdog();
   armQuitProtection();
-  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || airPlayReceiverHost || alacPlaybackSource)) {
+  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || airPlayReceiverHost || networkOutputHost || alacPlaybackSource)) {
     event.preventDefault();
     closeApplicationServices()
       .catch(error => {

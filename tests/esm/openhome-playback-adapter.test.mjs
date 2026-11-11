@@ -10,6 +10,7 @@ import {
 } from '../../js/ui/audio-player/openhome-playback-adapter.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
 import { AirPlayPlayback } from '../../js/ui/audio-player/airplay-playback.js';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { NetworkMusicController } from '../../js/network-music/controller.js';
@@ -2340,6 +2341,309 @@ test('UPnP URI selection atomically replaces the canonical queue and accepts emp
   await h.adapter.commandChain;
   assert.equal(h.responses.at(-1).ok, false);
   assert.deepEqual(captureQueueContract(h), before);
+  h.adapter.dispose();
+});
+
+test('classified live playback follows the current player session and invalidates on stop or replacement', async () => {
+  const h = createHarness();
+  const sessions = [];
+  h.audioPlayer.audioManager = { setNetworkReceiveSession: (...args) => sessions.push(args) };
+  const uri = networkTrack('live');
+  h.bridge.emitAction({ requestId: 'live-select', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: uri.resources[0].uri, playbackUrl: uri.uri, metadata: '', liveSessionId: 'classified-session' } });
+  await h.adapter.commandChain;
+  const track = h.audioPlayer.playbackManager.playlist[0];
+  assert.equal(track.meta.openHomeQueueEntry.liveSessionId, 'classified-session');
+  h.adapter.networkLive.source = {};
+  h.adapter.networkLive.stop = () => {};
+  h.audioPlayer.stateManager.updateState({ currentTrack: track, playbackMode: 'networkLive', isStopped: false, isPlaying: true });
+  assert.deepEqual(sessions, [[true, 1, 'classified-session']]);
+  h.audioPlayer.stateManager.updateState({ currentTrack: { meta: {} } });
+  assert.deepEqual(sessions.at(-1), [false, 2, null]);
+  h.audioPlayer.stateManager.updateState({ currentTrack: track });
+  h.audioPlayer.stateManager.updateState({ isPlaying: false, isStopped: true });
+  assert.deepEqual(sessions.slice(-2), [[true, 3, 'classified-session'], [false, 4, null]]);
+  h.adapter.dispose();
+});
+
+test('AVTransport and local Player share the classified stream lifecycle', { timeout: 5000 }, async t => {
+  const h = createHarness({ playbackSpeed: 1 });
+  installRealPlaybackManager(h);
+  t.after(() => h.adapter.dispose());
+  const player = h.audioPlayer;
+  player.openHomePlaybackAdapter = h.adapter;
+  player.play = AudioPlayer.prototype.play;
+  player.pause = AudioPlayer.prototype.pause;
+  player.stop = AudioPlayer.prototype.stop;
+
+  const routes = [];
+  const connected = new Set();
+  const audioManager = Object.assign(new EventTarget(), {
+    workletNode: {},
+    ensureSourceConnectedToPipeline(source) { connected.add(source); return true; },
+    disconnectSourceFromPipeline(source) { connected.delete(source); },
+    setNetworkReceiveSession(active, generation, sessionId) {
+      routes.push({ active, generation, sessionId });
+      this._networkReceiveSession = { active, generation };
+      this.networkRoute = { generation, receiveActive: active };
+      this.dispatchEvent(new Event('networkRoute'));
+    }
+  });
+  player.audioManager = audioManager;
+  player.audioContext = {
+    audioWorklet: { addModule: async () => {} },
+    createGain: () => ({ gain: { value: 0 }, connect() {}, disconnect() {} })
+  };
+  player.contextManager = new AudioContextManager(player, audioManager);
+  player.contextManager.getUseInputWithPlayer = () => false;
+
+  const signals = [];
+  const live = h.adapter.networkLive;
+  live.fetchStream = async (_url, { signal }) => {
+    signals.push(signal);
+    if (signals.length === 1) {
+      return new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    }
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4));
+        signal.addEventListener('abort', () => controller.close(), { once: true });
+      }
+    });
+    return new Response(stream, { headers: {
+      'Content-Type': 'application/vnd.effetune.live-pcm-v1',
+      'X-EffeTune-Live-Connection': `connection-${signals.length}`
+    } });
+  };
+  live.createNode = () => ({
+    connect() {},
+    disconnect() {},
+    port: {
+      close() {},
+      postMessage({ type, generation }) {
+        if (type !== 'pcm') return;
+        this.onmessage({ data: { type: 'credit', generation, accepted: true } });
+        this.onmessage({ data: { type: 'buffered', generation } });
+      }
+    }
+  });
+
+  const remote = (requestId, action, args = {}) =>
+    h.bridge.emitAction({ requestId, service: 'AVTransport', action, args });
+  const assertResponse = async requestId => {
+    await h.adapter.commandChain;
+    const response = h.responses.at(-1);
+    assert.equal(response?.requestId, requestId);
+    assert.equal(response.ok, true, response.error?.code);
+  };
+  const uri = networkTrack('shared-live');
+  remote('select-live', 'SetAVTransportURI', {
+    uri: uri.resources[0].uri, playbackUrl: uri.uri, metadata: '', liveSessionId: 'shared-session'
+  });
+  await assertResponse('select-live');
+  const { currentId } = h.adapter.getSnapshot();
+  assert.ok(currentId > 0);
+
+  remote('pending-live', 'Play');
+  await delay();
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0].aborted, false);
+  h.bridge.emitCancel({ requestId: 'pending-live' });
+  remote('start-live', 'Play');
+  await assertResponse('start-live');
+  assert.equal(signals[0].aborted, true);
+  assert.equal(h.responses.some(response => response.requestId === 'pending-live'), false);
+  assert.equal(h.adapter.getSnapshot().avTransport.state, 'PLAYING');
+  assert.deepEqual(routes.map(route => route.active), [true]);
+  const firstSource = live.source;
+  assert.equal(audioManager.sourceNode, firstSource);
+  assert.equal(connected.has(firstSource), true);
+
+  remote('pause-live', 'Pause');
+  await assertResponse('pause-live');
+  assert.equal(h.adapter.getSnapshot().avTransport.state, 'PAUSED_PLAYBACK');
+  assert.equal(signals[1].aborted, true);
+  assert.equal(connected.has(firstSource), false);
+  assert.equal(routes.at(-1).active, false);
+
+  assert.equal(await player.play(), true);
+  assert.equal(h.adapter.getSnapshot().avTransport.state, 'PLAYING');
+  assert.equal(h.adapter.getSnapshot().currentId, currentId);
+  assert.equal(routes.at(-1).sessionId, 'shared-session');
+  const resumedSource = live.source;
+  assert.notEqual(resumedSource, firstSource);
+  assert.equal(audioManager.sourceNode, resumedSource);
+
+  remote('stop-live', 'Stop');
+  await assertResponse('stop-live');
+  assert.equal(h.adapter.getSnapshot().avTransport.state, 'STOPPED');
+  assert.equal(signals[2].aborted, true);
+  assert.equal(connected.has(resumedSource), false);
+  assert.notEqual(audioManager.sourceNode, resumedSource);
+  assert.equal(live.source, null);
+  assert.deepEqual(routes.map(route => route.active), [true, false, true, false]);
+  assert.ok(routes.every((route, i) => i === 0 || route.generation > routes[i - 1].generation));
+});
+
+test('classified playback stays silent until its receive generation is adopted', async () => {
+  const h = createHarness();
+  const listeners = new Set();
+  const manager = { _networkReceiveSession: { generation: 0 }, networkRoute: null,
+    setNetworkReceiveSession(active, generation) { this._networkReceiveSession = { active, generation }; },
+    addEventListener(_name, listener) { listeners.add(listener); },
+    removeEventListener(_name, listener) { listeners.delete(listener); } };
+  h.audioPlayer.audioManager = manager;
+  h.audioPlayer.contextManager.preparePlayerSourceOwnership = () => ({});
+  h.audioPlayer.contextManager.commitPlayerSourceOwnership = () => {};
+  h.adapter.queue = [{ id: 1, liveSessionId: 'session' }];
+  h.audioPlayer.stateManager.updateState({ currentTrack: { meta: { openHomeQueueEntry: { liveSessionId: 'session' } } } });
+  h.adapter.getCurrentOpenHomeId = () => 1;
+  h.adapter.networkLive.start = async () => {
+    h.adapter.networkLive.controller = new AbortController();
+    h.adapter.networkLive.source = { gain: { value: 0 } };
+    return true;
+  };
+  h.adapter.networkLive.beginReporting = () => {};
+  h.adapter.networkLive.stop = () => h.adapter.networkLive.controller?.abort();
+  const pending = h.adapter.playClassifiedLive();
+  await delay();
+  assert.equal(h.adapter.networkLive.source.gain.value, 0);
+  manager.networkRoute = { generation: 1, receiveActive: true };
+  for (const listener of listeners) listener();
+  assert.equal(await pending, true);
+  assert.equal(h.adapter.networkLive.source.gain.value, 1);
+  h.adapter.dispose();
+});
+
+test('classified playback cancellation while awaiting adoption clears the session', async () => {
+  const h = createHarness();
+  const listeners = new Set();
+  const sessions = [];
+  const manager = { _networkReceiveSession: { generation: 0 }, networkRoute: null,
+    setNetworkReceiveSession(active, generation) {
+      sessions.push([active, generation]);
+      this._networkReceiveSession = { active, generation };
+    },
+    addEventListener(_name, listener) { listeners.add(listener); },
+    removeEventListener(_name, listener) { listeners.delete(listener); } };
+  h.audioPlayer.audioManager = manager;
+  h.adapter.queue = [{ id: 1, liveSessionId: 'session' }];
+  h.adapter.getCurrentOpenHomeId = () => 1;
+  h.adapter.networkLive.start = async () => {
+    h.adapter.networkLive.controller = new AbortController();
+    h.adapter.networkLive.source = { gain: { value: 0 } };
+    return true;
+  };
+  h.adapter.networkLive.stop = () => h.adapter.networkLive.controller?.abort();
+  const pending = h.adapter.playClassifiedLive();
+  await delay();
+  h.adapter.networkLive.stop();
+  assert.equal(await pending, false);
+  assert.deepEqual(sessions, [[true, 1], [false, 2]]);
+  assert.equal(listeners.size, 0);
+  h.adapter.dispose();
+});
+
+test('classified input follows the adopted receive route and leaves full-chain input connected', () => {
+  const h = createHarness();
+  const input = {};
+  const connected = new Set([input]);
+  const manager = Object.assign(new EventTarget(), {
+    ioManager: { inputSourceNode: input },
+    _networkReceiveSession: { active: true, generation: 1 },
+    networkRoute: { generation: 1, receiveActive: true, receiveId: null },
+    isSourceConnectedToPipeline: source => connected.has(source),
+    disconnectSourceFromPipeline: source => connected.delete(source),
+    ensureSourceConnectedToPipeline: source => connected.add(source)
+  });
+  h.audioPlayer.audioManager = manager;
+  h.audioPlayer.contextManager.audioManager = manager;
+  h.audioPlayer.contextManager.getUseInputWithPlayer = () => true;
+  const live = h.adapter.networkLive;
+  live.followReceiveRoute(1);
+  assert.equal(connected.has(input), true);
+  manager.networkRoute = { generation: 1, receiveActive: true, receiveId: 42 };
+  manager.dispatchEvent(new Event('networkRoute'));
+  assert.equal(connected.has(input), false);
+  manager.networkRoute = { generation: 2, receiveActive: true, receiveId: null };
+  manager.dispatchEvent(new Event('networkRoute'));
+  assert.equal(connected.has(input), false, 'a newer generation cannot change the old route');
+  manager.networkRoute = { generation: 1, receiveActive: true, receiveId: null };
+  manager.dispatchEvent(new Event('networkRoute'));
+  assert.equal(connected.has(input), true);
+  h.adapter.dispose();
+});
+
+test('input replacement during an adopted live GET stays disconnected until full-chain routing resumes', () => {
+  const h = createHarness();
+  const connected = new Set();
+  const manager = Object.assign(new EventTarget(), {
+    workletNode: {},
+    ioManager: { inputSourceNode: null }, _networkReceiveSession: { active: true, generation: 5 },
+    networkRoute: { generation: 5, receiveActive: true, receiveId: 42 },
+    isSourceConnectedToPipeline: source => connected.has(source),
+    disconnectSourceFromPipeline: source => connected.delete(source),
+    ensureSourceConnectedToPipeline: source => { connected.add(source); return true; }
+  });
+  h.audioPlayer.audioManager = manager;
+  const contextManager = new AudioContextManager(h.audioPlayer, manager);
+  contextManager.getUseInputWithPlayer = () => true;
+  h.audioPlayer.contextManager = contextManager;
+  const live = h.adapter.networkLive;
+  const oldInput = {};
+  manager.ioManager.inputSourceNode = oldInput;
+  connected.add(oldInput);
+  live.followReceiveRoute(5);
+  assert.equal(connected.has(oldInput), false);
+  const replacement = {};
+  manager.ioManager.inputSourceNode = replacement;
+  assert.equal(contextManager.replaceCanonicalInputSource(replacement), true);
+  assert.equal(connected.has(replacement), false);
+  assert.equal(contextManager.getPlaybackResumeKind(), 'player-only-play');
+  manager.dispatchEvent(new Event('networkRoute'));
+  assert.equal(connected.has(replacement), false, 'an inserted-route update keeps the replacement disconnected');
+  manager.networkRoute = { generation: 5, receiveActive: true, receiveId: null };
+  manager.dispatchEvent(new Event('networkRoute'));
+  assert.equal(connected.has(replacement), true);
+  assert.equal(contextManager.getPlaybackResumeKind(), 'mixed-play');
+  live.stop();
+  h.adapter.dispose();
+});
+
+test('classified live activation and teardown ramp while keeping replacement cleanup isolated', async () => {
+  const h = createHarness();
+  let audioTime = 0;
+  h.audioPlayer.audioContext = { state: 'running', get currentTime() { return audioTime; } };
+  const events = [];
+  const gain = { value: 0,
+    setValueAtTime(value) { events.push(['set', value]); },
+    cancelAndHoldAtTime() { events.push(['hold']); },
+    linearRampToValueAtTime(value) { events.push(['ramp', value]); } };
+  const source = { gain };
+  const node = { disconnect() { events.push(['disconnect']); }, port: { close() { events.push(['close']); } } };
+  const manager = h.audioPlayer.contextManager;
+  manager.audioManager = { sourceNode: source };
+  manager.createSilentGain = () => ({});
+  manager.setManagedSourceNode = value => { manager.audioManager.sourceNode = value; };
+  manager.releasePipelineSource = value => events.push(['release', value]);
+  const live = h.adapter.networkLive;
+  live.source = source;
+  live.node = node;
+  live.activate();
+  live.stop();
+  const replacement = {};
+  live.source = replacement;
+  assert.deepEqual(events.slice(0, 4), [['set', 0], ['ramp', 1], ['hold'], ['ramp', 0]]);
+  assert.equal(events.some(event => event[0] === 'release'), false);
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(events.some(event => event[0] === 'release'), false, 'wall time alone cannot finish the fade');
+  audioTime = 0.02;
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.ok(events.some(event => event[0] === 'release' && event[1] === source));
+  assert.equal(live.source, replacement);
+  live.source = null;
   h.adapter.dispose();
 });
 

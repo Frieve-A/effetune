@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
+import { TELEMETRY_HEADER_BYTES } from '../../js/audio/telemetry-hub.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
 import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
@@ -908,6 +909,9 @@ test('initializes audio and worklet phases with success, warnings, messages, and
     assert.equal(await manager.initAudio(preferences), '');
     assert.equal(calls.find(call => call[0] === 'context.initAudioContext')[1], preferences);
     assert.equal(calls.find(call => call[0] === 'io.initAudioInput')[1], preferences);
+    // The System Audio input guard needs the applied output device, so output initializes first.
+    assert.ok(calls.findIndex(call => call[0] === 'io.initAudioOutput')
+      < calls.findIndex(call => call[0] === 'io.initAudioInput'));
   });
 
   await withAudioManager({ contextInitResult: 'context error' }, async ({ manager }) => {
@@ -2547,5 +2551,331 @@ test('explicit WASM asset readiness follows an active B owner and invalidates ch
     assert.equal(removal.ready, false);
     assert.equal(removal.stale, true);
     assert.equal((await manager.waitForEffectiveActiveWasmAssets(a.plugin, [0])).ready, true);
+  });
+});
+
+test('network output port, local delay and requester reach the primary worklet and follow its recreation', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const primaryPort = manager.contextManager.workletNode.port;
+    const transfers = [];
+    const originalPost = primaryPort.postMessage.bind(primaryPort);
+    primaryPort.postMessage = (message, transfer) => {
+      transfers.push(transfer);
+      originalPost(message);
+    };
+    const sendPort = { closed: 0, close() { this.closed++; } };
+    manager.setNetworkOutputPort(sendPort);
+    assert.deepEqual(calls.at(-1), ['postMessage', 'workletA', { type: 'setNetworkOutputPort', port: sendPort }]);
+    assert.deepEqual(transfers.at(-1), [sendPort], 'the MessagePort is transferred');
+    assert.equal(sendPort.closed, 0);
+    manager.setNetworkOutputPort(null);
+    assert.deepEqual(calls.at(-1), ['postMessage', 'workletA', { type: 'setNetworkOutputPort', port: null }]);
+    assert.deepEqual(transfers.at(-1), []);
+
+    manager.dspPipelineLatencySamples = 100;
+    assert.equal(manager.getTotalPipelineLatencySamples(), 100);
+    manager.setNetworkOutputLocalDelay(true, 10);
+    assert.deepEqual(calls.at(-1), ['postMessage', 'workletA', { type: 'setNetworkOutputLocalDelay', active: true, delayMs: 10, localEnabled: true, requestId: 1 }]);
+    acknowledgeNetworkDelay(manager, 480);
+    assert.equal(manager.getTotalPipelineLatencySamples(), 580, 'L0 adds 10 ms at 48 kHz');
+    manager.setNetworkOutputLocalDelay(false, 10);
+    acknowledgeNetworkDelay(manager, 0);
+    assert.equal(manager.getTotalPipelineLatencySamples(), 100);
+    manager.setNetworkOutputLocalDelay(true, Number.NaN);
+    assert.deepEqual(calls.at(-1)[2], { type: 'setNetworkOutputLocalDelay', active: true, delayMs: 0, localEnabled: true, requestId: 3 });
+
+    let requested = 0;
+    manager.setNetworkOutputPortRequester(() => requested++);
+    assert.equal(requested, 1, 'an existing primary worklet is requested immediately');
+
+    manager.setNetworkOutputLocalDelay(true, 20, false);
+    const delayMessages = () => manager.workletNode.port.messages
+      .filter(message => message.type === 'setNetworkOutputLocalDelay');
+    const postedBefore = primaryPort.messages.filter(message => message.type === 'setNetworkOutputLocalDelay').length;
+    assert.equal(await manager.initializeAudioWorklet(), '');
+    assert.equal(delayMessages().length, postedBefore + 1, 'the held L0 delay is resent once');
+    assert.deepEqual(delayMessages().at(-1), { type: 'setNetworkOutputLocalDelay', active: true, delayMs: 20, localEnabled: false, requestId: 4 });
+    assert.equal(requested, 2, 'a new primary worklet asks for a fresh port');
+
+    manager.setNetworkOutputPortRequester(null);
+    assert.equal(await manager.initializeAudioWorklet(), '');
+    assert.equal(requested, 2);
+  });
+
+  await withAudioManager({ workletNode: null }, async ({ manager }) => {
+    const sendPort = { closed: 0, close() { this.closed++; } };
+    manager.setNetworkOutputPort(sendPort);
+    assert.equal(sendPort.closed, 1, 'without a primary worklet the port is closed');
+    let requested = 0;
+    manager.setNetworkOutputPortRequester(() => requested++);
+    assert.equal(requested, 0, 'nothing to request until a primary worklet exists');
+  });
+});
+
+test('the Double-Blind Test pauses network output sending and keeps the L0 delay on both worklets', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    manager.setNetworkOutputLocalDelay(true, 10);
+    const primaryMessages = manager.contextManager.workletNode.port.messages;
+    assert.equal(await manager.enableParallelPipelines('B'), true);
+    const branchMessages = manager._parallelWorkletB.port.messages;
+    const delayMessages = messages => messages.filter(message => message.type === 'setNetworkOutputLocalDelay');
+    assert.deepEqual(delayMessages(branchMessages), [{ type: 'setNetworkOutputLocalDelay', active: true, delayMs: 10, localEnabled: true, requestId: 1 }]);
+    assert.deepEqual(primaryMessages.filter(message => message.type === 'setNetworkOutputSendPaused'),
+      [{ type: 'setNetworkOutputSendPaused', paused: true }]);
+    manager.setNetworkOutputLocalDelay(true, 30, false);
+    const changed = { type: 'setNetworkOutputLocalDelay', active: true, delayMs: 30, localEnabled: false, requestId: 2 };
+    assert.deepEqual(delayMessages(branchMessages).at(-1), changed, 'a change during the test reaches branch B');
+    assert.deepEqual(delayMessages(primaryMessages).at(-1), changed, 'and the primary');
+    assert.equal(await manager.disableParallelPipelines(), true);
+    assert.deepEqual(primaryMessages.filter(message => message.type === 'setNetworkOutputSendPaused'),
+      [{ type: 'setNetworkOutputSendPaused', paused: true }, { type: 'setNetworkOutputSendPaused', paused: false }]);
+  });
+});
+
+test('a failed Double-Blind Test start resumes network output sending on the primary worklet', async () => {
+  await withAudioManager({
+    sourceNodeOptions: { throwConnect: true }
+  }, async ({ manager }) => {
+    manager.setNetworkOutputLocalDelay(true, 10);
+    const primaryMessages = manager.contextManager.workletNode.port.messages;
+    assert.equal(await manager.enableParallelPipelines('A'), false);
+    assert.deepEqual(primaryMessages.filter(message => message.type === 'setNetworkOutputSendPaused'),
+      [{ type: 'setNetworkOutputSendPaused', paused: true }, { type: 'setNetworkOutputSendPaused', paused: false }],
+      'the teardown that follows the failure resumes sending');
+  });
+});
+
+function acknowledgeNetworkDelay(manager, localDelaySamples) {
+  manager.handleWorkletMessage({ data: { type: 'networkDelayApplied',
+    requestId: manager._networkOutputLocalDelay.requestId, localDelaySamples } }, manager.contextManager.workletNode);
+}
+
+test('visual sync uses the shared network target with this computer off and counts the output delay once', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    const primary = manager.contextManager.workletNode;
+    manager.visualSyncEnabled = true;
+    manager.visualizerSourcesByTap.set('viz-1', { tapId: 'viz-1', type: 'LevelMeterPlugin', params: {} });
+    manager._appliedOutputDelayFrames.set(primary, 4800);
+    manager.visualSyncDelayFrames = 4800;
+    const corrected = manager._resolveVisualSyncDue('viz-1', 96000);
+    assert.equal(corrected, 2100, 'the applied output delay (100 ms at 48 kHz) is added while L0 is inactive');
+    manager.setNetworkOutputLocalDelay(true, 2300, false, 2000);
+    acknowledgeNetworkDelay(manager, 110400);
+    manager.networkPaths = { localDelaySamples: 110400 };
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 96000), 4100, 'a tap before the output delay counts both stages');
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), 4100,
+      'the send tap already includes the output delay');
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 211200, undefined, { visualizerTapStage: 'local' }), null,
+      'a packet from the old local tap does not get scheduled on the shared timeline');
+    manager.networkRoute = { receiveActive: true, localDelaySamples: 110400 };
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), 4400,
+      'a receive-only session uses its local delay because rebroadcast is disabled');
+    manager.networkRoute = null;
+    const context = manager.contextManager.audioContext;
+    context.getOutputTimestamp = () => { throw new Error('the shared target uses the render clock'); };
+    assert.equal(manager._visualSyncNow(), context.currentTime * 1000);
+    manager.visualSyncEnabled = false;
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), null);
+    manager.visualSyncEnabled = true;
+    manager.setNetworkOutputLocalDelay(false, 0);
+    acknowledgeNetworkDelay(manager, 0);
+    manager.networkPaths = { localDelaySamples: 0 };
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 96000), corrected, 'releasing L0 restores the correction');
+  });
+});
+
+test('output visualizer uses its capture stage when marker paths are active', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    manager.visualSyncEnabled = true;
+    manager.setNetworkOutputLocalDelay(true, 2000, true, 2000);
+    acknowledgeNetworkDelay(manager, 96000);
+    manager.visualizerSourcesByTap.set('viz-1', { tapId: 'viz-1', type: 'LevelMeterPlugin', params: {} });
+    manager.networkRoute = { sendId: 1, receiveId: null, revision: 4 };
+    manager.networkPaths = { revision: 4, outputDelaySamples: 4800, localDelaySamples: 96000, taps: {} };
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), 4100);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'local' }), null);
+    // Final PCM includes an effect after the intermediate send and follows the local path.
+    manager.networkPaths.tapRevision = 8;
+    manager.networkPaths.taps = { 1: { input: { localSamples: 240, networkSamples: 0 } },
+      2: { output: { localSamples: 0, networkSamples: null } } };
+    manager.setNetworkOutputLocalDelay(true, 0, false, 2000);
+    acknowledgeNetworkDelay(manager, 0);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'send' }), 4100);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), null);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'pipeline' }), null);
+    manager.setNetworkOutputLocalDelay(true, 2000, true, 2000);
+    acknowledgeNetworkDelay(manager, 96000);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'send' }), 4100);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), 4100);
+  });
+});
+
+test('opening Visualizer during Live Audio Send queues the first analyzer frame until the shared target', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ manager }) => {
+    const hub = manager.telemetryHub;
+    const primary = manager.contextManager.workletNode;
+    const context = manager.contextManager.audioContext;
+    manager.visualSyncEnabled = true;
+    hub.setVisualSyncResolver((...args) => manager._resolveVisualSyncDue(...args));
+    manager.setNetworkOutputLocalDelay(true, 2300, true, 2000);
+    acknowledgeNetworkDelay(manager, 110400);
+    manager.handleWorkletMessage({ data: { type: 'networkRoute', sendId: 1, generation: 0, revision: 4 } }, primary);
+    manager.handleWorkletMessage({ data: { type: 'networkPaths', revision: 4, outputDelaySamples: 4800,
+      localDelaySamples: 110400, taps: {} } }, primary);
+
+    const tapId = 0xf0000000;
+    const delivered = [];
+    let dispatch;
+    hub.schedule = callback => { dispatch = callback; return 1; };
+    hub.cancel = () => {};
+    manager.setVisualizerSources([{ tapId, type: 'LevelMeterPlugin' }]);
+    hub.subscribe(tapId, 1, frame => delivered.push(frame.tapId));
+    const packet = new ArrayBuffer(TELEMETRY_HEADER_BYTES);
+    const view = new DataView(packet);
+    view.setUint16(0, 1, true);
+    view.setUint16(2, 1, true);
+    view.setUint32(4, tapId, true);
+    context.currentTime = 10;
+    manager.handleWorkletMessage({ data: { type: 'dspTelemetry', packet, bytes: packet.byteLength, recycle: false,
+      endFrame: 480000, routeRevision: 4, visualizerTapStage: 'send' } }, primary);
+    assert.deepEqual(delivered, []);
+    assert.equal(hub.visualSyncQueue[0].due, 12000);
+    context.currentTime = 11.999;
+    dispatch();
+    assert.deepEqual(delivered, []);
+    context.currentTime = 12;
+    dispatch();
+    assert.deepEqual(delivered, [tapId]);
+  });
+});
+
+test('legacy network trim updates retain queued visual measurements', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    const primary = manager.contextManager.workletNode;
+    let cleared = 0;
+    manager.telemetryHub.clearVisualSyncQueue = () => { cleared++; };
+    manager.handleWorkletMessage({ data: { type: 'networkRoute', generation: 0, revision: 4 } }, primary);
+    const paths = { type: 'networkPaths', revision: 4, outputDelaySamples: 0,
+      localDelaySamples: 0, localDelayRevision: 1, taps: {} };
+    manager.handleWorkletMessage({ data: paths }, primary);
+    const before = cleared;
+    manager.handleWorkletMessage({ data: { ...paths, localDelaySamples: 480, localDelayRevision: 2 } }, primary);
+    assert.equal(cleared, before);
+    manager.handleWorkletMessage({ data: { ...paths, outputDelaySamples: 128 } }, primary);
+    assert.equal(cleared, before + 1);
+  });
+});
+
+test('applied network timing follows worklet acknowledgements, including queued status and Player speed', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    const primary = manager.contextManager.workletNode;
+    manager.visualSyncEnabled = true;
+    manager.visualizerSourcesByTap.set(7, { tapId: 7, type: 'LevelMeterPlugin', params: {} });
+    manager.setNetworkOutputLocalDelay(true, 2300, true, 2000, 1);
+    const first = manager._networkOutputLocalDelay.requestId;
+    manager.setNetworkOutputLocalDelay(true, 3400, true, 3000, 2);
+    const second = manager._networkOutputLocalDelay.requestId;
+    assert.equal(manager.getTotalPipelineLatencySamples(), 0);
+    manager.handleWorkletMessage({ data: { type: 'networkDelayApplied', requestId: first, localDelaySamples: 110400 } }, primary);
+    assert.equal(manager.getTotalPipelineLatencySamples(), 110400);
+    assert.equal(manager._resolveVisualSyncDue(7, 96000), 4000);
+    assert.equal(manager.getAudiblePlaybackPosition(10, 2), 5.4);
+    manager.handleWorkletMessage({ data: { type: 'networkDelayApplied', requestId: second, localDelaySamples: 163200 } }, primary);
+    assert.equal(manager._resolveVisualSyncDue(7, 96000), 5000);
+    assert.equal(manager.getAudiblePlaybackPosition(10, 2), 3.2);
+    manager.handleWorkletMessage({ data: { type: 'networkDelayApplied', requestId: first, localDelaySamples: 110400 } }, primary);
+    assert.equal(manager.getTotalPipelineLatencySamples(), 163200);
+  });
+});
+
+test('disabled Network Output with a Send marker retains the local visual clock', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    manager.visualSyncEnabled = true;
+    manager.visualizerSourcesByTap.set(7, { tapId: 7, type: 'LevelMeterPlugin', params: {} });
+    const context = manager.contextManager.audioContext;
+    context.currentTime = 4;
+    context.getOutputTimestamp = () => ({ contextTime: 3, performanceTime: performance.now() });
+    const baselineClock = manager._visualSyncNow();
+    const baselineDue = manager._resolveVisualSyncDue(7, 96000);
+    manager.networkRoute = { sendId: 10, receiveId: null, receiveActive: false };
+    assert.ok(Math.abs(manager._visualSyncNow() - baselineClock) < 1);
+    assert.equal(manager._resolveVisualSyncDue(7, 96000), baselineDue);
+  });
+});
+
+test('Live Audio Send schedules upstream analyzers against the shared target before receiver feedback', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    class AnalogMeterPlugin {}
+    manager.visualSyncEnabled = true;
+    manager.pipeline = [Object.assign(new AnalogMeterPlugin(), { id: 2, md: 'VU' })];
+    manager.dspLatencyTaps = { 2: { output: 4800 } };
+    const primary = manager.contextManager.workletNode;
+    manager.handleWorkletMessage({ data: { type: 'networkRoute', sendId: 1, generation: 0, revision: 4 } }, primary);
+    manager.handleWorkletMessage({ data: { type: 'networkPaths', revision: 4, outputDelaySamples: 4800,
+      localDelaySamples: 110400, taps: { 2: { output: { localSamples: 4800, networkSamples: 480 } } } } }, primary);
+    assert.equal(manager.networkPaths.revision, 4);
+    manager.setNetworkOutputLocalDelay(true, 2300, true, 2000);
+    acknowledgeNetworkDelay(manager, 110400);
+    assert.equal(manager._resolveVisualSyncDue(2, 96000), 4010, 'use the path to Live Audio Send even with local output enabled');
+    manager.setNetworkOutputLocalDelay(true, 0, false, 2000);
+    assert.equal(manager._resolveVisualSyncDue(2, 96000), 4010, 'local muting and missing receiver feedback do not advance the meter');
+    const timing = { version: 1, generation: 0, frameIndex: 0, captureEndFrame: 96000,
+      windowAgeFrames: 480, completionFrames: 0, tapDelayFrames: 4800 };
+    assert.equal(manager._resolveVisualSyncDue(2, 96128, 'spectrumOverlay', { timing }), 4000,
+      'the overlay uses its exact capture time and the path to the send point');
+  });
+});
+
+test('6 seconds of network visual sync draws continuously and same-delay resync clears old frames', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    const hub = manager.telemetryHub;
+    const context = manager.contextManager.audioContext;
+    const delivered = [];
+    let timer;
+    hub.schedule = (callback, delay) => { timer = { callback, due: hub.now() + delay }; return 1; };
+    hub.cancel = () => { timer = null; };
+    manager.visualizerSourcesByTap.set(7, { tapId: 7, type: 'LevelMeterPlugin', params: {} });
+    hub.subscribe(7, 1, frame => delivered.push(frame.payload.getUint32(0, true)));
+    manager.visualSyncEnabled = true;
+    hub.setVisualSyncResolver((...args) => manager._resolveVisualSyncDue(...args));
+    manager.setNetworkOutputLocalDelay(true, 8000, false, 6000, 1);
+    acknowledgeNetworkDelay(manager, 384000);
+    manager.networkPaths = { localDelaySamples: 0 };
+
+    const tick = index => {
+      context.currentTime = index / 60;
+      if (timer?.due <= hub.now() + 1e-8) timer.callback();
+    };
+    const send = index => {
+      const packet = new ArrayBuffer(TELEMETRY_HEADER_BYTES + 4);
+      const view = new DataView(packet);
+      view.setUint16(0, 1, true);
+      view.setUint16(2, 1, true);
+      view.setUint32(4, 7, true);
+      view.setUint16(12, 4, true);
+      view.setUint32(TELEMETRY_HEADER_BYTES, index, true);
+      hub.handleMessage({ type: 'dspTelemetry', packet, bytes: packet.byteLength, recycle: false,
+        endFrame: index * 800, visualizerTapStage: 'network' });
+    };
+    for (let index = 0; index < 900; index++) {
+      tick(index);
+      send(index);
+      assert.ok(Math.abs(delivered.length - Math.max(0, index - 359)) <= 1, 'frames continue arriving at 60 Hz');
+    }
+    assert.deepEqual(delivered, Array.from({ length: delivered.length }, (_, index) => index));
+    assert.equal(hub.getStats().visualSyncDropped, 0);
+    const count = delivered.length;
+    assert.ok(hub.visualSyncQueue.length > 256);
+
+    manager.setNetworkOutputLocalDelay(true, 8000, false, 6000, 2);
+    acknowledgeNetworkDelay(manager, 384000);
+    assert.equal(hub.visualSyncQueue.length, 0);
+    assert.equal(timer, null);
+    tick(900);
+    send(900);
+    tick(1259);
+    assert.equal(delivered.length, count, 'no frame from the previous stream was drawn after resync');
+    tick(1260);
+    assert.deepEqual(delivered.slice(count), [900]);
   });
 });

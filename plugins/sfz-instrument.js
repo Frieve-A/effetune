@@ -547,7 +547,7 @@ class SFZInstrumentPlugin extends PluginBase {
         this._renderStatus();
     }
 
-    async _openLibraryBrowser() {
+    async _openLibraryBrowser({ closeOnLoadStart = false } = {}) {
         if (this._libraryBrowser) {
             this._libraryBrowser.element.querySelector('input[type="search"]')?.focus();
             return;
@@ -565,6 +565,7 @@ class SFZInstrumentPlugin extends PluginBase {
                 returnFocus: button,
                 ...await this._getSfzPreparationOptions(),
                 audioManager: window.uiManager?.audioManager,
+                closeOnLoadStart,
                 onLoad: entry => this._selectBank(async () => entry),
                 onClose: () => { this._libraryBrowser = null; }
             });

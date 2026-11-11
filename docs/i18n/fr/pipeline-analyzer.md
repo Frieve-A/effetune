@@ -41,7 +41,7 @@ Utilisez le sélecteur **Graph** au-dessus du tracé pour changer de vue sans re
 - **Phase** : réponse en phase (degrés) en fonction de la fréquence.
 - **Min Group Delay** : retard de groupe impliqué par la réponse en amplitude à phase minimale.
 - **Excess Group Delay** : retard de groupe restant après retrait de la partie à phase minimale (le tracé est limité à ±100 ms, tandis que les valeurs lues au curseur indiquent la valeur réelle), ce qui permet de repérer facilement un retard pur et le comportement temporel d’un filtre à phase linéaire ou passe-tout.
-- **Impulse** : réponse impulsionnelle dans le domaine temporel, de `-2 ms` jusqu’à **Impulse Range (ms)**, normalisée sur sa crête.
+- **Impulse** : réponse impulsionnelle dans le domaine temporel, de `-2 ms` jusqu’à **Impulse Range (ms)**, normalisée sur sa crête. Utilisez la molette sur le graphique pour zoomer sur l’axe temporel autour du point sous le pointeur.
 - **Distortion** : avec **Log Sweep**, affiche la distorsion harmonique en pourcentage de la fondamentale selon la fréquence. H2, H3 et THD (ordres 2 à 3) sont affichés au départ ; vous pouvez ajouter H4 à H10 sans refaire la mesure. Plus la valeur est élevée, plus la distorsion est importante. Si ce graphique est indisponible avec un autre signal, sélectionnez **Log Sweep**. Une sortie silencieuse ou sans données valides ne permet pas de calculer la distorsion. Les réponses de haut-parleur enregistrées apportent leur réponse linéaire, pas la distorsion propre au haut-parleur.
 - **Waterfall** : affiche la fréquence, le niveau relatif (dB) et le temps de décroissance (ms). Dans **Response**, choisissez **After** (par défaut) ou **Before** pour examiner la sortie du pipeline ou les réponses de haut-parleur sélectionnées avant traitement. Chaque vue est normalisée sur sa propre crête : comparez la forme de la décroissance, pas les niveaux absolus. Faites glisser le graphique 3D pour le tourner et utilisez la molette ou le pincement pour zoomer.
 
@@ -49,6 +49,6 @@ Sur les graphiques de fréquence, de phase, de retard de groupe et d’impulsion
 
 ## Fonctionnement de la mesure
 
-Pipeline Analyzer capture le pipeline actif, son routage et les réponses de haut-parleur sélectionnées, puis compense automatiquement sur **After** la latence déclarée par le pipeline. Pour les effets non linéaires, modulés ou aléatoires, considérez le tracé comme un instantané aux réglages et au **Level** actuels.
+Pipeline Analyzer capture le pipeline actif, son routage et les réponses de haut-parleur sélectionnées, puis compense automatiquement sur **After** la latence déclarée par le pipeline. Pour les effets non linéaires, modulés ou aléatoires, considérez le tracé comme un instantané aux réglages et au **Level** actuels. Pour confirmer le résultat au microphone, voir la section « Mesurer avec le Pipeline d’effets » d’[Acoustic Measurement](measurement.md).
 
 [← Retour au README](README.md)

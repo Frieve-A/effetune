@@ -5,6 +5,7 @@ import { adaptPipelineAnalysisResult } from './result-adapter.js';
 import {
     buildPipelineAnalyzerSnapshot,
     collectPipelineAnalyzerTransferables,
+    getActiveWasmPluginIds,
     getAnalyzerAudioFormat,
     PipelineSnapshotError,
     StalePipelineAnalysisRunError
@@ -735,11 +736,7 @@ export class PipelineAnalyzerController {
     }
 
     _getPreferredWasmPluginIds() {
-        const telemetry = this.audioManager?.getDspExecutionStateSnapshot?.();
-        if (!Array.isArray(telemetry?.states)) return Object.freeze([]);
-        return Object.freeze(telemetry.states
-            .filter(entry => entry?.state === 'active' && Number.isInteger(entry.pluginId))
-            .map(entry => entry.pluginId));
+        return getActiveWasmPluginIds(this.audioManager);
     }
 
     _getActiveDspPluginIdsKey() {

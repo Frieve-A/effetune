@@ -9,8 +9,8 @@ const { installTestWindowPolicy } = require('./electron-test-display.cjs');
 // Native input and tab capture require a visible window on the test display.
 installTestWindowPolicy({ visible: true, focusable: process.env.EFFETUNE_BROWSER_TEST_NATIVE_INPUT === '1' });
 
+// Tests that never open the Browser view (System Audio) run without a fixture origin.
 const origin = process.env.EFFETUNE_BROWSER_FIXTURE_ORIGIN;
-if (!origin) throw new Error('The browser integration test requires its fixture origin.');
 const fixtureDirectory = path.join(__dirname, '../fixtures/desktop-browser');
 const certificate = fs.readFileSync(path.join(fixtureDirectory, 'cert.pem'), 'utf8').replace(/\s/g, '');
 app.setAppPath(path.resolve(__dirname, '../..'));
@@ -28,7 +28,7 @@ app.on('browser-window-created', (_event, window) => {
 });
 
 // Trust the fixture before Chromium reaches production's certificate-error denial.
-app.whenReady().then(() => {
+if (origin) app.whenReady().then(() => {
   const browserSession = session.fromPartition('persist:effetune-browser');
   browserSession.webRequest.onBeforeRequest({ urls: ['https://effetune.frieve.com/streaming/'] }, (_request, callback) => {
     callback({ redirectURL: `${origin}/source?default-start-page=1` });

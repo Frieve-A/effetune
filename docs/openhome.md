@@ -1,12 +1,12 @@
 ---
 title: "Network Music and Remote Control (Desktop App) - EffeTune"
-description: "Play network music through EffeTune, receive OpenHome, UPnP AV / DLNA and AirPlay audio, share music, and control playback on your local network."
+description: "Play network music through EffeTune, receive OpenHome, UPnP AV / DLNA and AirPlay audio, send processed audio to network speakers, share music, and control playback on your local network."
 lang: en
 ---
 
 # Network Music and Remote Control (Desktop App)
 
-The desktop app can receive music from other devices on your local network and process it through your EffeTune effects. OpenHome, UPnP AV / DLNA, and AirPlay reception have separate settings and start disabled. Enable only the reception methods you use under **Settings > Config... > Network**.
+The desktop app can receive music from other devices on your local network and process it through your EffeTune effects, and it can send the processed sound to network speakers. OpenHome, UPnP AV / DLNA, and AirPlay reception and network output have separate settings and start disabled. Enable only the methods you use under **Settings > Config... > Network**.
 
 ## Receive music with OpenHome
 
@@ -44,6 +44,20 @@ Network buffering and EffeTune's effects add delay, so sound may lag behind vide
 
 AirPlay discovery requires Bonjour on Windows and macOS, or an active Avahi / DNS-SD service on Linux. The standard Windows installer supplies the discovery service if needed; portable and Microsoft Store builds require it to be already installed. On Linux, install your distribution's Avahi / DNS-SD service and enable it using the distribution's normal service tools. If the receiver is unavailable, check this requirement and private-network firewall access before trying again. Guest Wi-Fi, VPNs, or network isolation can prevent devices from finding each other.
 
+## Send audio to network speakers
+
+The desktop app can play the final output of your effect chain, or the sound at a Live Audio Send marker on UPnP AV / DLNA speakers and Chromecast devices at the same time as on this computer. Open **Settings > Config... > Network > Network Output** and turn on **Send audio to network speakers**. Speakers found on your network appear in the list; check the ones you want to use. Each row shows whether the speaker is searching, connecting, playing, or unreachable, with a short note when something needs your attention. Supported devices are UPnP AV / DLNA renderers that accept a continuous stream, Chromecast speakers and displays, and Chromecast speaker groups.
+
+For quick changes, open **Network Output** beside **Player** in the desktop toolbar. Check the speakers you want to hear and see their connection status in the same list. To listen only on your network speakers, uncheck **This computer**. Check it again to restore sound on the computer. Delay controls are in **Config... > Network > Network Output**.
+
+Network speakers start a little later than this computer, so EffeTune delays the sound on this computer by about two seconds while sending is on, or by as much as the slowest Chromecast device needs. EffeTune measures how far behind each Chromecast device is playing and lines up the other speakers and this computer with it automatically. Use **Delay (ms)** to fine-tune the timing of each speaker and of **This computer** until they play together. If the speakers drift apart over a long listening session, choose **Resync** to restart them together.
+
+With **Sync Visuals to Audio** on, graphs and meters follow the shared playback timing before individual **Delay (ms)** adjustments. This also works when **This computer** is unchecked.
+
+Choose either a Chromecast speaker group or the speakers that belong to it, not both. The group keeps its own members in sync, and sending to the group and to its members at the same time causes echoes. UPnP AV / DLNA speakers that do not appear in the list can be added with **Add a network device manually**, described below.
+
+While sending is on, a **Double Blind Test** silences the network speakers so that the test is heard only on this computer. The visual sync correction in the audio settings is not applied, and analysis effects such as Spectrum Analyzer display the sound about two seconds before you hear it on this computer. The Visualizer stays aligned with the sound from this computer.
+
 ## Choose a library and a player
 
 In the desktop app, Music Library's **Library** selector chooses **This device** or a music server on your local network. Shared EffeTune libraries offer the familiar browsing categories, search and sorting described in the [Music Library guide](music-library.md#music-on-your-network-desktop-app). Other music servers show the categories and folder hierarchy they publish; search and sorting are available only when the server supports them.
@@ -53,6 +67,15 @@ Use the device selector at the top of the window to choose **This device**, an O
 OpenHome players keep their own queue. For a UPnP AV / DLNA player without an OpenHome queue, the EffeTune computer manages the selected track sequence and sends the next track after normal playback finishes. Keep that computer and the music source running. Changing the selected player does not move this sequence. If another controller replaces the music, automatic advancement ends; after a disconnection, select music again to restart. Gapless playback is not guaranteed.
 
 You can also add a [Subsonic / OpenSubsonic music server](music-library.md#subsonic).
+
+### Play directly or send live audio
+
+On desktop computers A and B, enable UPnP AV reception on B first. You can play the same file in two ways without changing **Library**. A shared-library track can be used in place of the file in either example. Changing **Player** changes where you control playback; it does not move or stop an existing queue.
+
+1. To play directly on B, select B under **Player** on A, then use **Open music files** on A to open and play the file. B processes it from the beginning of its pipeline. Stop B before trying the next example.
+2. To send live audio from A, add **Live Audio Send** on A and **Live Audio Receive** on B. Select **This device** under **Player** on A and open the same file. Enable A’s **Network Output** and check B. B processes the live stream from its Receive marker; if that route is unavailable it uses the full pipeline. A’s **This computer** checkbox controls local playback independently of Player.
+
+Network Output and its delay controls apply to A’s pipeline, regardless of the selected Player. Delay helps align outputs but exact synchronization depends on the devices and network. Web and Android file selection plays locally; use a network library to play on another Player.
 
 ## Share music folders
 
@@ -102,5 +125,13 @@ If a reachable UPnP device is not discovered, use **Add a network device manuall
 ## Network playback limits
 
 Automatic server discovery and music-folder sharing require the desktop app. Playback support and seeking depend on the destination and source format. EffeTune does not convert network audio; a Subsonic server may provide a converted stream. CUE sub-tracks cannot be sent as separate network tracks. Gapless and synchronized multi-room playback are not guaranteed. If a server or player disappears, check that it is awake, reachable, and allowed through the private-network firewall, then refresh the device list. Sharing stops when the source app exits or its computer sleeps.
+
+When sending audio to network speakers, keep these points in mind:
+
+- Speakers of different types, such as a UPnP AV / DLNA speaker and a Chromecast device, are not aligned automatically; adjust **Delay (ms)** by ear.
+- Speakers can drift apart slowly over a long listening session. Choose **Resync** to restart them together.
+- Chromecast devices start playing within a few seconds after sending begins or after a resync. EffeTune measures how far behind each device is playing and holds back this computer and the other speakers to match. A device that falls more than six seconds behind is restarted automatically.
+- If one Chromecast device keeps switching between connecting and unreachable while your other speakers play, that device itself is refusing the stream. In the Google Home app, make sure its Digital Wellbeing filters allow all music, then restart the device.
+- EffeTune sends network speakers a 44.1 kHz, 16-bit stereo stream, so receivers that accept sample rates up to 48 kHz only can also play it. Higher sample rates on this computer are converted for the network; the sound on this computer is not affected.
 
 [← Back to README](../README.md)

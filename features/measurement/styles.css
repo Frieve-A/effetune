@@ -1309,7 +1309,7 @@ input[type="range"]::-moz-range-thumb,
 }
 .analysis-tabs .tab-button {
     box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-    flex: 1 1 auto; min-width: max-content; height: 36px; min-height: 36px; padding: 0 12px; margin: 0;
+    flex: 1 1 auto; min-width: max-content; height: var(--et-control-height-navigation); min-height: var(--et-control-height-navigation); padding: 0 12px; margin: 0;
     border: 1px solid var(--et-surface-28); border-bottom: none; border-radius: 4px 4px 0 0;
     background: var(--et-control-gradient); color: var(--et-text-secondary);
     font: inherit; font-weight: 500; line-height: 18px; white-space: nowrap; box-shadow: none;
@@ -1339,7 +1339,7 @@ input[type="range"]::-moz-range-thumb,
 .plugin-parameter-ui .parameter-row[hidden] { display: none; }
 .plugin-parameter-ui .parameter-row > :is(label, .setting-label) {
     display: flex; align-items: center; flex: 0 0 120px; width: 120px; min-width: 0;
-    height: 26px; margin: 0; font: inherit; line-height: normal; white-space: normal;
+    height: var(--et-control-height-field); margin: 0; font: inherit; line-height: normal; white-space: normal;
     color: var(--et-text-secondary);
 }
 /* Match the Effect label's centered line boxes, with a measurement-only two-line limit. */
@@ -1363,10 +1363,10 @@ input[type="range"]::-moz-range-thumb,
 .correction-control { min-width: 0; }
 .analysis-setting-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; }
 .analysis-setting-actions button { margin: 0; }
-/* Compact result actions match the Effect reset button; point/channel selectors remain independent. */
+/* Keep result actions compact; point/channel selectors have their own sizing. */
 #measurementResults :is(.analysis-setting-actions, .analysis-correction, .export-section, .impulse-response-controls, .impulse-response-export, .analysis-graph-header) button,
 #measurementResults #exportAnalysisJson {
-    box-sizing: border-box; height: 24px; min-height: 24px; padding: 0 8px; font: inherit;
+    box-sizing: border-box; height: var(--et-control-height-compact); min-height: var(--et-control-height-compact); padding: 0 8px; font: inherit;
 }
 .analysis-status { padding: 12px 0; color: var(--et-text-secondary); }
 .analysis-keyboard-readout { display: block; min-height: 1.4em; font-size: 12px; overflow-wrap: anywhere; }
@@ -1400,3 +1400,14 @@ input[type="range"]::-moz-range-thumb,
 .analysis-image-status { min-height: 1.4em; color: var(--et-text-secondary); font-size: 12px; }
 
 [data-analysis-panel]:not([hidden]) { display: flow-root; }
+
+.measurement-item-badge {
+    margin: 0 auto 0 8px;
+    padding: 0 6px;
+    border: 1px solid var(--et-accent);
+    border-radius: 4px;
+    color: var(--et-accent);
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
+}

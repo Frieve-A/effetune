@@ -21,6 +21,7 @@ function worklet() {
   const processor = Object.assign(Object.create(Processor.prototype), {
     currentFrame: 0, streamBoundaries: [], plugins: [], wasmInstances: new Map(),
     transition: { phase: 'open' }, outputReadyRequests: [],
+    networkReceiveSession: { active: false, generation: 0 },
     audioProcessingClockNow: () => 0, finishPipelineCpuMeasurement() {},
     hasExecutionLatencyDrift: () => false, notifySfzSampleStreamPolls() {},
     port: { postMessage(data) { messages.push(data); } }, processPipeline: () => true,

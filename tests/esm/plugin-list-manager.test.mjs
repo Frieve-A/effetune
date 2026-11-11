@@ -429,7 +429,7 @@ test('initPluginList builds categorized plugin rows and loading state', async ()
 
     assert.equal(dom.pluginList.children.includes(staleContent), false);
     assert.equal(dom.pluginList.querySelector('.loading-spinner'), null);
-    assert.equal(dom.pluginList.querySelector('#effectCount').textContent, 'ui.effectsAvailable:3');
+    assert.equal(dom.pluginList.querySelector('#effectCount').textContent, '3 effects available');
     assert.deepEqual(dragSetupCalls.filter(call => call[0] !== 'toggleCategoryCollapse'), [
       ['Alpha', 'Alpha'],
       ['Beta', 'Beta']

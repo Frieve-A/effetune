@@ -1,4 +1,5 @@
 import { getSettingsStorage } from '../settings-storage.js';
+import { updateNetworkOutputTargetText } from './networkOutputPicker.js';
 ﻿import {
   AUTO_LANGUAGE_PREFERENCE,
   LANGUAGE_OPTIONS,
@@ -101,6 +102,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     : key => key;
   const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
   const airPlayAPI = isElectron ? window.electronAPI?.airPlayV1 : null;
+  const networkOutputAPI = isElectron ? window.electronAPI?.networkOutputV1 : null;
   const networkMusicAPI = isElectron ? window.electronAPI : null;
   const remoteControlSettings = networkMusicAPI?.remoteV1?.settings
     ? getRemoteControlSettings(networkMusicAPI.remoteV1.settings) : null;
@@ -206,6 +208,29 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
         <div class="openhome-status" id="airplay-status" role="status" aria-live="polite"></div>
         <div class="openhome-help" id="airplay-help"></div>
+      </div>` : '';
+
+  const networkOutputSection = isElectron ? `
+      <div class="device-section" id="network-output-section">
+        <label class="section-label" id="network-output-title"></label>
+        <div class="checkbox-container">
+          <input type="checkbox" id="network-output-enabled" disabled aria-describedby="network-output-help">
+          <label for="network-output-enabled" id="network-output-enabled-label"></label>
+        </div>
+        <div class="openhome-help" id="network-output-help"></div>
+        <div class="network-output-targets" id="network-output-targets"></div>
+        <div class="openhome-help" id="network-output-empty"></div>
+        <div class="network-output-row network-output-local">
+          <div class="network-output-name" id="network-output-local-label"></div>
+          <label class="network-output-delay" for="network-output-local-delay">
+            <span id="network-output-delay-label"></span>
+            <input type="number" class="browser-setting-input" id="network-output-local-delay" min="-2000" max="2000" step="1" disabled>
+          </label>
+        </div>
+        <div class="library-sharing-actions network-output-actions">
+          <button type="button" class="library-button" id="network-output-resync" disabled></button>
+          <div class="openhome-help" id="network-output-resync-help"></div>
+        </div>
       </div>` : '';
 
   const librarySharingSection = isElectron ? `
@@ -451,7 +476,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <button type="button" class="library-button" id="browser-rules-cancel"></button>
             </div>
           </fieldset>`,
-      network: networkNameSection + remoteControlSection + openHomeSection + networkReceptionSections + librarySharingSection
+      network: networkNameSection + remoteControlSection + openHomeSection + networkReceptionSections + networkOutputSection +
+        librarySharingSection
     } : {})
   };
   const categories = Object.keys(categoryPanels);
@@ -739,6 +765,35 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .library-sharing-folders:empty,
     #library-sharing-status:empty {
       display: none;
+    }
+    .network-output-targets {
+      display: grid;
+      gap: 8px;
+      margin: 10px 0 0 26px;
+    }
+    .network-output-targets:empty,
+    #network-output-empty:empty {
+      display: none;
+    }
+    .network-output-local {
+      margin: 10px 0 0 26px;
+    }
+    .network-output-delay {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .network-output-delay .browser-setting-input {
+      flex: 0 0 auto;
+      width: 6em;
+    }
+    .network-output-actions {
+      margin: 10px 0 0 26px;
+    }
+    .network-output-actions .openhome-help {
+      margin: 0;
     }
     .network-settings-section {
       display: grid;
@@ -1150,6 +1205,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
   let airPlayChangeInFlight = false;
   let airPlayRequestedEnabled = false;
   let removeAirPlayStatusListener = null;
+  let networkOutputStatus = null;
+  let networkOutputBusy = false;
+  let removeNetworkOutputStatusListener = null;
+  const networkOutputRows = new Map();
   let networkNameChangeInFlight = false;
   let openHomeRequestedEnabled = false;
   let removeOpenHomeStatusListener = null;
@@ -1436,6 +1495,159 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
   }
 
+  const NETWORK_OUTPUT_MAX_TRIM_MS = 2000;
+
+  function acceptNetworkOutputStatus(status) {
+    if (!status || typeof status.enabled !== 'boolean' || !Array.isArray(status.targets)) return false;
+    networkOutputStatus = status;
+    return true;
+  }
+
+  function createNetworkOutputRow(targetId) {
+    const row = document.createElement('div');
+    row.className = 'network-output-row';
+    const enableLabel = document.createElement('label');
+    enableLabel.className = 'network-output-enable';
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.addEventListener('change', () => applyNetworkOutputTarget(targetId, { enabled: enabled.checked }));
+    const type = document.createElement('span');
+    type.className = 'network-output-type';
+    const name = document.createElement('span');
+    name.className = 'network-output-name';
+    for (const child of [enabled, type, name]) enableLabel.appendChild(child);
+    const state = document.createElement('span');
+    state.className = 'network-output-state';
+    const delayLabel = document.createElement('label');
+    delayLabel.className = 'network-output-delay';
+    const delayText = document.createElement('span');
+    const delay = document.createElement('input');
+    delay.type = 'number';
+    delay.className = 'browser-setting-input';
+    for (const [attribute, value] of [['min', '0'], ['max', String(NETWORK_OUTPUT_MAX_TRIM_MS)], ['step', '1']]) {
+      delay.setAttribute(attribute, value);
+    }
+    delay.addEventListener('change', () => {
+      const trimMs = parseNetworkOutputTrim(delay.value, 0);
+      const target = networkOutputStatus?.targets.find(candidate => candidate.id === targetId);
+      if (trimMs === null || !target || trimMs === target.trimMs) renderNetworkOutput();
+      else applyNetworkOutputTarget(targetId, { trimMs });
+    });
+    delayLabel.appendChild(delayText);
+    delayLabel.appendChild(delay);
+    const note = document.createElement('div');
+    note.className = 'network-output-note';
+    for (const child of [enableLabel, state, delayLabel, note]) row.appendChild(child);
+    return { row, enabled, type, name, state, delayText, delay, note };
+  }
+
+  function syncNetworkOutputRows(list, targets) {
+    const ids = targets.map(target => target.id);
+    const currentIds = [...networkOutputRows.keys()];
+    if (ids.length === currentIds.length && ids.every((id, index) => currentIds[index] === id)) return;
+    for (const child of [...list.children]) list.removeChild(child);
+    networkOutputRows.clear();
+    for (const id of ids) {
+      const elements = createNetworkOutputRow(id);
+      networkOutputRows.set(id, elements);
+      list.appendChild(elements.row);
+    }
+  }
+
+  function renderNetworkOutput() {
+    const enabledInput = document.getElementById('network-output-enabled');
+    const list = document.getElementById('network-output-targets');
+    if (!enabledInput || !list) return;
+    const status = networkOutputStatus;
+    const available = !!networkOutputAPI && !!status;
+    const enabled = available && status.enabled;
+    const controlsDisabled = !enabled || networkOutputBusy;
+    enabledInput.checked = enabled;
+    enabledInput.disabled = !available || networkOutputBusy;
+    const targets = available ? status.targets : [];
+    syncNetworkOutputRows(list, targets);
+    const delayText = t('dialog.config.networkOutput.delay');
+    for (const target of targets) {
+      const row = networkOutputRows.get(target.id);
+      const selected = target.enabled === true;
+      row.enabled.checked = selected;
+      row.enabled.disabled = controlsDisabled;
+      // Only selected speakers are being contacted, so unselected rows show no state.
+      updateNetworkOutputTargetText(row, target, enabled && selected, t);
+      row.delayText.textContent = delayText;
+      if (document.activeElement !== row.delay) row.delay.value = String(target.trimMs ?? 0);
+      row.delay.disabled = controlsDisabled;
+    }
+    const empty = document.getElementById('network-output-empty');
+    if (empty) empty.textContent = available && targets.length === 0 ? t('dialog.config.networkOutput.empty') : '';
+    const localDelay = document.getElementById('network-output-local-delay');
+    if (localDelay) {
+      if (document.activeElement !== localDelay) localDelay.value = String(available ? status.localTrimMs ?? 0 : 0);
+      localDelay.disabled = controlsDisabled;
+    }
+    const resync = document.getElementById('network-output-resync');
+    if (resync) resync.disabled = controlsDisabled;
+  }
+
+  function parseNetworkOutputTrim(value, minimum) {
+    const trimMs = Math.round(Number(value));
+    return String(value).trim() !== '' && Number.isFinite(trimMs) && trimMs >= minimum && trimMs <= NETWORK_OUTPUT_MAX_TRIM_MS
+      ? trimMs : null;
+  }
+
+  async function refreshNetworkOutputStatus() {
+    if (!networkOutputAPI) {
+      renderNetworkOutput();
+      return;
+    }
+    try {
+      if (!acceptNetworkOutputStatus(await networkOutputAPI.getStatus())) throw new Error('Invalid Network Output status response');
+    } catch (error) {
+      console.warn('Failed to read Network Output status:', error);
+    }
+    renderNetworkOutput();
+  }
+
+  async function runNetworkOutputRequest(request, failureMessage) {
+    if (!networkOutputAPI || networkOutputBusy) return;
+    networkOutputBusy = true;
+    renderNetworkOutput();
+    try {
+      if (!acceptNetworkOutputStatus(await request())) throw new Error('Invalid Network Output status response');
+    } catch (error) {
+      console.warn(failureMessage, error);
+    } finally {
+      networkOutputBusy = false;
+      renderNetworkOutput();
+    }
+  }
+
+  function applyNetworkOutputConfiguration(patch) {
+    return runNetworkOutputRequest(() => networkOutputAPI.setConfiguration(patch), 'Failed to update Network Output settings:');
+  }
+
+  function applyNetworkOutputTarget(targetId, changes) {
+    const targets = (networkOutputStatus?.targets ?? []).map(target => ({
+      id: target.id,
+      type: target.type,
+      name: target.name,
+      enabled: target.enabled === true,
+      trimMs: target.trimMs ?? 0,
+      ...(target.id === targetId ? changes : {})
+    }));
+    return applyNetworkOutputConfiguration({ targets });
+  }
+
+  function applyNetworkOutputLocalTrim(value) {
+    const localTrimMs = parseNetworkOutputTrim(value, -NETWORK_OUTPUT_MAX_TRIM_MS);
+    if (localTrimMs === null || localTrimMs === networkOutputStatus?.localTrimMs) return renderNetworkOutput();
+    return applyNetworkOutputConfiguration({ localTrimMs });
+  }
+
+  function resyncNetworkOutput() {
+    return runNetworkOutputRequest(() => networkOutputAPI.resync(), 'Failed to resync Network Output:');
+  }
+
   async function refreshOpenHomeStatus() {
     if (!openHomeAPI || typeof openHomeAPI.getStatus !== 'function') {
       openHomeStatusLoaded = true;
@@ -1600,7 +1812,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     for (const [id, key] of [
       ['upnp-av-title', 'upnpAv.title'], ['upnp-av-enabled-label', 'upnpAv.enable'], ['upnp-av-risk', 'upnpAv.risk'],
-      ['airplay-title', 'airPlay.title'], ['airplay-enabled-label', 'airPlay.enable'], ['airplay-help', 'airPlay.help']
+      ['airplay-title', 'airPlay.title'], ['airplay-enabled-label', 'airPlay.enable'], ['airplay-help', 'airPlay.help'],
+      ['network-output-title', 'networkOutput.title'], ['network-output-enabled-label', 'networkOutput.enable'],
+      ['network-output-help', 'networkOutput.help'], ['network-output-local-label', 'networkOutput.local'],
+      ['network-output-delay-label', 'networkOutput.delay'], ['network-output-resync', 'networkOutput.resync'],
+      ['network-output-resync-help', 'networkOutput.resyncHelp']
     ]) {
       const element = document.getElementById(id);
       if (element) element.textContent = t(`dialog.config.${key}`);
@@ -1699,6 +1915,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderOfflineOutputControls();
     renderNetworkStatus();
     renderAirPlayStatus();
+    renderNetworkOutput();
     renderRemoteControlSettings();
     renderLibrarySharing();
   }
@@ -1986,6 +2203,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
   });
   document.getElementById('upnp-av-enabled')?.addEventListener('change', e => applyUpnpAvEnabled(e.target.checked));
   document.getElementById('airplay-enabled')?.addEventListener('change', e => applyAirPlayEnabled(e.target.checked));
+  document.getElementById('network-output-enabled')?.addEventListener('change', e =>
+    applyNetworkOutputConfiguration({ enabled: e.target.checked }));
+  document.getElementById('network-output-local-delay')?.addEventListener('change', e =>
+    applyNetworkOutputLocalTrim(e.target.value));
+  document.getElementById('network-output-resync')?.addEventListener('click', resyncNetworkOutput);
   const networkDeviceName = document.getElementById('network-device-name');
   networkDeviceName?.addEventListener('change', async e => {
     await applyNetworkDeviceName(e.target.value);
@@ -2232,6 +2454,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     removeOpenHomeStatusListener = null;
     removeAirPlayStatusListener?.();
     removeAirPlayStatusListener = null;
+    removeNetworkOutputStatusListener?.();
+    removeNetworkOutputStatusListener = null;
     removeRemoteControlSettingsListener?.();
     networkSettings?.dispose();
     removeRemoteControlSettingsListener = null;
@@ -2270,6 +2494,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       renderAirPlayStatus();
     });
   }
+  if (typeof networkOutputAPI?.onStatus === 'function') {
+    removeNetworkOutputStatusListener = networkOutputAPI.onStatus(status => {
+      if (acceptNetworkOutputStatus(status)) renderNetworkOutput();
+    });
+  }
   removeRemoteControlSettingsListener = remoteControlSettings?.subscribe(renderRemoteControlSettings);
-  await Promise.all([refreshOpenHomeStatus(), refreshAirPlayStatus(), refreshLibrarySharing()]);
+  await Promise.all([refreshOpenHomeStatus(), refreshAirPlayStatus(), refreshNetworkOutputStatus(), refreshLibrarySharing()]);
 }

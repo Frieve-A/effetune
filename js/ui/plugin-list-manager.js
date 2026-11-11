@@ -134,11 +134,7 @@ export class PluginListManager {
         this.pluginList.appendChild(contentContainer);
 
         // Add effect count at the end of the list
-        if (window.uiManager && window.uiManager.t) {
-            effectCountDiv.textContent = window.uiManager.t('ui.effectsAvailable', { count: totalEffects });
-        } else {
-            effectCountDiv.textContent = `${totalEffects} effects available`;
-        }
+        effectCountDiv.textContent = `${totalEffects} effects available`;
         this.pluginList.appendChild(effectCountDiv);
 
     }

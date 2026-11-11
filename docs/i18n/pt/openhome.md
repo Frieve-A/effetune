@@ -1,12 +1,12 @@
 ---
 title: "Música em rede e controle remoto (aplicativo desktop) - EffeTune"
-description: "Reproduza música da rede com o EffeTune, receba áudio OpenHome, UPnP AV / DLNA e AirPlay, compartilhe músicas e controle a reprodução na rede local."
+description: "Reproduza música da rede com o EffeTune, receba áudio OpenHome, UPnP AV / DLNA e AirPlay, envie o áudio processado para caixas de som de rede, compartilhe músicas e controle a reprodução na rede local."
 lang: pt
 ---
 
 # Música em rede e controle remoto (aplicativo desktop)
 
-O aplicativo desktop pode receber música de outros dispositivos na rede local e aplicar seus efeitos do EffeTune. A recepção por OpenHome, UPnP AV / DLNA e AirPlay tem configurações independentes, todas desativadas inicialmente. Ative apenas os métodos que usa em **Configurações > Configuração... > Rede**.
+O aplicativo desktop pode receber música de outros dispositivos na rede local, aplicar seus efeitos do EffeTune e enviar o som processado para caixas de som de rede. A recepção por OpenHome, UPnP AV / DLNA e AirPlay e a saída de rede têm configurações independentes, todas desativadas inicialmente. Ative apenas os métodos que usa em **Configurações > Configuração... > Rede**.
 
 ## Receber música pelo OpenHome
 
@@ -44,6 +44,20 @@ O armazenamento em buffer da rede e os efeitos do EffeTune acrescentam atraso, p
 
 A descoberta AirPlay exige Bonjour no Windows e macOS, ou um serviço Avahi / DNS-SD ativo no Linux. O instalador padrão do Windows fornece o serviço de descoberta quando necessário; as versões portátil e Microsoft Store exigem que ele já esteja instalado. No Linux, instale o serviço Avahi / DNS-SD da distribuição e ative-o com as ferramentas normais de gerenciamento de serviços. Se o receptor estiver indisponível, confira esses requisitos e o acesso a redes privadas no firewall antes de tentar novamente. Wi-Fi de convidados, VPNs ou isolamento de rede podem impedir que os dispositivos se encontrem.
 
+## Enviar áudio para caixas de som de rede
+
+O aplicativo desktop pode tocar a saída final da sua cadeia de efeitos, ou o som no ponto de um marcador **Live Audio Send**, em caixas de som UPnP AV / DLNA e dispositivos Chromecast ao mesmo tempo que neste computador. Abra **Configurações > Configuração... > Rede > Saída de rede** e ative **Enviar áudio para caixas de som de rede**. As caixas de som encontradas na rede aparecem na lista; marque as que deseja usar. Cada linha mostra se a caixa está Procurando, Conectando, Reproduzindo ou Sem resposta, com uma nota curta quando algo precisa da sua atenção. São compatíveis os renderizadores UPnP AV / DLNA que aceitam um fluxo contínuo, as caixas de som e telas Chromecast e os grupos de caixas de som Chromecast.
+
+Para mudanças rápidas, abra **Saída de rede** ao lado de **Player** na barra de ferramentas do aplicativo desktop. Marque as caixas de som que deseja ouvir e veja o status da conexão na mesma lista. Para ouvir apenas nas caixas de som de rede, desmarque **Este computador**. Marque-o novamente para voltar a ouvir no computador. Os controles de atraso ficam em **Configuração... > Rede > Saída de rede**.
+
+As caixas de som de rede começam a tocar um pouco depois deste computador; por isso, enquanto o envio está ativado, o EffeTune atrasa o som deste computador em cerca de dois segundos, ou o quanto o dispositivo Chromecast mais lento precisar. O EffeTune mede o atraso de reprodução de cada dispositivo Chromecast e alinha automaticamente as outras caixas de som e este computador a ele. Use **Atraso (ms)** para ajustar com precisão cada caixa de som e **Este computador** até que toquem juntos. Se as caixas de som se desalinharem durante uma audição longa, escolha **Ressincronizar** para reiniciá-las juntas.
+
+Com **Sincronizar elementos visuais com o áudio** ativado, gráficos e medidores seguem o tempo de reprodução comum, antes dos ajustes individuais de **Atraso (ms)**. Isso também funciona quando **Este computador** está desmarcado.
+
+Escolha um grupo de caixas de som Chromecast ou as caixas que fazem parte dele, não os dois. O grupo mantém os próprios membros sincronizados, e enviar ao grupo e aos membros ao mesmo tempo causa eco. Caixas de som UPnP AV / DLNA que não aparecem na lista podem ser adicionadas com **Adicionar um dispositivo de rede manualmente**, descrito mais abaixo.
+
+Enquanto o envio está ativado, o **Teste duplo-cego** silencia as caixas de som de rede para que o teste seja ouvido apenas neste computador. A correção de sincronização visual das configurações de áudio não é aplicada, e efeitos de análise como o Spectrum Analyzer mostram o som cerca de dois segundos antes de você ouvi-lo neste computador. O Visualizer continua alinhado com o som deste computador.
+
 ## Escolher uma biblioteca e um reprodutor
 
 No aplicativo de desktop, use **Library** em Music Library para selecionar **This device** ou um servidor de música da rede local. As bibliotecas compartilhadas do EffeTune oferecem as categorias habituais, a busca e a ordenação descritas no [guia da Music Library](music-library.md). Outros servidores de música mostram as categorias e a estrutura de pastas que disponibilizam; a busca e a ordenação só ficam disponíveis quando o servidor oferece suporte.
@@ -53,6 +67,17 @@ Use o seletor no topo da janela para escolher **This device**, um reprodutor Ope
 Reprodutores OpenHome mantêm sua própria fila. Em um reprodutor UPnP AV / DLNA sem fila OpenHome, o computador com EffeTune gerencia a sequência escolhida e envia a próxima faixa após o término normal da anterior. Mantenha esse computador e a fonte ligados. Trocar de destino não move essa sequência. Se outro controlador substituir a música, o avanço automático termina; após uma desconexão, selecione as músicas novamente. A reprodução sem intervalos não é garantida.
 
 Você também pode adicionar um [servidor Subsonic / OpenSubsonic](music-library.md#subsonic).
+
+### Reprodução direta e áudio ao vivo
+
+Primeiro, ative a recepção UPnP AV no B. Em ambos os exemplos, você também pode usar uma faixa de biblioteca compartilhada.
+
+Nos computadores A e B, reproduza o mesmo arquivo de duas formas sem mudar **Library**. Mudar **Player** apenas troca o dispositivo controlado; a fila anterior continua.
+
+1. Para reproduzir diretamente em B, selecione B em **Player** no A e abra o arquivo com **Abrir arquivos de música** no A. B processa desde o início da cadeia. Pare B antes do próximo exemplo.
+2. Para enviar áudio do A, coloque **Live Audio Send** no A e **Live Audio Receive** no B. Escolha **Este dispositivo** em **Player** no A e abra o mesmo arquivo. Ative **Saída de rede** no A e marque B. B processa a partir do marcador de recepção ou do início se a rota não estiver disponível. A opção **Este computador** controla a reprodução local do A independentemente de Player.
+
+A saída de rede e seus controles de atraso afetam o A independentemente de Player. O atraso ajuda a alinhar as saídas, com precisão dependente dos dispositivos e da rede. Na Web e no Android, a seleção de arquivos reproduz localmente; use uma biblioteca de rede para outro Player.
 
 ## Compartilhar pastas de música
 
@@ -102,5 +127,13 @@ Se um dispositivo UPnP acessível não aparecer, use **Adicionar um dispositivo 
 ## Limites da reprodução em rede
 
 A descoberta automática e o compartilhamento de pastas exigem o aplicativo de desktop. Os formatos e a busca dentro da faixa dependem do reprodutor e da fonte. O EffeTune não converte áudio de rede; um servidor Subsonic pode fornecer um fluxo convertido. Subfaixas CUE não podem ser enviadas separadamente. Reprodução sem intervalos e sincronização entre ambientes não são garantidas. Se um dispositivo desaparecer, verifique se está acordado, acessível e autorizado pelo firewall da rede privada, e atualize a lista. O compartilhamento para ao fechar o aplicativo de origem ou suspender seu computador.
+
+Ao enviar áudio para caixas de som de rede, tenha em mente:
+
+- Caixas de som de tipos diferentes, como uma caixa UPnP AV / DLNA e um dispositivo Chromecast, não são alinhadas automaticamente; ajuste **Atraso (ms)** de ouvido.
+- As caixas de som podem se desalinhar aos poucos durante uma audição longa. Escolha **Ressincronizar** para reiniciá-las juntas.
+- Os dispositivos Chromecast começam a tocar poucos segundos após o início do envio ou uma ressincronização. O EffeTune mede o atraso de cada dispositivo e segura este computador e as outras caixas de som para acompanhá-lo. Um dispositivo que fica mais de seis segundos atrasado é reiniciado automaticamente.
+- Se um dispositivo Chromecast alterna repetidamente entre Conectando e Sem resposta enquanto suas outras caixas de som tocam, é o próprio dispositivo que está recusando o fluxo. No app Google Home, verifique se os filtros do Digital Wellbeing dele permitem todas as músicas e reinicie o dispositivo.
+- O EffeTune envia às caixas de som de rede um fluxo estéreo de 44,1 kHz e 16 bits, para que receptores que aceitam taxas de amostragem de no máximo 48 kHz também possam reproduzi-lo. Taxas de amostragem mais altas neste computador são convertidas para a rede; o som deste computador não é afetado.
 
 [← Voltar para o README](README.md)

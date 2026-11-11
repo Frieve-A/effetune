@@ -115,6 +115,14 @@
 "help:inputChannel": "选择已连接校准麦克风的输入通道。", // Help text for input channel
 "label:audioOutput": "音频输出设备：", // Label for audio output device selection
 "help:audioOutput": "选择用于输出测量信号的音频设备。", // Help text for audio output
+"label:effectPipeline": "效果管道：",
+"option:effectPipelineNone": "无",
+"option:effectPipelineCurrent": "当前管道",
+"help:effectPipeline": "选择“当前管道”后，测试信号会经过从主应用打开本页面时正在运行的效果管道再播放。采样频率和输出设备声道数会按管道固定。",
+"help:effectPipelineUnavailable": "如需经过效果管道进行测量，请在音频处理运行时从主应用打开本页面。",
+"help:effectPipelineAndroid": "Android 上无法经过效果管道进行测量。",
+"label:pipelineInputChannel": "管道输入通道：",
+"help:pipelineInputChannel": "选择接收测试信号的管道输入通道。管道的每个输出通道都会在编号相同的输出设备通道上播放。",
   "label:outputChannelCount": "输出设备声道数：",
   "help:outputChannelCount": "请按输出设备的声道配置设置（5.1设为6，7.1设为8）。即使只测量部分声道，测试信号和测量也始终使用此声道数。",
 "label:outputChannel": "输出通道：", // Label for output channel selection
@@ -192,9 +200,15 @@
 "button:exportTxt": "导出校正参数（TXT）", // Button to export txt
 "button:exportCSV": "导出校正参数（CSV）", // Button to export CSV
 "help:exportOptions": "复制的频率校正设置可通过 Ctrl+V 粘贴到 EffeTune 的效果管道中。", // Help text for export options
+"message:correctionUnavailablePipeline": "此测量结果已包含效果管道的处理，因此无法用于创建校正设置。",
 "title:measurementDetails": "测量详情", // Title for measurement details section
 "label:onset": "起始点",
 "label:onsetEarliest": "最早",
+"label:effectPipelineBadge": "管道",
+"label:appliedEffectPipeline": "效果管道",
+"status:effectPipelineNotApplied": "未应用",
+"status:effectPipelineApplied": "已应用",
+"status:effectPipelineAppliedPlugins": "已应用（{plugins}）",
 
 // Dialogs
 "button:confirm": "确认", // Confirm button in dialog
@@ -220,6 +234,12 @@
 "error:interfaceCalibrationSampleRateMismatch": "所选校准数据使用了不同的采样率。请选择以相同采样率录制的数据。",
 "error:interfaceCalibrationSweepRangeMismatch": "所选校准数据未覆盖此扫描范围。请缩小扫描范围或选择其他数据。",
 "error:interfaceCalibrationProcessingFailed": "无法完成校准测量。请检查连接和设置，然后重新测量此点。",
+"error:pipelineUnavailable": "效果管道不可用。请在音频处理运行时从主应用重新打开本页面，或将效果管道设为“无”。",
+"error:pipelineSampleRateMismatch": "无法以效果管道的采样频率进行测量。请将音频设备设为与主应用相同的采样频率后重试。",
+"error:pipelineInputChannelUnavailable": "所选管道输入通道不在效果管道中。请在管道声道数范围内选择通道。",
+"error:pipelineOutputChannelsUnavailable": "所选输出设备的声道数少于效果管道。请选择主应用中使用的输出设备后重试。",
+"error:pipelineClipping": "测试信号经过效果管道后会削波。请降低信号电平后重试。",
+"error:pipelineRenderFailed": "效果管道无法处理测试信号。请返回主应用，重新打开本页面后重试。",
 "error:measurementSetupFailed": "无法准备测量。请检查音频设备后重试。",
 "error:levelAdjustmentFailed": "无法准备音频输入。请检查输入设备后重试。",
 "error:audioUnsupported": "此浏览器无法进行音频测量。请使用最新版 Chrome 或 Edge。",
@@ -275,6 +295,8 @@
 "option:sampleRate96000": "96 kHz", // Option for 96 kHz sample rate
 "option:sampleRate176400": "176.4 kHz", // Option for 176.4 kHz sample rate
 "option:sampleRate192000": "192 kHz", // Option for 192 kHz sample rate
+"option:sampleRate352800": "352.8 kHz", // Option for 352.8 kHz sample rate
+"option:sampleRate384000": "384 kHz", // Option for 384 kHz sample rate
 
 // Sweep length options
 "option:sweepLength16384": "16,384 (2¹⁴)", // Option for 16384 sweep length

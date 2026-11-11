@@ -7,7 +7,7 @@ import {
   saveAudioPreferences,
   showAudioConfigDialog
 } from '../../js/electron/audioIntegration.js';
-import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { getAndroidBridge } from '../../js/android/bridge.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
@@ -302,29 +302,25 @@ test('getAudioDevices falls back through browser and default devices', async () 
     mediaDevices: {
       async enumerateDevices() {
         return [
-          { deviceId: 'mic12345', kind: 'audioinput', label: '' },
-          { deviceId: 'speaker98765', kind: 'audiooutput', label: '' },
-          { deviceId: 'camera', kind: 'videoinput', label: '' },
-          { deviceId: 'named', kind: 'audiooutput', label: 'Named Speaker' }
+          { deviceId: 'mic12345', kind: 'audioinput', groupId: 'g1', label: '' },
+          { deviceId: 'speaker98765', kind: 'audiooutput', groupId: 'g2', label: '' },
+          { deviceId: 'camera', kind: 'videoinput', groupId: 'g3', label: '' },
+          { deviceId: 'named', kind: 'audiooutput', groupId: 'g4', label: 'Named Speaker' }
         ];
       }
     }
   };
+  const expectedBrowserDevices = [
+    { deviceId: 'mic12345', kind: 'audioinput', groupId: 'g1', label: 'Microphone (no permission)' },
+    { deviceId: 'speaker98765', kind: 'audiooutput', groupId: 'g2', label: 'Speaker speak' },
+    { deviceId: 'camera', kind: 'videoinput', groupId: 'g3', label: 'Unknown device' },
+    { deviceId: 'named', kind: 'audiooutput', groupId: 'g4', label: 'Named Speaker' }
+  ];
   const browserFallback = createAudioHarness({ deviceResult: { success: true, devices: [] } });
   await withGlobals({ window: browserFallback.window, navigator: navigatorWithDevices }, async () => {
     await withMutedConsole('log', async () => {
-      assert.deepEqual(await getAudioDevices(false), [
-        { deviceId: 'mic12345', kind: 'audioinput', label: 'Microphone (no permission)' },
-        { deviceId: 'speaker98765', kind: 'audiooutput', label: 'Speaker speak' },
-        { deviceId: 'camera', kind: 'videoinput', label: 'Unknown device' },
-        { deviceId: 'named', kind: 'audiooutput', label: 'Named Speaker' }
-      ]);
-      assert.deepEqual(await getAudioDevices(true), [
-        { deviceId: 'mic12345', kind: 'audioinput', label: 'Microphone (no permission)' },
-        { deviceId: 'speaker98765', kind: 'audiooutput', label: 'Speaker speak' },
-        { deviceId: 'camera', kind: 'videoinput', label: 'Unknown device' },
-        { deviceId: 'named', kind: 'audiooutput', label: 'Named Speaker' }
-      ]);
+      assert.deepEqual(await getAudioDevices(false), expectedBrowserDevices);
+      assert.deepEqual(await getAudioDevices(true), expectedBrowserDevices);
     });
   });
 
@@ -1210,6 +1206,108 @@ test('showAudioConfigDialog includes and saves the no-input player option', asyn
   const saved = harness.calls.find(call => call[0] === 'saveAudioPreferences')[1];
   assert.equal(saved.inputDeviceId, NO_AUDIO_INPUT_DEVICE_ID);
   assert.equal(saved.inputDeviceLabel, 'label:dialog.audioConfig.inputDevice.none');
+});
+
+const SYSTEM_AUDIO_TEST_DEVICES = [
+  { deviceId: 'mic1', kind: 'audioinput', groupId: 'mic', label: 'Mic One' },
+  { deviceId: 'default', kind: 'audiooutput', groupId: 'speakers', label: 'Default - Speakers' },
+  { deviceId: 'speakers', kind: 'audiooutput', groupId: 'speakers', label: 'Speakers' },
+  { deviceId: 'dac', kind: 'audiooutput', groupId: 'dac', label: 'USB DAC' }
+];
+
+async function openSystemAudioDialog({ platform = 'win32', isElectron = true, preferences }) {
+  const harness = createAudioHarness({
+    deviceResult: { success: true, devices: SYSTEM_AUDIO_TEST_DEVICES }
+  });
+  harness.window.electronAPI.platform = platform;
+  const document = createFakeDocument();
+  const globals = {
+    window: harness.window,
+    document,
+    navigator: {},
+    setTimeout: () => 1
+  };
+  await withGlobals(globals, async () => {
+    await withMutedConsole('log', async () => {
+      await showAudioConfigDialog(isElectron, preferences);
+    });
+  });
+  return { harness, document, globals };
+}
+
+test('showAudioConfigDialog offers System Audio only in the Windows desktop app, right after None', async () => {
+  const { document } = await openSystemAudioDialog({ preferences: { outputDeviceId: 'dac' } });
+  const values = document.getElementById('input-device').children.map(option => option.value);
+  assert.deepEqual(values, [NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID, 'mic1']);
+  assert.equal(
+    document.getElementById('input-device').children[1].textContent,
+    'label:dialog.audioConfig.inputDevice.systemAudio'
+  );
+
+  for (const options of [{ platform: 'darwin' }, { platform: 'win32', isElectron: false }]) {
+    const other = await openSystemAudioDialog({ ...options, preferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID } });
+    const inputSelect = other.document.getElementById('input-device');
+    assert.equal(inputSelect.children.some(option => option.value === SYSTEM_AUDIO_INPUT_DEVICE_ID), false);
+    assert.notEqual(inputSelect.value, SYSTEM_AUDIO_INPUT_DEVICE_ID);
+    assert.equal(other.document.getElementById('input-device-help'), null);
+  }
+});
+
+test('showAudioConfigDialog disables System Audio with a reason while the output is the Windows default', async () => {
+  for (const outputDeviceId of ['default', 'speakers']) {
+    const { document } = await openSystemAudioDialog({
+      preferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID, outputDeviceId }
+    });
+    const inputSelect = document.getElementById('input-device');
+    assert.equal(inputSelect.children[1].disabled, true);
+    assert.equal(inputSelect.value, NO_AUDIO_INPUT_DEVICE_ID);
+    assert.equal(
+      document.getElementById('input-device-help').textContent,
+      'label:dialog.audioConfig.inputDevice.systemAudioUnavailable'
+    );
+  }
+
+  const { document } = await openSystemAudioDialog({
+    preferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID, outputDeviceId: 'dac' }
+  });
+  assert.equal(document.getElementById('input-device').children[1].disabled, false);
+  assert.equal(document.getElementById('input-device').value, SYSTEM_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(document.getElementById('input-device-help').textContent, '');
+});
+
+test('showAudioConfigDialog switches System Audio to None when the output changes to the default device', async () => {
+  const { harness, document, globals } = await openSystemAudioDialog({
+    preferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID, outputDeviceId: 'dac' }
+  });
+  const inputSelect = document.getElementById('input-device');
+  const outputSelect = document.getElementById('output-device');
+
+  outputSelect.value = 'speakers';
+  await outputSelect.dispatchEvent('change');
+  assert.equal(inputSelect.value, NO_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(inputSelect.children[1].disabled, true);
+  assert.equal(
+    document.getElementById('input-device-help').textContent,
+    'label:dialog.audioConfig.inputDevice.systemAudioUnavailable'
+  );
+
+  outputSelect.value = 'dac';
+  await outputSelect.dispatchEvent('change');
+  assert.equal(inputSelect.children[1].disabled, false);
+  assert.equal(inputSelect.value, NO_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(document.getElementById('input-device-help').textContent, '');
+
+  inputSelect.value = SYSTEM_AUDIO_INPUT_DEVICE_ID;
+  await withGlobals(globals, async () => {
+    await withMutedConsole('log', async () => {
+      await document.getElementById('apply-button').dispatchEvent('click');
+      await flushMicrotasks();
+    });
+  });
+  const saved = harness.calls.find(call => call[0] === 'saveAudioPreferences')[1];
+  assert.equal(saved.inputDeviceId, SYSTEM_AUDIO_INPUT_DEVICE_ID);
+  assert.equal(saved.inputDeviceLabel, 'label:dialog.audioConfig.inputDevice.systemAudio');
+  assert.equal(saved.outputDeviceId, 'dac');
 });
 
 test('showAudioConfigDialog applies fallback labels and worklet updates without a callback', async () => {

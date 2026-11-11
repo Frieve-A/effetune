@@ -542,3 +542,19 @@ test('updateBusInfo exits when the pipeline item is missing', async () => {
 
   assert.equal(calls.some(call => call[0] === 'saveState'), false);
 });
+
+
+test('network marker routing refresh removes stale summaries without exposing controls', () => {
+  class NetworkSendPlugin {}
+  const marker = new NetworkSendPlugin();
+  Object.assign(marker, { id: 81, inputBus: 2, outputBus: 3, channel: 'L' });
+  let removed = false;
+  const handler = new PipelineRoutingDialog({ pipelineList: {
+    querySelector(selector) {
+      assert.match(selector, /data-plugin-id='81'.*bus-info/);
+      return { remove() { removed = true; } };
+    }
+  } });
+  handler.updateBusInfo(marker);
+  assert.equal(removed, true);
+});

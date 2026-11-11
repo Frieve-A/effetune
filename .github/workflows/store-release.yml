@@ -62,9 +62,9 @@ jobs:
         with:
           node-version: 22
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@cb963d5eea2b7644f6809c1b00349924f1d5ad42 # main
+        uses: microsoft/microsoft-store-apppublisher@8ea63a79b1687b6c37ef7dbe915d36ac7147808d # main
         with:
-          version: v0.4.3
+          version: v0.4.4
       - name: Install private credential service dependencies
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y dbus gnome-keyring
       - name: Advance the recorded Store submission

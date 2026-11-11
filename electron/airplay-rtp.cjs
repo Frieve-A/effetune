@@ -5,6 +5,7 @@ const MAX_REORDER_PACKETS = 32;
 const MAX_REORDER_FRAMES = 22050;
 const MAX_GAP_FRAMES = 4410;
 const REORDER_WAIT_MS = 40;
+const CONCEAL_FADE_FRAMES = Math.ceil(SAMPLE_RATE * 0.005);
 
 function parseL16RtpPacket(bytes) {
   if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 65507 || bytes[0] >>> 6 !== 2 ||
@@ -45,6 +46,9 @@ class L16RtpReceiver {
     this.queuedFrames = 0;
     this.framePosition = 0;
     this.waitSince = null;
+    this.lastLeft = 0;
+    this.lastRight = 0;
+    this.recoveryFrames = 0;
   }
 
   push(bytes, now = Date.now()) {
@@ -63,6 +67,9 @@ class L16RtpReceiver {
       this.queuedFrames = 0;
       this.sequence = packet.sequence;
       this.timestamp = packet.timestamp;
+      this.lastLeft = 0;
+      this.lastRight = 0;
+      this.recoveryFrames = 0;
       this.onReset(this.framePosition);
       this.onDiagnostic('rtp-rebuffer');
     }
@@ -98,6 +105,9 @@ class L16RtpReceiver {
       } else if (gap !== 0) {
         this.onReset(this.framePosition);
         this.onDiagnostic('rtp-clock-discontinuity');
+        this.lastLeft = 0;
+        this.lastRight = 0;
+        this.recoveryFrames = 0;
       }
       this.emit(packet.frameCount, packet.payload);
       this.sequence = (packet.sequence + 1) & 65535;
@@ -107,17 +117,30 @@ class L16RtpReceiver {
   }
 
   emit(frameCount, payload) {
-    // Silence concealment is split into the same bounded frame size as data.
+    const fadeLength = frameCount < CONCEAL_FADE_FRAMES ? frameCount : CONCEAL_FADE_FRAMES;
+    const fadeLeft = this.lastLeft, fadeRight = this.lastRight;
     for (let offset = 0; offset < frameCount; offset += MAX_PACKET_FRAMES) {
       const count = frameCount - offset < MAX_PACKET_FRAMES ? frameCount - offset : MAX_PACKET_FRAMES;
       const left = new Float32Array(count), right = new Float32Array(count);
-      if (payload) for (let frame = 0; frame < count; frame += 1) {
-        left[frame] = payload.readInt16BE((offset + frame) * 4) / 32768;
-        right[frame] = payload.readInt16BE((offset + frame) * 4 + 2) / 32768;
+      for (let frame = 0; frame < count; frame += 1) {
+        const index = offset + frame;
+        if (payload) {
+          const gain = this.recoveryFrames > 0 ? (CONCEAL_FADE_FRAMES - this.recoveryFrames + 1) / CONCEAL_FADE_FRAMES : 1;
+          if (this.recoveryFrames > 0) this.recoveryFrames -= 1;
+          left[frame] = payload.readInt16BE(index * 4) / 32768 * gain;
+          right[frame] = payload.readInt16BE(index * 4 + 2) / 32768 * gain;
+        } else if (index < fadeLength) {
+          const gain = 1 - (index + 1) / fadeLength;
+          left[frame] = fadeLeft * gain;
+          right[frame] = fadeRight * gain;
+        }
       }
+      this.lastLeft = left[count - 1];
+      this.lastRight = right[count - 1];
       this.onPcm({ startFrame: this.framePosition, frameCount: count, planes: [left.buffer, right.buffer] });
       this.framePosition += count;
     }
+    if (!payload) this.recoveryFrames = CONCEAL_FADE_FRAMES;
   }
 }
 

@@ -389,6 +389,24 @@ test('measurement export and import preserve supported output widths through six
     assert.equal(target.getMeasurementById('measurement-imported-16ch').outputChannelCount, 16);
 });
 
+test('the effect pipeline marker round trips through export and import', async () => {
+    const effectPipeline = { pluginNames: ['Volume', 'Parametric EQ'] };
+    const { storage: source } = createStorage();
+    source.measurements = [{ ...exportableMeasurement(), effectPipeline }];
+    const json = await source.exportMeasurementToJSON('measurement-source', false);
+    const { storage: target } = createStorage();
+    target.generateId = () => 'measurement-imported-pipeline';
+    assert.equal(await target.importMeasurementFromJSON(json), 'measurement-imported-pipeline');
+    assert.deepEqual(target.getMeasurementById('measurement-imported-pipeline').effectPipeline, effectPipeline);
+
+    for (const invalid of [null, {}, { pluginNames: 'Volume' }, { pluginNames: [1] }]) {
+        const { storage } = createStorage();
+        assert.equal(await storage.importMeasurementFromJSON(JSON.stringify({
+            ...exportableMeasurement(), effectPipeline: invalid
+        })), null);
+    }
+});
+
 test('measurement import rejects odd and out-of-range output widths', async () => {
     for (const outputChannelCount of [1, 3, 9, 17]) {
         const { storage } = createStorage();

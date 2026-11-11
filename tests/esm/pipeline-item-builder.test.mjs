@@ -1087,3 +1087,87 @@ test('name clicks toggle individual, global, and section expansion behavior', as
     assert.equal(find(item, '.plugin-name').title, 'Click to expand');
   });
 });
+
+
+test('network markers show only eligible applied routes and hide routing controls', async () => {
+  await withBuilderGlobals({}, async () => {
+    class NetworkReceivePlugin extends TestPlugin {}
+    class NetworkSendPlugin extends TestPlugin {}
+    const first = new NetworkReceivePlugin({ id: 71, name: 'Live Audio Receive', inputBus: 2, channel: 'L' });
+    const second = new NetworkReceivePlugin({ id: 72, name: 'Live Audio Receive' });
+    const send = new NetworkSendPlugin({ id: 73, name: 'Live Audio Send' });
+    const core = createCore({ pipeline: [first, second, send] });
+    core.audioManager.networkRoute = { receiveId: 71, sendId: 73 };
+    const builder = new PipelineItemBuilder(core);
+    const item = builder.createPipelineItem(first);
+    const duplicateItem = builder.createPipelineItem(second);
+    const sendItem = builder.createPipelineItem(send);
+    const status = find(item, '.network-marker-status');
+    const duplicate = find(duplicateItem, '.network-marker-status');
+    assert.equal(item.querySelector('.routing-button'), null);
+    assert.equal(item.querySelector('.bus-info'), null);
+    assert.equal(find(item, '.plugin-name').textContent, 'Live Audio Receive');
+    assert.equal(find(sendItem, '.plugin-name').textContent, 'Live Audio Send');
+    assert.equal(find(sendItem, '.network-marker-status').textContent, 'Selected send point');
+    assert.equal(status.textContent, 'Receiving live audio · Processing starts here');
+    assert.equal(duplicate.textContent, 'Another enabled marker is used');
+    first.enabled = false;
+    builder.updateNetworkMarkerStatus(first, status);
+    builder.updateNetworkMarkerStatus(second, duplicate);
+    assert.equal(status.textContent, '');
+    assert.equal(duplicate.textContent, '');
+    core.audioManager.networkRoute.receiveId = 72;
+    builder.updateNetworkMarkerStatus(second, duplicate);
+    assert.equal(duplicate.textContent, 'Receiving live audio · Processing starts here');
+    core.audioManager.masterBypass = true;
+    builder.updateNetworkMarkerStatus(second, duplicate);
+    assert.equal(duplicate.textContent, '');
+    core.audioManager.masterBypass = false;
+    const section = new SectionPlugin({ id: 70, enabled: false });
+    core.audioManager.pipeline = [section, second];
+    builder.updateNetworkMarkerStatus(second, duplicate);
+    assert.equal(duplicate.textContent, '');
+    section.enabled = true;
+    core.audioManager.hasLocalAudio = false;
+    builder.updateNetworkMarkerStatus(second, duplicate);
+    assert.equal(duplicate.textContent, '');
+  });
+});
+
+
+test('receive route hides excluded plugin panels without changing their settings', async () => {
+  await withBuilderGlobals({}, async ({ documentRef }) => {
+    class NetworkReceivePlugin extends TestPlugin {}
+    const before = new TestPlugin({ id: 91, name: 'Analyzer' });
+    const receive = new NetworkReceivePlugin({ id: 92, name: 'Live Audio Receive' });
+    const after = new TestPlugin({ id: 93, name: 'Tone Control' });
+    const core = createCore({ pipeline: [before, receive, after], expandedPlugins: new Set([before, after]) });
+    core.pipelineList = documentRef.body;
+    core.updatePluginNameDisplayState = (plugin, name) => name.classList.toggle('plugin-disabled', !plugin.enabled);
+    let onRoute;
+    core.audioManager.addEventListener = (type, listener) => { if (type === 'networkRoute') onRoute = listener; };
+    const builder = new PipelineItemBuilder(core);
+    const items = core.audioManager.pipeline.map(plugin => builder.createPipelineItem(plugin));
+    items.forEach(item => documentRef.body.appendChild(item));
+    core.audioManager.networkRoute = { receiveId: 92, receiveActive: true };
+    onRoute();
+    assert.equal(find(items[0], '.plugin-ui').style.display, 'none');
+    assert.equal(find(items[0], '.plugin-name').classList.contains('plugin-disabled'), true);
+    assert.equal(find(items[2], '.plugin-ui').style.display, '');
+    assert.equal(before._uiCollapsed, false);
+    core.audioManager.pipeline = [receive, before, after];
+    builder.updateNetworkMarkerStatuses();
+    assert.equal(find(items[0], '.plugin-ui').style.display, '');
+    assert.equal(find(items[0], '.plugin-name').classList.contains('plugin-disabled'), false);
+    core.audioManager.pipeline = [before, receive, after];
+    builder.updateNetworkMarkerStatuses();
+    core.audioManager.networkRoute = { receiveId: null, receiveActive: false };
+    onRoute();
+    assert.equal(find(items[0], '.plugin-ui').style.display, '');
+    assert.equal(before._uiCollapsed, false);
+    core.audioManager.networkRoute = { receiveId: 92, receiveActive: true };
+    core.audioManager.hasLocalAudio = false;
+    onRoute();
+    assert.equal(find(items[0], '.plugin-ui').style.display, '');
+  });
+});

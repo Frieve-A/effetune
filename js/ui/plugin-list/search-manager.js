@@ -212,15 +212,9 @@ export class SearchManager {
         // Update effect count text based on search state
         const effectCountDiv = this.pluginList.querySelector('#effectCount');
         if (effectCountDiv) {
-            if (window.uiManager && window.uiManager.t) {
-                effectCountDiv.textContent = normalizedSearch ?
-                    window.uiManager.t('ui.effectsFound', { count: totalVisibleEffects }) :
-                    window.uiManager.t('ui.effectsAvailable', { count: totalVisibleEffects });
-            } else {
-                effectCountDiv.textContent = normalizedSearch ?
-                    `${totalVisibleEffects} effects found` :
-                    `${totalVisibleEffects} effects available`;
-            }
+            effectCountDiv.textContent = normalizedSearch ?
+                `${totalVisibleEffects} effects found` :
+                `${totalVisibleEffects} effects available`;
         }
     }
 

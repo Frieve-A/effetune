@@ -70,7 +70,7 @@ body:has(.main-container > .pipeline-analyzer-panel:not([hidden])) {
     align-items: center;
     justify-content: center;
     width: 24px;
-    height: 24px;
+    height: var(--et-control-height-compact);
     padding: 0;
     border-radius: 4px;
     color: var(--et-accent);
@@ -258,9 +258,9 @@ body:has(.main-container > .pipeline-analyzer-panel:not([hidden])) {
     align-items: center;
     justify-content: center;
     gap: 5px;
-    height: 24px;
-    min-height: 24px;
-    padding: 4px 9px;
+    box-sizing: border-box;
+    min-height: var(--et-control-height-field);
+    padding: 0 9px;
     border-radius: 4px;
     font-size: 12px;
 }

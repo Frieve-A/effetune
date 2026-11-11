@@ -1,12 +1,12 @@
 ---
 title: "Musique en réseau et télécommande (application de bureau) - EffeTune"
-description: "Écoutez la musique du réseau avec EffeTune, recevez l’audio OpenHome, UPnP AV / DLNA et AirPlay, partagez votre musique et commandez la lecture sur votre réseau local."
+description: "Écoutez la musique du réseau avec EffeTune, recevez l’audio OpenHome, UPnP AV / DLNA et AirPlay, envoyez le son traité vers des enceintes réseau, partagez votre musique et commandez la lecture sur votre réseau local."
 lang: fr
 ---
 
 # Musique en réseau et télécommande (application de bureau)
 
-L’application de bureau peut recevoir la musique d’autres appareils du réseau local et la faire passer par vos effets EffeTune. Les réglages de réception OpenHome, UPnP AV / DLNA et AirPlay sont indépendants et désactivés par défaut. Activez uniquement ceux dont vous avez besoin dans **Paramètres > Configuration... > Réseau**.
+L’application de bureau peut recevoir la musique d’autres appareils du réseau local et la faire passer par vos effets EffeTune, puis envoyer le son traité vers des enceintes réseau. Les réglages de réception OpenHome, UPnP AV / DLNA et AirPlay et la sortie réseau sont indépendants et désactivés par défaut. Activez uniquement ceux dont vous avez besoin dans **Paramètres > Configuration... > Réseau**.
 
 ## Recevoir de la musique avec OpenHome
 
@@ -44,6 +44,20 @@ La mise en mémoire tampon du réseau et les effets EffeTune ajoutent du retard 
 
 La détection AirPlay nécessite Bonjour sous Windows et macOS, ou un service Avahi / DNS-SD actif sous Linux. L’installateur Windows standard fournit le service de détection si nécessaire ; les versions portable et Microsoft Store exigent qu’il soit déjà installé. Sous Linux, installez le service Avahi / DNS-SD de votre distribution et activez-le avec ses outils habituels de gestion des services. Si le récepteur est indisponible, vérifiez ces conditions et l’accès au réseau privé dans le pare-feu, puis réessayez. Un Wi-Fi invité, un VPN ou l’isolation réseau peut empêcher les appareils de se trouver.
 
+## Envoyer le son vers des enceintes réseau
+
+L’application de bureau peut diffuser la sortie finale de votre chaîne d’effets, ou le son au niveau d’un marqueur **Live Audio Send**, sur des enceintes UPnP AV / DLNA et des appareils Chromecast en même temps que sur cet ordinateur. Ouvrez **Paramètres > Configuration... > Réseau > Sortie réseau** et activez **Envoyer le son vers des enceintes réseau**. Les enceintes trouvées sur le réseau apparaissent dans la liste ; cochez celles que vous voulez utiliser. Chaque ligne indique l’état de l’enceinte (Recherche, Connexion, Lecture ou Injoignable), avec une courte note lorsqu’un point demande votre attention. Sont pris en charge les renderers UPnP AV / DLNA qui acceptent un flux continu, les enceintes et écrans Chromecast, et les groupes d’enceintes Chromecast.
+
+Pour un changement rapide, ouvrez **Sortie réseau** à côté de **Player** dans la barre d’outils de l’application de bureau. Cochez les enceintes que vous voulez entendre et consultez leur état de connexion dans la même liste. Pour n’écouter que sur les enceintes réseau, décochez **Cet ordinateur**. Cochez-le de nouveau pour rétablir le son sur l’ordinateur. Les réglages de retard se trouvent dans **Configuration... > Réseau > Sortie réseau**.
+
+Les enceintes réseau démarrent un peu après cet ordinateur ; pendant l’envoi, EffeTune retarde donc le son de cet ordinateur d’environ deux secondes, ou autant que l’exige l’appareil Chromecast le plus lent. EffeTune mesure le retard de lecture de chaque appareil Chromecast et y aligne automatiquement les autres enceintes et cet ordinateur. Utilisez **Retard (ms)** pour affiner le calage de chaque enceinte et de **Cet ordinateur** jusqu’à ce qu’ils jouent ensemble. Si les enceintes se décalent au cours d’une longue écoute, choisissez **Resynchroniser** pour les relancer ensemble.
+
+Lorsque **Synchroniser les affichages avec l’audio** est activé, les graphiques et les indicateurs suivent la synchronisation de lecture commune, avant les réglages individuels de **Retard (ms)**. Cela fonctionne aussi lorsque **Cet ordinateur** est décoché.
+
+Choisissez soit un groupe d’enceintes Chromecast, soit les enceintes qui le composent, mais pas les deux. Le groupe synchronise lui-même ses membres, et envoyer le son à la fois au groupe et à ses membres crée de l’écho. Les enceintes UPnP AV / DLNA absentes de la liste peuvent être ajoutées avec **Ajouter un appareil réseau manuellement**, décrit plus bas.
+
+Pendant l’envoi, le **Test en double aveugle** coupe le son des enceintes réseau afin que le test ne s’entende que sur cet ordinateur. La correction de synchronisation des affichages des réglages audio n’est pas appliquée, et les effets d’analyse comme Spectrum Analyzer affichent le son environ deux secondes avant que vous ne l’entendiez sur cet ordinateur. Le Visualizer reste aligné sur le son de cet ordinateur.
+
 ## Choisir une bibliothèque et un lecteur
 
 Dans l’application de bureau, **Library** dans Music Library permet de choisir **This device** ou un serveur musical du réseau local. Les bibliothèques partagées d’EffeTune proposent les catégories habituelles, la recherche et le tri décrits dans le [guide Music Library](music-library.md). Les autres serveurs musicaux affichent les catégories et l’arborescence qu’ils publient ; la recherche et le tri ne sont disponibles que si le serveur les prend en charge.
@@ -53,6 +67,17 @@ Dans le sélecteur en haut de la fenêtre, choisissez **This device**, un lecteu
 Les lecteurs OpenHome gardent leur propre file. Pour un lecteur UPnP AV / DLNA sans file OpenHome, l’ordinateur EffeTune gère l’ordre choisi et transmet le morceau suivant après la fin normale du précédent. Gardez cet ordinateur et la source allumés. Changer de lecteur ne déplace pas cette séquence. Si un autre contrôleur remplace la musique, l’enchaînement automatique s’arrête ; après une déconnexion, sélectionnez à nouveau la musique. La lecture sans interruption n’est pas garantie.
 
 Vous pouvez aussi ajouter un [serveur Subsonic / OpenSubsonic](music-library.md#subsonic).
+
+### Lecture directe et audio en direct
+
+Activez d’abord la réception UPnP AV sur B. Dans les deux exemples, une piste de bibliothèque partagée peut remplacer le fichier.
+
+Sur les ordinateurs A et B, vous pouvez lire le même fichier de deux façons sans changer **Library**. Changer **Player** change uniquement l’appareil commandé ; la file précédente continue.
+
+1. Pour lire directement sur B, sélectionnez B dans **Player** sur A, puis ouvrez le fichier avec **Ouvrir des fichiers musicaux** sur A. B traite le son depuis le début de sa chaîne. Arrêtez B avant l’exemple suivant.
+2. Pour envoyer le son depuis A, placez **Live Audio Send** sur A et **Live Audio Receive** sur B. Choisissez **Cet appareil** dans **Player** sur A et ouvrez le même fichier. Activez **Sortie réseau** sur A et cochez B. B traite le flux depuis son marqueur de réception, ou depuis le début si cette route est indisponible. La case **Cet ordinateur** commande indépendamment la lecture locale de A.
+
+La sortie réseau et ses réglages de délai concernent A quel que soit Player. Le délai aide à aligner les sorties ; la précision dépend des appareils et du réseau. Sur Web et Android, la sélection de fichiers lit localement ; utilisez une bibliothèque réseau pour un autre Player.
 
 ## Partager des dossiers musicaux
 
@@ -102,5 +127,13 @@ Si un appareil UPnP accessible n’est pas détecté, utilisez **Ajouter un appa
 ## Limites de la lecture en réseau
 
 La découverte automatique et le partage de dossiers nécessitent l’application de bureau. Les formats et le déplacement dans un morceau dépendent du lecteur et de la source. EffeTune ne convertit pas l’audio réseau ; un serveur Subsonic peut fournir un flux converti. Les sous-pistes CUE ne peuvent pas être envoyées séparément. La lecture sans interruption et la synchronisation multiroom ne sont pas garanties. Si un appareil disparaît, vérifiez qu’il est allumé, joignable et autorisé par le pare-feu du réseau privé, puis actualisez la liste. Le partage s’arrête à la fermeture de l’application source ou à la mise en veille de son ordinateur.
+
+Lorsque vous envoyez le son vers des enceintes réseau, gardez ces points à l’esprit :
+
+- Des enceintes de types différents, comme une enceinte UPnP AV / DLNA et un appareil Chromecast, ne sont pas alignées automatiquement ; ajustez **Retard (ms)** à l’oreille.
+- Les enceintes peuvent se décaler lentement au cours d’une longue écoute. Choisissez **Resynchroniser** pour les relancer ensemble.
+- Les appareils Chromecast commencent à jouer quelques secondes après le début de l’envoi ou une resynchronisation. EffeTune mesure le retard de chaque appareil et retient cet ordinateur et les autres enceintes en conséquence. Un appareil qui accumule plus de six secondes de retard est relancé automatiquement.
+- Si un appareil Chromecast alterne sans cesse entre Connexion et Injoignable alors que vos autres enceintes jouent, c’est l’appareil lui-même qui refuse le flux. Dans l’application Google Home, vérifiez que ses filtres Digital Wellbeing autorisent toute la musique, puis redémarrez l’appareil.
+- EffeTune envoie aux enceintes réseau un flux stéréo 44,1 kHz 16 bits, afin que les récepteurs limités à 48 kHz puissent aussi le lire. Les fréquences d’échantillonnage plus élevées de cet ordinateur sont converties pour le réseau ; le son de cet ordinateur n’est pas affecté.
 
 [← Retour au README](README.md)

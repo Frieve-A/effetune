@@ -28,6 +28,7 @@ function harness({ readiness = async () => ({ ready: true }) } = {}) {
     dspLatencyPlan: null, dspLive: true, masterBypass: false,
     powerPolicy: { workletGraphGeneration: 2 }, midiScheduler: new MidiFrameScheduler(1000),
     streamBoundaries: [], transition: { phase: 'open' }, outputReadyRequests: [], visualizerTapNeedsPump: false,
+    networkReceiveSession: { active: false, generation: 0 },
     audioProcessingClockNow: () => 0, finishPipelineCpuMeasurement() {}, hasExecutionLatencyDrift: () => false,
     _invalidatePowerSkipForMutation() {},
     port: { postMessage(message) { replies.push(message); } },

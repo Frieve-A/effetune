@@ -174,6 +174,9 @@ function hasValidImportedScalars(data) {
     if (data.interfaceCalibration !== undefined && !hasValidCalibration(data.interfaceCalibration)) {
         return false;
     }
+    if (data.effectPipeline !== undefined && (!data.effectPipeline ||
+        !Array.isArray(data.effectPipeline.pluginNames) ||
+        data.effectPipeline.pluginNames.some(name => typeof name !== 'string'))) return false;
 
     const hasOutputChannels = data.outputChannels !== undefined;
     if (!hasOutputChannels) {

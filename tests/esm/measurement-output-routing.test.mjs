@@ -11,11 +11,15 @@ import {
 import {
   startWhiteNoise,
   stopWhiteNoise,
+  setNoiseLevel,
   generateESS
 } from '../../features/measurement/audio-utils/signal-generation.js';
 import {
+  createPipelineSweepAudioBuffer,
   createRepeatedSweepAudioBuffer
 } from '../../features/measurement/measurement-controller/audio-processing.js';
+import { MeasurementController } from '../../features/measurement/measurement-controller/index.js';
+import audioUtils from '../../features/measurement/audio-utils/index.js';
 
 function createDestination(maxChannelCount = 8) {
   return {
@@ -740,4 +744,193 @@ test('a Ch 16 sweep uses a complete 16-channel buffer with silence elsewhere', (
   assert.equal(buffer.channelCount, 16);
   assert.ok(buffer.channelData[14].every(value => value === 0));
   assert.ok(buffer.channelData[15].every((value, index) => value === [0.25, -0.5][index % 2]));
+});
+
+function createPipelineNoiseContext(destination) {
+  const buffers = [];
+  const node = () => ({
+    connections: [],
+    connect(...args) { this.connections.push(args); },
+    disconnect() { this.disconnected = true; }
+  });
+  const audioContext = {
+    sampleRate: 8,
+    state: 'running',
+    destination,
+    createBuffer(numberOfChannels, length, sampleRate) {
+      const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+      const buffer = { numberOfChannels, length, sampleRate, channels, getChannelData: index => channels[index] };
+      buffers.push(buffer);
+      return buffer;
+    },
+    createBufferSource: () => ({ ...node(), start() {}, stop() {} }),
+    createGain: () => ({ ...node(), gain: { value: 0 } }),
+    createChannelMerger() {
+      throw new Error('Pipeline noise plays every rendered output on its matching channel');
+    }
+  };
+  return { audioContext, buffers };
+}
+
+test('pipeline level-adjustment noise loops the middle 0 dB render under the level GainNode', async t => {
+  const previousWindow = globalThis.window;
+  t.after(() => { globalThis.window = previousWindow; });
+  globalThis.window = { audioPreferences: { outputChannels: 2 } };
+  const destination = createDestination(4);
+  const { audioContext, buffers } = createPipelineNoiseContext(destination);
+  const harness = { audioContext, isWhiteNoiseActive: false, ensureAudioContextRunning: async () => true };
+  const renders = [];
+  const pipeline = {
+    channelCount: 4,
+    cache: new Map(),
+    async render(input) {
+      renders.push(input.map(data => Float32Array.from(data)));
+      // Offset each rendered period so the kept one is identifiable.
+      return input.map((data, channel) => data.map((sample, index) =>
+        sample + (channel + 1) * 10 * Math.floor(index * 3 / data.length)));
+    }
+  };
+
+  try {
+    assert.equal(await startWhiteNoise.call(harness, -12, null, 'left', 1, null, null, 4, pipeline), true);
+    assert.equal(renders.length, 1);
+    const [input] = renders;
+    const period = input[0].length / 3;
+    assert.equal(input.length, 4);
+    assert.deepEqual(input[0].subarray(0, period), input[0].subarray(period, 2 * period));
+    assert.ok(input[0].some(sample => sample !== 0));
+    assert.ok(input.slice(1).every(data => data.every(sample => sample === 0)));
+
+    const buffer = buffers.at(-1);
+    assert.equal(harness.whiteNoiseNode.buffer, buffer);
+    assert.equal(harness.whiteNoiseNode.loop, true);
+    assert.equal(buffer.numberOfChannels, 4);
+    assert.equal(buffer.length, period);
+    buffer.channels.forEach((data, channel) => data.forEach((sample, index) =>
+      assert.equal(sample, Math.fround(input[channel][period + index] + (channel + 1) * 10))));
+
+    const gain = harness.whiteNoiseGain;
+    assert.ok(Math.abs(gain.gain.value - 10 ** (-12 / 20)) < 1e-12);
+    assert.equal(gain.channelCount, 4);
+    assert.equal(gain.channelCountMode, 'explicit');
+    assert.equal(gain.channelInterpretation, 'discrete');
+    assert.deepEqual(gain.connections, [[destination]]);
+    assert.equal(setNoiseLevel.call(harness, -6), true);
+    assert.ok(Math.abs(gain.gain.value - 10 ** (-6 / 20)) < 1e-12);
+
+    // A restart for the same channel reuses the cached render.
+    assert.equal(await startWhiteNoise.call(harness, -6, null, 'left', 1, null, null, 4, pipeline), true);
+    assert.equal(renders.length, 1);
+
+    // The common all-channel noise feeds pipeline inputs Ch 1-2.
+    assert.equal(await startWhiteNoise.call(harness, -6, null, 'all', 1, null, null, 4, pipeline), true);
+    assert.equal(renders.length, 2);
+    assert.deepEqual(renders[1][0], renders[1][1]);
+    assert.ok(renders[1][0].some(sample => sample !== 0));
+    assert.ok(renders[1].slice(2).every(data => data.every(sample => sample === 0)));
+  } finally {
+    stopWhiteNoise.call(harness);
+  }
+});
+
+test('a pipeline sweep bakes the signal level into the rendered buffer and maps outputs 1:1', async () => {
+  const created = [];
+  const audioContext = {
+    sampleRate: 48000,
+    createBuffer(channelCount, length, sampleRate) {
+      const channelData = Array.from({ length: channelCount }, () => new Float32Array(length));
+      const buffer = { channelCount, length, sampleRate, channelData,
+        getChannelData(channel) { return channelData[channel]; } };
+      created.push(buffer);
+      return buffer;
+    }
+  };
+  const renders = [];
+  const controller = {
+    measurementConfig: { effectPipeline: true },
+    pipelineHandoff: { snapshot: { channelCount: 3 } },
+    async renderPipelineSignal(input, signal) {
+      renders.push({ input: input.map(data => Float32Array.from(data)), signal });
+      return input.map((data, channel) => data.map(sample =>
+        channel === 0 ? sample * 2 : channel === 2 ? 0.125 : sample));
+    }
+  };
+  const sweep = { length: 2, tailSamples: 1, channels: [Float32Array.from([0.5, -1]), new Float32Array(2)] };
+  const { signal } = new AbortController();
+  const gain = 10 ** (-12 / 20);
+
+  const buffer = await createPipelineSweepAudioBuffer(controller, audioContext, sweep, 2, 4, -12, signal);
+  assert.equal(renders.length, 1);
+  assert.equal(renders[0].signal, signal);
+  assert.equal(renders[0].input.length, 3);
+  const expectedInput = [0.5 * gain, -gain, 0, 0.5 * gain, -gain, 0];
+  renders[0].input[0].forEach((sample, index) => assert.ok(Math.abs(sample - expectedInput[index]) < 1e-6));
+  assert.ok(renders[0].input.slice(1).every(data => data.every(sample => sample === 0)));
+  assert.equal(buffer.channelCount, 4);
+  assert.equal(buffer.length, 6);
+  assert.equal(buffer.sampleRate, 48000);
+  buffer.channelData[0].forEach((sample, index) => assert.ok(Math.abs(sample - 2 * expectedInput[index]) < 1e-6));
+  assert.ok(buffer.channelData[1].every(sample => sample === 0));
+  assert.ok(buffer.channelData[2].every(sample => sample === 0.125));
+  assert.ok(buffer.channelData[3].every(sample => sample === 0));
+
+  // A render that exceeds full scale is refused before any playback buffer is created.
+  controller.renderPipelineSignal = async input => input.map(data => data.map(sample => sample * 8));
+  assert.equal(await createPipelineSweepAudioBuffer(controller, audioContext, sweep, 2, 4, -12, signal), null);
+  assert.equal(created.length, 1);
+});
+
+test('pipeline measurements stop during setup when the pipeline cannot be reproduced', async t => {
+  const originals = { audioContext: audioUtils.audioContext, document: globalThis.document };
+  t.after(() => {
+    audioUtils.audioContext = originals.audioContext;
+    globalThis.document = originals.document;
+  });
+  const context = { sampleRate: 48000, state: 'running', destination: createDestination(2), sinkId: 'output-id' };
+  context.setSinkId = async id => { context.sinkId = id; };
+  audioUtils.audioContext = context;
+  globalThis.document = { getElementById: () => null };
+  const config = (overrides = {}) => ({
+    name: 'Pipeline measurement',
+    audioInput: 'Input',
+    audioInputId: 'input-id',
+    inputChannel: 'left',
+    audioOutput: 'Output',
+    audioOutputId: 'output-id',
+    outputChannel: 'left',
+    sampleRate: 48000,
+    sweepLength: '65536',
+    sweepMinFreq: 20,
+    sweepMaxFreq: 20000,
+    averaging: 4,
+    effectPipeline: true,
+    ...overrides
+  });
+  const controller = new MeasurementController();
+  controller.prepareForLevelAdjustment = async () => {};
+  const handoff = snapshot => ({
+    snapshot: { sampleRate: 48000, channelCount: 2, ...snapshot },
+    pluginNames: ['Volume']
+  });
+  const rejectsWith = (code, measurementConfig = config()) =>
+    assert.rejects(controller.startNewMeasurement(measurementConfig), error => error.code === code);
+
+  controller.pipelineHandoff = null;
+  await rejectsWith('pipelineUnavailable');
+  controller.pipelineHandoff = handoff({ sampleRate: 44100 });
+  await rejectsWith('pipelineSampleRateMismatch');
+  controller.pipelineHandoff = handoff();
+  await rejectsWith('pipelineInputChannelUnavailable', config({ outputChannel: '2' }));
+  controller.pipelineHandoff = handoff({ channelCount: 4 });
+  await rejectsWith('pipelineOutputChannelsUnavailable');
+
+  context.destination = createDestination(8);
+  controller.pipelineHandoff = handoff({ channelCount: 3 });
+  const measurement = await controller.startNewMeasurement(config());
+  assert.deepEqual(measurement.effectPipeline, { pluginNames: ['Volume'] });
+  assert.equal(measurement.outputChannelCount, 4);
+  assert.equal(context.destination.channelCount, 4);
+
+  const direct = await controller.startNewMeasurement(config({ effectPipeline: false }));
+  assert.equal(direct.effectPipeline, undefined);
 });

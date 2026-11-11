@@ -16,7 +16,8 @@ import {
   installAnalysisWorker,
   recommendPeriodicSequenceLength,
   recommendMlsSequenceLength,
-  runAnalysisRequest
+  runAnalysisRequest,
+  runRenderRequest
 } from '../../js/pipeline-analyzer/analysis-worker.js';
 import { getPipelineAnalysisRequirements } from '../../js/pipeline-analyzer/analysis-requirements.js';
 import {
@@ -525,6 +526,91 @@ test('worker protocol preserves activation and run tokens on validation errors',
     code: 'invalid-snapshot',
     message: 'Analyzer snapshot is missing'
   }]);
+});
+
+function renderSnapshot(type, processor, channelCount) {
+  // Processing fields only: render requests carry no analyzer-specific settings.
+  // Channel 'A' routes every pipeline channel to the plugin; null would select Ch 1-2 only.
+  return {
+    sampleRate: SAMPLE_RATE,
+    channelCount,
+    plugins: [pluginConfig({ type, channel: 'A' })],
+    masterBypass: false,
+    processors: [{ pluginType: type, processor }]
+  };
+}
+
+test('render returns every pipeline channel at the input length', async () => {
+  const input = Array.from({ length: 3 }, () => new Float32Array(300));
+  input[0][0] = 1;
+  input[0][299] = 0.5;
+  const { output, reportedLatency, warnings } = await runRenderRequest({
+    type: 'render',
+    requestId: 1,
+    snapshot: renderSnapshot('RenderSpreadTestPlugin', `
+      const { channelCount, blockSize } = parameters;
+      for (let ch = 1; ch < channelCount; ch++) {
+        for (let i = 0; i < blockSize; i++) data[ch * blockSize + i] = data[i] * (ch + 1);
+      }
+      return data;
+    `, 3),
+    input
+  });
+
+  assert.equal(reportedLatency, 0);
+  assert.deepEqual(warnings, []);
+  assert.equal(output.length, 3);
+  for (let ch = 0; ch < 3; ch++) {
+    assert.equal(output[ch].length, 300);
+    assert.ok(Math.abs(output[ch][0] - (ch + 1)) < 1e-9);
+    assert.ok(Math.abs(output[ch][299] - 0.5 * (ch + 1)) < 1e-9);
+    assert.ok(output[ch].subarray(1, 299).every(value => Math.abs(value) < 1e-9));
+  }
+});
+
+test('render rejects non-finite pipeline output', async () => {
+  await assert.rejects(
+    runRenderRequest({
+      type: 'render',
+      requestId: 1,
+      snapshot: renderSnapshot('RenderNonFiniteTestPlugin', 'data[5] = NaN; return data;', 1),
+      input: [new Float32Array(128)]
+    }),
+    error => error?.code === 'non-finite-output'
+  );
+});
+
+test('worker protocol answers render requests with transferable output and request ids', async () => {
+  const messages = [];
+  const scope = {
+    onmessage: null,
+    postMessage(message, transfer) { messages.push({ message, transfer }); }
+  };
+  installAnalysisWorker(scope);
+  await scope.onmessage({
+    data: {
+      type: 'render',
+      requestId: 7,
+      snapshot: renderSnapshot('RenderProtocolTestPlugin', 'return data;', 2),
+      input: [new Float32Array(64).fill(0.25), new Float32Array(64)]
+    }
+  });
+  await scope.onmessage({
+    data: { type: 'render', requestId: 8, snapshot: null, input: [] }
+  });
+
+  const [rendered, failed] = messages;
+  assert.equal(rendered.message.type, 'rendered');
+  assert.equal(rendered.message.requestId, 7);
+  assert.equal(rendered.message.output.length, 2);
+  assert.ok(Math.abs(rendered.message.output[0][63] - 0.25) < 1e-9);
+  assert.deepEqual(rendered.transfer, rendered.message.output.map(channel => channel.buffer));
+  assert.deepEqual(failed.message, {
+    type: 'error',
+    requestId: 8,
+    code: 'invalid-snapshot',
+    message: 'Analyzer snapshot is missing'
+  });
 });
 
 function createFirCrossoverAsset() {

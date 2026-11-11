@@ -5,7 +5,10 @@ import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { AudioIOManager } from '../../js/audio/audio-io-manager.js';
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
-import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import {
+  NO_AUDIO_INPUT_DEVICE_ID,
+  SYSTEM_AUDIO_INPUT_DEVICE_ID
+} from '../../js/audio/audio-device-constants.js';
 import { validatePowerSnapshot } from '../../js/audio/power-snapshot.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -4181,5 +4184,210 @@ test('device release does not mute or disconnect concurrent Browser playback', a
   assert.equal(harness.inputState.state, 'released');
   assert.equal(harness.audioManager.isSourceConnectedToPipeline(source), true);
   assert.equal(harness.audioManager.ioManager.browserInput.selected, true);
+  harness.controller.dispose();
+});
+
+function createSystemAudioHarness({ state = 'live' } = {}) {
+  const live = state === 'live';
+  const harness = createHarness({
+    inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID,
+    input: {
+      state,
+      inputAvailability: live ? 'available' : 'unknown',
+      inputAvailabilityRevision: 1,
+      inputGeneration: 3,
+      inputResourceId: live ? 'system-audio-1' : null,
+      inputConfigured: true,
+      inputSourcePresent: live,
+      trackState: live ? 'live' : 'ended'
+    }
+  });
+  const ioManager = harness.audioManager.ioManager;
+  const messages = [];
+  const guard = { allowed: true, reason: null, defaultGroupId: 'group-a' };
+  let reacquireCount = 0;
+  let reacquireFailure = null;
+  const originalReacquire = ioManager.beginReacquireAudioInput.bind(ioManager);
+  Object.assign(ioManager, {
+    systemAudioDisabled: false,
+    systemAudioDefaultGroupId: 'group-a',
+    inputStream: null,
+    markSystemAudioDisabled() {
+      this.systemAudioDisabled = true;
+      this.systemAudioDefaultGroupId = null;
+    },
+    evaluateSystemAudioGuard: async () => ({ ...guard }),
+    beginReacquireAudioInput(options) {
+      reacquireCount++;
+      // Mirror the real manager: the guard is re-evaluated before capturing.
+      if (!guard.allowed) {
+        this.markSystemAudioDisabled();
+        const error = new Error('guard denied');
+        error.name = 'NotAllowedError';
+        return Promise.reject(error);
+      }
+      if (reacquireFailure) return Promise.reject(reacquireFailure);
+      return originalReacquire(options);
+    }
+  });
+  harness.controller.windowRef.uiManager = {
+    showTransientMessage(...args) { messages.push(args); }
+  };
+  return {
+    ...harness,
+    ioManager,
+    guard,
+    messages,
+    get reacquireCount() { return reacquireCount; },
+    failReacquireWith(error) { reacquireFailure = error; }
+  };
+}
+
+test('an ended System Audio capture is swapped in place without touching the context or power state', async () => {
+  const harness = createSystemAudioHarness();
+  await harness.controller.start();
+  await harness.flush();
+  const effectiveStateBefore = harness.controller.getEffectiveState();
+  const adopted = [];
+  harness.audioManager.adoptPowerMutation = mutation => adopted.push(mutation.receipt.mutationKind);
+
+  harness.inputState.state = 'ended';
+  harness.inputState.inputSourcePresent = false;
+  harness.inputState.trackState = 'ended';
+  harness.controller.handleInputResourceEvent(harness.ioManager.getInputSnapshot());
+  harness.controller.handleInputResourceEvent(harness.ioManager.getInputSnapshot());
+  await harness.controller.systemAudioSwap;
+  await harness.flush();
+
+  assert.equal(harness.reacquireCount, 1);
+  assert.equal(harness.inputState.state, 'live');
+  assert.deepEqual(adopted, ['input-release', 'input-install']);
+  assert.deepEqual(harness.ioManager.inputSourceNode, { id: 'reacquired' });
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(harness.ioManager.inputSourceNode), true);
+  assert.equal(harness.audioManager.sourceNode, harness.ioManager.inputSourceNode);
+  assert.equal(harness.controller._getTokensAndGuards().tokens.inputGeneration,
+    harness.inputState.inputGeneration);
+  assert.equal(harness.controller.getEffectiveState(), effectiveStateBefore);
+  assert.equal(harness.context.state, 'running');
+  assert.equal(harness.ioManager.systemAudioDisabled, false);
+  assert.equal(harness.messages.length, 0);
+  // The swapped capture can still be released through the ordinary path.
+  assert.equal(await harness.controller.requestAudioReconfigurationInputRelease({
+    handoffToSilent: true, disconnectInput: true
+  }), true);
+  assert.equal(harness.inputState.state, 'released');
+  harness.controller.dispose();
+});
+
+test('a failed System Audio swap leaves the silent source, records the disable and notifies once', async () => {
+  const harness = createSystemAudioHarness();
+  await harness.controller.start();
+  await harness.flush();
+  const failure = new Error('no live track');
+  failure.name = 'NotReadableError';
+  harness.failReacquireWith(failure);
+
+  harness.inputState.state = 'ended';
+  harness.inputState.inputSourcePresent = false;
+  harness.inputState.trackState = 'ended';
+  harness.controller.handleInputResourceEvent(harness.ioManager.getInputSnapshot());
+  await harness.controller.systemAudioSwap;
+  await harness.flush();
+
+  assert.equal(harness.reacquireCount, 1);
+  assert.equal(harness.inputState.state, 'not-configured');
+  assert.equal(harness.inputState.inputConfigured, false);
+  assert.equal(harness.ioManager.systemAudioDisabled, true);
+  assert.equal(harness.audioManager.sourceNode, harness.ioManager._silentSourceNode);
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(harness.ioManager._silentSourceNode), true);
+  assert.equal(harness.controller.windowRef.audioPreferences.inputDeviceId, SYSTEM_AUDIO_INPUT_DEVICE_ID);
+  assert.deepEqual(harness.messages, [['error.systemAudioStopped', true, {}, 5000]]);
+  assert.equal(harness.controller.getSnapshot().manualResumeRequired, false);
+
+  // Further events and gesture resumes do not try the capture again this session.
+  harness.controller.handleInputResourceEvent({ state: 'ended' });
+  assert.equal(harness.controller.systemAudioSwap, null);
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), false);
+  await harness.controller.ensureActive('dedicated-input');
+  await harness.flush();
+  assert.equal(harness.reacquireCount, 1);
+  assert.equal(harness.messages.length, 1);
+  harness.controller.dispose();
+});
+
+test('a default output change swaps a live System Audio capture only when the default group moved', async () => {
+  const harness = createSystemAudioHarness();
+  await harness.controller.start();
+  await harness.flush();
+  const generationBefore = harness.inputState.inputGeneration;
+
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), false);
+  assert.equal(harness.reacquireCount, 0);
+  assert.equal(harness.inputState.inputGeneration, generationBefore);
+
+  harness.guard.defaultGroupId = 'group-b';
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), true);
+  await harness.flush();
+  assert.equal(harness.reacquireCount, 1);
+  assert.equal(harness.inputState.state, 'live');
+  assert.equal(harness.audioManager.sourceNode, harness.ioManager.inputSourceNode);
+  assert.equal(harness.messages.length, 0);
+
+  harness.guard.allowed = false;
+  harness.guard.reason = 'same-as-default-output';
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), true);
+  await harness.flush();
+  assert.equal(harness.reacquireCount, 2);
+  assert.equal(harness.inputState.state, 'not-configured');
+  assert.equal(harness.ioManager.systemAudioDisabled, true);
+  assert.equal(harness.audioManager.sourceNode, harness.ioManager._silentSourceNode);
+  assert.deepEqual(harness.messages, [['error.systemAudioStopped', true, {}, 5000]]);
+  harness.controller.dispose();
+});
+
+test('a released System Audio capture is not reacquired on output change and a denial blocks the later resume', async () => {
+  const harness = createSystemAudioHarness({ state: 'released' });
+  await harness.controller.start();
+  await harness.flush();
+
+  harness.guard.defaultGroupId = 'group-b';
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), false);
+  assert.equal(harness.reacquireCount, 0);
+  assert.equal(harness.inputState.state, 'released');
+  assert.equal(harness.messages.length, 0);
+
+  harness.guard.allowed = false;
+  harness.guard.reason = 'default-output-selected';
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), true);
+  await harness.flush();
+  assert.equal(harness.reacquireCount, 0);
+  assert.equal(harness.inputState.state, 'not-configured');
+  assert.equal(harness.ioManager.systemAudioDisabled, true);
+  assert.deepEqual(harness.messages, [['error.systemAudioStopped', true, {}, 5000]]);
+
+  harness.controller.manualResumeRequired = true;
+  await harness.controller.requestResumeFromUserInteraction();
+  await harness.flush();
+  assert.equal(harness.reacquireCount, 0);
+  assert.equal(harness.inputState.state, 'not-configured');
+  harness.controller.dispose();
+});
+
+test('System Audio swap paths ignore microphone selections', async () => {
+  const harness = createHarness({ inputDeviceId: 'mic', input: {
+    state: 'ended', inputAvailability: 'unknown', inputAvailabilityRevision: 1,
+    inputGeneration: 2, inputResourceId: null, inputConfigured: true,
+    inputSourcePresent: false, trackState: 'ended'
+  } });
+  let guardEvaluated = 0;
+  harness.audioManager.ioManager.evaluateSystemAudioGuard = async () => {
+    guardEvaluated++;
+    return { allowed: false, reason: 'default-output-selected', defaultGroupId: null };
+  };
+  await harness.controller.start();
+  harness.controller.handleInputResourceEvent(harness.audioManager.ioManager.getInputSnapshot());
+  assert.equal(harness.controller.systemAudioSwap, null);
+  assert.equal(await harness.controller.handleSystemAudioOutputChange(), false);
+  assert.equal(guardEvaluated, 0);
   harness.controller.dispose();
 });

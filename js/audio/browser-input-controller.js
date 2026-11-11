@@ -94,7 +94,9 @@ export class BrowserInputController {
         } catch (error) {
             console.error('Browser audio capture failed:', error);
             if (revision === this.revision) {
-                await this.release({ keepSelection: true });
+                await this.release({ keepSelection: true }).catch(releaseError => {
+                    console.error('Browser capture cleanup failed:', releaseError);
+                });
                 this.onChange('error');
             } else if (stream) this.audioManager.ioManager._stopStreamTracksOnce(stream);
             return false;

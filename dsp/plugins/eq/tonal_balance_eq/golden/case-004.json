@@ -55,7 +55,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:50ae8e8828195347d0a72f7cdfd8ed5e0613ad70b00c65c1ce462f5a97e106e9",
+  "referenceHash": "sha256:495f664b89bfc6b467e14f2683ddece8464d92ebd50935d5d317c1bef78d063e",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type TonalBalanceEQPlugin --promote-production-native",
   "outputFloats": 131072,
   "byteLength": 524288,

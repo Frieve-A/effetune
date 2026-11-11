@@ -18,6 +18,7 @@ function getRule(css, selector) {
 
 test('desktop view switch buttons match neighboring header icon button size', () => {
   const css = readCss('../../css/effetune.css');
+  const theme = readCss('../../css/effetune-theme.css');
   const viewButtonRule = getRule(css, '.view-switch-button');
   const desktopSubtitleContainerRule = getRule(css, 'body:not(.layout-mobile) .subtitle-container');
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
@@ -26,9 +27,10 @@ test('desktop view switch buttons match neighboring header icon button size', ()
     assert.match(html, new RegExp(`<button class="[^"]*\\bview-switch-button\\b[^"]*" id="${id}"`));
   }
   assert.match(viewButtonRule, /width:\s*36px;/);
-  assert.match(viewButtonRule, /height:\s*36px;/);
+  assert.match(theme, /--et-control-height-navigation:\s*36px;/);
+  assert.match(viewButtonRule, /height:\s*var\(--et-control-height-navigation\);/);
   assert.match(viewButtonRule, /padding:\s*8px;/);
-  assert.match(desktopSubtitleContainerRule, /height:\s*36px;/);
+  assert.match(desktopSubtitleContainerRule, /height:\s*var\(--et-control-height-navigation\);/);
 });
 
 test('mobile header shows Visualizer beside the overflow menu and reserves space for both', () => {

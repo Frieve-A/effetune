@@ -13,6 +13,7 @@ import {
     selectionFromConfig
 } from '../audio-utils/channel-selection.js';
 import { resolveSweepBand, resolveOutputSweepBands } from '../measurement-model.js';
+import { activePipelineSnapshot } from './pipeline-render.js';
 
 const ROTATION_INTERVAL_MS = 3000;
 
@@ -232,8 +233,27 @@ const LevelAdjustment = {
             band.minFreq,
             band.maxFreq,
             outputBands,
-            this.measurementConfig.outputChannelCount
+            this.measurementConfig.outputChannelCount,
+            this.pipelineNoiseOptions()
         );
+    },
+
+    // Routes the test noise through the effect pipeline when the measurement uses it.
+    pipelineNoiseOptions() {
+        const snapshot = activePipelineSnapshot(this);
+        if (!snapshot) return null;
+        return {
+            channelCount: snapshot.channelCount,
+            cache: this.pipelineNoiseCache,
+            render: async input => {
+                try {
+                    return await this.renderPipelineSignal(input);
+                } catch (error) {
+                    console.error('Pipeline noise render failed:', error);
+                    throw new MeasurementOutputError(i18n.t('error:pipelineRenderFailed'));
+                }
+            }
+        };
     },
 
     async setNoiseChannel(channel) {

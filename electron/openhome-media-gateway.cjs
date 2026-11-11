@@ -4,6 +4,8 @@ const http = require('node:http');
 const https = require('node:https');
 const net = require('node:net');
 const { pipeline } = require('node:stream');
+const { LIVE_PCM_TYPE, LIVE_CONNECTION_HEADER, LIVE_CONNECTION_ID, MAX_FEEDBACK_BYTES,
+  MAX_REPORT_INTERVAL_MS, liveStreamUrl, readFeedbackRequest } = require('./network-output-live.cjs');
 
 const LOOPBACK_HOST = '127.0.0.1';
 const MEDIA_PATH_PREFIX = '/openhome-media/';
@@ -64,14 +66,14 @@ class OpenHomeMediaGateway {
     this.activeRequests = new Set();
   }
 
-  async register(uri) {
+  async register(uri, { live = false } = {}) {
     const target = normalizeMediaUri(uri);
     if (this.registrations.size >= MAX_REGISTERED_URIS) {
       throw createGatewayError('registration-limit');
     }
     await this.ensureStarted();
     const token = this.createToken();
-    this.registrations.set(token, { target });
+    this.registrations.set(token, { target, live: live === true && Boolean(liveStreamUrl(uri)), liveConnection: null, feedback: null });
     return Object.freeze({
       token,
       playbackUrl: `http://${LOOPBACK_HOST}:${this.port}${MEDIA_PATH_PREFIX}${token}`
@@ -80,7 +82,55 @@ class OpenHomeMediaGateway {
 
   release(token) {
     if (typeof token !== 'string') return false;
+    const registration = this.registrations.get(token);
+    if (registration?.live) {
+      for (const context of this.activeRequests) if (context.registration === registration) context.cancel();
+      registration.feedback?.destroy();
+    }
     return this.registrations.delete(token);
+  }
+
+  async requestLiveFeedback(input) {
+    const message = readFeedbackRequest(input);
+    if (!message) return null;
+    const registration = this.registrations.get(message.sessionId);
+    const connection = registration?.liveConnection;
+    if (!connection || connection.id !== message.connectionId || registration.feedback) return null;
+    const target = new URL(registration.target);
+    target.pathname += '/feedback';
+    const body = JSON.stringify(message);
+    let request;
+    const result = await new Promise(resolve => {
+      const timer = this.setTimer(() => { request?.destroy(); resolve(null); }, MAX_REPORT_INTERVAL_MS);
+      const finish = value => { this.clearTimer(timer); resolve(value); };
+      try {
+        request = this.httpRequest(target, { method: 'POST', lookup: createPinnedLookup(connection.address),
+          maxHeaderSize: MAX_RESPONSE_HEADER_BYTES, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Connection: 'close' }
+        }, response => {
+          const chunks = [];
+          let size = 0;
+          response.on('error', () => finish(null));
+          response.on('data', chunk => {
+            size += chunk.length;
+            if (size <= MAX_FEEDBACK_BYTES) chunks.push(chunk);
+            else { request.destroy(); finish(null); }
+          });
+          response.on('end', () => {
+            if (message.probeId && response.statusCode === 204) { finish(true); return; }
+            if (message.probeId || response.statusCode !== 200 || size > MAX_FEEDBACK_BYTES) { finish(null); return; }
+            try {
+              const { probeId } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              finish(typeof probeId === 'string' && LIVE_CONNECTION_ID.test(probeId) ? probeId : null);
+            } catch (_) { finish(null); }
+          });
+        });
+        registration.feedback = request;
+        request.once('error', () => finish(null));
+        request.end(body);
+      } catch (_) { finish(null); }
+    });
+    if (registration.feedback === request) registration.feedback = null;
+    return this.registrations.get(message.sessionId) === registration && registration.liveConnection === connection ? result : null;
   }
 
   async ensureStarted() {
@@ -141,9 +191,11 @@ class OpenHomeMediaGateway {
     }
 
     const context = this.createRequestContext(response);
+    context.registration = registration;
     this.activeStreams += 1;
     try {
-      await this.proxy(request, response, registration.target, MAX_REDIRECTS, context);
+      await this.proxy(request, response, registration.target, MAX_REDIRECTS, context,
+        registration.live && request.method === 'GET' && request.headers.accept === LIVE_PCM_TYPE);
     } catch (error) {
       if (error?.code === 'gateway-closed') {
         response.destroy?.();
@@ -157,15 +209,17 @@ class OpenHomeMediaGateway {
     }
   }
 
-  async proxy(clientRequest, clientResponse, target, redirectsRemaining, context) {
+  async proxy(clientRequest, clientResponse, target, redirectsRemaining, context, live = false) {
     const pinnedAddress = await this.resolveTargetAddress(target, context);
     return new Promise((resolve, reject) => {
       const requestImpl = target.protocol === 'https:' ? this.httpsRequest : this.httpRequest;
       const headers = { ...MEDIA_RENDERER_REQUEST_HEADERS };
-      if (typeof clientRequest.headers?.range === 'string') {
+      if (!live && typeof clientRequest.headers?.range === 'string') {
         headers.range = clientRequest.headers.range.slice(0, 256);
       }
-      if (typeof clientRequest.headers?.accept === 'string') {
+      if (live) {
+        headers.accept = LIVE_PCM_TYPE;
+      } else if (typeof clientRequest.headers?.accept === 'string' && clientRequest.headers.accept !== LIVE_PCM_TYPE) {
         headers.accept = clientRequest.headers.accept.slice(0, 512);
       }
       const upstreamRequest = requestImpl(target, {
@@ -206,7 +260,16 @@ class OpenHomeMediaGateway {
           const value = upstreamResponse.headers[header];
           if (value !== undefined) clientResponse.setHeader(header, value);
         }
+        const id = upstreamResponse.headers[LIVE_CONNECTION_HEADER];
+        if (live && statusCode === 200 && upstreamResponse.headers['content-type'] === LIVE_PCM_TYPE &&
+            typeof id === 'string' && LIVE_CONNECTION_ID.test(id)) {
+          const connection = { id, address: pinnedAddress };
+          context.liveConnection = connection;
+          context.registration.liveConnection = connection;
+          clientResponse.setHeader(LIVE_CONNECTION_HEADER, id);
+        }
         setCorsHeaders(clientResponse);
+        if (context.liveConnection) clientResponse.flushHeaders();
         if (clientRequest.method === 'HEAD') {
           upstreamResponse.resume();
           clientResponse.end();
@@ -297,6 +360,10 @@ class OpenHomeMediaGateway {
   finishRequestContext(context) {
     if (!this.activeRequests.delete(context)) return;
     context.detachClientResponseListeners();
+    if (context.liveConnection && context.registration.liveConnection === context.liveConnection) {
+      context.registration.liveConnection = null;
+      context.registration.feedback?.destroy();
+    }
     context.upstreamRequest = null;
     context.upstreamResponse = null;
     this.activeStreams = Math.max(0, this.activeStreams - 1);
@@ -312,7 +379,7 @@ class OpenHomeMediaGateway {
   }
 
   close() {
-    this.registrations.clear();
+    for (const token of this.registrations.keys()) this.release(token);
     this.port = 0;
     const activeRequests = [...this.activeRequests];
     for (const context of activeRequests) context.cancel();
@@ -431,7 +498,8 @@ function readToken(requestUrl) {
 
 function setCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
+  const liveHeader = response.hasHeader?.(LIVE_CONNECTION_HEADER) ? `, ${LIVE_CONNECTION_HEADER}` : '';
+  response.setHeader('Access-Control-Expose-Headers', `Accept-Ranges, Content-Length, Content-Range, Content-Type${liveHeader}`);
 }
 
 function sendPlainError(response, statusCode) {

@@ -354,7 +354,7 @@
             }
             const due = hub?.resolveDue(this.plugin.id, data.endFrame, 'spectrumOverlay', data);
             if (Number.isFinite(due) && due > (hub.now?.() ?? performance.now())) {
-                if (this.pendingFrames.length >= 256) this.pendingFrames.shift();
+                if (this.pendingFrames.length >= hub.queueLimit) this.pendingFrames.shift();
                 this.pendingFrames.push({ data, due });
                 this.pendingFrames.sort((a, b) => a.due - b.due);
             } else {

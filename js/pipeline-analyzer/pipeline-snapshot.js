@@ -1,5 +1,6 @@
 import { getPipelineAnalyzerOutputCapacity } from './slot-policy.js';
 import { normalizeMeasurementSettings } from './mls.js';
+import { getPipelineAnalysisRequirements } from './analysis-requirements.js';
 import {
     getPluginExecutionChannelMode,
     getPluginExecutionUnsupportedReason
@@ -163,7 +164,7 @@ function requireAnalyzerWasmExecution(prepared) {
     });
 }
 
-function copyDspSnapshot(audioManager, requiredTypes, preferredTypes) {
+function copyDspSnapshot(audioManager, requiredTypes, preferredTypes, bytesOnly) {
     const moduleInfo = audioManager?.dspModuleInfo;
     const enabledTypes = new Set(audioManager?.getEnabledDspTypes?.() || []);
     const missingTypes = [...requiredTypes].filter(type => !enabledTypes.has(type));
@@ -180,7 +181,8 @@ function copyDspSnapshot(audioManager, requiredTypes, preferredTypes) {
         }
         return null;
     }
-    const module = moduleInfo.module && moduleInfo.moduleCloneable !== false
+    // IndexedDB cannot store compiled modules, so persisted snapshots carry bytes only.
+    const module = !bytesOnly && moduleInfo.module && moduleInfo.moduleCloneable !== false
         ? moduleInfo.module
         : null;
     const bytes = !module && moduleInfo.bytes instanceof ArrayBuffer
@@ -245,22 +247,27 @@ function activePipeline(audioManager) {
     return Array.isArray(audioManager?.pipeline) ? audioManager.pipeline : [];
 }
 
-export async function buildPipelineAnalyzerSnapshot(options) {
+// Plugin IDs whose WebAssembly path is proven active in the live pipeline.
+export function getActiveWasmPluginIds(audioManager) {
+    const telemetry = audioManager?.getDspExecutionStateSnapshot?.();
+    if (!Array.isArray(telemetry?.states)) return Object.freeze([]);
+    return Object.freeze(telemetry.states
+        .filter(entry => entry?.state === 'active' && Number.isInteger(entry.pluginId))
+        .map(entry => entry.pluginId));
+}
+
+// Builds the offline-processing part of a snapshot (plugins, processors, DSP and assets),
+// shared by the Pipeline Analyzer and the measurement hand-off.
+async function collectProcessingSnapshot(options, format) {
     const {
         audioManager,
         workletSync,
-        configuration,
-        measurementStore,
         resolveRequirements,
         isCurrent,
         preferredWasmPluginIds = [],
-        assetTimeoutMs = 10000
-    } = options || {};
-    guardCurrent(isCurrent);
-    const format = getAnalyzerAudioFormat(audioManager);
-    if (!format) throw new PipelineSnapshotError('audio-configuration-unavailable');
-    const selected = normalizeAnalyzerSlots(configuration, format.channelCount);
-    const pipelineIdentity = audioManager?.currentPipeline === 'B' ? 'B' : 'A';
+        assetTimeoutMs = 10000,
+        dspBytesOnly = false
+    } = options;
     const masterBypass = audioManager?.masterBypass === true;
     const originalEntries = [...activePipeline(audioManager)];
     if (typeof workletSync?.preparePluginData !== 'function') {
@@ -284,8 +291,6 @@ export async function buildPipelineAnalyzerSnapshot(options) {
     const preferredWasmTypes = new Set();
     const frozenPreferredWasmPluginIds = [];
     const enabledDspTypes = new Set(audioManager?.getEnabledDspTypes?.() || []);
-    const measurementSettings = normalizeMeasurementSettings(configuration?.measurementSettings);
-    let warmupSamples = 0;
 
     for (const entry of effectiveEntries) {
         const requirements = normalizeRequirements(
@@ -332,14 +337,6 @@ export async function buildPipelineAnalyzerSnapshot(options) {
             entry.data?.wasmParams instanceof Float32Array && enabledDspTypes.has(type)) {
             preferredWasmTypes.add(type);
             frozenPreferredWasmPluginIds.push(entry.data.id);
-        }
-        if (measurementSettings.signalType === 'impulse') {
-            const declaredWarmup = getWarmupSamples(
-                requirements,
-                entry.data?.parameters || {},
-                format.sampleRate
-            );
-            if (declaredWarmup > warmupSamples) warmupSamples = declaredWarmup;
         }
         executionEntries.push({
             ...entry,
@@ -406,6 +403,70 @@ export async function buildPipelineAnalyzerSnapshot(options) {
         }
     }
 
+    return {
+        processing: {
+            sampleRate: format.sampleRate,
+            channelCount: format.channelCount,
+            plugins: preparedEntries.map(entry => entry.data),
+            masterBypass,
+            processors,
+            dsp: copyDspSnapshot(audioManager, requiredWasmTypes, preferredWasmTypes, dspBytesOnly),
+            assets,
+            requiredWasmPluginIds,
+            expectedWasmBypassPluginIds,
+            expectedWasmBypassReasons,
+            preferredWasmPluginIds: frozenPreferredWasmPluginIds,
+            preferredWasmTypes: [...preferredWasmTypes],
+            assetSupportSamples
+        },
+        executionEntries,
+        assetRevisions
+    };
+}
+
+// Builds a self-contained processing snapshot of the live pipeline that can be persisted
+// (DSP as bytes) and rendered offline by the analysis worker's 'render' request.
+export async function buildPipelineProcessingSnapshot(options) {
+    const { audioManager, isCurrent } = options || {};
+    guardCurrent(isCurrent);
+    const format = getAnalyzerAudioFormat(audioManager);
+    if (!format) throw new PipelineSnapshotError('audio-configuration-unavailable');
+    const { processing, executionEntries } = await collectProcessingSnapshot({
+        ...options,
+        resolveRequirements: options.resolveRequirements || getPipelineAnalysisRequirements,
+        preferredWasmPluginIds: getActiveWasmPluginIds(audioManager),
+        dspBytesOnly: true
+    }, format);
+    guardCurrent(isCurrent);
+    return {
+        snapshot: processing,
+        pluginNames: executionEntries.map(entry =>
+            typeof entry.plugin?.name === 'string' && entry.plugin.name ? entry.plugin.name : entry.type)
+    };
+}
+
+export async function buildPipelineAnalyzerSnapshot(options) {
+    const { audioManager, configuration, measurementStore, isCurrent } = options || {};
+    guardCurrent(isCurrent);
+    const format = getAnalyzerAudioFormat(audioManager);
+    if (!format) throw new PipelineSnapshotError('audio-configuration-unavailable');
+    const selected = normalizeAnalyzerSlots(configuration, format.channelCount);
+    const pipelineIdentity = audioManager?.currentPipeline === 'B' ? 'B' : 'A';
+    const { processing, executionEntries, assetRevisions } =
+        await collectProcessingSnapshot(options, format);
+    const measurementSettings = normalizeMeasurementSettings(configuration?.measurementSettings);
+    let warmupSamples = 0;
+    if (measurementSettings.signalType === 'impulse') {
+        for (const entry of executionEntries) {
+            const declaredWarmup = getWarmupSamples(
+                entry.requirements,
+                entry.data?.parameters || {},
+                format.sampleRate
+            );
+            if (declaredWarmup > warmupSamples) warmupSamples = declaredWarmup;
+        }
+    }
+
     const speakerResponses = [];
     for (const slot of selected.slots) {
         if (!slot.measurementId || !slot.pointId) {
@@ -436,28 +497,16 @@ export async function buildPipelineAnalyzerSnapshot(options) {
     const outputChannels = selected.slots.map(slot => slot.channel);
     return {
         snapshot: {
-            sampleRate: format.sampleRate,
-            channelCount: format.channelCount,
+            ...processing,
             inputChannel: selected.inputChannel,
             outputChannels,
-            plugins: preparedEntries.map(entry => entry.data),
-            masterBypass,
-            processors,
-            dsp: copyDspSnapshot(audioManager, requiredWasmTypes, preferredWasmTypes),
-            assets,
-            requiredWasmPluginIds,
-            expectedWasmBypassPluginIds,
-            expectedWasmBypassReasons,
-            preferredWasmPluginIds: frozenPreferredWasmPluginIds,
-            preferredWasmTypes: [...preferredWasmTypes],
-            assetSupportSamples,
             measurementSettings,
             warmupSamples: Math.ceil(warmupSamples / 128) * 128
         },
         speakerResponses,
         provenance: {
             pipelineIdentity,
-            masterBypass,
+            masterBypass: processing.masterBypass,
             sampleRate: format.sampleRate,
             channelCount: format.channelCount,
             inputChannel: selected.inputChannel,

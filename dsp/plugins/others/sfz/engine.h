@@ -231,6 +231,8 @@ struct RenderState {
   std::uint32_t dry_delay_ = 0u, old_dry_delay_ = 0u, wet_delay_ = 0u, old_wet_delay_ = 0u,
                 timing_fade_ = 0u, selection_mask_ = 7u;
   std::uint32_t voice_limit_ = 32u, voice_extent_ = 0u, seed_ = 1u, salt_ = 0u, random_ = 1u;
+  // Sounding voices stolen for new notes since the last mixer telemetry frame.
+  std::uint16_t stolen_released_ = 0u, stolen_held_ = 0u;
   // Paused slots stay default until a pause or checkpoint read writes them.
   bool paused_voices_dirty_ = false;
   std::uint64_t age_ = 0u;
@@ -1043,6 +1045,7 @@ public:
     // The preview key owns its voice, so the next block reattacks a held preview.
     preview_midi_ = -1;
     midi_meters_.clear();
+    stolen_released_ = stolen_held_ = 0u;
     midi_count_ = midi_cursor_ = midi_flags_ = 0;
     clearSampleForecast();
     midi_history_pending_ = midi_history_requested_ = false;
@@ -1175,6 +1178,7 @@ public:
       }
       if (generation != midi_generation_) {
         midi_meters_.clear();
+        stolen_released_ = stolen_held_ = 0u;
         clearSampleForecast();
         mixer_mute_ = mixer_solo_ = 0;
       }
@@ -1304,12 +1308,16 @@ private:
     }
     binary_io::writeU16(payload.data(), total);
     binary_io::writeU16(payload.data() + 2u, static_cast<std::uint16_t>(voice_limit_));
+    binary_io::writeU16(payload.data() + 4u, stolen_released_);
+    binary_io::writeU16(payload.data() + 6u, stolen_held_);
     if (midi_meters_.enabled())
       for (auto channel = 0u; channel < 16u; ++channel)
         binary_io::writeF32(payload.data() + 520u + channel * 4u, midi_meters_.peak(channel));
-    if (writer.write(35u, 2u, payload.data(), static_cast<std::uint16_t>(payload.size())) &&
-        midi_meters_.enabled())
-      midi_meters_.consume();
+    if (writer.write(35u, 2u, payload.data(), static_cast<std::uint16_t>(payload.size()))) {
+      stolen_released_ = stolen_held_ = 0u;
+      if (midi_meters_.enabled())
+        midi_meters_.consume();
+    }
   }
   void writeKeyswitchTelemetry(TelemetryWriter &writer) noexcept {
     std::array<std::uint8_t, 32> payload{};
@@ -5119,6 +5127,11 @@ private:
           chosen = &candidate;
           chosenLevel = level;
         }
+      }
+      if (chosen->region && !chosen->historyOnly) {
+        auto &stolen = chosen->released ? stolen_released_ : stolen_held_;
+        if (stolen < 0xffffu)
+          ++stolen;
       }
       const auto old_left = chosen->lastLeft, old_right = chosen->lastRight;
       *chosen = {};

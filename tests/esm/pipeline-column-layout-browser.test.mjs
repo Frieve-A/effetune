@@ -12,8 +12,45 @@ const managerSource = read('../../js/settings-storage.js').replace(/^export /gm,
 const collapseSource = read('../../js/ui/plugin-list/collapse-manager.js').replace(/^import .*;\r?\n/gm, '')
   .replace('export class CollapseManager', 'class CollapseManager');
 const appHtml = read('../../effetune.html');
+const pluginListHeader = appHtml.slice(appHtml.indexOf('<div class="plugin-list-header">'),
+  appHtml.indexOf('<!-- Plugin list will be populated'));
 const pipelineHeader = appHtml.slice(appHtml.indexOf('<div class="pipeline-header">'),
   appHtml.indexOf('<div id="pipelineList">'));
+
+test('desktop search keeps its button size and aligns with the pipeline toolbar', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html><body class="layout-desktop"><div class="main-container">
+      <div class="plugin-list-shell"><div class="plugin-list">${pluginListHeader}</div></div>
+      <div class="pipeline" id="pipeline">${pipelineHeader}<div id="pipelineList"></div></div>
+    </div></body>`);
+    await page.addStyleTag({ content: css + '\nbody { transition: none; }' });
+    const searchSource = read('../../js/ui/plugin-list/search-manager.js').replace('export class', 'class');
+    await page.addScriptTag({ content: searchSource + `
+      const search = new SearchManager({ pluginList: document.querySelector('.plugin-list') });
+      search.applySearchFilter = () => {};
+    ` });
+    const rect = selector => page.locator(selector).boundingBox();
+    const button = page.locator('#effectSearchButton');
+    const before = await button.boundingBox();
+    assert.deepEqual([before.width, before.height], [24, 24]);
+    assert.equal((await rect('#effectsTab')).y, before.y);
+    assert.equal((await rect('.master-toggle')).y, before.y);
+    assert.equal((await rect('.plugin-list-header')).height, 36);
+    assert.equal((await rect('#pipeline > .pipeline-header')).height, 36);
+
+    await button.click();
+    await page.locator('#effectSearchInput').fill('gain');
+    assert.deepEqual(await button.boundingBox(), before);
+    const input = await rect('#effectSearchInput');
+    assert.deepEqual([input.y, input.height], [before.y, before.height]);
+    const clear = await rect('#effectSearchClearButton');
+    assert.equal(clear.y + clear.height / 2, input.y + input.height / 2);
+  } finally {
+    await browser.close();
+  }
+});
 
 async function mountPipeline(page, columns, hiddenClass = '') {
   await page.setContent(`<body class="${hiddenClass}">

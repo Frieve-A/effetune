@@ -22,6 +22,8 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._visualizerMidiMeteringConsumers = new Set();
         this._selectedTab = 'mixer';
         this._mixerColorMode = 'Normal';
+        this._voiceShortage = { held: 0, released: 0 };
+        this._voiceShortageTimer = null;
         this._previewChannel = 0;
         this.temporalCapability = 'reset-on-resume';
     }
@@ -142,7 +144,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             element.addEventListener('click', action);
             return element;
         };
-        this._libraryButton = button('SoundFont Library…', () => this._openLibraryBrowser());
+        this._libraryButton = button('SoundFont Library…', () => this._openLibraryBrowser({ closeOnLoadStart: true }));
         this._selectedBankName = document.createElement('span');
         this._selectedBankName.className = 'soundfont-bank-name';
         this._clearButton = button('Clear', () => this.setParameters({ sf: '' }));
@@ -412,6 +414,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._voiceBar = document.createElement('div');
         this._voiceBar.className = 'soundfont-voice-bar';
         meter.append(label, this._voiceValue, this._voiceBar);
+        this._voiceMeter = meter;
         container.appendChild(meter);
         const scroll = document.createElement('div'), table = document.createElement('table');
         scroll.className = 'matrix-table-wrapper soundfont-mixer-scroll';
@@ -654,6 +657,27 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
                 control._soundFontFlash = null;
             }
         }
+        this._voiceShortage.held = this._voiceShortage.released = 0;
+        this._applyVoiceShortage();
+    }
+
+    // Color the Voices readout for three seconds after a new note had to stop a sounding voice.
+    // Stopping a held voice outranks cutting a release tail.
+    _noteVoiceShortage(held, released) {
+        const until = performance.now() + 3000;
+        if (held) this._voiceShortage.held = until;
+        if (released) this._voiceShortage.released = until;
+        this._applyVoiceShortage();
+    }
+
+    _applyVoiceShortage() {
+        clearTimeout(this._voiceShortageTimer);
+        const now = performance.now(), { held, released } = this._voiceShortage;
+        const level = held > now ? 'held' : released > now ? 'released' : null;
+        if (level) this._voiceMeter?.setAttribute('data-shortage', level);
+        else this._voiceMeter?.removeAttribute('data-shortage');
+        const next = Math.min(...[held, released].filter(until => until > now));
+        this._voiceShortageTimer = level ? setTimeout(() => this._applyVoiceShortage(), next - now) : null;
     }
 
     _flashMixerControl(control) {
@@ -702,6 +726,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         if (frame?.frameType !== 35 || frame.formatVersion !== 2 || frame.payload?.byteLength !== 584) return;
         const payload = frame.payload;
         const voices = payload.getUint16(0, true), limit = payload.getUint16(2, true);
+        const stolenReleased = payload.getUint16(4, true), stolenHeld = payload.getUint16(6, true);
         if (limit < 1 || limit > 1024 || voices > limit) return;
         const channels = [];
         for (let channel = 0; channel < 16; channel++) {
@@ -724,6 +749,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             channels.push(data);
         }
         this._mixerState = { voices, limit, channels, endFrame: frame.endFrame };
+        if (stolenHeld || stolenReleased) this._noteVoiceShortage(stolenHeld, stolenReleased);
         this._renderPresetSelection();
         this._mixerLevelFrame = this._selectedTab === 'mixer' && this._mixerVisible && !document.hidden
             ? this._mixerState : null;
@@ -928,7 +954,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._resetMixerKnobDrags();
         this._resetMixerFlashes();
         this._mixerRows = [];
-        this._tabs = this._voiceValue = this._voiceBar = this._bankSummary = this._preparationProgress = null;
+        this._tabs = this._voiceMeter = this._voiceValue = this._voiceBar = this._bankSummary = this._preparationProgress = null;
         this._observedPreparation = null;
         super.cleanup();
     }

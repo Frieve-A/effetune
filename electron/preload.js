@@ -204,6 +204,8 @@ const openHomeV1 = Object.freeze({
   respond: response => ipcRenderer.invoke('openhome-v1:response', response),
   resetComplete: ack => ipcRenderer.invoke('openhome-v1:reset-ack', ack),
   publishState: snapshot => ipcRenderer.invoke('openhome-v1:state', snapshot),
+  probeLivePlayback: ({ sessionId, connectionId }) => ipcRenderer.invoke('openhome-v1:live-feedback', { sessionId, connectionId }),
+  reportLivePlayback: report => ipcRenderer.invoke('openhome-v1:live-feedback', report).then(result => result === true),
   onAction: callback => addSingleArgIpcListener('openhome-v1:action', callback),
   onCancel: callback => addSingleArgIpcListener('openhome-v1:cancel', callback),
   onReset: callback => addSingleArgIpcListener('openhome-v1:reset', callback),
@@ -222,6 +224,24 @@ const airPlayV1 = Object.freeze({
   onStatus: callback => addSingleArgIpcListener('airplay-v1:status', callback)
 });
 
+// Network Output (network-output-v1). Streaming, discovery and the delay
+// line live in main; the renderer only feeds PCM through a MessagePort.
+const networkOutputV1 = Object.freeze({
+  getStatus: () => ipcRenderer.invoke('network-output-v1:get-status', {}),
+  getClock: () => ipcRenderer.invoke('network-output-v1:get-clock'),
+  updateRoute: route => ipcRenderer.invoke('network-output-v1:update-route', route),
+  setPickerOpen: open => ipcRenderer.invoke('network-output-v1:set-picker-open', open),
+  setTargetEnabled: (id, enabled) => ipcRenderer.invoke('network-output-v1:set-target-enabled', id, enabled),
+  setConfiguration: patch => {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new TypeError('Network output configuration patch must be an object');
+    return ipcRenderer.invoke('network-output-v1:set-configuration', patch);
+  },
+  rendererReady: () => ipcRenderer.invoke('network-output-v1:renderer-ready', {}),
+  rendererUnavailable: () => ipcRenderer.invoke('network-output-v1:renderer-unavailable', {}),
+  resync: () => ipcRenderer.invoke('network-output-v1:resync', {}),
+  onStatus: callback => addSingleArgIpcListener('network-output-v1:status', callback)
+});
+
 ipcRenderer.on('sfz-library-v1:range-port', (event, token) => {
   if (event.ports?.length === 1) window.postMessage({ type: 'effetune-sfz-range-port', token }, '*', [event.ports[0]]);
 });
@@ -229,6 +249,12 @@ ipcRenderer.on('sfz-library-v1:range-port', (event, token) => {
 ipcRenderer.on('airplay-v1:port', event => {
   if (event.ports?.length === 1) {
     window.postMessage({ type: 'effetune-airplay-v1-port' }, '*', [event.ports[0]]);
+  }
+});
+
+ipcRenderer.on('network-output-v1:port', event => {
+  if (event.ports?.length === 1) {
+    window.postMessage({ type: 'effetune-network-output-v1-port' }, '*', [event.ports[0]]);
   }
 });
 
@@ -269,6 +295,7 @@ function withoutOpenHomeOwnedConfig(config) {
     upnpAvRemoteControl: _upnpAvRemoteControl,
     upnpAvDeviceId: _upnpAvDeviceId,
     airPlayReceiver: _airPlayReceiver,
+    networkOutput: _networkOutput,
     networkMusicDeviceId: _networkMusicDeviceId,
     networkMusicSharing: _networkMusicSharing,
     networkMusicSources: _networkMusicSources,
@@ -371,6 +398,9 @@ contextBridge.exposeInMainWorld(
       onMidi: callback => addSingleArgIpcListener('browser:midi', callback),
       onMedia: callback => addSingleArgIpcListener('browser:media', callback)
     }),
+    systemAudio: Object.freeze({
+      prepareCapture: () => ipcRenderer.sendSync('system-audio:prepare-capture')
+    }),
 
     // File system operations
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
@@ -434,6 +464,7 @@ contextBridge.exposeInMainWorld(
     // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
     openHomeV1,
     airPlayV1,
+    networkOutputV1,
 
     networkMusicGetState: request => invokeNetworkMusic('GetState', request),
     networkMusicDiscover: () => invokeNetworkMusic('Discover'),

@@ -44,6 +44,31 @@ test('resumes a reset response body and caches only the verified archive', async
   assert.equal(calls, 2);
 });
 
+test('stops retrying when a mirror ignores Range and repeats partial transfers', async t => {
+  const destination = await destinationFor(t);
+  const reset = new TypeError('terminated', {
+    cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
+  });
+  const partialSizes = [4, 5, 4, 5, 4];
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => {
+    const size = partialSizes.shift();
+    assert.notEqual(size, undefined, 'requests must stop after three resets without progress');
+    return {
+      ok: true,
+      status: 200,
+      body: (async function* () {
+        yield archive.subarray(0, size);
+        throw reset;
+      })()
+    };
+  });
+  t.mock.method(console, 'warn', () => {});
+
+  await assert.rejects(downloadLockedArchive(url, destination, sha256), error => error === reset);
+  assert.equal(fetchMock.mock.callCount(), 5);
+  await assert.rejects(stat(destination), { code: 'ENOENT' });
+});
+
 test('a checksum mismatch is terminal and writes no cache file', async t => {
   const destination = await destinationFor(t);
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response('wrong archive'));

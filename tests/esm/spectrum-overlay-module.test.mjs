@@ -378,3 +378,30 @@ test('visual sync overlay retains the newest overdue snapshot before its next dr
   assert.ok(Math.abs(instance.levels[0] + 12.0412) < 0.01);
   instance.dispose();
 });
+
+test('visual sync overlay uses the hub limit for 6 seconds of queued spectra', () => {
+  const h = createOverlayHarness();
+  installThemePaletteStub(h.window);
+  let now = 0;
+  h.window.dspTelemetryHub = { visualSyncEpoch: 0, queueLimit: 616, now: () => now,
+    resolveDue: (_id, frame) => (frame + 360) * 1000 / 60 };
+  const { instance } = h.attach();
+  instance.enable();
+  const message = { type: 'spectrumOverlay', spectrumPluginId: 7, endFrame: 0,
+    outputBuffer: new Float32Array(4096).fill(0.5), bufferPosition: 0, sampleRate: 48000 };
+  for (let index = 0; index < 360; index++) {
+    now = index * 1000 / 60;
+    instance.onSpectrumMessage({ ...message, endFrame: index });
+  }
+  assert.equal(instance.pendingFrames.length, 360);
+  h.frame();
+  assert.equal(instance.levels, null);
+  for (let index = 360; index < 370; index++) {
+    now = index * 1000 / 60;
+    h.frame();
+    assert.equal(instance.pendingFrames[0].data.endFrame, index - 359, 'a spectrum reaches each draw deadline');
+    instance.onSpectrumMessage({ ...message, endFrame: index });
+  }
+  assert.ok(instance.levels[0] > -6.03);
+  instance.dispose();
+});

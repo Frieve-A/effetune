@@ -8,6 +8,14 @@ lang: pt
 
 Efeitos de controle são utilitários especiais que não processam o áudio diretamente, mas controlam como outros efeitos operam. Eles ajudam a organizar e gerenciar cadeias de efeitos complexas.
 
+## Live Audio Receive
+
+Recebe nesta posição o áudio ao vivo de outro EffeTune. Os efeitos anteriores são ignorados e os seguintes processam o som. Músicas normais começam no início da cadeia. Não há parâmetros ajustáveis. Sem o marcador ativo, toda a cadeia é usada. O áudio recebido não é retransmitido pelo Network Output.
+
+## Live Audio Send
+
+Envia o áudio desta posição ao Network Output e o mantém nos efeitos locais seguintes. Por exemplo, coloque um EQ compartilhado antes e um Room EQ local depois. Ative Network Output e escolha os dispositivos. Sem marcador ativo, a saída final é enviada. Apenas o primeiro marcador ativo de cada tipo é usado; os demais indicam isso. Não há parâmetros ajustáveis.
+
 ## Section
 
 O efeito Section agrupa vários efeitos para que você possa colocar toda aquela parte da cadeia em bypass ou restaurá-la com um único botão ON/OFF. Cada efeito mantém seu próprio estado ON/OFF.

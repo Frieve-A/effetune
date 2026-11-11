@@ -81,7 +81,10 @@ test('maximized startup completes without a debugger or hidden-window paint even
     assert.equal(state.maximizedWindow.maximized, true);
     assert.equal(state.main.loads, 1);
     assert.equal(state.main.shows.length, 1);
-    assert.equal(state.main.shows[0].prepared, true);
+    // The main window appears when the renderer is prepared or, at the latest,
+    // as soon as the splash closes (showing the loading screen if still preparing).
+    assert.ok(state.main.shows[0].prepared || state.main.shows[0].splashClosed);
+    if (state.main.shows[0].splashClosed) assert.ok(state.main.shownAt - state.splash.closedAt < 1000);
     assert.ok(state.splash.closedAt - state.splash.shownAt >= 2900);
   } finally {
     clearTimeout(guard);
@@ -207,7 +210,7 @@ for (const mode of ['first-launch', 'saved-window', 'preset-and-music', 'minimiz
       } else {
         assert.equal(state.others.length, 1);
         assert.equal(state.main.shows.length, 1);
-        assert.equal(state.main.shows[0].prepared, true);
+        assert.ok(state.main.shows[0].prepared || state.main.shows[0].splashClosed);
         await application.evaluate(async () => {
           while (globalThis.startupWindows.some(item => item.url.endsWith('effetune-splash.html') && !item.closed)) {
             await new Promise(resolve => setTimeout(resolve, 50));

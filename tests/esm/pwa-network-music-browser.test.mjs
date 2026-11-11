@@ -116,8 +116,10 @@ test('PWA localizes playback destinations and its device dialog on mobile', { ti
         fixture.view.updateUITexts();
       }, translations);
       assert.equal(await page.locator('.network-select').getAttribute('aria-label'), translations['networkMusic.player']);
+      const playerDescription = translations['networkMusic.playerDescription'];
+      assert.equal(await page.locator('.network-select').getAttribute('aria-description'), playerDescription);
       assert.equal(await page.locator('.network-refresh-button').getAttribute('aria-label'), translations['networkMusic.refresh']);
-      assert.equal(await page.locator('.network-select').getAttribute('title'), translations['networkMusic.local']);
+      assert.equal(await page.locator('.network-select').getAttribute('title'), `${translations['networkMusic.local']} — ${playerDescription}`);
       assert.equal(await page.locator('.network-select option[value="pwa-add-device"]').getAttribute('title'), translations['networkMusic.pwa.addDevice']);
       assert.deepEqual(await page.locator('.network-select option').allTextContents(), [
         translations['networkMusic.local'], `Living room · ${translations['networkMusic.unavailable']}`, translations['networkMusic.pwa.addDevice']
@@ -236,8 +238,9 @@ test('PWA QR and paste dialog keeps mobile geometry, supports denial/fallback an
       await page.evaluate(outcome => { fixture.denyCamera = outcome === 'denied'; fixture.detect = null; }, outcome);
       await page.selectOption('.network-select', 'pwa-add-device');
       await page.getByRole('button', { name: 'Scan QR code', exact:true }).click();
-      if (outcome === 'denied') { await page.waitForFunction(() => document.querySelector('[role=status]')?.textContent.includes('Could not use the camera')); }
-      else {
+      if (outcome === 'denied') {
+        await page.getByRole('dialog').getByRole('status').filter({ hasText: 'Could not use the camera' }).waitFor();
+      } else {
         await page.waitForFunction(() => fixture.cameraOptions && document.querySelector('video')?.srcObject);
         if (outcome === 'success') {
           await page.evaluate(() => { fixture.detect = 'http://192.168.1.20:47300/?t=pairing-token'; });

@@ -17,8 +17,18 @@ import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
 import { collectCalibrationIrCandidates } from '../measurement-model.js';
 import AnalysisController from './analysis-controller.js';
 import { bindNumberInput, updateRangeFill } from '../../../js/ui/range-fill.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
+import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from '../audio-utils/output-routing.js';
 
 const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen']);
+
+// Switches an element to another translation key so later language changes keep it.
+function setTranslatedText(element, key) {
+    if (!element) return;
+    element.dataset.i18n = key;
+    element.textContent = i18n.t(key) ?? element.textContent;
+    if (element.classList.contains('parameter-label-text')) element.parentElement.title = element.textContent;
+}
 
 export class UIManager {
     constructor() {
@@ -42,6 +52,8 @@ export class UIManager {
         this.correctionHandler = new CorrectionHandler(this);
         this.dialogController = new DialogController(this);
         this.configControlDisabledStates = new Map();
+        // User settings that the Effect Pipeline selection temporarily overrides.
+        this.effectPipelineRestoreValues = null;
     }
 
     /**
@@ -149,6 +161,7 @@ export class UIManager {
         document.getElementById('newMeasurementBtn').addEventListener('click', () => this.startNewMeasurement());
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
         document.getElementById('importInput').addEventListener('change', (e) => this.handleImport(e));
+        document.getElementById('effectPipeline')?.addEventListener('change', () => this.syncEffectPipelineControls());
 
         // Setup data storage event listeners
         document.addEventListener(dataStorage.EVENTS.MEASUREMENT_ADDED, () => {
@@ -278,10 +291,12 @@ export class UIManager {
         
         this.currentScreen = screenId;
 
-        // On the stacked mobile layout the active screen sits below the history
-        // pane; bring it into view so screen changes are visible.
+        // Start every screen from its top. On the stacked mobile layout the active
+        // screen sits below the history pane, so bring that pane into view instead.
         if (document.body.classList.contains('layout-mobile')) {
             document.querySelector('.main-content')?.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            window.scrollTo(0, 0);
         }
     }
 
@@ -455,6 +470,7 @@ export class UIManager {
             for (const measurement of dataStorage.getAllMeasurements()) {
                 if (measurement.interfaceCalibration !== undefined ||
                     measurement.interfaceCalibrations !== undefined ||
+                    measurement.effectPipeline !== undefined ||
                     typeof measurement.id !== 'string' ||
                     !Number.isFinite(measurement.sampleRate) ||
                     !Array.isArray(measurement.points)) {
@@ -486,6 +502,11 @@ export class UIManager {
         }
 
         calibrationSelect.disabled = candidateCount === 0;
+        // Every new measurement starts without the effect pipeline so a corrected
+        // response is never measured by leftover selection.
+        const effectPipeline = document.getElementById('effectPipeline');
+        if (effectPipeline) effectPipeline.value = 'none';
+        this.syncEffectPipelineControls();
         globalThis.window?.app?.syncMultichannelControls?.();
         if (dataStorage.irPersistenceAvailable === false) {
             calibrationHelp.textContent = i18n.t('help:interfaceCalibrationUnavailable') ||
@@ -503,6 +524,55 @@ export class UIManager {
 
         // Set focus on the measurement name field
         document.getElementById('measurementName').focus();
+    }
+
+    /**
+     * Offer the effect pipeline handed over by the main app and, while it is selected,
+     * lock the sampling frequency and output device channels to the pipeline's values.
+     */
+    syncEffectPipelineControls() {
+        const select = document.getElementById('effectPipeline');
+        if (!select) return;
+        const snapshot = measurementController.pipelineHandoff?.snapshot;
+        const android = isAndroidHost();
+        const available = Boolean(snapshot) && !android;
+        const currentOption = select.querySelector('option[value="current"]');
+        currentOption.hidden = !available;
+        currentOption.disabled = !available;
+        if (!available) select.value = 'none';
+        select.disabled = !available;
+        const active = select.value === 'current';
+        setTranslatedText(document.getElementById('effectPipelineHelp'), available ? 'help:effectPipeline'
+            : android ? 'help:effectPipelineAndroid' : 'help:effectPipelineUnavailable');
+        setTranslatedText(document.getElementById('outputChannelLabel'),
+            active ? 'label:pipelineInputChannel' : 'label:outputChannel');
+        setTranslatedText(document.getElementById('outputChannelHelp'),
+            active ? 'help:pipelineInputChannel' : 'help:outputChannel');
+
+        const sampleRate = document.getElementById('sampleRate');
+        const channelCount = document.getElementById('outputChannelCount');
+        let values = null;
+        if (active) {
+            this.effectPipelineRestoreValues ??= {
+                sampleRate: sampleRate.value,
+                outputChannelCount: Number(channelCount.value)
+            };
+            values = [String(snapshot.sampleRate),
+                String(SUPPORTED_OUTPUT_CHANNEL_COUNTS.find(count => count >= snapshot.channelCount))];
+        } else if (this.effectPipelineRestoreValues) {
+            const restore = this.effectPipelineRestoreValues;
+            this.effectPipelineRestoreValues = null;
+            values = [restore.sampleRate, String(restore.outputChannelCount)];
+        }
+        sampleRate.disabled = active;
+        channelCount.disabled = active;
+        if (!values) return;
+        // The existing change handlers refresh dependent controls and saved settings.
+        [[sampleRate, values[0]], [channelCount, values[1]]].forEach(([control, value]) => {
+            if (control.value === value) return;
+            control.value = value;
+            control.dispatchEvent(new Event('change'));
+        });
     }
 
     /**
