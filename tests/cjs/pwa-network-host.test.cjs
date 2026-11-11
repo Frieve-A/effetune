@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { once, EventEmitter } = require('node:events');
+const { on, EventEmitter } = require('node:events');
 const { Readable, Writable } = require('node:stream');
 const { WebSocket } = require('ws');
 const test = require('node:test');
@@ -39,6 +39,24 @@ const openSocket = (fixture, route, origin, ca) => new Promise((resolve, reject)
   ws.on('unexpected-response', (_request, response) => { response.resume(); resolve(response.statusCode); });
   ws.on('error', reject);
 });
+
+async function expectSocketAck(ws, command) {
+  const messages = on(ws, 'message', { close: ['close'], signal: AbortSignal.timeout(5000) });
+  try {
+    ws.send(JSON.stringify(command));
+    for await (const [payload] of messages) {
+      // State broadcasts from other clients can arrive before this reply.
+      const reply = JSON.parse(payload);
+      if (reply.op === 'ack' && reply.seq === command.seq) {
+        assert.equal(reply.ok, true, `${command.op} was rejected: ${reply.error}`);
+        return;
+      }
+    }
+  } finally {
+    await messages.return();
+  }
+  assert.fail(`Socket closed before ${command.op} acknowledgement`);
+}
 
 test('host-local OpenHome volume and mute use the existing player owner and preserve an independent volume', async () => {
   const state = { volume: 70, volumeLimit: 100, mute: false };
@@ -74,16 +92,13 @@ test('PWA routes require exact Origin, Host and per-request bearer token while l
   assert.equal((await request(fixture, '/pwa/v1/info', { method: 'OPTIONS', token: '', headers: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' } })).status, 204);
   assert.equal((await request(fixture, '/pwa/v1/info', { method: 'OPTIONS', headers: { 'Access-Control-Request-Method': 'DELETE' } })).status, 403);
   const pwa = await openSocket(fixture, '/pwa/v1/effects', fixture.origin); t.after(() => pwa.terminate());
-  const message = once(pwa, 'message'); pwa.send(JSON.stringify({ op: 'hello', v: 1, seq: 1 }));
-  assert.equal(JSON.parse((await message)[0]).ok, true);
+  await expectSocketAck(pwa, { op: 'hello', v: 1, seq: 1 });
   assert.equal(await openSocket(fixture, '/pwa/v1/effects', 'https://evil.example'), 403);
   assert.equal(await openSocket(fixture, '/', fixture.origin), 403);
   const native = await openSocket(fixture, '/'); t.after(() => native.terminate());
-  const nativeResponse = once(native, 'message'); native.send(JSON.stringify({ op: 'params', index: 0, params: { vl: -8 }, seq: 2 }));
-  await nativeResponse;
+  await expectSocketAck(native, { op: 'params', index: 0, params: { vl: -8 }, seq: 2 });
   assert.equal(fixture.effects.pipeline[0].vl, -8, 'Legacy native client still edits this host');
-  const pwaResponse = once(pwa, 'message'); pwa.send(JSON.stringify({ op: 'params', index: 0, params: { vl: -4 }, seq: 3 }));
-  await pwaResponse;
+  await expectSocketAck(pwa, { op: 'params', index: 0, params: { vl: -4 }, seq: 3 });
   assert.equal(fixture.effects.pipeline[0].vl, -4, 'The PWA effects socket edits the same host owner');
 });
 
@@ -108,8 +123,7 @@ test('development origins support preflight, authenticated API, media and effect
     assert.equal(media.status, 200);
     assert.equal(media.headers['access-control-allow-origin'], origin);
     const socket = await openSocket(fixture, '/pwa/v1/effects', origin); t.after(() => socket.terminate());
-    const message = once(socket, 'message'); socket.send(JSON.stringify({ op: 'hello', v: 1, seq: 1 }));
-    assert.equal(JSON.parse((await message)[0]).ok, true);
+    await expectSocketAck(socket, { op: 'hello', v: 1, seq: 1 });
     assert.equal(await openSocket(fixture, '/', origin), 403);
   }
   for (const origin of ['null', 'http://192.168.10.40:8000', 'http://localhost.evil.example:8000', 'http://127.0.0.1:8000/path', 'http://user@localhost:8000', 'https://evil.example']) {

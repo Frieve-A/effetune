@@ -190,9 +190,14 @@ test('production CSP permits registered HTTP/WS with LNA, streaming enters Volum
       const events = []; const off = fixture.api.remoteClient.onEvent(event => events.push(event));
       const state = await fixture.api.networkMusicGetState(); const result = await fixture.api.remoteClient.connect(state.players[0].id);
       const deadline = performance.now() + 5000;
-      while (!events.some(event => event.type === 'open')) { if (performance.now() > deadline) throw Error('WS open timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
-      await fixture.api.remoteClient.send(result.connectionId, JSON.stringify({ op:'hello', v:1 }));
-      while (!events.some(event => event.type === 'message' && JSON.parse(event.data).op === 'state')) { if (performance.now() > deadline) throw Error('WS hello timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
+      while (!events.some(event => event.connectionId === result.connectionId && event.type === 'open')) { if (performance.now() > deadline) throw Error('WS open timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
+      const seq = 1;
+      await fixture.api.remoteClient.send(result.connectionId, JSON.stringify({ op: 'hello', v: 1, seq }));
+      while (!events.some(event => {
+        if (event.connectionId !== result.connectionId || event.type !== 'message') return false;
+        const message = JSON.parse(event.data);
+        return message.op === 'state' && message.seq === seq;
+      })) { if (performance.now() > deadline) throw Error('WS hello timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
       off(); await fixture.api.remoteClient.disconnect(result.connectionId); return true;
     });
     assert.equal(ws, true);
@@ -299,9 +304,14 @@ test('production CSP uses profile-trusted HTTPS/WSS and processed media while a 
       const events = []; const off = fixture.api.remoteClient.onEvent(event => events.push(event));
       const state = await fixture.api.networkMusicGetState(); const connection = await fixture.api.remoteClient.connect(state.players[0].id);
       const deadline = performance.now() + 5000;
-      while (!events.some(event => event.type === 'open')) { if (performance.now() > deadline) throw Error('WSS open timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
-      await fixture.api.remoteClient.send(connection.connectionId, JSON.stringify({ op: 'hello', v: 1 }));
-      while (!events.some(event => event.type === 'message' && JSON.parse(event.data).op === 'state')) { if (performance.now() > deadline) throw Error('WSS state timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
+      while (!events.some(event => event.connectionId === connection.connectionId && event.type === 'open')) { if (performance.now() > deadline) throw Error('WSS open timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
+      const seq = 1;
+      await fixture.api.remoteClient.send(connection.connectionId, JSON.stringify({ op: 'hello', v: 1, seq }));
+      while (!events.some(event => {
+        if (event.connectionId !== connection.connectionId || event.type !== 'message') return false;
+        const message = JSON.parse(event.data);
+        return message.op === 'state' && message.seq === seq;
+      })) { if (performance.now() > deadline) throw Error('WSS state timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
       off(); await fixture.api.remoteClient.disconnect(connection.connectionId); return true;
     });
     assert.equal(secureSocket, true);
