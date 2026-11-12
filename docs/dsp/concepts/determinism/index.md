@@ -230,16 +230,16 @@ else:
 print(json.dumps(result, sort_keys=True))
 ```
 
-Save the script above as `research-experiment.py`. Install the same version with `pip install effetune==0.18.0`, then download its
+Save the script above as `research-experiment.py`. Install the same version with `pip install effetune==0.18.1`, then download its
 wheel file so the record can identify it. The wheel file name depends on your Python
-version and platform, following `effetune-0.18.0-<python tag>-<abi tag>-<platform tag>.whl`;
+version and platform, following `effetune-0.18.1-<python tag>-<abi tag>-<platform tag>.whl`;
 for example, CPython 3.12 on Windows x64 downloads
-`effetune-0.18.0-cp312-abi3-win_amd64.whl`. Use the file name that pip reports.
+`effetune-0.18.1-cp312-abi3-win_amd64.whl`. Use the file name that pip reports.
 The first run saves the record with `--save-record`, which writes UTF-8 JSON
 regardless of the shell, and the second run replays it:
 
 ```console
-pip download effetune==0.18.0 --no-deps -d wheels
-python research-experiment.py --wheel wheels/effetune-0.18.0-cp312-abi3-win_amd64.whl --save-record record.json
-python research-experiment.py --wheel wheels/effetune-0.18.0-cp312-abi3-win_amd64.whl --replay-record record.json
+pip download effetune==0.18.1 --no-deps -d wheels
+python research-experiment.py --wheel wheels/effetune-0.18.1-cp312-abi3-win_amd64.whl --save-record record.json
+python research-experiment.py --wheel wheels/effetune-0.18.1-cp312-abi3-win_amd64.whl --replay-record record.json
 ```

@@ -2178,8 +2178,7 @@ private:
           return false;
         if (voice.channel > 15 || voice.midi > 127 || voice.outputMidi > 127 ||
             voice.velocity > 127 || !std::isfinite(voice.baseStep) || voice.baseStep <= 0 ||
-            voice.delayFrames > oldRate * 200.0 + 1 || voice.modulationRandom < 0 ||
-            voice.modulationRandom > 1)
+            voice.modulationRandom < 0 || voice.modulationRandom > 1)
           io.ok = false;
         voice.region = index == UINT32_MAX ? nullptr : bank()->region(index);
         voice.preset = voice.region && bank()->sf2_ ? bank()->presetForRegion(index) : UINT32_MAX;
@@ -2190,8 +2189,12 @@ private:
         voice.stolenLeft = voice.stolenRight = 0;
         voice.baseStep *= oldRate / rate_;
         voice.step = voice.controllerStep = voice.baseStep;
-        voice.delayFrames =
-            static_cast<std::uint32_t>(std::floor(voice.delayFrames * rate_ / oldRate + .5));
+        // Convert only validated delays so the scaled value always fits in uint32.
+        if (voice.delayFrames > oldRate * 200.0 + 1)
+          io.ok = false;
+        else
+          voice.delayFrames =
+              static_cast<std::uint32_t>(std::floor(voice.delayFrames * rate_ / oldRate + .5));
         voice.modulationRevision = 0;
         voice.equalizer = {};
         if (!std::isfinite(voice.playbackTiming.startBeat) ||

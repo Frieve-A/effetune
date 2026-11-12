@@ -37,6 +37,13 @@ test('known forecast converts source seconds to output sample offsets at speed2 
   assert.deepEqual(Array.from(h.calls[0].events, event => event.data1), [7, 64, 0, 64]);
   assert.equal(h.processor.isSfzInstrumentJoinReady(h.plugin, h.entry), true);
 });
+test('a track change before the instance syncs ignores its cursor from the previous timeline', () => {
+  const h = setup();
+  h.processor.midiScheduler.instances.set(7, { enabled: true, generation: 6, cursor: 40 });
+  h.processor.advanceSfzSampleForecast(7, h.entry);
+  assert.deepEqual(h.calls.map(call => call.flags), [5, 6]);
+  assert.deepEqual(Array.from(h.calls[0].events, event => event.data1), [7, 64, 0, 64]);
+});
 test('optional pressure tries bounded source windows and leaves a usable limited join', () => {
   const h = setup(() => -3);
   for (let index = 0; index < 3; index++) h.processor.advanceSfzSampleForecast(7, h.entry);

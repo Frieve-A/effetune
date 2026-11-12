@@ -43,10 +43,13 @@ function normalizeRoute(input, now) {
     frameTimeMs, clockUncertaintyMs } = input ?? {};
   if (active !== true || !Number.isSafeInteger(revision) || revision < 0 || typeof localReachable !== 'boolean' ||
       ![dspMs, softwareOutputMs, physicalOutputMs].every(value => value === null || validDelay(value)) ||
-      !Number.isFinite(contextFrame) || contextFrame < 0 || !Number.isFinite(frameTimeMs) || Math.abs(frameTimeMs - now) > FEEDBACK_FRESHNESS_MS ||
-      !Number.isFinite(clockUncertaintyMs) || clockUncertaintyMs < 0 || clockUncertaintyMs > MAX_TIMING_UNCERTAINTY_MS) {
+      !Number.isFinite(contextFrame) || contextFrame < 0 || !Number.isFinite(frameTimeMs) ||
+      !Number.isFinite(clockUncertaintyMs) || clockUncertaintyMs < 0) {
     throw new TypeError('Invalid network output route');
   }
+  // A well-formed sample can still be unusable when IPC is slow (e.g. while the app starts up); it is skipped
+  // and the renderer's next periodic report replaces it.
+  if (Math.abs(frameTimeMs - now) > FEEDBACK_FRESHNESS_MS || clockUncertaintyMs > MAX_TIMING_UNCERTAINTY_MS) return undefined;
   const localMs = [dspMs, softwareOutputMs, physicalOutputMs].every(validDelay) ? dspMs + softwareOutputMs + physicalOutputMs : null;
   return { revision, localReachable, localMs, contextFrame, frameTimeMs, clockUncertaintyMs };
 }
@@ -266,7 +269,7 @@ class NetworkOutputHost extends EventEmitter {
     for (const target of enabledTargets) {
       const session = this.sessions.get(target.id);
       const live = session?.liveMeasurement;
-      const cast = session?.type === 'cast' && now - session.castMeasuredAt <= FEEDBACK_FRESHNESS_MS ? session.latencyMs : null;
+      const cast = session?.type === 'cast' ? session.latencyMs : null;
       // Cast's existing position estimate spans its receiver buffer and playout. EffeTune reports its suffix separately.
       const hasLiveTiming = Boolean(anchorFresh && live && live.routeRevision === this.liveRoute.revision && now - live.receivedAt <= FEEDBACK_FRESHNESS_MS);
       const fallbackMs = hasLiveTiming ? live.latencyMs : cast ?? L0_MS;
@@ -292,9 +295,8 @@ class NetworkOutputHost extends EventEmitter {
   // The local stage waits for the slowest receiver: at least L0, more when a measured Cast latency exceeds it.
   baseDelayMs() {
     let base = L0_MS;
-    const now = this.clockNow();
     for (const session of this.sessions.values()) {
-      if (now - session.castMeasuredAt <= FEEDBACK_FRESHNESS_MS && session.latencyMs !== null && session.latencyMs > base) base = session.latencyMs;
+      if (session.latencyMs !== null && session.latencyMs > base) base = session.latencyMs;
     }
     return Math.ceil(base);
   }
@@ -305,8 +307,7 @@ class NetworkOutputHost extends EventEmitter {
     const plan = this.planLiveDelays();
     const base = this.baseDelayMs();
     for (const session of this.sessions.values()) {
-      const measured = this.clockNow() - session.castMeasuredAt <= FEEDBACK_FRESHNESS_MS ? session.latencyMs : null;
-      const delayMs = base - (measured ?? L0_MS) + session.target.trimMs;
+      const delayMs = base - (session.latencyMs ?? L0_MS) + session.target.trimMs;
       const live = plan?.targets.get(session.id);
       const frames = live?.frames ?? framesForMs(cappedDelay(delayMs));
       session.delay.setDelay(frames, true);
@@ -321,6 +322,7 @@ class NetworkOutputHost extends EventEmitter {
 
   updateRoute(input) {
     const route = normalizeRoute(input, this.clockNow());
+    if (route === undefined) return false;
     if (route && this.liveRoute && route.frameTimeMs < this.liveRoute.frameTimeMs) return false;
     // Without a send tap the stream leaves after the whole pipeline, so the local stage trails it by the output
     // device's latency alone and its delay is shortened by that much. A reading within the tolerance keeps the delay.
@@ -328,7 +330,12 @@ class NetworkOutputHost extends EventEmitter {
       const outputMs = validDelay(input?.physicalOutputMs) ? Math.round(input.physicalOutputMs) : 0;
       if (Math.abs(outputMs - this.localOutputMs) >= LATENCY_TOLERANCE_MS) this.localOutputMs = outputMs;
     }
-    if (route?.revision !== this.liveRoute?.revision) this.packetTiming.length = 0;
+    // The output device's reported latency wanders by a few ms between reports while the route stays the same.
+    // Re-planning on that would crossfade the local delay and restart the synced display for no audible gain.
+    const previous = this.liveRoute;
+    if (route && previous?.revision === route.revision && route.localMs !== null && previous.localMs !== null &&
+        Math.abs(route.localMs - previous.localMs) < LATENCY_TOLERANCE_MS) route.localMs = previous.localMs;
+    if (route?.revision !== previous?.revision) this.packetTiming.length = 0;
     if (this.routeAnchorTimer) this.clearTimeoutFn(this.routeAnchorTimer);
     this.routeAnchorTimer = null;
     this.liveRoute = route;
@@ -495,7 +502,7 @@ class NetworkOutputHost extends EventEmitter {
       if (!session) {
         session = { id: target.id, type: target.type, target, delay: new DelayLine(framesForMs(target.trimMs)), generation: 0, phase: 'idle', state: 'searching', note: null,
           url: '', stream: null, cast: null, castApp: null, launchedApp: null, launched: false, mediaSessionId: null,
-          latencyMs: null, latencySamples: [], castMeasuredAt: -Infinity, castMediaRevision: 0, castPlayerState: null, liveMeasurement: null, measurementTimer: null,
+          latencyMs: null, latencySamples: [], latencyCandidate: null, castMediaRevision: 0, castPlayerState: null, liveMeasurement: null, measurementTimer: null,
           failures: 0, pollTimer: null, polling: false, retryTimer: null, startTimer: null };
         this.sessions.set(target.id, session);
       }
@@ -553,7 +560,7 @@ class NetworkOutputHost extends EventEmitter {
     this.clearSessionTimers(session);
     const { stream, cast, url } = session;
     session.stream = null; session.cast = null; session.castApp = null; session.launchedApp = null; session.launched = false; session.mediaSessionId = null;
-    session.latencyMs = null; session.latencySamples = []; session.castMeasuredAt = -Infinity; session.castOverLimit = 0; session.castPlayerState = null; session.liveMeasurement = null; session.url = '';
+    session.latencyMs = null; session.latencySamples = []; session.latencyCandidate = null; session.castOverLimit = 0; session.castPlayerState = null; session.liveMeasurement = null; session.url = '';
     stream?.close();
     const pending = [];
     if (cast) {
@@ -659,7 +666,7 @@ class NetworkOutputHost extends EventEmitter {
       if (session.stream !== stream || session.type !== 'cast') return;
       session.latencyMs = null;
       session.latencySamples = [];
-      session.castMeasuredAt = -Infinity;
+      session.latencyCandidate = null;
       session.castOverLimit = 0;
       this.applyDelays();
     });
@@ -838,13 +845,29 @@ class NetworkOutputHost extends EventEmitter {
     if (samples.length > LATENCY_SAMPLES) samples.shift();
     if (samples.length < LATENCY_SAMPLES) return;
     const floorMs = Math.min(...samples);
-    if (Math.max(...samples) - floorMs > 1000) return;
+    if (Math.max(...samples) - floorMs > 1000) {
+      session.latencyCandidate = null;
+      return;
+    }
     // A full window of advancing positions is the observed playback that clears earlier drops.
     session.failures = 0;
-    const wasFresh = this.clockNow() - session.castMeasuredAt <= FEEDBACK_FRESHNESS_MS;
-    session.castMeasuredAt = this.clockNow();
-    this.scheduleMeasurementExpiry(session);
-    if (wasFresh && session.latencyMs !== null && Math.abs(floorMs - session.latencyMs) < LATENCY_TOLERANCE_MS) return;
+    // The estimate holds for as long as this stream connection plays (a new connection or session starts over): the
+    // receiver's latency only changes with the stream itself, while a lost or late status reply says nothing about it.
+    // Expiring it would swing the delays to L0 and back by the whole difference.
+    if (session.latencyMs !== null && Math.abs(floorMs - session.latencyMs) < LATENCY_TOLERANCE_MS) {
+      session.latencyCandidate = null;
+      return;
+    }
+    // Every change moves the local playback position, so a new estimate is applied only once it has held for a whole
+    // further window: while the floor is still settling (it falls as faster replies arrive and rises only as old
+    // readings leave the window), applying each step would move the position again and again.
+    const candidate = session.latencyCandidate;
+    if (!candidate || Math.abs(floorMs - candidate.ms) >= LATENCY_TOLERANCE_MS) {
+      session.latencyCandidate = { ms: floorMs, count: 1 };
+      return;
+    }
+    if (++candidate.count < LATENCY_SAMPLES) return;
+    session.latencyCandidate = null;
     session.latencyMs = floorMs;
     this.applyDelays();
   }
@@ -876,11 +899,6 @@ class NetworkOutputHost extends EventEmitter {
     if (session.measurementTimer) this.clearTimeoutFn(session.measurementTimer);
     session.measurementTimer = this.setTimeoutFn(() => {
       session.measurementTimer = null;
-      if (this.clockNow() - session.castMeasuredAt > FEEDBACK_FRESHNESS_MS) {
-        session.latencyMs = null;
-        session.latencySamples = [];
-        session.castOverLimit = 0;
-      }
       this.applyDelays();
     }, FEEDBACK_FRESHNESS_MS + 1);
     session.measurementTimer.unref?.();

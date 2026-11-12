@@ -13,7 +13,7 @@ candidates, checks goldens, emits checksums, an SPDX SBOM, and provenance attest
 
 The registries hold the authoritative published versions. `pip install effetune` and
 `npm install @effetune/dsp` always resolve the latest release; these docs describe
-v0.18.0. The wheels, npm tarball, `SHA256SUMS`, and SPDX SBOM
+v0.18.1. The wheels, npm tarball, `SHA256SUMS`, and SPDX SBOM
 (`SBOM.spdx.json`) for every tagged release are attached to the matching
 [`dsp-v` GitHub Release](https://github.com/Frieve-A/effetune/releases?q=dsp-v).
 The files themselves are not signed. Instead, each wheel, the npm tarball, and every
@@ -28,7 +28,7 @@ checks the registry signatures and provenance of the installed packages:
 
 ```console
 sha256sum --check --ignore-missing SHA256SUMS
-gh attestation verify effetune-dsp-0.18.0.tgz -R Frieve-A/effetune
+gh attestation verify effetune-dsp-0.18.1.tgz -R Frieve-A/effetune
 npm audit signatures
 ```
 
@@ -36,7 +36,7 @@ npm audit signatures
 the command below and compare it with that file's line in `SHA256SUMS`:
 
 ```powershell
-(Get-FileHash effetune-dsp-0.18.0.tgz -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash effetune-dsp-0.18.1.tgz -Algorithm SHA256).Hash.ToLower()
 ```
 
 The [live demo build manifest](/dsp/demo/build-manifest.json) records the package

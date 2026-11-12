@@ -6,6 +6,10 @@ lang: en
 
 # Version History
 
+### Version 2.18.1 (TBD, 2026)
+- Fixed SoundFont Player sample preloading when switching MIDI tracks with an SFZ instrument
+- Improved synchronization when sending audio to Chromecast speakers from the desktop app
+
 ### Version 2.18.0 (Nov 13, 2026)
 - Added System Audio input to the Windows desktop app, processing sound from other apps without a virtual audio device
 - Improved SoundFont Player compatibility and reduced processing load

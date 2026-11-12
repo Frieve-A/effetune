@@ -865,6 +865,9 @@ test('cast latency measured from the receiver position raises the local delay an
   await poll(44100 * 6, 1.5, LATENCY_SAMPLES - 1);
   assert.equal(host.getStatus().syncDelayMs, L0_MS, 'the estimate needs a complete sample window');
   await poll(44100 * 6, 1.42, 1);
+  await poll(44100 * 6, 1.5, LATENCY_SAMPLES - 2);
+  assert.equal(host.getStatus().syncDelayMs, L0_MS, 'a new estimate waits until it has held for a further window');
+  await poll(44100 * 6, 1.5, 1);
   assert.deepEqual(log.filter(entry => entry[0] === 'cast-status').at(-1), ['cast-status', 1]);
   assert.equal(host.getStatus().localDelayMs, 4500, 'a stale position reads late, so the smallest reading of the window counts');
   assert.equal(host.getStatus().syncDelayMs, 4500);
@@ -873,7 +876,13 @@ test('cast latency measured from the receiver position raises the local delay an
 
   await poll(44100 * 6, 1.51);
   assert.equal(host.getStatus().localDelayMs, 4500, 'a change under 20 ms is ignored');
-  await poll(44100 * 6, 1.0);
+  await poll(44100 * 6, 1.0, 2 * LATENCY_SAMPLES - 2);
+  assert.equal(host.getStatus().localDelayMs, 4500, 'the position moves only once the new estimate has settled');
+  await poll(44100 * 6, 2.3, 1);
+  assert.equal(host.getStatus().localDelayMs, 4500, 'an invalid sample window keeps the accepted estimate');
+  await poll(44100 * 6, 1.0, 2 * LATENCY_SAMPLES - 2);
+  assert.equal(host.getStatus().localDelayMs, 4500, 'a new estimate requires consecutive usable windows');
+  await poll(44100 * 6, 1.0, 1);
   assert.equal(host.getStatus().localDelayMs, 5000);
   assert.equal(upnpSession.delay.frames, framesFor(3000));
 
@@ -948,7 +957,7 @@ test('Cast poll accepts a matching media event emitted before its status reply',
   casts[0].emit('media', event);
   session.stream.frames = 44100 * 5;
   casts[0].mediaStatus = async () => { casts[0].emit('media', event); return { playerState: 'PLAYING', currentTime: 2 }; };
-  for (let index = 0; index < LATENCY_SAMPLES; index++) await host.pollCast(session);
+  for (let index = 0; index < 2 * LATENCY_SAMPLES - 1; index++) await host.pollCast(session);
   assert.equal(session.latencyMs, 3000);
   casts[0].mediaStatus = async () => {
     casts[0].emit('media', { ...event, playerState: 'BUFFERING' });
@@ -960,15 +969,21 @@ test('Cast poll accepts a matching media event emitted before its status reply',
   await host.dispose();
 });
 
-test('expired Cast measurements return legacy delay to its default', async () => {
-  const { host, castDiscovery, clock } = createHarness();
+test('a Cast measurement holds through unanswered polls and is forgotten with its stream connection', async () => {
+  const { host, castDiscovery, clock, casts } = createHarness();
   castDiscovery.devices.set('cast1', { id: 'cast1', name: 'Kitchen', address: '192.168.1.40', port: 8010 });
   await host.setConfiguration({ enabled: true, localTrimMs: 0, targets: [target('cast1', 'cast', 'Kitchen')] });
   await settle();
   const session = host.sessions.get('cast1');
-  for (let index = 0; index < LATENCY_SAMPLES; index++) host.recordLatency(session, 4500);
+  casts[0].emit('media', { playerState: 'PLAYING', mediaSessionId: 1, contentId: session.url });
+  for (let index = 0; index < 2 * LATENCY_SAMPLES - 1; index++) host.recordLatency(session, 4500);
   assert.equal(host.getStatus().syncDelayMs, 4500);
-  await clock.advance(FEEDBACK_FRESHNESS_MS + 1);
+  const revision = host.getStatus().syncRevision;
+  // A lost status reply blocks polling for the request timeout; the receiver keeps playing meanwhile.
+  await clock.advance(FEEDBACK_FRESHNESS_MS * 5);
+  assert.equal(host.getStatus().syncDelayMs, 4500, 'silence from the receiver does not swing the delays to L0 and back');
+  assert.equal(host.getStatus().syncRevision, revision);
+  session.stream.emit('connected');
   assert.equal(host.getStatus().syncDelayMs, L0_MS);
   await host.dispose();
 });
@@ -998,9 +1013,22 @@ test('marker routes align measured suffixes and trim, then fall back when feedba
   await settle();
   const route = { active: true, revision: 7, localReachable: true, dspMs: 250, softwareOutputMs: 30, physicalOutputMs: 20,
     contextFrame: 0, frameTimeMs: clock.now(), clockUncertaintyMs: 15 };
-  host.updateRoute(route);
+  assert.equal(host.updateRoute(route), true);
   assert.equal(host.getStatus().localDelayMs, 1600);
   assert.equal(host.getStatus().targets[0].syncState, 'unmeasured');
+  // The device latency wandering within 20 ms on the same route keeps the plan; a larger move re-plans.
+  const { syncRevision } = host.getStatus();
+  assert.equal(host.updateRoute({ ...route, physicalOutputMs: 27 }), true);
+  assert.deepEqual([host.getStatus().localDelayMs, host.getStatus().syncRevision], [1600, syncRevision]);
+  host.updateRoute({ ...route, physicalOutputMs: 45 });
+  assert.equal(host.getStatus().localDelayMs, 1575);
+  host.updateRoute(route);
+  assert.equal(host.getStatus().localDelayMs, 1600);
+  // Slow IPC makes a well-formed sample stale or too uncertain; it is skipped without replacing the route.
+  assert.equal(host.updateRoute({ ...route, revision: 8, clockUncertaintyMs: 176 }), false);
+  assert.equal(host.updateRoute({ ...route, revision: 8, frameTimeMs: clock.now() - 3001 }), false);
+  assert.equal(host.liveRoute.revision, 7);
+  assert.throws(() => host.updateRoute({ ...route, revision: -1 }), TypeError);
 
   const sample = { connectionId: 'abc', revision: 4, routeRevision: 7, receivedAt: clock.now(), uncertaintyMs: 30,
     ingressMs: 20, transportMs: 130, dspMs: 200, softwareOutputMs: 20, physicalOutputMs: 10 };

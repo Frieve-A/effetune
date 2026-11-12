@@ -1,6 +1,6 @@
 {
   "name": "effetune",
-  "version": "2.18.0",
+  "version": "2.18.1",
   "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
@@ -71,7 +71,7 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.3.0",
+    "electron": "^45.3.1",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",

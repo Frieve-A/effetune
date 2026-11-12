@@ -45,7 +45,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:495f664b89bfc6b467e14f2683ddece8464d92ebd50935d5d317c1bef78d063e",
+  "referenceHash": "sha256:9c0bff3d1beb02082ff52371c818d1dff91a0dda8fa4e24600af00089209b401",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type SFZNotePlayerPlugin --promote-production-native",
   "outputFloats": 96000,
   "byteLength": 384000,

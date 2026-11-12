@@ -9,7 +9,9 @@ export class NetworkOutputIntegration {
     this.bridge = bridge;
     this.portListener = null;
     this.removeStatusListener = null;
-    this.routeListener = () => { void this.reportRoute(); };
+    this.routeListener = () => {
+      this.reportRoute().catch(error => console.warn('[Network Output] Route could not be reported.', error));
+    };
     if (!bridge?.rendererReady || !windowRef?.addEventListener) return;
     this.portListener = event => {
       if (event.source !== windowRef || event.data?.type !== 'effetune-network-output-v1-port' ||

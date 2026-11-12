@@ -5620,10 +5620,11 @@ class PluginProcessor extends AudioWorkletProcessor {
             const delay = this.dspLatencyPlan?.tapPositions?.[pluginId]?.input ?? 0;
             const position = known ? scheduler.currentPosition(frame, delay) : 0;
             const state = scheduler?.instances.get(pluginId);
+            // Until the instance syncs to this generation, its cursor may index the previous timeline.
+            const cursor = known && state?.enabled && state.generation === generation ? state.cursor : 0;
             forecast = stream.forecast = { generation, nativeGeneration, timeline, speed, scope,
                 channel: plugin.parameters?.mc ?? 0, freeze: entry.sfzRuntimeFrozen,
-                position, frame, delay, initialCursor: known && state?.enabled ? state.cursor : 0,
-                cursor: known && state?.enabled ? state.cursor : 0, windowIndex: 0,
+                position, frame, delay, initialCursor: cursor, cursor, windowIndex: 0,
                 windowFrames: Math.ceil(rate * 1.5), horizon: position + 1.5 * speed,
                 reset: true, scanned: !known, ready: false, pressure: false,
                 // Prefetch copies events synchronously, so one pool serves every forecast.
