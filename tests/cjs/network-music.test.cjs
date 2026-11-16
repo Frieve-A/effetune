@@ -196,6 +196,23 @@ test('SSDP discovery uses stable UDNs, same-host services, and byebye availabili
   assert.equal(requests, 1, 'A LAN advertisement cannot redirect description requests to a different host');
 });
 
+test('a root device that advertises only its own UDN renews its embedded renderer without reloading the description', async () => {
+  let requests = 0;
+  const discovery = new Discovery({ fetchXml: async () => {
+    requests++;
+    return parseXml('<root><device><UDN>uuid:RINCON_1</UDN><device><UDN>uuid:RINCON_1_MR</UDN><friendlyName>Room</friendlyName><serviceList><service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType><controlURL>/av</controlURL></service></serviceList></device></device></root>');
+  } });
+  const packet = Buffer.from('NOTIFY * HTTP/1.1\r\nUSN: uuid:RINCON_1::upnp:rootdevice\r\nNTS: ssdp:alive\r\nLOCATION: http://192.168.1.5:1400/xml/device_description.xml\r\nCACHE-CONTROL: max-age = 1800\r\n\r\n');
+  await discovery.receive(packet, { address: '192.168.1.5' });
+  const renderer = discovery.devices.get('uuid:RINCON_1_MR');
+  assert.deepEqual([...discovery.devices.keys()], ['uuid:RINCON_1_MR']);
+  renderer.expires = Date.now() + 1000;
+  await discovery.receive(packet, { address: '192.168.1.5' });
+  assert.equal(requests, 1);
+  assert.equal(discovery.devices.get('uuid:RINCON_1_MR'), renderer);
+  assert.ok(renderer.expires > Date.now() + 1000000, 'The spaced max-age sent by Sonos keeps its 1800 s lifetime');
+});
+
 test('explicit discovery refresh reloads unchanged description URLs and marks unreachable devices unavailable', async t => {
   let port = 12685;
   let reachable = true;
@@ -310,7 +327,7 @@ test('overlapping SSDP announcements and searches keep each delayed send on its 
   const discovery = new Discovery();
   const packets = [];
   let selected;
-  discovery.socket = {
+  discovery.socket = discovery.searchSocket = {
     setMulticastInterface(address) { selected = address; },
     send(bytes, _port, _target, callback) {
       const requested = selected;
@@ -340,7 +357,7 @@ test('SSDP send errors release the next interface and closing discards queued se
   const sends = []; const errors = [];
   let selected; let closed = false;
   discovery.on('diagnostic', error => errors.push(error));
-  discovery.socket = {
+  discovery.searchSocket = {
     setMulticastInterface(address) { selected = address; },
     send(_bytes, _port, _target, callback) { sends.push({ address: selected, callback }); },
     close() { closed = true; }
@@ -355,9 +372,9 @@ test('SSDP send errors release the next interface and closing discards queued se
   assert.deepEqual(errors, [error]);
   discovery.search();
   discovery.close();
-  assert.equal(discovery.socket, null);
+  assert.equal(discovery.searchSocket, null);
   const restarted = [];
-  discovery.socket = {
+  discovery.searchSocket = {
     setMulticastInterface(address) { selected = address; },
     send(_bytes, _port, _target, callback) { restarted.push(selected); callback(); },
     close() {}

@@ -399,7 +399,9 @@ contextBridge.exposeInMainWorld(
       onMedia: callback => addSingleArgIpcListener('browser:media', callback)
     }),
     systemAudio: Object.freeze({
-      prepareCapture: () => ipcRenderer.sendSync('system-audio:prepare-capture')
+      prepareCapture: () => ipcRenderer.sendSync('system-audio:prepare-capture'),
+      captureStarted: () => { ipcRenderer.sendSync('system-audio:capture-started'); },
+      captureStopped: () => { ipcRenderer.sendSync('system-audio:capture-stopped'); }
     }),
 
     // File system operations

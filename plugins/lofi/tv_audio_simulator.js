@@ -1880,8 +1880,8 @@ class TVAudioSimulatorPlugin extends PluginBase {
             plot: () => {
                 const frame = this._readoutFrame;
                 return frame?.valid ? {
-                    left: frame.plotLeft,
-                    top: frame.plotTop,
+                    left: 0,
+                    top: 0,
                     width: frame.plotWidth,
                     height: frame.plotHeight
                 } : null;
@@ -1977,76 +1977,93 @@ class TVAudioSimulatorPlugin extends PluginBase {
         const values = this.hudValues;
         const narrow = cssWidth < 560;
         const statusHeight = (narrow ? 42 : 25) * scale;
-        const plotLeft = 40 * scale;
-        const plotTop = 7 * scale;
-        const plotRight = width - 8 * scale;
-        const plotBottom = height - statusHeight - 15 * scale;
-        const plotWidth = plotRight - plotLeft;
-        const plotHeight = plotBottom - plotTop;
-        if (plotWidth <= 0 || plotHeight <= 0) {
+        // The plot spans everything above the status band; tick labels are overlaid on it.
+        const plotWidth = width;
+        const plotHeight = height - statusHeight;
+        if (plotHeight <= 0) {
             this._graphReadout?.refresh();
             return;
         }
 
         const maximumHz = this._spectrumMaximumHz();
         const logSpan = Math.log(maximumHz / TV_AUDIO_SIMULATOR_SPECTRUM_MIN_HZ);
-        const frequencyToX = frequency => plotLeft + plotWidth *
+        const frequencyToX = frequency => plotWidth *
             Math.log(frequency / TV_AUDIO_SIMULATOR_SPECTRUM_MIN_HZ) / logSpan;
-        const dbToY = db => {
-            const clamped = db > 0 ? 0 :
-                (db < TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB ?
-                    TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB : db);
-            return plotTop + plotHeight * (-clamped / -TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB);
-        };
+        // Unclamped: the trace may leave the plot; the clip below keeps it off the status band.
+        const dbToY = db => plotHeight * (db / TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB);
         context.lineWidth = scale;
-        context.font = `${Math.round(10 * scale)}px Arial`;
-        for (let db = 0; db >= TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB; db -= 20) {
+        context.font = `${Math.round(12 * scale)}px Arial`;
+        context.textAlign = 'left';
+        context.textBaseline = 'middle';
+        // Interior dB grid only; 0 dB and the floor sit on the plot bounds.
+        for (let db = -20; db > TV_AUDIO_SIMULATOR_SPECTRUM_FLOOR_DB; db -= 20) {
             const y = dbToY(db);
             context.strokeStyle = window.ThemePalette?.get('graph-grid-subtle') ?? '';
             context.beginPath();
-            context.moveTo(plotLeft, y);
-            context.lineTo(plotRight, y);
+            context.moveTo(0, y);
+            context.lineTo(plotWidth, y);
             context.stroke();
-            if (db % 40 === 0) {
-                context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
-                context.textAlign = 'right';
-                context.textBaseline = 'middle';
-                context.fillText(String(db), plotLeft - 4 * scale, y);
-            }
+            context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
+            context.fillText(String(db), 24 * scale, y);
         }
+        // Frequency tick values sit above the X axis title; a value that does not
+        // fit inside the plot when centred on its tick, or that would overlap the
+        // previous value, is omitted. Ticks at or beyond the right plot bound are not drawn.
         const horizontal = this.ss.startsWith('M/') ? 15734 : 15625;
         const ticks = maximumHz === 60000 ?
             [[1000, '1k'], [10000, '10k'], [horizontal, 'fH'],
                 [2 * horizontal, '2fH'], [53000, '53k']] :
-            [[1000, '1k'], [5000, '5k'], [10000, '10k'], [maximumHz, `${maximumHz / 1000}k`]];
+            [[1000, '1k'], [5000, '5k'], [10000, '10k']];
+        context.textAlign = 'center';
+        context.textBaseline = 'bottom';
+        const tickValueY = plotHeight - 20 * scale;
+        let previousRight = -Infinity;
         for (const [frequency, label] of ticks) {
-            if (frequency > maximumHz) continue;
+            if (frequency >= maximumHz) continue;
             const x = frequencyToX(frequency);
             context.strokeStyle = window.ThemePalette?.get('graph-grid-subtle') ?? '';
             context.beginPath();
-            context.moveTo(x, plotTop);
-            context.lineTo(x, plotBottom);
+            context.moveTo(x, 0);
+            context.lineTo(x, plotHeight);
             context.stroke();
-            context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
-            context.textAlign = 'center';
-            context.textBaseline = 'top';
-            context.fillText(label, x, plotBottom + 2 * scale);
+            const halfWidth = (context.measureText?.(label)?.width ?? label.length * 6 * scale) / 2;
+            if (x - halfWidth >= 0 && x + halfWidth <= plotWidth && x - halfWidth >= previousRight + 4 * scale) {
+                context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
+                context.fillText(label, x, tickValueY);
+                previousRight = x + halfWidth;
+            }
         }
+
+        // Axis titles
+        context.fillStyle = window.ThemePalette?.get('text-primary') ?? '';
+        context.font = `${Math.round(14 * scale)}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'alphabetic';
+        context.fillText('Frequency (Hz)', plotWidth / 2, plotHeight - 5 * scale);
+        context.save();
+        context.translate(14 * scale, plotHeight / 2);
+        context.rotate(-Math.PI / 2);
+        context.fillText('Level (dB)', 0, 0);
+        context.restore();
 
         const spectrum = values.spectrumDb;
         const bins = TV_AUDIO_SIMULATOR_SPECTRUM_BINS;
+        context.save();
         context.beginPath();
-        context.moveTo(plotLeft, plotBottom);
+        context.rect(0, 0, plotWidth, plotHeight);
+        context.clip();
+        context.beginPath();
+        context.moveTo(0, plotHeight);
         for (let bin = 0; bin < bins; bin++) {
-            const x = plotLeft + plotWidth * bin / (bins - 1);
+            const x = plotWidth * bin / (bins - 1);
             context.lineTo(x, dbToY(spectrum[bin]));
         }
-        context.lineTo(plotRight, plotBottom);
+        context.lineTo(plotWidth, plotHeight);
         context.fillStyle = window.ThemePalette?.get('graph-trace-soft') ?? '';
         context.fill();
         context.beginPath();
         for (let bin = 0; bin < bins; bin++) {
-            const x = plotLeft + plotWidth * bin / (bins - 1);
+            const x = plotWidth * bin / (bins - 1);
             const y = dbToY(spectrum[bin]);
             if (bin === 0) context.moveTo(x, y);
             else context.lineTo(x, y);
@@ -2054,10 +2071,11 @@ class TVAudioSimulatorPlugin extends PluginBase {
         context.strokeStyle = window.ThemePalette?.get('graph-trace') ?? '';
         context.lineWidth = 2 * scale;
         context.stroke();
+        context.restore();
 
         const info = TV_AUDIO_SIMULATOR_STANDARD_INFO[this.ss];
         Object.assign(frame, {
-            valid: true, plotLeft, plotTop, plotWidth, plotHeight, maximumHz, spectrum, dbToY,
+            valid: true, plotWidth, plotHeight, maximumHz, spectrum, dbToY,
             label: info.spectrum
         });
         const label = this._hudSignalLabel();
@@ -2090,9 +2108,9 @@ class TVAudioSimulatorPlugin extends PluginBase {
         if (!frame?.valid) return null;
         const { format, columnValueAt } = window.GraphReadout;
         const db = columnValueAt(frame.spectrum,
-            (x - frame.plotLeft) / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
+            x / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
         return {
-            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x - frame.plotLeft,
+            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x,
                 frame.plotWidth, TV_AUDIO_SIMULATOR_SPECTRUM_MIN_HZ, frame.maximumHz)),
             rows: [{ label: frame.label, color: 'var(--et-graph-trace)', value: format.db(db), y: frame.dbToY(db) }]
         };

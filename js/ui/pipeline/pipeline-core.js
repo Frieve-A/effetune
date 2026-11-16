@@ -315,6 +315,7 @@ export class PipelineCore {
         // Consider section effect ON/OFF state
         const sectionState = this.getPluginSectionState(plugin);
         plugin._setSectionEnabled?.(!sectionState.insideSection || sectionState.sectionEnabled);
+        plugin.onPipelinePositionChanged?.({ followedByAudioEffect: this.isFollowedByAudioEffect(plugin) });
         if (sectionState.insideSection && !sectionState.sectionEnabled) {
             effectiveEnabled = false;
         }
@@ -333,6 +334,29 @@ export class PipelineCore {
      */
     getPluginSectionState(plugin) {
         return this.sectionHandler.getPluginSectionState(plugin);
+    }
+
+    /**
+     * Whether an enabled audio effect follows the plugin: section markers, effects in a
+     * disabled section and Analyzer-category effects do not count.
+     * @param {Object} plugin - The plugin to check
+     * @returns {boolean}
+     */
+    isFollowedByAudioEffect(plugin) {
+        const pipeline = this.audioManager.pipeline;
+        const analyzers = this.pluginManager?.effectCategories?.Analyzer?.plugins || [];
+        let sectionEnabled = true;
+        let found = false;
+        for (const p of pipeline) {
+            if (p.constructor.name === 'SectionPlugin') {
+                sectionEnabled = p.enabled;
+            } else if (!found) {
+                found = p.id === plugin.id;
+            } else if (sectionEnabled && p.enabled && !analyzers.includes(p.name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -1804,7 +1804,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         for (let midi = 24; midi <= MULTI_F0_LAST_MIDI; midi++) {
             const isC = midi % 12 === 0;
             if (!isC && midi % 12 !== 5) continue;
-            if (midi < this.mn || midi > this.mx) continue;
+            // The line below the lowest row would sit on the roll's bottom edge, so it is not drawn.
+            if (midi <= this.mn || midi > this.mx) continue;
             const boundaryY = (this.mx - midi + 1) * rowHeight;
             context.fillStyle = isC
                 ? ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-strong') ?? '')
@@ -2368,7 +2369,8 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (midi < this.mn || midi > this.mx) continue;
             const row = this.mx - midi;
             const boundaryY = (row + 1) * rowHeight;
-            if (!this._usesBarHistory() && this.displayOptions?.showAxes !== false) {
+            // The line below the lowest row would sit on the roll's bottom edge, so it is not drawn.
+            if (midi > this.mn && !this._usesBarHistory() && this.displayOptions?.showAxes !== false) {
                 context.strokeStyle = isC ? ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-strong') ?? '') : ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-subtle') ?? '');
                 context.beginPath();
                 context.moveTo(0, boundaryY);
@@ -2419,6 +2421,30 @@ class NoteSpectrogramPlugin extends PluginBase {
         if (this.displayOptions?.drawChordKey) this.displayOptions.drawChordKey(context, drawChordLane);
         else drawChordLane(context);
         if (horizontal) context.restore();
+        if (this.displayOptions?.showAxisNumbers !== false) {
+            // Time axis title along the roll, outlined as in the spectrogram: centred at the bottom in Vertical,
+            // rotated at the left in Horizontal.
+            const theme = this.displayOptions?.themePalette ?? window.ThemePalette;
+            const text = this.displayOptions?.textContext ?? context;
+            const narrow = this.graphCssWidth < 500;
+            context.save();
+            context.font = `${(narrow ? 13 : 14) * dpr}px Arial`;
+            context.textAlign = 'center';
+            context.textBaseline = 'alphabetic';
+            context.strokeStyle = theme?.get('graph-bg-deep') ?? '';
+            context.lineWidth = 2 * dpr;
+            context.lineJoin = 'round';
+            context.fillStyle = theme?.get('text-primary') ?? '';
+            if (horizontal) {
+                context.translate((narrow ? 18 : 20) * dpr, rollWidth / 2);
+                context.rotate(-Math.PI / 2);
+            } else {
+                context.translate(rollWidth / 2, height - 8 * dpr);
+            }
+            text.strokeText('Time (s)', 0, 0);
+            text.fillText('Time (s)', 0, 0);
+            context.restore();
+        }
         const drawKey = (target, outline) => this._drawKeys(target, horizontal ? height : rollWidth, horizontal ? rollWidth : height, outline);
         if (this.displayOptions?.drawChordKey) this.displayOptions.drawChordKey(context, drawKey);
         else drawKey(context);

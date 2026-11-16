@@ -63,6 +63,7 @@
     "FiveBandPEQ": ["docs/plugins/eq.md", "5Band PEQ"],
     "GroupDelayEQ": ["docs/plugins/eq.md", "Group Delay EQ"],
     "GroupDelayPEQ": ["docs/plugins/eq.md", "Group Delay PEQ"],
+    "HeadphoneEQ": ["docs/plugins/eq.md", "Headphone EQ"],
     "HiPassFilter": ["docs/plugins/eq.md", "Hi Pass Filter"],
     "LoPassFilter": ["docs/plugins/eq.md", "Lo Pass Filter"],
     "LoudnessEqualizer": ["docs/plugins/eq.md", "Loudness Equalizer"],

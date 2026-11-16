@@ -18,7 +18,9 @@
  *                   // Return null when nothing was drawn.
  *     avoid(),      // optional: -> [{left, top, width, height}] extra occupied rects in surface units
  *     crosshair,    // 'x' | 'y' | 'xy' | 'none' (default 'x')
- *     legend,       // optional persistent legend [{label, color, opacity?}]; values fill in on hover
+ *     legend,       // optional persistent legend [{label, color, opacity?, swatch?, swatchOpacity?}]; values fill in on hover;
+ *                   // swatch 'dashed' | 'dotted' | 'fill' (an area) draws the swatch like its series
+ *                   // at swatchOpacity (an area's fill opacity)
  *     onLegendHover // optional (index | null) callback for persistent legend rows
  * });
  * readout.refresh();        // call at every exit of the draw function; re-reads only while active
@@ -283,6 +285,8 @@
         const boxRows = element('graph-readout-rows', box);
         let legend = null;
         let legendCursor = null;
+        let overLegend = false;
+        let hoveredRow = null;
         let pointer = null;
         let active = false;
         let pressed = false;
@@ -305,7 +309,10 @@
         function buildRow(parent, item) {
             const row = element('graph-readout-row', parent, false);
             // The series color marks only the swatch (and the dot); the text keeps the label color.
-            element('graph-readout-swatch', row, false).style.color = item.color;
+            const swatch = element('graph-readout-swatch', row, false);
+            swatch.style.color = item.color;
+            if (item.swatch) swatch.classList.add(`graph-readout-swatch-${item.swatch}`);
+            if (item.swatchOpacity !== undefined) swatch.style.opacity = String(item.swatchOpacity);
             const label = document.createElement('span');
             const value = document.createElement('span');
             label.className = 'graph-readout-label';
@@ -316,19 +323,41 @@
             return row;
         }
 
+        // The hovered legend row changes only when the pointer reaches another row (gaps and padding keep it).
+        function hoverRow(row) {
+            if (row === hoveredRow) return;
+            hoveredRow?.classList.remove('graph-readout-row-hovered');
+            hoveredRow = row;
+            row?.classList.add('graph-readout-row-hovered');
+            options.onLegendHover?.(row ? Number(row.dataset.index) : null);
+        }
+
         function setLegend(items) {
             legend?.remove();
             legend = null;
+            overLegend = false;
+            hoveredRow = null;
             if (!items?.length) return;
             legend = element('graph-readout-legend', root, false);
             legendCursor = element('graph-readout-cursor', legend);
             items.forEach((item, index) => {
                 const row = buildRow(legend, item);
                 row.dataset.label = item.label;
-                if (options.onLegendHover) {
-                    row.addEventListener('mouseenter', () => options.onLegendHover(index));
-                    row.addEventListener('mouseleave', () => options.onLegendHover(null));
-                }
+                row.dataset.index = String(index);
+            });
+            // The whole legend box is one hover target: inside it the plot readout is off, and the box keeps
+            // its size (see hide), so the pointer cannot fall out of it or onto another row by itself.
+            legend.addEventListener('pointerenter', () => {
+                overLegend = true;
+                clear();
+            });
+            legend.addEventListener('pointerover', event => {
+                const row = event.target.closest('.graph-readout-row');
+                if (row) hoverRow(row);
+            });
+            legend.addEventListener('pointerleave', () => {
+                overLegend = false;
+                hoverRow(null);
             });
             if (active) render();
         }
@@ -336,6 +365,8 @@
         function hide() {
             root.classList.remove('graph-readout-active');
             corner = null;
+            // Over the legend the values only turn invisible (CSS) and keep their space and held widths.
+            if (overLegend) return;
             for (const node of held) node.style.minWidth = '';
             held.clear();
             if (!legend) return;
@@ -344,12 +375,14 @@
         }
 
         // Keeps the panel and its number/unit columns from shrinking while values update, so the
-        // box edge and the decimal points do not jitter; hide() releases the widths.
-        function holdWidths(panel, scale) {
+        // box edge and the decimal points do not jitter; hide() releases the widths. The widths are read
+        // in layout px (the computed width, as min-width applies it), so holding one never feeds back into
+        // the next reading, whatever transform or fractional layout width the graph has.
+        function holdWidths(panel) {
             const nodes = [panel, ...panel.querySelectorAll('.graph-readout-prefix, .graph-readout-number, .graph-readout-unit')];
-            const widths = nodes.map(node => node.getBoundingClientRect().width / scale);
+            const widths = nodes.map(node => parseFloat(getComputedStyle(node).width));
             nodes.forEach((node, index) => {
-                if (parseFloat(node.style.minWidth || 0) >= widths[index]) return;
+                if (!(widths[index] > parseFloat(node.style.minWidth || 0))) return;
                 node.style.minWidth = `${widths[index]}px`;
                 held.add(node);
             });
@@ -434,7 +467,7 @@
 
         function render() {
             frame = 0;
-            const surface = active && pointer && mount.isConnected ? resolveSurface() : null;
+            const surface = active && pointer && !overLegend && mount.isConnected ? resolveSurface() : null;
             const surfaceRect = surface?.getBoundingClientRect();
             if (!surfaceRect?.width || !surfaceRect.height) return hide();
             const point = toSurface(surface, pointer.clientX, pointer.clientY);
@@ -475,12 +508,12 @@
             if (legend) {
                 setValue(legendCursor, result.cursor, !result.plainCursor);
                 fillRows(legend, result.rows);
-                holdWidths(legend, scale);
+                holdWidths(legend);
                 return;
             }
             setValue(boxCursor, result.cursor, !result.plainCursor);
             fillRows(boxRows, result.rows);
-            holdWidths(box, scale);
+            holdWidths(box);
             const areaRect = rectToLocal(area.getBoundingClientRect(), mountRect, scale);
             const areaLeft = Math.max(plotLocal.left, areaRect.left);
             const areaTop = Math.max(plotLocal.top, areaRect.top);

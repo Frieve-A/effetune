@@ -1681,10 +1681,16 @@ const systemAudioOutputs = [
   { kind: 'audioinput', deviceId: 'mic', groupId: 'group-mic' }
 ];
 
-function systemAudioOptions({ prepareResult = { ok: true }, devices = systemAudioOutputs, navigator = {} } = {}) {
+function systemAudioOptions({ prepareResult = { ok: true }, devices = systemAudioOutputs, navigator = {}, onMuteReport = () => {} } = {}) {
   return {
     window: {
-      electronAPI: { systemAudio: { prepareCapture: () => prepareResult } },
+      electronAPI: {
+        systemAudio: {
+          prepareCapture: () => prepareResult,
+          captureStarted: () => onMuteReport('started'),
+          captureStopped: () => onMuteReport('stopped')
+        }
+      },
       audioPreferences: { inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }
     },
     navigator: { devices, ...navigator }
@@ -1693,8 +1699,10 @@ function systemAudioOptions({ prepareResult = { ok: true }, devices = systemAudi
 
 test('System Audio startup captures through getDisplayMedia when the output differs from the default', async () => {
   const displayStream = createDisplayStream('loopback');
+  const muteReports = [];
   await withAudioIO(systemAudioOptions({
-    navigator: { getDisplayMediaQueue: [displayStream] }
+    navigator: { getDisplayMediaQueue: [displayStream] },
+    onMuteReport: report => muteReports.push(`${report}, tracks stopped: ${displayStream.audioTrack.stopped}`)
   }), async ({ manager, calls }) => {
     manager.currentOutputDeviceId = 'dac';
     assert.equal(await manager.initAudioInput({ inputDeviceId: SYSTEM_AUDIO_INPUT_DEVICE_ID }), '');
@@ -1712,6 +1720,12 @@ test('System Audio startup captures through getDisplayMedia when the output diff
     assert.equal(manager.getInputSnapshot().inputConfigured, true);
     assert.equal(manager.systemAudioDisabled, false);
     assert.equal(manager.systemAudioDefaultGroupId, 'group-speakers');
+
+    // The kept mute is released before the capture's tracks stop, and only once.
+    manager._stopStreamTracksOnce(displayStream);
+    manager._stopStreamTracksOnce(displayStream);
+    assert.deepEqual(muteReports, ['started, tracks stopped: false', 'stopped, tracks stopped: false']);
+    assert.equal(displayStream.audioTrack.stopped, true);
   });
 });
 

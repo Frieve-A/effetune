@@ -173,7 +173,7 @@ EffeTune prend actuellement en charge jusqu’à 16 canaux de sortie.
 ## 5. Réponse en fréquence et correction acoustique
 
 ### 5.1. Importation des paramètres AutoEQ dans 15Band PEQ
-Vous pouvez importer les paramètres d'égaliseur AutoEQ directement depuis le bouton en haut à droite.
+Vous pouvez importer les paramètres d'égaliseur AutoEQ directement depuis le bouton en haut à droite. Si vous préférez concevoir la correction à partir de la courbe de mesure de votre casque, recherchez votre modèle de casque dans [Headphone EQ](plugins/eq.md#headphone-eq).
 
 ### 5.2. Collage des paramètres de correction de mesure
 Copiez les paramètres 5Band PEQ depuis la page de mesure et collez-les dans la vue **Effect Pipeline** en utilisant **Ctrl+V** ou le menu.

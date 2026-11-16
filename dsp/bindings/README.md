@@ -57,9 +57,9 @@ explicit effect IDs are rejected by the runtime. Existing application
 `pipeline`/`plugins` documents, short parameter keys, and packed layouts are not
 accepted as v1 chain documents.
 
-`CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`,
-and `RoomEQ` additionally require `assets.impulseResponse`, an opaque resolver
-key. The six FIR filter effects expect prepared coefficient impulses at the
+`CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`,
+`HeadphoneEQ`, `IRReverb`, and `RoomEQ` additionally require `assets.impulseResponse`, an
+opaque resolver key. The seven FIR filter effects expect prepared coefficient impulses at the
 processing sample rate; `IRReverb` accepts its documented convolution modes and
 rates.
 Other v1 effects do not accept `assets`.
@@ -160,7 +160,7 @@ Effect(
 
 The 101 generated classes expose keyword-only, discoverable parameter
 signatures. Scalar defaults are literal values and array defaults are immutable
-tuples. The seven convolution-backed effects require an `assets` keyword;
+tuples. The eight convolution-backed effects require an `assets` keyword;
 effects without assets do not expose it. The generated
 `_generated_effects.pyi` supplies fixed tuples, `Literal` enums,
 `EffectChannel`, and the required typed asset shapes. Classes only gather
@@ -171,7 +171,7 @@ JavaScript `generated-effects.js` imports `Effect` from `./effect.js`, whose
 constructor contract is `Effect(type, options = {})`. Each generated class is a
 thin `constructor(options = {})` wrapper. The declaration file gives every
 effect its own options interface, fixed tuple and enum types, class, and factory.
-The seven convolution-backed effect option types require their `assets` member.
+The eight convolution-backed effect option types require their `assets` member.
 
 ## Generation and drift check
 

@@ -2346,7 +2346,9 @@ function normalizeConfig(config) {
             ? null
             : Math.max(20, Math.min(20000, requestedPhaseLowFrequency)),
         maxBoostDb: Math.max(0, Math.min(18, config.maxBoostDb ?? 6)),
-        correctionAmount: Math.max(0, Math.min(1, config.correctionAmount ?? 1)),
+        limitPeakGain: config.limitPeakGain === true,
+        // Negative amounts invert the correction (reproduce the measured deviation).
+        correctionAmount: Math.max(-1, Math.min(1, config.correctionAmount ?? 1)),
         phaseCorrectionAmount: Math.max(0, Math.min(1, config.phaseCorrectionAmount ?? 1)),
         reverbAmount: Math.max(0, Math.min(1, config.reverbAmount ?? 0)),
         reverbWindowMs,
@@ -2383,6 +2385,7 @@ function designCacheKey(config, sources) {
         lowFrequencyPhaseExtension: config.lowFrequencyPhaseExtension,
         phaseLowFrequency: config.phaseLowFrequency,
         maxBoostDb: config.maxBoostDb,
+        limitPeakGain: config.limitPeakGain,
         correctionAmount: config.correctionAmount,
         phaseCorrectionAmount: config.phaseCorrectionAmount,
         reverbAmount: config.reverbAmount,
@@ -2427,6 +2430,7 @@ function cloneDesignResult(result) {
         previews: result.previews.map(preview => preview ? {
             channel: preview.channel,
             referenceLevelDb: preview.referenceLevelDb,
+            headroomDb: preview.headroomDb,
             frequencies: Float32Array.from(preview.frequencies),
             measuredDb: Float32Array.from(preview.measuredDb),
             targetDb: Float32Array.from(preview.targetDb),
@@ -2688,12 +2692,15 @@ export function designRoomEq(request) {
             levelCount += 1;
         }
         const levelDb = gainToDb(Math.sqrt(levelPower / (levelCount || 1)));
+        // An inverted correction limits its own boosts, so Max Boost always caps the filter gain.
+        const correctionSign = config.correctionAmount < 0 ? -1 : 1;
+        const correctionScale = config.correctionAmount < 0 ? -config.correctionAmount : config.correctionAmount;
         const smoothedAutomaticCorrection = smoothFrequencyResponse(
             frequencies.map((frequency, index) => [
                 frequency,
                 frequency > config.lowFrequency && frequency < effectiveHigh
                     ? softLimitBoost(
-                        levelDb - unsmoothedMeasuredDb[index],
+                        correctionSign * (levelDb - unsmoothedMeasuredDb[index]),
                         config.maxBoostDb
                     )
                     : 0
@@ -2705,12 +2712,24 @@ export function designRoomEq(request) {
         const targetDb = new Float64Array(frequencies.length);
         for (let index = 0; index < frequencies.length; index += 1) {
             const automaticDb = smoothedAutomaticCorrection[index][1];
-            baseCorrectionDb[index] = automaticDb * config.correctionAmount;
+            baseCorrectionDb[index] = automaticDb * correctionScale;
             correctionDb[index] = baseCorrectionDb[index] + eqDb[index];
             targetDb[index] = levelDb + eqDb[index];
         }
+        // Limit Peak Gain: shift the synthesized response down so its largest boost is
+        // 0 dB. The preview arrays stay unshifted; the shift is reported as headroomDb.
+        let headroomDb = 0;
+        let synthesisCorrectionDb = correctionDb;
+        if (config.limitPeakGain) {
+            let peakDb = 0;
+            for (let index = 0; index < correctionDb.length; index += 1) {
+                if (correctionDb[index] > peakDb) peakDb = correctionDb[index];
+            }
+            headroomDb = -peakDb;
+            synthesisCorrectionDb = correctionDb.map(value => value + headroomDb);
+        }
         const synthesis = synthesizeFilter(
-            correctionDb,
+            synthesisCorrectionDb,
             frequencies,
             config,
             phaseSource
@@ -2810,6 +2829,7 @@ export function designRoomEq(request) {
         previews.push({
             channel: channelIndex,
             referenceLevelDb: levelDb,
+            headroomDb,
             frequencies: Float32Array.from(frequencies),
             measuredDb: Float32Array.from(displaySmoothed),
             targetDb: Float32Array.from(targetDb),

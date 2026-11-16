@@ -130,6 +130,9 @@ function createStrokeIcon(documentRef, pathData) {
     return { icon, path };
 }
 
+// Approximate advance of a 12px Arial tick-value character, for overlap checks.
+const TICK_CHARACTER_WIDTH = 7;
+
 function finitePoint(point) {
     if (Array.isArray(point)) return { x: Number(point[0]), y: Number(point[1]) };
     return { x: Number(point?.x), y: Number(point?.y) };
@@ -144,7 +147,7 @@ function curvePath(points, bounds) {
             drawing = false;
             continue;
         }
-        const x = bounds.left + Math.min(1, Math.max(0, point.x)) * bounds.width;
+        const x = bounds.left + point.x * bounds.width;
         const y = bounds.top + point.y * bounds.height;
         path += `${drawing ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`;
         drawing = true;
@@ -1425,10 +1428,14 @@ export class PipelineAnalyzerUI {
         this.curvePaths.clear();
         this.legendValues.clear();
 
+        // Interior ticks only: a tick on the graph edge gets neither a grid line nor a value.
+        const interiorTicks = ticks => (Array.isArray(ticks) ? ticks : [])
+            .map(tick => ({ position: Number(tick.position), label: String(tick.label ?? '') }))
+            .filter(tick => tick.position > 0 && tick.position < 1);
+        const xTicks = interiorTicks(view?.xTicks);
+        const yTicks = interiorTicks(view?.yTicks);
         const grid = svgElement(this.document, 'g', { class: 'pipeline-analyzer-grid', 'aria-hidden': 'true' });
-        for (const tick of Array.isArray(view?.xTicks) ? view.xTicks : []) {
-            const position = Number(tick.position);
-            if (!(Number.isFinite(position) && position >= 0 && position <= 1)) continue;
+        for (const { position } of xTicks) {
             const x = bounds.left + position * bounds.width;
             grid.appendChild(svgElement(this.document, 'line', {
                 x1: x,
@@ -1437,9 +1444,7 @@ export class PipelineAnalyzerUI {
                 y2: bounds.top + bounds.height
             }));
         }
-        for (const tick of Array.isArray(view?.yTicks) ? view.yTicks : []) {
-            const position = Number(tick.position);
-            if (!(Number.isFinite(position) && position >= 0 && position <= 1)) continue;
+        for (const { position } of yTicks) {
             const y = bounds.top + position * bounds.height;
             grid.appendChild(svgElement(this.document, 'line', {
                 x1: bounds.left,
@@ -1451,31 +1456,43 @@ export class PipelineAnalyzerUI {
         this.graphSvg.appendChild(grid);
 
         const axes = svgElement(this.document, 'g', { class: 'pipeline-analyzer-axes', 'aria-hidden': 'true' });
-        for (const tick of Array.isArray(view?.xTicks) ? view.xTicks : []) {
-            const position = Number(tick.position);
-            const label = svgElement(this.document, 'text', {
-                x: bounds.left + position * bounds.width,
-                y: bounds.top + bounds.height - 4,
-                'text-anchor': position <= 0 ? 'start' : position >= 1 ? 'end' : 'middle'
-            });
-            label.textContent = String(tick.label ?? '');
-            axes.appendChild(label);
+        const appendText = (text, attributes) => {
+            const element = svgElement(this.document, 'text', attributes);
+            element.textContent = text;
+            axes.appendChild(element);
+        };
+        // Tick values sit inside the axis titles, laid out like the effect graphs. A value is
+        // omitted only where it would leave the graph or overlap the previous value on its axis.
+        let previousRight = -Infinity;
+        for (const { position, label } of xTicks) {
+            const x = bounds.left + position * bounds.width;
+            const halfWidth = label.length * TICK_CHARACTER_WIDTH / 2;
+            if (x - halfWidth < previousRight + 4 || x - halfWidth < bounds.left ||
+                x + halfWidth > bounds.left + bounds.width) continue;
+            previousRight = x + halfWidth;
+            appendText(label, { x, y: bounds.top + bounds.height - 24, 'text-anchor': 'middle' });
         }
-        for (const tick of Array.isArray(view?.yTicks) ? view.yTicks : []) {
-            const position = Number(tick.position);
-            const tickY = bounds.top + position * bounds.height;
-            const label = svgElement(this.document, 'text', {
-                x: this.configuration.graphView === 'frequency'
-                    ? bounds.left + bounds.width * 0.02
-                    : bounds.left + 2,
-                y: position <= 0
-                    ? bounds.top + 5
-                    : position >= 1 ? bounds.top + bounds.height - 5 : tickY,
-                'text-anchor': 'start',
-                'dominant-baseline': 'middle'
+        let previousY = -Infinity;
+        for (const { position, label } of yTicks) {
+            const y = bounds.top + position * bounds.height;
+            if (y - previousY < 16 || y < bounds.top + 8 || y > bounds.top + bounds.height - 4) continue;
+            previousY = y;
+            appendText(label, { x: bounds.left + 48, y: y + 4, 'text-anchor': 'end' });
+        }
+        if (view?.xLabel) {
+            appendText(view.xLabel, {
+                class: 'pipeline-analyzer-axis-title',
+                x: bounds.left + bounds.width / 2,
+                y: bounds.top + bounds.height - 5,
+                'text-anchor': 'middle'
             });
-            label.textContent = String(tick.label ?? '');
-            axes.appendChild(label);
+        }
+        if (view?.yLabel) {
+            appendText(view.yLabel, {
+                class: 'pipeline-analyzer-axis-title',
+                transform: `translate(${bounds.left + 14} ${bounds.top + bounds.height / 2}) rotate(-90)`,
+                'text-anchor': 'middle'
+            });
         }
         this.graphSvg.appendChild(axes);
 
@@ -1555,7 +1572,7 @@ export class PipelineAnalyzerUI {
             this.analysisPlot = new AnalysisPlot(this.analysisCanvas, this.analysisOutput, patch => {
                 Object.assign(this.waterfallView, patch);
                 this.renderGraph();
-            });
+            }, { effectStyle: true });
         }
         const plotState = viewName === 'distortion'
             ? { ...state, series: state.series.filter(series => this.selectedHarmonics.has(series.order)) }

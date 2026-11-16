@@ -422,8 +422,8 @@ return data; // Return the modified buffer
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
 
-        // Vertical grid lines (frequency)
-        const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        // Vertical grid lines (frequency); 20 Hz and 20 kHz sit on the canvas edges
+        const freqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
         freqs.forEach(freq => {
             const x = width * (Math.log10(freq) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath();
@@ -432,15 +432,13 @@ return data; // Return the modified buffer
             ctx.stroke();
 
             // Frequency labels
-            if (freq !== 20 && freq !== 20000) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'center';
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'center';
+            ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
         });
 
-        // Horizontal grid lines (dB)
-        const dBs = [-24, -18, -12, -6, 0, 6, 12, 18, 24];
+        // Horizontal grid lines (dB); ±24 dB sit on the canvas edges
+        const dBs = [-18, -12, -6, 0, 6, 12, 18];
         dBs.forEach(db => {
             const y = height * (1 - (db + 24) / 48);
             ctx.beginPath();
@@ -449,11 +447,9 @@ return data; // Return the modified buffer
             ctx.stroke();
 
             // dB labels
-            if (db !== -24 && db !== 24) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'right';
-                ctx.fillText(`${db}`, 48, y + 4);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'right';
+            ctx.fillText(`${db}`, 48, y + 4);
         });
 
         // Draw axis labels
@@ -579,14 +575,13 @@ return data; // Return the modified buffer
                 const combinedDb = 10 * Math.log10(totalMagSq + 1e-18); // Use 10*log10 for magnitude squared
                 response[i] = combinedDb; // Keep the true (unclamped) value for the cursor readout
 
-                // Map response to canvas height
-                const y = height * (1 - (combinedDb + 24) / 48); // Clamp to avoid extreme values?
-                const clampedY = Math.max(0, Math.min(height, y)); // Clamp y to canvas bounds
+                // Map response to canvas height; values beyond the axis leave the canvas
+                const y = height * (1 - (combinedDb + 24) / 48);
 
                 if (i === 0) {
-                    ctx.moveTo(i, clampedY);
+                    ctx.moveTo(i, y);
                 } else {
-                    ctx.lineTo(i, clampedY);
+                    ctx.lineTo(i, y);
                 }
             }
             ctx.stroke();

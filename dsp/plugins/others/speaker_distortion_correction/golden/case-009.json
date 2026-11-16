@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "type": "SpeakerDistortionCorrectionPlugin",
+  "id": "long-96000-sweep-block127",
+  "stimulus": "sweep",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1536,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 8,
+  "seed": "0xeffe7a56",
+  "params": {
+    "dv": 0,
+    "md": "Reduce",
+    "_scf": 0,
+    "_scc": 0
+  },
+  "events": [],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 16,
+    "frames": 1247,
+    "topology": 2,
+    "headBlock": 0,
+    "rateDivider": 1,
+    "ir": {
+      "kind": "speaker-distortion-v1",
+      "seed": 5307,
+      "scale": 0.002,
+      "correctedChannels": [
+        0
+      ],
+      "step": 1
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:a01beb31faae457e2f005123d4076384a604032423c077ca2998589052a846ef",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SpeakerDistortionCorrectionPlugin --promote-production-native",
+  "outputFloats": 3072,
+  "byteLength": 12288,
+  "binary": "case-009.f32"
+}

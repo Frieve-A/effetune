@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "type": "SpeakerDistortionCorrectionPlugin",
+  "id": "no-asset-noise-exact-bypass",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 513,
+  "blockSize": 37,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "dv": 0,
+    "md": "Reduce",
+    "_scf": 0,
+    "_scc": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:a01beb31faae457e2f005123d4076384a604032423c077ca2998589052a846ef",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SpeakerDistortionCorrectionPlugin --promote-production-native",
+  "outputFloats": 1026,
+  "byteLength": 4104,
+  "binary": "case-002.f32"
+}

@@ -8,8 +8,8 @@ android {
         applicationId = "com.frieve.effetune"
         minSdk = 29
         targetSdk = 37
-        versionCode = 21801
-        versionName = "2.18.1"
+        versionCode = 21900
+        versionName = "2.19.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON", "-DANDROID_STL=c++_shared") } }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -51,6 +51,15 @@ android {
 }
 
 dependencies {
+    constraints {
+        // Lint resolves its own tooling classpath separately from the AGP buildscript.
+        add("androidLintTool", "com.google.guava:guava:33.8.0-jre")
+        add("androidLintTool", "org.apache.commons:commons-lang3:3.22.0")
+        add("androidLintTool", "org.apache.httpcomponents:httpclient:4.5.14")
+        add("androidLintTool", "org.bouncycastle:bcpkix-jdk18on:1.87")
+        add("androidLintTool", "org.bouncycastle:bcprov-jdk18on:1.87")
+        add("androidLintTool", "org.bouncycastle:bcutil-jdk18on:1.87")
+    }
     implementation("androidx.core:core:1.19.1")
     implementation("androidx.webkit:webkit:1.18.0")
     implementation("com.google.oboe:oboe:1.11.0")

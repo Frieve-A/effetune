@@ -173,7 +173,7 @@ Actualmente, EffeTune admite hasta 16 canales de salida.
 ## 5. Respuesta de frecuencia y corrección de sala
 
 ### 5.1. Importación de ajustes de AutoEQ a 15Band PEQ
-Puedes importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha.
+Puedes importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha. Si prefieres diseñar la corrección a partir de la curva de medición de tus auriculares, busca su modelo en [Headphone EQ](plugins/eq.md#headphone-eq).
 
 ### 5.2. Pegado de ajustes de corrección de medición
 Copia los ajustes de 5Band PEQ desde la página de medición y pégalos en la vista **Effect Pipeline** usando **Ctrl+V** o el menú.

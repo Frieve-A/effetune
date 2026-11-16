@@ -561,8 +561,7 @@ class StereoMeterPlugin extends PluginBase {
     const background = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
     const tickPalette = this.displayOptions?.themePalette ?? window.ThemePalette;
     const tickColor = tickPalette?.get('graph-trace-tertiary') ?? '';
-    const tickLabelColor = tickPalette?.get(this.displayOptions?.visualizerAxisLabels
-      ? 'graph-label' : 'graph-trace-tertiary') ?? '';
+    const tickLabelColor = tickPalette?.get('graph-label') ?? '';
     const trace = (window.ThemePalette?.get('graph-trace') ?? '');
     // A standalone meter's picture depends only on these inputs (including every theme color drawn
     // below), so skip frames where none changed. Hosts with display options always redraw.
@@ -806,7 +805,7 @@ class StereoMeterPlugin extends PluginBase {
         ctx.font = `${12 * dpr}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText(tick.toString() + 'dB', xTick, energyTickY - (23 * dpr));
+        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText(tick.toString(), xTick, energyTickY - (23 * dpr));
       });
     }
 
@@ -825,8 +824,8 @@ class StereoMeterPlugin extends PluginBase {
       ctx.lineWidth = 2 * dpr;
       ctx.lineJoin = 'round';
       ctx.textAlign = 'center';
-      ctx.font = `${12 * dpr}px Arial`;
-      if (this.displayOptions?.showBalance !== false) label('LR Balance', width / 2, height - dpr);
+      ctx.font = `${(outline ? 12 : 14) * dpr}px Arial`;
+      if (this.displayOptions?.showBalance !== false) label('LR Balance (dB)', width / 2, height - dpr);
       if (this.displayOptions?.showCorrelation !== false) {
         ctx.translate(20 * dpr, height / 2);
         ctx.rotate(-Math.PI / 2);

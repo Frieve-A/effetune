@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "type": "SpeakerDistortionCorrectionPlugin",
+  "id": "short-96000-noise-dv-event",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 2,
+  "frameCount": 1536,
+  "blockSize": 37,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "dv": 0,
+    "md": "Reduce",
+    "_scf": 0,
+    "_scc": 0
+  },
+  "events": [
+    {
+      "frame": 901,
+      "params": {
+        "dv": -3
+      }
+    }
+  ],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 16,
+    "frames": 1247,
+    "topology": 2,
+    "headBlock": 0,
+    "rateDivider": 1,
+    "ir": {
+      "kind": "speaker-distortion-v1",
+      "seed": 5306,
+      "scale": 0.002,
+      "correctedChannels": [
+        0
+      ],
+      "oddChannels": [
+        0,
+        1
+      ],
+      "oddScale": 0.02,
+      "step": 0
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:a01beb31faae457e2f005123d4076384a604032423c077ca2998589052a846ef",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SpeakerDistortionCorrectionPlugin --promote-production-native",
+  "outputFloats": 3072,
+  "byteLength": 12288,
+  "binary": "case-008.f32"
+}

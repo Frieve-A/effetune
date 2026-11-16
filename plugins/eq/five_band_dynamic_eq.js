@@ -1029,7 +1029,7 @@ class FiveBandDynamicEQ extends PluginBase {
         const cssWidth = this.canvas.clientWidth || width;
         const dpr = cssWidth > 0 ? width / cssWidth : 1;
         const gridFontSize = Math.round(12 * dpr);
-        const axisFontSize = Math.round(13 * dpr);
+        const axisFontSize = Math.round(14 * dpr);
 
         // --- Clear and Draw Background ---
         // Ensure the canvas is cleared before drawing
@@ -1044,7 +1044,7 @@ class FiveBandDynamicEQ extends PluginBase {
         ctx.lineWidth = Math.max(1, 1 * dpr);
         // Set grid label style
         ctx.font = `${gridFontSize}px Arial`;
-        ctx.fillStyle = (window.ThemePalette?.get('graph-tone-50') ?? '');  // Darker text color for better visibility
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
 
         // Define frequency and gain ranges for the graph axis
         const minFreq = 10;      // Hz, matches PEQ range

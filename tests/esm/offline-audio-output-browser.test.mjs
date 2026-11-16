@@ -148,9 +148,9 @@ test('FLAC and WAV output encode and decode in Chromium while local codec assets
           const input = new AudioBuffer({ numberOfChannels: 2, length: 32768, sampleRate: 48000 });
           input.getChannelData(0)[0] = .1;
           input.getChannelData(1)[8960] = -.00003;
-          input.getChannelData(0)[12800] = -3e-10;
-          input.getChannelData(0)[14080] = -2e-10;
+          input.getChannelData(0)[14080] = 127.75 / 0x80000000;
           input.getChannelData(1)[15360] = 3e-8;
+          input.getChannelData(0)[16640] = -3e-10;
           for (let index = 25600; index < 32768; index++) input.getChannelData(0)[index] = index & 1 ? -1e-19 : 1e-19;
           const settings = { format, sampleRate, wavSampleFormat: quality, flacSampleFormat: quality };
           const encoder = new AudioEncoder();
@@ -177,8 +177,8 @@ test('FLAC and WAV output encode and decode in Chromium while local codec assets
         if (value.quality === 'float32') assert.equal(value.actualLength, value.fullLength);
       }
       assert.equal(trimmedCases.find(value => value.format === 'wav' && value.quality === 'pcm24').last, 8960);
-      assert.equal(trimmedCases.find(value => value.format === 'flac' && value.quality === 'pcm24').last, 12800,
-        'the pinned FLAC float-to-int32 shift keeps negative values WAV PCM24 rounds to zero');
+      assert.equal(trimmedCases.find(value => value.format === 'flac' && value.quality === 'pcm24').last, 14080,
+        'FLAC two-step rounding keeps a positive boundary value WAV PCM24 rounds to zero');
 
       const midiFlac = await page.evaluate(async () => {
         const [{ OfflineProcessor }, { AudioEncoder }, { parseSfz }, { packSfzAsset },

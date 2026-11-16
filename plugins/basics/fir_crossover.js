@@ -856,7 +856,6 @@ class FIRCrossoverPlugin extends PluginBase {
     const { width, height } = this.canvas;
     if (!width || !height) return;
     const dpr = this._getCanvasDpr(this.canvas);
-    const cssWidth = width / dpr;
     const tickFont = Math.round(11 * dpr);
     const axisFont = Math.round(13 * dpr);
     const bottomTickY = height - 26 * dpr;
@@ -873,41 +872,37 @@ class FIRCrossoverPlugin extends PluginBase {
     context.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     context.font = `${tickFont}px Arial`;
 
-    const gridFrequencies = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-    const labeledFrequencies = cssWidth < 420
-      ? [20, 100, 500, 2000, 10000]
-      : gridFrequencies;
-    for (const frequency of gridFrequencies) {
+    // A frequency value that would overlap the previous value is omitted.
+    let previousRight = -Infinity;
+    for (const frequency of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
       const x = width * (Math.log10(frequency) - minimumLog) /
         (maximumLog - minimumLog);
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, height);
       context.stroke();
-      if (labeledFrequencies.includes(frequency)) {
+      const label = frequency >= 1000 ? `${frequency / 1000}k` : `${frequency}`;
+      const halfWidth = context.measureText(label).width / 2;
+      if (x - halfWidth >= previousRight + 4 * dpr) {
         context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.textAlign = 'center';
-        context.fillText(
-          frequency >= 1000 ? `${frequency / 1000}k` : frequency,
-          x,
-          bottomTickY
-        );
+        context.fillText(label, x, bottomTickY);
+        previousRight = x + halfWidth;
       }
     }
 
     const decibelRange = [-60, 12];
     const decibelSpan = decibelRange[1] - decibelRange[0];
-    for (const decibels of [-60, -48, -36, -24, -12, 0]) {
+    // Interior grid values only: -60 dB is the bottom axis bound
+    for (const decibels of [-48, -36, -24, -12, 0]) {
       const y = height * (1 - (decibels - decibelRange[0]) / decibelSpan);
       context.beginPath();
       context.moveTo(0, y);
       context.lineTo(width, y);
       context.stroke();
-      if (decibels > decibelRange[0]) {
-        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        context.textAlign = 'right';
-        context.fillText(`${decibels}`, leftLabelX, y + 3 * dpr);
-      }
+      context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+      context.textAlign = 'right';
+      context.fillText(`${decibels}`, leftLabelX, y + 3 * dpr);
     }
 
     context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');

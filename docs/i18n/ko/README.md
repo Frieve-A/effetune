@@ -457,6 +457,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | EQ | Earphone Cable Sim | 일반적인 이어폰 케이블 차이로 생기는 주파수 응답 변화가 대개 얼마나 작은지 확인 | [세부 정보](plugins/eq.md#earphone-cable-sim) |
 | EQ | Group Delay EQ | 음색을 바꾸지 않고 대역별 지연을 조정 | [세부 정보](plugins/eq.md#group-delay-eq) |
 | EQ | Group Delay PEQ | 음색을 바꾸지 않고 주파수별 지연을 5개 파라메트릭 대역으로 조정 | [세부 정보](plugins/eq.md#group-delay-peq) |
+| EQ | Headphone EQ | 헤드폰의 측정 곡선을 바탕으로 목표 곡선에 가깝게 맞추는 FIR 보정 | [세부 정보](plugins/eq.md#headphone-eq) |
 | EQ | Hi Pass Filter | 불필요한 저주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | 불필요한 고주파를 정밀하게 제거 | [세부 정보](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | 낮은 볼륨 청취를 위한 주파수 밸런스 보정 | [세부 정보](plugins/eq.md#loudness-equalizer) |
@@ -524,6 +525,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial | Phase Select EQ | L/R 위상차와 Balance로 선택한 주파수 성분을 부스트 또는 컷 | [세부 정보](plugins/spatial.md#phase-select-eq) |
 | Spatial | Spatial Mapper | Direct, Diffuse, Residual 소리를 분리해 유연하게 멀티채널로 라우팅 | [세부 정보](plugins/spatial.md#spatial-mapper) |
 | Spatial | Stereo Blend | 극성이 바뀐 스테레오에서 모노를 거쳐 확장 스테레오까지 스테레오 폭 제어 | [세부 정보](plugins/spatial.md#stereo-blend) |
+| Others | Distortion Correction | EffeTune에서 측정한 내 스피커의 결과로 스피커 왜곡을 줄임 | [세부 정보](plugins/others.md#distortion-correction) |
 | Others | Oscillator | 스피커나 헤드폰 확인용 테스트 톤/노이즈 제너레이터 | [세부 정보](plugins/others.md#oscillator) |
 | Others | SoundFont Note Player | 감지한 음을 SF2/SF3 SoundFont와 SFZ 악기로 재생 | [세부 정보](plugins/others.md#sfz-note-player) |
 | Others | SoundFont Player | SF2/SF3 SoundFont나 SFZ 악기로 MIDI 재생, SF2/SF3는 16개 채널에 독립적인 음색 지원 | [세부 정보](plugins/others.md#soundfont-player) |

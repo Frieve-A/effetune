@@ -7,6 +7,7 @@ import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 const context = { window: {} };
 vm.runInNewContext(frequencyAxisSource, context);
 const axes = context.window.FrequencyAxis;
+const firAssetEqSource = fs.readFileSync(new URL('../../plugins/fir-asset-eq.js', import.meta.url), 'utf8');
 const files = {
   BandPassFilterPlugin: 'eq/band_pass_filter', CombFilterPlugin: 'eq/comb_filter',
   FifteenBandGEQPlugin: 'eq/fifteen_band_geq', HiPassFilterPlugin: 'eq/hi_pass_filter',
@@ -16,6 +17,7 @@ const files = {
   FiveBandDynamicEQ: 'eq/five_band_dynamic_eq', FiveBandPEQPlugin: 'eq/five_band_peq',
   FifteenBandPEQPlugin: 'eq/fifteen_band_peq', FiveBandFIRPEQPlugin: 'eq/five_band_fir_peq',
   RoomEqPlugin: 'eq/room_eq', EarphoneCableSimPlugin: 'eq/earphone_cable_sim', SubSynthPlugin: 'saturation/sub_synth',
+  SpeakerDistortionCorrectionPlugin: 'others/speaker_distortion_correction',
   GroupDelayEqPlugin: 'eq/group_delay_eq', GroupDelayPEQPlugin: 'eq/group_delay_peq',
   ExciterPlugin: 'saturation/exciter', DSD64IMDSimulatorPlugin: 'lofi/dsd64_imd_simulator',
   SpectrumAnalyzerPlugin: 'analyzer/spectrum_analyzer', SpectrogramPlugin: 'analyzer/spectrogram',
@@ -33,7 +35,7 @@ test('all frequency axes match plugin selectors and coordinate definitions', () 
     assert.ok(source.includes(graphClass) || (graphClass === 'graph-container' && source.includes('this.createResponsiveGraph(')), `${name} selector`);
     if (target.axisCheck.ownerOf) {
       const sandbox = { window: {}, PluginBase: class {}, console };
-      vm.runInNewContext(`${source}\nthis.Loaded = ${name};`, sandbox);
+      vm.runInNewContext(`${firAssetEqSource}\n${source}\nthis.Loaded = ${name};`, sandbox);
       const plugin = Object.create(sandbox.Loaded.prototype);
       if (name === 'RoomEqPlugin') plugin._additionalEqEditor = sandbox.Loaded.createAdditionalEqEditor();
       const owner = target.axisCheck.ownerOf(plugin);

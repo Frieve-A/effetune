@@ -63,6 +63,7 @@ eq/comb_filter: Comb Filter | EQ | CombFilterPlugin | css
 eq/earphone_cable_sim: Earphone Cable Sim | EQ | EarphoneCableSimPlugin | css
 eq/group_delay_eq: Group Delay EQ | EQ | GroupDelayEqPlugin | css
 eq/group_delay_peq: Group Delay PEQ | EQ | GroupDelayPEQPlugin | css
+eq/headphone_eq: Headphone EQ | EQ | HeadphoneEQPlugin | css
 eq/hi_pass_filter: Hi Pass Filter | EQ | HiPassFilterPlugin | css
 eq/lo_pass_filter: Lo Pass Filter | EQ | LoPassFilterPlugin | css
 eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css
@@ -130,6 +131,7 @@ spatial/multiband_balance: Multiband Balance | Spatial | MultibandBalancePlugin 
 spatial/phase_select_eq: Phase Select EQ | Spatial | PhaseSelectEqPlugin | css
 spatial/spatial_mapper: Spatial Mapper | Spatial | SpatialMapperPlugin | css
 spatial/stereo_blend: Stereo Blend | Spatial | StereoBlendPlugin
+others/speaker_distortion_correction: Distortion Correction | Others | SpeakerDistortionCorrectionPlugin | css
 others/oscillator: Oscillator | Others | OscillatorPlugin
 others/sfz_note_player: SoundFont Note Player | Others | SFZNotePlayerPlugin | css
 others/soundfont_player: SoundFont Player | Others | SoundFontPlayerPlugin | css

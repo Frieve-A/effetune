@@ -27,6 +27,17 @@ test('the pipeline hand-off is consumed exactly once', async () => {
     assert.deepEqual(taken.pluginNames, ['Room EQ']);
     assert.equal(taken.snapshot.channelCount, 2);
     assert.deepEqual(Array.from(new Uint8Array(taken.snapshot.dsp.bytes)), [1, 2, 3]);
+    assert.equal(taken.speakerDistortion, null);
+    assert.equal(await takePipelineHandoffOnce({ indexedDB }), null);
+});
+
+test('the pipeline hand-off carries the speaker distortion request once', async () => {
+    const indexedDB = createFakeIndexedDb();
+    const request = { view: 'checkAgain', measurementId: 'm1', channels: [0, 1], length: 'short', dv: -3 };
+    await putPipelineHandoff({ ...handoff(), speakerDistortion: request }, { indexedDB });
+
+    const taken = await takePipelineHandoffOnce({ indexedDB });
+    assert.deepEqual(taken.speakerDistortion, request);
     assert.equal(await takePipelineHandoffOnce({ indexedDB }), null);
 });
 

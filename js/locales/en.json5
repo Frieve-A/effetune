@@ -837,7 +837,8 @@
   "dialog.config.networkOutput.local": "This computer",
   "dialog.config.networkOutput.delay": "Delay (ms)",
   "dialog.config.networkOutput.resync": "Resync",
-  "dialog.config.networkOutput.resyncHelp": "Restarts all speakers together. Use this if they drift out of sync.",
+  "dialog.config.networkOutput.resyncHelp": "Measures the speakers' timing again and realigns them. Playback continues, and the timing changes once when the new measurement is ready. Speakers that cannot report their timing restart briefly.",
+  "dialog.config.networkOutput.syncing": "Syncing speakers…",
   "dialog.config.networkOutput.status.searching": "Searching",
   "dialog.config.networkOutput.status.connecting": "Connecting",
   "dialog.config.networkOutput.status.playing": "Playing",
@@ -955,12 +956,16 @@
   "bassManagement.error.design": "Bass Management filters could not be prepared. Try reducing Taps and try again.",
   "firCrossover.error.design": "The FIR crossover filters could not be designed. Try fewer Taps or less extreme settings.",
   "fiveBandFirPeq.error.design": "The 5Band FIR PEQ filter could not be designed. Try fewer Taps or less extreme settings.",
+  "headphoneEq.error.design": "The Headphone EQ correction filter could not be designed. Try fewer Taps or load the measurement again.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "The filter could not be designed. Try a different Taps setting.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "The filter could not be designed. Try a different Taps setting.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "The speaker correction could not be prepared for this export because its measurement is not on this device. Measure speaker distortion on this device or choose another measurement, or turn the effect off for the export.",
 
   // Controller mapping
   "midi.title": "Controller Mapping Settings",

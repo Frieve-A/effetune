@@ -135,7 +135,9 @@ function loadPipelineAnalyzerModules() {
         loadStylesheet(PIPELINE_ANALYZER_STYLESHEET);
         pipelineAnalyzerModulesPromise = Promise.all([
             import('./pipeline-analyzer/controller.js'),
-            import('./pipeline-analyzer/ui.js')
+            import('./pipeline-analyzer/ui.js'),
+            // The column fit reads the panel width from this stylesheet.
+            waitForStylesheets()
         ]).then(([controllerModule, uiModule]) => ({
             PipelineAnalyzerController: controllerModule.PipelineAnalyzerController,
             PipelineAnalyzerUI: uiModule.PipelineAnalyzerUI
@@ -779,9 +781,12 @@ export class UIManager {
                     this.pipelineAnalyzerUI = new PipelineAnalyzerUI({
                         onOpenChange: open => this.setPipelineAnalyzerOpen(open),
                         onLayoutChange: () => {
-                            if (this.pipelineManager.core.columnManager.isAutomatic()) {
-                                this.pluginListManager.checkWindowWidthAndAdjust();
-                            }
+                            const columnManager = this.pipelineManager.core.columnManager;
+                            if (!columnManager.isAutomatic()) return;
+                            // The collapse check waits for startup to finish, so fit the
+                            // columns here; a restored panel then opens before first paint.
+                            columnManager.adjustColumnsToWindow();
+                            this.pluginListManager.checkWindowWidthAndAdjust();
                         },
                         onConfigurationChange: (configuration, meta) =>
                             this.pipelineAnalyzerController?.setConfiguration(configuration, meta),

@@ -86,14 +86,15 @@
     "e11": true,
     "e12": true,
     "e13": true,
-    "e14": true
+    "e14": true,
+    "mg": 0
   },
   "events": [],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "c44e100972cd9278418414262ee3ec0d91b959552bb5c699c29ac449ac4f3e15",
+  "jsEngineHash": "47da88b63215fb3d7725f7dd719afff102673905cbe6ec4a599c9dea70653ae6",
   "outputFloats": 24000,
   "byteLength": 96000,
   "binary": "case-002.f32"

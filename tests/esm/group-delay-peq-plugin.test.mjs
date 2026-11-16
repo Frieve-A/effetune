@@ -16,6 +16,8 @@ import { getPluginExecutionCapabilities } from '../../js/audio/plugin-execution-
 
 const pluginUrl = new URL('../../plugins/eq/group_delay_peq.js', import.meta.url);
 const pluginSource = fs.readFileSync(pluginUrl, 'utf8');
+const firAssetEqUrl = new URL('../../plugins/fir-asset-eq.js', import.meta.url);
+const firAssetEqSource = fs.readFileSync(firAssetEqUrl, 'utf8');
 const graphPointInteractionSource = fs.readFileSync(
     new URL('../../plugins/graph-point-interaction.js', import.meta.url),
     'utf8'
@@ -230,7 +232,7 @@ function loadPlugin() {
         clearTimeout
     };
     vm.runInNewContext(
-        `${graphPointInteractionSource}\n${pluginSource}\nthis.Plugin = GroupDelayPEQPlugin;`,
+        `${graphPointInteractionSource}\n${firAssetEqSource}\n${pluginSource}\nthis.Plugin = GroupDelayPEQPlugin;`,
         context,
         { filename: pluginUrl.pathname }
     );
@@ -257,8 +259,8 @@ function mountUI(plugin, { runtime = graphRuntime(), resolveRuntime = true } = {
     const container = plugin.createUI();
     plugin.graphContainer.clientWidth = 1024;
     plugin.graphContainer.clientHeight = 480;
-    plugin.responseSvg.clientWidth = 984;
-    plugin.responseSvg.clientHeight = 440;
+    plugin.responseSvg.clientWidth = 1024;
+    plugin.responseSvg.clientHeight = 480;
     return container;
 }
 
@@ -689,16 +691,20 @@ test('Group Delay PEQ design modules import files and exports that exist', async
 
     // Everything the plugin pulls in at runtime, and every name it reads off the
     // merged runtime object, has to exist. A missing name (IR_ASSET_TOPOLOGY was the
-    // known case) only shows up in the browser otherwise.
+    // known case) only shows up in the browser otherwise. The shared FIR base
+    // assembles part of that runtime, so its imports and reads count as well.
+    const runtimeSources = [[pluginSource, pluginUrl], [firAssetEqSource, firAssetEqUrl]];
     const runtime = {};
-    for (const match of pluginSource.matchAll(/import\('([^']+)'\)/g)) {
-        const target = new URL(match[1], pluginUrl);
-        assert.ok(fs.existsSync(target), `plugin imports missing file ${match[1]}`);
-        Object.assign(runtime, await import(target.href));
+    for (const [source, sourceUrl] of runtimeSources) {
+        for (const match of source.matchAll(/import\('([^']+)'\)/g)) {
+            const target = new URL(match[1], sourceUrl);
+            assert.ok(fs.existsSync(target), `plugin imports missing file ${match[1]}`);
+            Object.assign(runtime, await import(target.href));
+        }
     }
-    const used = new Set(
-        [...pluginSource.matchAll(/runtime\.([A-Za-z_$][\w$]*)/g)].map(match => match[1])
-    );
+    const used = new Set(runtimeSources.flatMap(([source]) =>
+        [...source.matchAll(/runtime\.([A-Za-z_$][\w$]*)/g)].map(match => match[1])
+    ));
     assert.ok(used.size >= 4);
     for (const name of used) assert.ok(name in runtime, `runtime has no export ${name}`);
 });
@@ -932,10 +938,10 @@ test('Group Delay PEQ maps drag height to delay and widens rather than shrinks t
     plugin.activeDragMarker = 0;
     plugin.hasMoved = true;
     plugin._dragScaleExpansions = 0;
-    // The plot starts 20 px down and is 440 px tall, so its bottom edge is at 460.
+    // The plot is the whole 480 px graph, so its bottom edge is at 480.
     // Sitting on the edge is not a step of its own: the pointer has spent no travel
     // outside the plot yet, so the axis stays where it is.
-    const bottom = { clientX: 512, clientY: 460 };
+    const bottom = { clientX: 512, clientY: 480 };
     plugin.handleDragMove(bottom);
     assert.equal(plugin._scale.gridStep, 2);
     assert.equal(plugin._scale.range, 10);
@@ -949,7 +955,7 @@ test('Group Delay PEQ maps drag height to delay and widens rather than shrinks t
     assert.equal(plugin.d0, -10);
 
     // Pushing out past the edge is what widens it, one step per travel step.
-    plugin.handleDragMove({ clientX: 512, clientY: 460 + Plugin.EDGE_EXPAND_STEP_PX });
+    plugin.handleDragMove({ clientX: 512, clientY: 480 + Plugin.EDGE_EXPAND_STEP_PX });
     assert.equal(plugin._scale.gridStep, 5);
     assert.equal(plugin.d0, -25);
 
@@ -959,10 +965,10 @@ test('Group Delay PEQ maps drag height to delay and widens rather than shrinks t
     assert.equal(plugin.d0, 0);
     // The far edge widens on the same rule, measured against the travel already
     // spent, so a wiggle between the two edges cannot ratchet the axis open.
-    plugin.handleDragMove({ clientX: 512, clientY: 20 });
+    plugin.handleDragMove({ clientX: 512, clientY: 0 });
     assert.equal(plugin._scale.gridStep, 5);
     assert.equal(plugin.d0, 25);
-    plugin.handleDragMove({ clientX: 512, clientY: 20 - 2 * Plugin.EDGE_EXPAND_STEP_PX });
+    plugin.handleDragMove({ clientX: 512, clientY: -2 * Plugin.EDGE_EXPAND_STEP_PX });
     assert.equal(plugin._scale.gridStep, 10);
     assert.equal(plugin.d0, 50);
 
@@ -1007,7 +1013,7 @@ test('Group Delay PEQ reaches the whole delay range with the drag alone', () => 
         plugin.hasMoved = true;
         // One stroke of 96 px past the bottom edge, cut into eventCount reports.
         for (let step = 1; step <= eventCount; step += 1) {
-            plugin.handleDragMove({ clientX: 512, clientY: 460 + 96 * step / eventCount });
+            plugin.handleDragMove({ clientX: 512, clientY: 480 + 96 * step / eventCount });
         }
         const result = { range: plugin._scale.range, delay: plugin.d0, limit: plugin._delayLimitMs() };
         plugin.cleanup();
@@ -1052,7 +1058,7 @@ test('Group Delay PEQ keeps the delay of a marker on the axis edge through a sid
     assert.equal(plugin.delayToY(plugin.d0), 0);
     const topStartFrequency = plugin.f0;
     for (const clientX of [560, 620, 680]) {
-        slideSideways(20, clientX);
+        slideSideways(0, clientX);
         assert.equal(plugin.d0, 5, 'a sideways drag along the top edge changed the delay');
         assertScaleUnchanged();
     }
@@ -1063,7 +1069,7 @@ test('Group Delay PEQ keeps the delay of a marker on the axis edge through a sid
     assert.equal(plugin.delayToY(plugin.d0), 100);
     const bottomStartFrequency = plugin.f0;
     for (const clientX of [440, 380, 320]) {
-        slideSideways(460, clientX);
+        slideSideways(480, clientX);
         assert.equal(plugin.d0, -5, 'a sideways drag along the bottom edge changed the delay');
         assertScaleUnchanged();
     }
@@ -1129,7 +1135,7 @@ test('Group Delay PEQ redraws the grid and the markers when the scale changes', 
     assert.notEqual(plugin.markers[0].style.top, markerBefore);
     assert.equal(
         plugin.markers[0].style.top,
-        `${20 / 480 * 100 + plugin.delayToY(40) / 100 * (440 / 480 * 100)}%`
+        `${plugin.delayToY(40)}%`
     );
     plugin.cleanup();
 });
@@ -1147,10 +1153,10 @@ test('Group Delay PEQ leaves the axis labels off the edges of the plot', () => {
     const { range } = plugin._scale;
     // A label centred on the top or bottom grid line would be cut in half by the SVG
     // viewport, so those two lines carry no label while every inner one still does.
-    assert.ok(!labels.includes(`${range}ms`), `top edge label drawn (${labels.join(',')})`);
-    assert.ok(!labels.includes(`${-range}ms`), `bottom edge label drawn (${labels.join(',')})`);
-    assert.ok(labels.includes('0ms'));
-    assert.ok(labels.includes(`${range - plugin._scale.gridStep}ms`));
+    assert.ok(!labels.includes(`${range}`), `top edge label drawn (${labels.join(',')})`);
+    assert.ok(!labels.includes(`${-range}`), `bottom edge label drawn (${labels.join(',')})`);
+    assert.ok(labels.includes('0'));
+    assert.ok(labels.includes(`${range - plugin._scale.gridStep}`));
     // The frequency labels sit well inside the 10 Hz to 40 kHz axis, so they all stay.
     assert.ok(labels.includes('20'));
     assert.ok(labels.includes('20k'));
@@ -1189,7 +1195,7 @@ test('Group Delay PEQ is registered and styled under its own class names', () =>
     );
     assert.ok(index > 0, 'plugins.txt entry missing');
     assert.match(registry[index - 1], /^eq\/group_delay_eq: Group Delay EQ /);
-    assert.match(registry[index + 1], /^eq\/hi_pass_filter: Hi Pass Filter /);
+    assert.match(registry[index + 1], /^eq\/headphone_eq: Headphone EQ /);
 
     assert.match(pluginCss, /\.group-delay-peq-plugin-ui \.group-delay-peq-graph/);
     assert.doesNotMatch(pluginCss, /legend/);

@@ -16,10 +16,10 @@
 
 .five-band-peq-plugin-ui .five-band-peq-response {
     position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 
@@ -210,10 +210,10 @@ body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type {
 
 .five-band-peq-plugin-ui .five-band-peq-grid {
     position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 
@@ -224,16 +224,7 @@ body:not(.layout-mobile) .five-band-peq-plugin-ui .five-band-peq-filter-type {
 
 .five-band-peq-plugin-ui .five-band-peq-grid text {
     fill: var(--et-graph-label);
-    font-size: 10px;
-}
-
-.five-band-peq-plugin-ui .five-band-peq-response {
-    position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
-    pointer-events: none;
+    font-size: 12px;
 }
 
 .five-band-peq-plugin-ui .five-band-peq-response path {

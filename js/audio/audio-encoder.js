@@ -80,11 +80,12 @@ function quantizePcm24(raw) {
 }
 
 function quantizeFlacPcm24(raw) {
-  // @mediabunny/flac-encoder1.64.0 encoder.ts/bridge.c and mediabunny1.64.0
-  // sample.ts convert f32 to s32, then arithmetically shift by eight.
-  // Keep its asymmetric negative rounding; WAV PCM24 uses a different rule.
+  // The FLAC encoder rounds f32 through clipped s32, then rounds to 24 bits.
+  // WAV PCM24 quantizes directly instead of using this intermediate value.
   const integer = Math.round(raw * 0x80000000);
-  return (integer < -0x80000000 ? -0x80000000 : integer > 0x7fffffff ? 0x7fffffff : integer) >> 8;
+  const sample = (integer < -0x80000000 ? -0x80000000 : integer > 0x7fffffff ? 0x7fffffff : integer) | 0;
+  const quantized = Math.round(sample / 256);
+  return quantized > 0x7fffff ? 0x7fffff : quantized;
 }
 
 function createWavEncoding(audioBuffer, sampleFormat) {

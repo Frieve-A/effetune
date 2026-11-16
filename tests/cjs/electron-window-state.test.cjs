@@ -75,10 +75,11 @@ test('first launch maximizes and later launches restore saved bounds and maximiz
     isMinimized: () => false,
     isMaximized: () => false,
     show: () => calls.push('show'),
-    maximize: () => calls.push('maximize')
+    maximize: () => calls.push('maximize'),
+    webContents: { focus: () => calls.push('focus') }
   };
   first.module.showWindowInRestoredState(window);
-  assert.deepEqual(calls, ['maximize']);
+  assert.deepEqual(calls, ['maximize', 'focus']);
 
   for (const isMaximized of [false, true]) {
     const bounds = { x: 100, y: 80, width: 1200, height: 800 };
@@ -95,7 +96,7 @@ test('first launch maximizes and later launches restore saved bounds and maximiz
     assert.deepEqual(next.module.resolveWindowBoundsForRestore(), bounds);
     calls.length = 0;
     next.module.showWindowInRestoredState(window);
-    assert.deepEqual(calls, [isMaximized ? 'maximize' : 'show']);
+    assert.deepEqual(calls, [isMaximized ? 'maximize' : 'show', 'focus']);
   }
 });
 
@@ -132,16 +133,17 @@ test('presentation shows a prepared maximized window without another size transi
     isMinimized: () => false,
     isMaximized: () => true,
     show: () => calls.push('show'),
-    maximize: () => calls.push('maximize')
+    maximize: () => calls.push('maximize'),
+    webContents: { focus: () => calls.push('focus') }
   };
   module.showWindowInRestoredState(window);
-  assert.deepEqual(calls, ['show']);
+  assert.deepEqual(calls, ['show', 'focus']);
   window.isMaximized = () => false;
   module.showWindowInRestoredState(window);
-  assert.deepEqual(calls, ['show', 'maximize']);
+  assert.deepEqual(calls, ['show', 'focus', 'maximize', 'focus']);
   window.isMinimized = () => true;
   module.showWindowInRestoredState(window);
-  assert.deepEqual(calls, ['show', 'maximize']);
+  assert.deepEqual(calls, ['show', 'focus', 'maximize', 'focus']);
 });
 
 test('resolveWindowBoundsForRestore centers default size when no saved position exists', () => {

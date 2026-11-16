@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const pluginUrl = new URL('../../plugins/eq/group_delay_eq.js', import.meta.url);
 const pluginSource = fs.readFileSync(pluginUrl, 'utf8');
+const firAssetEqSource = fs.readFileSync(new URL('../../plugins/fir-asset-eq.js', import.meta.url), 'utf8');
 
 function loadPlugin() {
     const calls = [];
@@ -85,7 +86,7 @@ function loadPlugin() {
         clearTimeout
     };
     vm.runInNewContext(
-        `${pluginSource}\nthis.Plugin = GroupDelayEqPlugin;`,
+        `${firAssetEqSource}\n${pluginSource}\nthis.Plugin = GroupDelayEqPlugin;`,
         context,
         { filename: pluginUrl.pathname }
     );

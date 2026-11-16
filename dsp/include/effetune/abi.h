@@ -246,6 +246,22 @@ ET_EXPORT const float *et_design_fft_output(const et_design_fft *fft);
 ET_EXPORT et_status et_design_fft_forward(et_design_fft *fft);
 ET_EXPORT et_status et_design_fft_inverse(et_design_fft *fft);
 
+/* Speaker distortion correction identification at 48 kHz (one context per measurement). */
+typedef struct et_sdc et_sdc;
+ET_EXPORT et_sdc *et_sdc_create(void);
+ET_EXPORT void et_sdc_destroy(et_sdc *context);
+ET_EXPORT void *et_sdc_buffer(et_sdc *context, uint32_t id);
+ET_EXPORT et_status et_sdc_fft(et_sdc *context, uint32_t inverse);
+ET_EXPORT et_status et_sdc_drive(et_sdc *context);
+ET_EXPORT et_status et_sdc_columns(et_sdc *context);
+ET_EXPORT et_status et_sdc_gram(et_sdc *context, uint32_t q_row);
+ET_EXPORT et_status et_sdc_system(et_sdc *context, uint32_t length, uint32_t fold);
+ET_EXPORT et_status et_sdc_solve(et_sdc *context, double lambda, uint32_t slot);
+ET_EXPORT et_status et_sdc_heldout(et_sdc *context, uint32_t length, uint32_t count, double yy);
+ET_EXPORT et_status et_sdc_predict(et_sdc *context, uint32_t length, uint32_t count);
+ET_EXPORT et_status et_sdc_correct(et_sdc *context, uint32_t length, double scale);
+ET_EXPORT et_status et_sdc_score(et_sdc *context, uint32_t count, double pred_scale);
+
 ET_EXPORT uint32_t et_engine_memory_required(float sample_rate, uint32_t max_channels,
                                              uint32_t max_frames, uint32_t telemetry_ring_bytes);
 ET_EXPORT et_engine et_engine_create(void);

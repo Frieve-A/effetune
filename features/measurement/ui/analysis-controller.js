@@ -10,6 +10,10 @@ import { findImpulsePeak, getImpulseTimeBounds, clampImpulseView, zoomImpulseVie
 import { AnalysisPlot, distortionValue } from './analysis-plot.js';
 import { copyGraphImage } from './graph-image-copy.js';
 import { WATERFALL_VIEW_DEFAULTS } from './waterfall-surface.js';
+import DistortionDiagnosisView from './distortion-diagnosis-view.js';
+import { SpeakerDistortionPanel, detailRows, isCorrecting, uiLanguage, uiText } from './speaker-distortion-panel.js';
+import { isSpeakerResultBusy } from './speaker-distortion-refit.js';
+import { measurementTitle } from '../speaker-distortion-figures.js';
 import { bindNumberInput, updateRangeFill } from '../../../js/ui/range-fill.js';
 import { MAX_ANALYSIS_WINDOW_SAMPLES, BURST_TAU_CYCLES, BURST_FREQUENCY_COUNT, BURST_MINIMUM_SLICES,
     analysisFrequencyLimit } from '../../../js/utils/measurement-dsp/analysis.js';
@@ -26,6 +30,11 @@ export const ANALYSIS_DEFAULTS = {
         length: 100, rise: 5, window: 'tukey', smoothing: 0.1, mode: 'waterfall', normalization: 'none',
         depthUnit: 'cycles', startCycles: 0, endCycles: 30, ...WATERFALL_VIEW_DEFAULTS }
 };
+
+// The result tabs of the distortion diagnosis, shown only for a speaker distortion measurement.
+const DIAGNOSIS_TABS = ['diagnosis', 'diagnosisTones', 'diagnosisHarmonics', 'diagnosisLevel'];
+// A speaker distortion measurement has no frequency response points, so only these tabs apply.
+const SPEAKER_DISTORTION_TABS = ['distortion', ...DIAGNOSIS_TABS, 'details'];
 
 const labels = {
     imageCopyDenied: 'Clipboard access was denied. Allow clipboard access and try again.',
@@ -119,18 +128,20 @@ export default class AnalysisController {
         this.plots = {};
         this.previousRecord = null;
         this.analysisSelection = { point: 'all', channel: 'all' };
+        this.speakerDistortionLayout = false;
     }
 
     initialize() {
         const tabs = [...document.querySelectorAll('[data-analysis-tab]')];
-        tabs.forEach((button, index) => {
+        tabs.forEach(button => {
             button.addEventListener('click', () => this.selectTab(button.dataset.analysisTab));
             button.addEventListener('keydown', event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
-                const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
-                    (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-                tabs[next].focus(); this.selectTab(tabs[next].dataset.analysisTab);
+                const shown = tabs.filter(tab => !tab.hidden), index = shown.indexOf(button);
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? shown.length - 1 :
+                    (index + (event.key === 'ArrowRight' ? 1 : -1) + shown.length) % shown.length;
+                shown[next].focus(); this.selectTab(shown[next].dataset.analysisTab);
             });
         });
         for (const tab of Object.keys(ANALYSIS_DEFAULTS)) {
@@ -530,6 +541,86 @@ export default class AnalysisController {
         }
     }
 
+    /** The view of the diagnosis tabs; the refit itself belongs to the measurement screen. */
+    diagnosis() {
+        this.diagnosisView ??= new DistortionDiagnosisView(
+            Object.fromEntries(DIAGNOSIS_TABS.map(tab => [tab, byId(`${tab}AnalysisPanel`)])), {
+                listMeasurements: () => dataStorage.getAllMeasurements(),
+                loadMeasurement: id => dataStorage.getMeasurementById(id),
+                onExcludeRattle: hz => this.uiManager.excludeRattle(this.measurement, hz),
+                onSelectTab: tab => this.selectTab(tab)
+            });
+        return this.diagnosisView;
+    }
+
+    /** Shows only the parts that apply to the selected kind of measurement. */
+    syncSpeakerDistortionLayout(measurement) {
+        const speaker = Boolean(measurement?.speakerModel);
+        if (speaker === this.speakerDistortionLayout) return;
+        this.speakerDistortionLayout = speaker;
+        document.querySelectorAll('[data-analysis-tab]').forEach(button => {
+            const tab = button.dataset.analysisTab;
+            button.hidden = speaker ? !SPEAKER_DISTORTION_TABS.includes(tab) : DIAGNOSIS_TABS.includes(tab);
+        });
+        const frequencyResponseParts = [
+            byId('resultTitle').closest('.result-header'),
+            document.querySelector('#measurementResults .measurement-points'),
+            byId('analysisTarget'),
+            byId('harmonicDistortionContent'),
+            byId('analysisDetails').closest('table'),
+            ...document.querySelectorAll('#detailsAnalysisPanel .export-section > :not(.export-actions-row)')
+        ];
+        for (const node of frequencyResponseParts) node.hidden = speaker;
+        byId('speakerDistortionResultBar').hidden = !speaker;
+        byId('speakerDistortionSection').hidden = !speaker;
+        byId('exportAnalysisJson').hidden = false;
+    }
+
+    showSpeakerDistortionResult(measurement) {
+        if (!SPEAKER_DISTORTION_TABS.includes(this.activeTab)) {
+            this.selectTab('distortion');
+            return;
+        }
+        this.measurement = measurement;
+        this.currentPlotState = null;
+        const saved = Number.isFinite(measurement.savedAt);
+        const title = measurementTitle(measurement, uiLanguage(), uiText('label:untitled'));
+        byId('speakerDistortionResultTitle').textContent = title;
+        const save = byId('speakerDistortionResultSave');
+        const name = byId('speakerDistortionResultName');
+        const busy = isSpeakerResultBusy();
+        save.hidden = saved;
+        save.disabled = busy;
+        name.disabled = saved && busy;
+        byId('speakerDistortionResultSaveArea').classList.toggle('unsaved', !saved);
+        const prompt = byId('speakerDistortionResultPrompt');
+        prompt.dataset.i18n = isCorrecting(measurement.speakerModel)
+            ? 'message:speakerDistortionComplete' : 'message:speakerDistortionCompleteKeep';
+        prompt.textContent = uiText(prompt.dataset.i18n);
+        byId('exportAnalysisJson').hidden = !saved;
+        const resultKey = measurement.id ?? measurement;
+        if (this.speakerResultKey !== resultKey) {
+            this.speakerResultKey = resultKey;
+            name.value = saved ? measurement.name : '';
+        }
+        if (this.activeTab === 'distortion') {
+            this.speakerPanel ??= new SpeakerDistortionPanel(byId('speakerDistortionSection'), {
+                onChanged: () => this.refresh(),
+                showDiagnosis: index => {
+                    this.diagnosis().selectChannel(index);
+                    this.selectTab('diagnosis');
+                },
+                audio: this.uiManager.speakerDistortionAudio
+            });
+            this.speakerPanel.render(measurement);
+        } else if (DIAGNOSIS_TABS.includes(this.activeTab)) {
+            this.diagnosis().show(measurement, this.activeTab);
+        } else {
+            this.uiManager.measurementDisplay.renderMeasurementDetailRows(
+                [[uiText('label:resultTitle'), title], ...detailRows(measurement.speakerModel, uiText)]);
+        }
+    }
+
     selectTab(tab) {
         if (tab === this.activeTab) return;
         const display = this.uiManager.measurementDisplay;
@@ -558,7 +649,18 @@ export default class AnalysisController {
             byId(`${tab}CopyGraphStatus`).textContent = '';
         }
         if (this.worker.pending.size) this.worker.dispose();
-        const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId);
+        const measurement = dataStorage.getMeasurementById(this.uiManager.selectedMeasurementId)
+            ?? this.uiManager.unsavedSpeakerResult;
+        this.syncSpeakerDistortionLayout(measurement);
+        if (measurement?.speakerModel) {
+            this.shownTab = null;
+            this.showSpeakerDistortionResult(measurement);
+            return;
+        }
+        if (DIAGNOSIS_TABS.includes(this.activeTab)) {
+            this.selectTab('frequency');
+            return;
+        }
         if (!measurement) {
             this.currentPlotState = null;
             for (const [tab, plot] of Object.entries(this.plots)) {
@@ -580,13 +682,21 @@ export default class AnalysisController {
             this.previousRecord = target;
         }
         this.targetKey = JSON.stringify([measurement.id, selection.point, selection.channel]);
-        if (this.plots[tab]) {
-            const keepCompletedPlot = this.plots[tab].state?.targetKey === this.targetKey;
-            if (!keepCompletedPlot) {
-                this.plots[tab].clear(); this.currentPlotState = null;
+        // A plot already on screen stays until its replacement is drawn, so switching the
+        // measurement, point or channel never flashes an empty graph. A plot left on another
+        // tab for a different target is cleared instead of being revealed stale.
+        const plot = this.plots[tab];
+        const shownTab = this.shownTab;
+        this.shownTab = tab;
+        if (plot) {
+            const sameTarget = plot.state?.targetKey === this.targetKey;
+            const keepPlot = sameTarget || (plot.state && shownTab === tab);
+            if (!sameTarget) this.currentPlotState = null;
+            if (!keepPlot) {
+                plot.clear();
                 byId(`${tab}AnalysisConditions`).textContent = '';
             }
-            this.showMessage(tab, keepCompletedPlot ? '' : analysisText('processing'), true);
+            this.showMessage(tab, keepPlot ? '' : analysisText('processing'), true);
         }
         document.querySelectorAll('.point-item').forEach(item => {
             item.classList.toggle('selected', String(selection.point) === item.dataset.index);
@@ -597,7 +707,7 @@ export default class AnalysisController {
             if (button.dataset.channel === 'all') button.disabled = tab !== 'frequency';
         });
         this.measurement = measurement;
-        byId('resultTitle').textContent = measurement.name;
+        display.showResultTitle(measurement);
         this.displayed = resolveDisplayedResponse(measurement, selection.point, selection.channel);
         if (tab === 'frequency') this.updateLevelWarnings();
         let record;

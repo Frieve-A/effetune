@@ -19,6 +19,7 @@ for effect_type in (
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
     "GroupDelayPEQ",
+    "HeadphoneEQ",
     "IRReverb",
     "RoomEQ",
 ):

@@ -1874,14 +1874,15 @@ class IRReverbPlugin extends PluginBase {
         const labelLineHeight = fontSize + 3;
         const labelTop = 5;
         const markerLabelRows = 3;
-        const left = 42;
-        const right = 12;
-        const top = labelTop + labelLineHeight * markerLabelRows + 4;
-        const bottom = 25;
-        const plotWidth = Math.max(1, width - left - right);
-        const plotHeight = Math.max(1, height - top - bottom);
-        const x = seconds => left + seconds / graph.durationSeconds * plotWidth;
-        const y = db => top + Math.min(1, Math.max(0, -db / 90)) * plotHeight;
+        // The plot spans the whole canvas; every label is drawn over it. Axis titles sit on
+        // the canvas edges and the tick values one row or column further in.
+        const tickLabelLeft = fontSize + 8;
+        const markerLabelLeft = tickLabelLeft + 26;
+        const edgeLabelY = height - 8;
+        const tickLabelY = edgeLabelY - labelLineHeight;
+        const x = seconds => seconds / graph.durationSeconds * width;
+        // Unclamped: values outside 0..-90 dB leave the canvas instead of sticking to its edge.
+        const y = db => -db / 90 * height;
 
         context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
@@ -1893,44 +1894,42 @@ class IRReverbPlugin extends PluginBase {
         context.lineWidth = 1;
         const measureTextWidth = text =>
             context.measureText?.(text)?.width || text.length * fontSize * 0.6;
-        for (const db of [0, -30, -60, -90]) {
+        // The 0 and -90 dB bounds sit on the canvas edges, so only interior ticks are drawn.
+        for (const db of [-30, -60]) {
             context.beginPath();
-            context.moveTo(left, y(db));
-            context.lineTo(width - right, y(db));
+            context.moveTo(0, y(db));
+            context.lineTo(width, y(db));
             context.stroke();
-            context.fillText(`${db}`, 4, y(db) + 4);
+            context.fillText(`${db}`, tickLabelLeft, y(db) + 4);
         }
 
-        const timeLabel = this._t('irReverb.graph.time', 'Time');
-        const timeLabelWidth = Math.min(measureTextWidth(timeLabel), plotWidth);
-        const timeLabelLeft = width - right - timeLabelWidth;
         context.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         context.textAlign = 'center';
         for (let second = 1; second <= Math.floor(graph.durationSeconds); second += 1) {
             const px = x(second);
-            const tickLabel = `${second} s`;
-            const tickLabelWidth = measureTextWidth(tickLabel);
-            if (px + tickLabelWidth / 2 + 4 >= timeLabelLeft) continue;
+            const tickLabel = `${second}`;
+            // A tick on the right edge would have its centered label clipped.
+            if (px + measureTextWidth(tickLabel) / 2 > width) continue;
             context.beginPath();
-            context.moveTo(px, height - bottom);
-            context.lineTo(px, height - bottom + 5);
+            context.moveTo(px, height - 5);
+            context.lineTo(px, height);
             context.stroke();
-            context.fillText(tickLabel, px, height - 5);
+            context.fillText(tickLabel, px, tickLabelY);
         }
 
         const envelopePeak = graph.current.envelope.reduce((peak, value) => value > peak ? value : peak, 0);
         if (envelopePeak > 0) {
             context.beginPath();
-            context.moveTo(left, height - bottom);
+            context.moveTo(0, height);
             for (let index = 0; index < graph.current.envelope.length; index += 1) {
                 const px = x(graph.current.sampleFrames[index] / this._prepared.sampleRate);
                 const magnitude = graph.current.envelope[index] / envelopePeak;
-                const amplitudeDb = magnitude > 0 ? 20 * Math.log10(magnitude) : -90;
+                const amplitudeDb = magnitude > 0 ? 20 * Math.log10(magnitude) : -200;
                 const py = y(amplitudeDb);
                 context.lineTo(px, py);
             }
-            context.lineTo(width - right, height - bottom);
+            context.lineTo(width, height);
             context.closePath();
             context.globalAlpha = 0.18;
             context.fillStyle = (window.ThemePalette?.get('graph-trace') ?? '');
@@ -1969,11 +1968,12 @@ class IRReverbPlugin extends PluginBase {
         };
         const drawMarkerLabel = (text, px, row) => {
             context.textAlign = 'left';
-            const maxWidth = plotWidth;
+            const maxWidth = width - markerLabelLeft;
             const measuredWidth = Math.min(measureTextWidth(text), maxWidth);
             let labelX = px + 4;
-            if (labelX + measuredWidth > width - right) labelX = px - measuredWidth - 4;
-            labelX = Math.max(left, Math.min(labelX, width - right - measuredWidth));
+            if (labelX + measuredWidth > width) labelX = px - measuredWidth - 4;
+            // Stay clear of the dB tick values on the left edge.
+            labelX = Math.max(markerLabelLeft, Math.min(labelX, width - measuredWidth));
             const labelY = labelTop + labelLineHeight * (row + 1) - 2;
             context.fillText(text, labelX, labelY, maxWidth);
         };
@@ -1987,8 +1987,8 @@ class IRReverbPlugin extends PluginBase {
             context.strokeStyle = markerColors[label];
             context.fillStyle = markerColors[label];
             context.beginPath();
-            context.moveTo(px, top);
-            context.lineTo(px, height - bottom);
+            context.moveTo(px, 0);
+            context.lineTo(px, height);
             context.stroke();
             drawMarkerLabel(label === 'rt60' ? graph.rt60Label : markerLabels[label] || label,
                 px, labelRow);
@@ -1997,18 +1997,23 @@ class IRReverbPlugin extends PluginBase {
         }
         if (!rt60LabelDrawn) {
             context.fillStyle = markerColors.rt60;
-            drawMarkerLabel(graph.rt60Label, width - right, labelRow);
+            drawMarkerLabel(graph.rt60Label, width, labelRow);
         }
         context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
-        context.textAlign = 'right';
-        context.fillText(timeLabel, width - right, height - 5, plotWidth);
+        context.font = `${fontSize + 2}px Arial`;
+        context.textAlign = 'center';
+        // Axis titles: time centered on the bottom edge, level centered on the left edge.
+        context.fillText('Time (s)', width / 2, edgeLabelY, width);
+        context.save?.();
+        context.translate?.(fontSize + 2, height / 2);
+        context.rotate?.(-Math.PI / 2);
+        context.fillText('Level (dB)', 0, 0, height);
+        context.restore?.();
         Object.assign(frame, {
             valid: true,
             scale: dpr,
-            left,
-            top,
-            plotWidth,
-            plotHeight,
+            width,
+            height,
             durationSeconds: graph.durationSeconds,
             sampleRate: this._prepared.sampleRate,
             original: graph.original,
@@ -2022,8 +2027,8 @@ class IRReverbPlugin extends PluginBase {
         const frame = this._readoutFrame;
         if (!frame?.valid) return null;
         const { format, seriesValueAt } = window.GraphReadout;
-        const { scale, left, top, plotWidth, plotHeight, sampleRate } = frame;
-        const seconds = (x / scale - left) / plotWidth * frame.durationSeconds;
+        const { scale, width, height, sampleRate } = frame;
+        const seconds = x / scale / width * frame.durationSeconds;
         const frames = seconds * sampleRate;
         const rows = [];
         for (const [label, color, series] of [
@@ -2036,8 +2041,8 @@ class IRReverbPlugin extends PluginBase {
                 label,
                 color,
                 value: format.db(db),
-                ...(Number.isFinite(db)
-                    ? { y: (top + (depth < 0 ? 0 : depth > 1 ? 1 : depth) * plotHeight) * scale }
+                ...(depth >= 0 && depth <= 1
+                    ? { y: depth * height * scale }
                     : {})
             });
         }
@@ -2157,10 +2162,10 @@ class IRReverbPlugin extends PluginBase {
             plot: () => {
                 const frame = this._readoutFrame;
                 return frame?.valid ? {
-                    left: frame.left * frame.scale,
-                    top: frame.top * frame.scale,
-                    width: frame.plotWidth * frame.scale,
-                    height: frame.plotHeight * frame.scale
+                    left: 0,
+                    top: 0,
+                    width: frame.width * frame.scale,
+                    height: frame.height * frame.scale
                 } : null;
             },
             read: x => this._readEdcGraph(x)

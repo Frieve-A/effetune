@@ -4274,12 +4274,17 @@ export class AudioManager {
                 channelCount: ch
             });
             // The parallel branch's analyzers are hidden during the test, so we
-            // simply drop any messages it posts back to the main thread.
+            // simply drop any messages it posts back to the main thread. The
+            // instrument runtime (SFZ/SoundFont streaming, preparation and live
+            // MIDI) is tracked per worklet, so its messages are forwarded too.
             wB.port.onmessage = event => {
                 const data = event?.data;
-                if (data?.type === 'dspTelemetry' && data.recycle !== false && data.packet instanceof ArrayBuffer) {
+                const type = typeof data?.type === 'string' ? data.type : '';
+                if (type === 'dspTelemetry' && data.recycle !== false && data.packet instanceof ArrayBuffer) {
                     wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
-                } else if (data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
+                } else if (type.startsWith('sfz') || type.startsWith('midiInput') ||
+                    type === 'soundFontMixerActionApplied' ||
+                    data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
                     data?.type === 'dspReady' || data?.type === 'dspFailed' ||
                     data?.type === 'dspExecutionState' || data?.type === 'dspCleanupNeeded' ||
                     data?.type === 'dspLatencyResponse' || data?.type === 'outputDelaySet' ||

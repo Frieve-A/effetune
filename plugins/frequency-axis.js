@@ -210,16 +210,17 @@
         ['ChannelDividerPlugin', ['channel-divider-graph', 10, 40000]],
         ['FIRCrossoverPlugin', ['fir-crossover-graph', 10, 40000]],
         ['FiveBandDynamicEQ', ['fbdyn-graph', 10, 40000]],
-        ['FiveBandPEQPlugin', ['five-band-peq-graph', 10, 40000, 20]],
-        ['FifteenBandPEQPlugin', ['fifteen-band-peq-graph', 10, 40000, 20]],
-        ['FiveBandFIRPEQPlugin', ['five-band-fir-peq-graph', 10, 40000, 20]],
-        ['RoomEqPlugin', ['room-eq-additional-eq-graph', 10, 40000, 20]],
-        ['EarphoneCableSimPlugin', ['earphone-cable-sim-graph', 10, 40000, 20]],
+        ['FiveBandPEQPlugin', ['five-band-peq-graph', 10, 40000, true]],
+        ['FifteenBandPEQPlugin', ['fifteen-band-peq-graph', 10, 40000, true]],
+        ['FiveBandFIRPEQPlugin', ['five-band-fir-peq-graph', 10, 40000, true]],
+        ['RoomEqPlugin', ['room-eq-additional-eq-graph', 10, 40000, true]],
+        ['EarphoneCableSimPlugin', ['earphone-cable-sim-graph', 10, 40000, true]],
+        ['SpeakerDistortionCorrectionPlugin', ['sdc-graph', 20, 10000]],
         ['SubSynthPlugin', ['sub-synth-graph', 5, 1000]],
         ['GroupDelayEqPlugin', ['group-delay-eq-graph-container', 20, 20000]],
         ['ExciterPlugin', ['exciter-hpf-graph', 20, 20000]],
         ['DSD64IMDSimulatorPlugin', ['dsd64-imd-df-graph', 0, 20000]],
-        ['GroupDelayPEQPlugin', ['group-delay-peq-graph', 10, 40000, 20]],
+        ['GroupDelayPEQPlugin', ['group-delay-peq-graph', 10, 40000, true]],
         ['SpectrumAnalyzerPlugin', ['graph-container', 20, 40000]],
         ['ChromaSpiralPlugin', ['graph-container', 0, 0]],
         ['SpectrogramPlugin', ['graph-container', 20, 40000]],
@@ -227,16 +228,21 @@
         ['PitchMeterPlugin', ['graph-container', 0, 0]],
         ['PhaseSelectEqPlugin', ['graph-container', 20, 40000]],
         ['TonalBalanceEQPlugin', ['graph-container', 0, 0]]
-    ].map(([name, [graph, minFreq, maxFreq, inset = 0]]) => [name, {
-        plotSelector: `.${graph}${inset ? '' : ' canvas'}`,
-        ...(inset ? { mountSelector: `.${graph}` } : {}),
-        minFreq, maxFreq, inset, scale: 'log', orientation: 'x',
-        axisCheck: inset ? { ownerOf: plugin => plugin, freqToXName: 'freqToX' }
+    // svgPlot: the graph element itself is the plot (stacked SVGs) and the plugin's
+    // freqToX is the axis.
+    ].map(([name, [graph, minFreq, maxFreq, svgPlot = false]]) => [name, {
+        plotSelector: `.${graph}${svgPlot ? '' : ' canvas'}`,
+        ...(svgPlot ? { mountSelector: `.${graph}` } : {}),
+        minFreq, maxFreq, svgPlot, scale: 'log', orientation: 'x',
+        axisCheck: svgPlot ? { ownerOf: plugin => plugin, freqToXName: 'freqToX' }
             : [`Math.log10(${minFreq})`, `Math.log10(${maxFreq})`]
     }]));
     targets.get('RoomEqPlugin').ownerOf = plugin => plugin._additionalEqEditor;
     targets.get('RoomEqPlugin').axisCheck.ownerOf = targets.get('RoomEqPlugin').ownerOf;
     targets.get('RoomEqPlugin').isActive = plugin => !plugin._responseView || plugin._responseView === 'frequency';
+    // A full-canvas SVG plot: its axis is the plugin's freqToX.
+    targets.get('SpeakerDistortionCorrectionPlugin').plotSelector = '.sdc-graph svg';
+    targets.get('SpeakerDistortionCorrectionPlugin').axisCheck = { ownerOf: plugin => plugin, freqToXName: 'freqToX' };
     targets.get('FiveBandDynamicEQ').axisCheck = ['const minFreq = 10;', 'const maxFreq = 40000;'];
     targets.get('DSD64IMDSimulatorPlugin').scale = 'linear';
     targets.get('DSD64IMDSimulatorPlugin').axisCheck = ['freq / fMax', 'const fMax = 20000;'];
@@ -335,7 +341,7 @@
         const owner = target.ownerOf ? target.ownerOf(plugin) : plugin;
         return {
             orientation: 'x', length, crossLength: box.height, gutter: 0,
-            toPos: frequency => target.inset ? owner.freqToX(frequency) * length / 100
+            toPos: frequency => target.svgPlot ? owner.freqToX(frequency) * length / 100
                 : frequencyToPosition(frequency, length, target.minFreq, target.maxFreq, target.scale),
             toFreq: position => Math.max(0.01, positionToFrequency(position, length, target.minFreq, target.maxFreq, target.scale))
         };

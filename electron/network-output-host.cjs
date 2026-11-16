@@ -24,6 +24,7 @@ const SILENCE_TICK_MS = 20;
 const MAX_SILENCE_FRAMES = SAMPLE_RATE;
 const MAX_DROPS = 3;
 const CAST_START_TIMEOUT_MS = 15000;
+const RESYNC_TIMEOUT_MS = 30000;
 const DISPOSE_STOP_TIMEOUT_MS = 3000;
 const CAST_APP_ID = 'CC1AD845';
 const DLNA_FEATURES = 'DLNA.ORG_OP=00;DLNA.ORG_FLAGS=01700000000000000000000000000000';
@@ -205,6 +206,7 @@ class NetworkOutputHost extends EventEmitter {
     this.lastSourceSample = [0, 0];
     this.lastStatus = '';
     this.syncRevision = 0;
+    this.resyncTimer = null;
     this.liveRoute = null;
     this.localOutputMs = 0;
     this.routeAnchorTimer = null;
@@ -235,14 +237,17 @@ class NetworkOutputHost extends EventEmitter {
       if (device.available && this.upnp.service(device, 'AVTransport') && !own.has(device.id)) merge(device.id, 'upnp', device.name);
     }
     for (const device of this.castDiscovery.devices.values()) merge(device.id, 'cast', device.name);
+    let syncing = false;
     const targets = [...entries.values()].map(entry => {
       let state = 'searching'; let note = null;
+      const sync = plan?.targets.get(entry.id);
       if (this.config.enabled && entry.enabled) {
         const session = this.sessions.get(entry.id);
-        if (session) ({ state, note } = session);
-        else if (this.serverFailed) { state = 'unreachable'; note = 'startFailed'; }
+        if (session) {
+          ({ state, note } = session);
+          syncing ||= this.isSyncing(session, sync);
+        } else if (this.serverFailed) { state = 'unreachable'; note = 'startFailed'; }
       }
-      const sync = plan?.targets.get(entry.id);
       return Object.freeze({ ...entry, state, note, ...(sync ? { syncState: sync.state } : {}) });
     }).sort((a, b) => {
       const left = a.name.toLowerCase(); const right = b.name.toLowerCase();
@@ -252,8 +257,20 @@ class NetworkOutputHost extends EventEmitter {
     const syncDelayMs = plan?.goal ?? (enabled && this.config.targets.some(target => target.enabled) ? this.baseDelayMs() : 0);
     const localDelayMs = plan?.localDelayMs ?? (syncDelayMs > 0 ? Math.max(0, syncDelayMs + localTrimMs - this.localOutputMs) : 0);
     return Object.freeze({ enabled, localEnabled, localTrimMs, localDelayMs, syncDelayMs, syncRevision: this.syncRevision,
+      syncing, resyncing: this.resyncTimer !== null,
       ...(plan ? { networkTiming: { measured: plan.measured, arrivalMs: plan.arrivalMs, revision: this.liveRoute.revision } } : {}),
       targets: Object.freeze(targets) });
+  }
+
+  // A target is still finding its sync while a requested resync waits for it, while a Cast receiver's latency is
+  // unknown or a changed estimate is being confirmed, or while a measured EffeTune receiver has not settled.
+  isSyncing(session, sync) {
+    if (session.resyncing) return true;
+    if (session.type === 'cast') {
+      return (session.state === 'connecting' || session.state === 'playing') &&
+        ((session.latencyMs === null && session.heldLatencyMs === null) || session.latencyCandidate !== null);
+    }
+    return Boolean(session.liveMeasurement && sync?.state === 'unmeasured');
   }
 
   planLiveDelays() {
@@ -454,18 +471,54 @@ class NetworkOutputHost extends EventEmitter {
       if (this.disposed) return;
       this.syncRevision++;
       for (const session of this.sessions.values()) {
+        if (session.state === 'playing' && session.liveMeasurement) continue;
+        // Only a playing target is waited for; one that is not playing yet simply starts again.
+        session.resyncing = session.state === 'playing';
+        if (session.type === 'cast' && session.resyncing) {
+          // A playing Cast receiver is measured again without a reload, so its audio continues meanwhile.
+          session.latencySamples = []; session.latencyCandidate = null;
+          continue;
+        }
+        // Other receivers report no latency (or are not playing), so reloading them is the only way to realign them.
         this.teardownTransport(session);
         session.phase = 'idle'; session.state = 'searching'; session.note = null; session.failures = 0;
       }
       this.serverFailed = false;
+      if (this.resyncTimer) this.clearTimeoutFn(this.resyncTimer);
+      this.resyncTimer = null;
+      if ([...this.sessions.values()].some(session => session.resyncing)) {
+        this.resyncTimer = this.setTimeoutFn(() => { this.resyncTimer = null; this.finishResync(); }, RESYNC_TIMEOUT_MS);
+        this.resyncTimer.unref?.();
+      }
       await this.reconcile();
     });
+  }
+
+  // While a resync runs, new latency estimates are held so the delays (and with them the sound) change only once,
+  // when every resynced target has its result or the resync times out.
+  completeResync(session) {
+    if (!session.resyncing) return;
+    session.resyncing = false;
+    if (this.resyncTimer && [...this.sessions.values()].some(other => other.resyncing)) this.publishStatus();
+    else this.finishResync();
+  }
+
+  finishResync() {
+    if (this.resyncTimer) this.clearTimeoutFn(this.resyncTimer);
+    this.resyncTimer = null;
+    for (const session of this.sessions.values()) {
+      session.resyncing = false;
+      if (session.heldLatencyMs !== null) { session.latencyMs = session.heldLatencyMs; session.heldLatencyMs = null; }
+    }
+    if (!this.disposed) this.applyDelays();
   }
 
   dispose() {
     // Nothing receives status after disposal, and the own-device lookup may already be gone.
     return this.run(async () => {
       this.disposed = true;
+      if (this.resyncTimer) this.clearTimeoutFn(this.resyncTimer);
+      this.resyncTimer = null;
       this.discovery.removeListener('change', this.discoveryChanged);
       this.castDiscovery.removeListener('change', this.discoveryChanged);
       this.detachRendererPort();
@@ -502,7 +555,7 @@ class NetworkOutputHost extends EventEmitter {
       if (!session) {
         session = { id: target.id, type: target.type, target, delay: new DelayLine(framesForMs(target.trimMs)), generation: 0, phase: 'idle', state: 'searching', note: null,
           url: '', stream: null, cast: null, castApp: null, launchedApp: null, launched: false, mediaSessionId: null,
-          latencyMs: null, latencySamples: [], latencyCandidate: null, castMediaRevision: 0, castPlayerState: null, liveMeasurement: null, measurementTimer: null,
+          latencyMs: null, heldLatencyMs: null, latencySamples: [], latencyCandidate: null, resyncing: false, castMediaRevision: 0, castPlayerState: null, liveMeasurement: null, measurementTimer: null,
           failures: 0, pollTimer: null, polling: false, retryTimer: null, startTimer: null };
         this.sessions.set(target.id, session);
       }
@@ -551,7 +604,9 @@ class NetworkOutputHost extends EventEmitter {
 
   removeSession(session, { stop = false } = {}) {
     this.sessions.delete(session.id);
-    return this.teardownTransport(session, { stop });
+    const stopped = this.teardownTransport(session, { stop });
+    this.completeResync(session);
+    return stopped;
   }
 
   // Drop the live transport of one target without forgetting the target itself.
@@ -560,7 +615,7 @@ class NetworkOutputHost extends EventEmitter {
     this.clearSessionTimers(session);
     const { stream, cast, url } = session;
     session.stream = null; session.cast = null; session.castApp = null; session.launchedApp = null; session.launched = false; session.mediaSessionId = null;
-    session.latencyMs = null; session.latencySamples = []; session.latencyCandidate = null; session.castOverLimit = 0; session.castPlayerState = null; session.liveMeasurement = null; session.url = '';
+    session.latencyMs = null; session.heldLatencyMs = null; session.latencySamples = []; session.latencyCandidate = null; session.castOverLimit = 0; session.castPlayerState = null; session.liveMeasurement = null; session.url = '';
     stream?.close();
     const pending = [];
     if (cast) {
@@ -633,6 +688,7 @@ class NetworkOutputHost extends EventEmitter {
     const retry = !note || note === 'offline';
     session.phase = retry ? 'waiting' : 'blocked';
     this.setState(session, 'unreachable', note ?? null);
+    this.completeResync(session);
     if (!retry) return;
     session.retryTimer = this.setTimeoutFn(() => {
       session.retryTimer = null;
@@ -650,14 +706,14 @@ class NetworkOutputHost extends EventEmitter {
     stream.on('overflow', () => {
       if (session.stream !== stream) return;
       this.onDiagnostic('network-output-stream-overflow', session.id);
-      this.handleDrop(session, new Error('Network output stream overflow'));
+      this.handleDrop(session, 'Network output stream overflow');
     });
     stream.on('disconnected', () => {
       // A Cast receiver that rejects the stream closes the connection; count it as a drop so the offline back-off
       // engages instead of reloading the receiver every few hundred ms. UPnP renderers may probe with a short GET
       // before the real one, so the token stays valid and the transport-state poll alone decides when playback ended.
       if (session.stream !== stream || session.type !== 'cast') return;
-      this.handleDrop(session, new Error('Receiver closed the stream'));
+      this.handleDrop(session, 'Receiver closed the stream');
     });
     stream.on('feedback', sample => {
       if (session.stream === stream) this.recordLiveMeasurement(session, sample);
@@ -665,6 +721,7 @@ class NetworkOutputHost extends EventEmitter {
     stream.on('connected', () => {
       if (session.stream !== stream || session.type !== 'cast') return;
       session.latencyMs = null;
+      session.heldLatencyMs = null;
       session.latencySamples = [];
       session.latencyCandidate = null;
       session.castOverLimit = 0;
@@ -722,10 +779,10 @@ class NetworkOutputHost extends EventEmitter {
       if (state === 'STOPPED' || state === 'NO_MEDIA_PRESENT') {
         // Only a different, non-empty URI means another controller took the renderer; any other stop resumes.
         if (uri && uri !== session.url) this.fail(session, 'taken');
-        else this.handleDrop(session, new Error(`UPnP playback ended (${state})`));
+        else this.handleDrop(session, `UPnP playback ended (${state})`);
       } else if (state === 'PLAYING') {
         if (uri && uri !== session.url) this.fail(session, 'taken');
-        else { session.failures = 0; this.setState(session, 'playing'); }
+        else { session.failures = 0; this.setState(session, 'playing'); this.completeResync(session); }
       }
     } catch (error) {
       // A single lost SOAP reply is tolerated; repeated failures without observed playback take the target offline.
@@ -751,7 +808,7 @@ class NetworkOutputHost extends EventEmitter {
         return;
       }
       // No application at all means our receiver app ended; another application means the device was taken.
-      if (!appId) this.handleDrop(session, new Error('Cast receiver application ended'));
+      if (!appId) this.handleDrop(session, 'Cast receiver application ended');
       else if (appId !== session.castApp.appId || sessionId !== session.castApp.sessionId) this.fail(session, 'taken');
     });
     cast.on('media', ({ playerState, idleReason = null, mediaSessionId = null, contentId = null } = {}) => {
@@ -767,9 +824,9 @@ class NetworkOutputHost extends EventEmitter {
       // window does (recordLatency). A receiver that cycles BUFFERING then ERROR, or stalls while PLAYING, reaches MAX_DROPS.
       if (playerState === 'PLAYING') { this.clearStartTimer(session); this.setState(session, 'playing'); }
       // A freshly loaded item is IDLE without a reason; FINISHED, ERROR, INTERRUPTED or CANCELLED means it ended.
-      else if (playerState === 'IDLE' && idleReason) this.handleDrop(session, new Error(`Cast playback ended (${idleReason})`));
+      else if (playerState === 'IDLE' && idleReason) this.handleDrop(session, `Cast playback ended (${idleReason})`);
     });
-    cast.on('close', () => { if (this.isCurrent(session, generation)) this.handleDrop(session, new Error('Cast session closed')); });
+    cast.on('close', () => { if (this.isCurrent(session, generation)) this.handleDrop(session, 'Cast session closed'); });
     cast.on('error', error => { if (this.isCurrent(session, generation)) this.handleDrop(session, error); });
     const hostAddress = await this.routeAddress(device.address);
     if (!this.isCurrent(session, generation)) return;
@@ -787,16 +844,17 @@ class NetworkOutputHost extends EventEmitter {
     // Playback must be observed within the start window; otherwise the attempt counts as a drop.
     session.startTimer = this.setTimeoutFn(() => {
       session.startTimer = null;
-      if (this.isCurrent(session, generation)) this.handleDrop(session, new Error('Cast playback did not start'));
+      if (this.isCurrent(session, generation)) this.handleDrop(session, 'Cast playback did not start');
     }, CAST_START_TIMEOUT_MS);
     session.startTimer.unref?.();
   }
 
   // A session that ends or loses its stream restarts; repeated drops without observed playback make the target
   // unreachable (without a cause, since the device still answers) so a receiver that keeps rejecting the stream backs off instead of being reloaded in a tight loop.
-  handleDrop(session, error) {
+  // The reason is an Error for an exception and a plain description for an expected event the restart recovers from.
+  handleDrop(session, reason) {
     session.failures += 1;
-    this.onDiagnostic(`network-output-${session.type}-failed`, error);
+    this.onDiagnostic(`network-output-${session.type}-failed`, reason);
     if (session.failures >= MAX_DROPS) { session.failures = 0; this.fail(session); }
     else this.restart(session);
   }
@@ -821,6 +879,8 @@ class NetworkOutputHost extends EventEmitter {
       const frames = stream?.framesAt(this.clockNow());
       if (frames === null || frames === undefined) return;
       this.recordLatency(session, frames * 1000 / SAMPLE_RATE - status.currentTime * 1000);
+      // A latency change that is being confirmed shows as syncing.
+      this.publishStatus();
     } catch (error) {
       if (this.isCurrent(session, generation)) this.onDiagnostic('network-output-cast-failed', error);
     } finally {
@@ -833,7 +893,7 @@ class NetworkOutputHost extends EventEmitter {
     // One position outlier is not evidence that the receiver has stalled; two seconds of them are.
     if (latencyMs > L0_MAX_MS) {
       session.castOverLimit = (session.castOverLimit || 0) + 1;
-      if (session.castOverLimit >= CAST_STALL_SAMPLES) this.handleDrop(session, new Error(`Cast playback is ${Math.round(latencyMs)} ms behind`));
+      if (session.castOverLimit >= CAST_STALL_SAMPLES) this.handleDrop(session, `Cast playback is ${Math.round(latencyMs)} ms behind`);
       return;
     }
     session.castOverLimit = 0;
@@ -854,8 +914,10 @@ class NetworkOutputHost extends EventEmitter {
     // The estimate holds for as long as this stream connection plays (a new connection or session starts over): the
     // receiver's latency only changes with the stream itself, while a lost or late status reply says nothing about it.
     // Expiring it would swing the delays to L0 and back by the whole difference.
-    if (session.latencyMs !== null && Math.abs(floorMs - session.latencyMs) < LATENCY_TOLERANCE_MS) {
+    const currentMs = session.heldLatencyMs ?? session.latencyMs;
+    if (currentMs !== null && Math.abs(floorMs - currentMs) < LATENCY_TOLERANCE_MS) {
       session.latencyCandidate = null;
+      this.completeResync(session);
       return;
     }
     // Every change moves the local playback position, so a new estimate is applied only once it has held for a whole
@@ -868,6 +930,12 @@ class NetworkOutputHost extends EventEmitter {
     }
     if (++candidate.count < LATENCY_SAMPLES) return;
     session.latencyCandidate = null;
+    if (this.resyncTimer) {
+      session.heldLatencyMs = floorMs;
+      if (session.resyncing) this.completeResync(session);
+      else this.publishStatus();
+      return;
+    }
     session.latencyMs = floorMs;
     this.applyDelays();
   }
@@ -1080,4 +1148,4 @@ class NetworkOutputHost extends EventEmitter {
   }
 }
 
-module.exports = { NetworkOutputHost, DelayLine, normalizeConfiguration, sanitizeConfiguration, DEFAULT_CONFIGURATION, L0_MS, L0_MAX_MS, MAX_TRIM_MS, LATENCY_TOLERANCE_MS, LATENCY_SAMPLES, CAST_POLL_MS, SAMPLE_RATE };
+module.exports = { NetworkOutputHost, DelayLine, normalizeConfiguration, sanitizeConfiguration, DEFAULT_CONFIGURATION, L0_MS, L0_MAX_MS, MAX_TRIM_MS, LATENCY_TOLERANCE_MS, LATENCY_SAMPLES, CAST_POLL_MS, RESYNC_TIMEOUT_MS, SAMPLE_RATE };

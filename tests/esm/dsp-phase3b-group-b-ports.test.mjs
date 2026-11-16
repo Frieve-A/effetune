@@ -31,15 +31,16 @@ const ports = [
   {
     type: 'FifteenBandPEQPlugin',
     folder: ['eq', 'fifteen_band_peq'],
-    hash: 0x6197cd46,
-    floatCount: 75,
-    goldenCount: 8,
+    hash: 0x5b2fb687,
+    floatCount: 76,
+    goldenCount: 9,
     fields: [
       ['frequency', 'f', 'float', 15],
       ['gain', 'g', 'float', 15],
       ['q', 'q', 'float', 15],
       ['filterType', 't', 'enum', 15],
-      ['bandEnabled', 'e', 'bool', 15]
+      ['bandEnabled', 'e', 'bool', 15],
+      ['masterGain', 'mg', 'float', 1]
     ]
   },
   {

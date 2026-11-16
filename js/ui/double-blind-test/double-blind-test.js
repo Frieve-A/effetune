@@ -38,6 +38,7 @@ const DELETE_ICON = CLOSE_ICON;
 const FADE_SECONDS = 0.05;   // master fade duration on exit
 const DIP_FADE = 0.04;       // fade out / fade in time for each switch press
 const DIP_MS = 90;           // time from press to fade-in start (silent dip)
+const SAVED_TEST_VERSION = 2;
 
 export class DoubleBlindTest {
     constructor(uiManager) {
@@ -69,7 +70,7 @@ export class DoubleBlindTest {
         return this.active;
     }
 
-    /** Both pipelines must hold at least one plugin for the test to be available. */
+    /** Both pipelines must exist for the test to be available; either may be empty. */
     static abValid(audioManager) {
         return hasDoubleBlindTestPipelines(audioManager);
     }
@@ -153,8 +154,11 @@ export class DoubleBlindTest {
 
         const pluginsA = buildPipeline(obj.pA);
         const pluginsB = buildPipeline(obj.pB);
-        if (pluginsA.length === 0 || pluginsB.length === 0) {
-            console.error('[DoubleBlindTest] Restored pipelines are empty');
+        // An empty pipeline is valid, but one whose effects all failed to load
+        // would silently test something other than what was shared.
+        if ((obj.pA.length > 0 && pluginsA.length === 0) ||
+            (obj.pB.length > 0 && pluginsB.length === 0)) {
+            console.error('[DoubleBlindTest] Shared pipeline effects could not be restored');
             return false;
         }
 
@@ -499,11 +503,10 @@ export class DoubleBlindTest {
                 this._deleteTest(name);
             }
         });
-        this.els.testNameInput.addEventListener('change', async () => {
+        this.els.testNameInput.addEventListener('change', () => {
             const name = this.els.testNameInput.value.trim();
             this.testName = name;
-            const tests = await this._getTests();
-            if (tests[name]) this._loadTest(name);
+            if (name) return this._loadTest(name);
         });
         this.els.nameInput.addEventListener('input', () => {
             this.localName = this.els.nameInput.value;
@@ -662,11 +665,12 @@ export class DoubleBlindTest {
             const tests = await this._getTests();
             const tc = parseInt(this.els.countInput.value, 10);
             tests[name] = {
-                v: 1,
+                v: SAVED_TEST_VERSION,
                 tc: (isNaN(tc) || tc < 1) ? this.testCount : tc,
                 fAB: this.fixAB,
                 pA: (this.audioManager.pipelineA || []).map(getSerializablePluginStateShort),
-                pB: (this.audioManager.pipelineB || []).map(getSerializablePluginStateShort)
+                // null keeps "no Pipeline B" distinct from an empty Pipeline B.
+                pB: this.audioManager.pipelineB?.map(getSerializablePluginStateShort) ?? null
             };
             await this._persistTests(tests);
             this.testName = name;
@@ -695,26 +699,44 @@ export class DoubleBlindTest {
     /** Recall a saved test: restore both pipelines and settings, then resume. */
     async _loadTest(name) {
         const tests = await this._getTests();
+        if (!tests || !Object.hasOwn(tests, name)) return;
         const t = tests[name];
-        if (!t) return;
 
-        const buildPipeline = (states) => (states || []).flatMap((state) => {
-            try {
-                const plugin = this.pluginManager.createPlugin(state.nm);
-                if (!plugin) return [];
-                applySerializedState(plugin, state);
-                if (plugin.updateParameters) plugin.updateParameters();
-                this.uiManager.expandedPlugins.add(plugin);
-                return plugin;
-            } catch (error) {
-                console.warn(`[DoubleBlindTest] Failed to create plugin '${state.nm}':`, error);
-                return [];
-            }
+        const restoredPlugins = [];
+        const buildPipeline = states => states.map(state => {
+            if (typeof state?.nm !== 'string' || !state.nm) throw new Error('Invalid saved effect');
+            const plugin = this.pluginManager.createPlugin(state.nm);
+            if (!plugin) throw new Error(`Effect '${state.nm}' is unavailable`);
+            restoredPlugins.push(plugin);
+            applySerializedState(plugin, state);
+            return plugin;
         });
 
-        const pluginsA = buildPipeline(t.pA);
-        const pluginsB = buildPipeline(t.pB);
-        this._replacePipelines(pluginsA, pluginsB.length ? pluginsB : null);
+        let pluginsA, pluginsB;
+        try {
+            if (!Array.isArray(t?.pA) || (t.pB !== null && !Array.isArray(t.pB))) {
+                throw new Error('Invalid saved pipelines');
+            }
+            pluginsA = buildPipeline(t.pA);
+            // Older saves used an empty array when Pipeline B was absent.
+            const hasPipelineB = t.pB !== null && (t.v === SAVED_TEST_VERSION || t.pB.length > 0);
+            pluginsB = hasPipelineB ? buildPipeline(t.pB) : null;
+        } catch (error) {
+            for (const plugin of restoredPlugins) plugin.cleanup?.();
+            console.warn('[DoubleBlindTest] Failed to restore saved pipelines:', error);
+            // Do not label the unchanged pipelines as the test that failed to load.
+            if (this.testName === name) {
+                this.testName = '';
+                if (this.els.testNameInput) this.els.testNameInput.value = '';
+                this._updateTestNameClear();
+                this._updateStartAvailability();
+            }
+            this.uiManager.showTransientMessage(this.t('error.failedToLoadPreset'), true, {}, 3000);
+            return;
+        }
+
+        this._replacePipelines(pluginsA, pluginsB);
+        for (const plugin of restoredPlugins) this.uiManager.expandedPlugins.add(plugin);
         this.audioManager.setCurrentPipeline('A', true);
 
         this.testName = name;

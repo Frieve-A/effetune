@@ -454,6 +454,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | EQ        | Earphone Cable Sim | Permet de vérifier à quel point les variations de réponse en fréquence dues aux câbles d'écouteurs ordinaires restent généralement faibles | [Détails](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Règle le retard de chaque bande de fréquence sans modifier le timbre | [Détails](plugins/eq.md#group-delay-eq) |
 | EQ        | Group Delay PEQ | Contrôle paramétrique à cinq bandes du retard par fréquence sans modifier le timbre | [Détails](plugins/eq.md#group-delay-peq) |
+| EQ        | Headphone EQ | Correction FIR qui rapproche la réponse de votre casque d'une courbe cible à partir de sa mesure | [Détails](plugins/eq.md#headphone-eq) |
 | EQ        | Hi Pass Filter | Élimine avec précision les basses indésirables | [Détails](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Élimine avec précision les hautes fréquences indésirables | [Détails](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Correction de l'équilibre fréquentiel pour l'écoute à faible volume | [Détails](plugins/eq.md#loudness-equalizer) |
@@ -521,6 +522,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Spatial   | Phase Select EQ | Accentue ou atténue les composantes fréquentielles selon la différence de phase G/D et Balance | [Détails](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | Sépare le son Direct, Diffuse et Residual pour un routage multicanal flexible | [Détails](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Contrôle la largeur stéréo, de la stéréo à polarité inversée à la stéréo élargie en passant par le mono | [Détails](plugins/spatial.md#stereo-blend) |
+| Others    | Distortion Correction | Réduit la distorsion de vos propres enceintes à partir d’une mesure réalisée dans EffeTune | [Détails](plugins/others.md#distortion-correction) |
 | Others    | Oscillator | Générateur de sons de test et de bruit pour vérifier enceintes/casques | [Détails](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Joue les notes détectées avec des SoundFonts SF2/SF3 et des instruments SFZ | [Détails](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Joue des morceaux MIDI avec des SoundFonts SF2/SF3 ou des instruments SFZ, avec 16 canaux SF2/SF3 indépendants | [Détails](plugins/others.md#soundfont-player) |

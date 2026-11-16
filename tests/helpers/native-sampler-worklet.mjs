@@ -35,6 +35,8 @@ export async function createNativeSamplerWorklet({ variant = 'baseline', sampleR
     TextDecoder, TextEncoder, Map, Set, performance, Date, sampleRate, currentFrame: 0, currentTime: 0,
     console: { log() {}, warn: (...args) => errors.push(args.join(' ')), error: (...args) => errors.push(args.join(' ')) },
     AudioWorkletProcessor: class { constructor() { this.port = { postMessage(data) {
+      // The worklet reuses its readiness object. Keep the posted snapshot as a MessagePort does.
+      if (data.type === 'sfzStreamReadiness') data = structuredClone(data);
       messages.push(data);
       queueMicrotask(() => {
         if (data.type?.startsWith('sfz') || data.type === 'assetState' || data.type === 'soundFontMixerActionApplied') {

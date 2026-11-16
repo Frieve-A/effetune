@@ -38,10 +38,10 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid,
 .room-eq-additional-eq-ui .room-eq-additional-eq-response {
     position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid line {
@@ -50,7 +50,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-grid text {
     fill: var(--et-graph-label);
-    font-size: 10px;
+    font-size: 12px;
 }
 /* Curves that leave the plot area keep running into the graph margin instead of
    being cropped flat at the plot edge; the graph box does the final clipping. */
@@ -251,10 +251,10 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-impulse-response {
     position: absolute;
     display: none;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 .room-eq-phase-grid line,
@@ -268,7 +268,7 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-group-delay-grid text,
 .room-eq-impulse-grid text {
     fill: var(--et-graph-label);
-    font-size: 10px;
+    font-size: 12px;
 }
 .room-eq-phase-response path,
 .room-eq-group-delay-response path,
@@ -375,6 +375,7 @@ body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-gain-text {
     max-width: 40px;
     font-size: 16px;
 }
+/* Outrank the generic mobile rule that gives graph-container SVGs an automatic height. */
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-response,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-phase-grid,
@@ -383,8 +384,7 @@ body.layout-mobile .room-eq-additional-eq-ui .room-eq-group-delay-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-group-delay-response,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-response {
-    width: calc(100% - 40px) !important;
-    height: calc(100% - 40px) !important;
+    height: 100% !important;
 }
 body.layout-mobile .room-eq-additional-eq-graph {
     aspect-ratio: 4 / 3;

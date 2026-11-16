@@ -455,6 +455,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | EQ        | Earphone Cable Sim | 用于确认普通耳机线差异造成的频率响应变化通常很小 | [详情](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | 在不改变音色的前提下调整各频段的延迟 | [详情](plugins/eq.md#group-delay-eq) |
 | EQ        | Group Delay PEQ | 在不改变音色的前提下用五个参量频段调整各频率的延迟 | [详情](plugins/eq.md#group-delay-peq) |
+| EQ        | Headphone EQ | 根据耳机的测量曲线，用 FIR 滤波将其校正到目标曲线 | [详情](plugins/eq.md#headphone-eq) |
 | EQ        | Hi Pass Filter | 精确去除不需要的低频 | [详情](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | 精确去除不需要的高频 | [详情](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | 针对低音量聆听的频率平衡校正 | [详情](plugins/eq.md#loudness-equalizer) |
@@ -522,6 +523,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial   | Phase Select EQ | 按 L/R 相位差和 Balance 选择并提升或衰减频率成分 | [详情](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | 将声音分为 Direct、Diffuse 和 Residual，以便灵活进行多通道路由 | [详情](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | 从极性互换的立体声经单声道到增强立体声，控制声场宽度 | [详情](plugins/spatial.md#stereo-blend) |
+| Others    | Distortion Correction | 根据在 EffeTune 中对自己扬声器的测量结果降低扬声器失真 | [详情](plugins/others.md#distortion-correction) |
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | 使用 SF2/SF3 SoundFont 和 SFZ 乐器演奏检测到的音符 | [详情](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | 使用 SF2/SF3 SoundFont 或 SFZ 乐器播放 MIDI，SF2/SF3 支持 16 个独立音色通道 | [详情](plugins/others.md#soundfont-player) |

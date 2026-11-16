@@ -228,7 +228,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
           </label>
         </div>
         <div class="library-sharing-actions network-output-actions">
-          <button type="button" class="library-button" id="network-output-resync" disabled></button>
+          <div class="network-output-resync-row">
+            <button type="button" class="library-button" id="network-output-resync" disabled></button>
+            <div class="power-mode-help" id="network-output-sync-status" role="status" aria-live="polite"></div>
+          </div>
           <div class="openhome-help" id="network-output-resync-help"></div>
         </div>
       </div>` : '';
@@ -792,6 +795,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .network-output-actions {
       margin: 10px 0 0 26px;
     }
+    .network-output-resync-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .network-output-actions .power-mode-help,
     .network-output-actions .openhome-help {
       margin: 0;
     }
@@ -1586,7 +1596,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
       localDelay.disabled = controlsDisabled;
     }
     const resync = document.getElementById('network-output-resync');
-    if (resync) resync.disabled = controlsDisabled;
+    if (resync) resync.disabled = controlsDisabled || status.resyncing === true;
+    const syncStatus = document.getElementById('network-output-sync-status');
+    if (syncStatus) syncStatus.textContent = enabled && status.syncing ? t('dialog.config.networkOutput.syncing') : '';
   }
 
   function parseNetworkOutputTrim(value, minimum) {

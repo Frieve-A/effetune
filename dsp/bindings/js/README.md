@@ -3,8 +3,8 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.18.1 exposes all 112 catalog types through the generic Chain and
-`createEffect` APIs and 112 generated named convenience classes,
+Version 0.19.0 exposes all 113 catalog types through the generic Chain and
+`createEffect` APIs and 113 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 
@@ -162,8 +162,8 @@ after changing
 `IRReverb.channelMode`, `latency`, or `convolutionRate`;
 `FIRCrossover.bandCount`, `latencyMode`, or `filterDelaySamples`; or
 `latencyMode` / `filterDelaySamples` on `CrosstalkCancellation`,
-`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or `RoomEQ`. The same
-restriction applies to
+`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `HeadphoneEQ`, or `RoomEQ`.
+The same restriction applies to
 `EffeTuneNode.setParam()`.
 
 ### Play a SoundFont

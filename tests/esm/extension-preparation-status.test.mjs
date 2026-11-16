@@ -9,6 +9,7 @@ import {
 } from '../../extension/preparation-status-bridge.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+const firAssetEqSource = fs.readFileSync(new URL('../../plugins/fir-asset-eq.js', import.meta.url), 'utf8');
 const effects = [
   ['eq/five_band_fir_peq', 'FiveBandFIRPEQPlugin'],
   ['eq/group_delay_eq', 'GroupDelayEqPlugin'],
@@ -36,7 +37,7 @@ function loadPlugin(file, className) {
     PluginBase, window: {}, console, setTimeout: () => 1, clearTimeout() {},
     Float32Array, ArrayBuffer, Map, Set
   };
-  vm.runInNewContext(`${fs.readFileSync(new URL(`../../plugins/${file}.js`, import.meta.url), 'utf8')}\nthis.Plugin = ${className};`, context);
+  vm.runInNewContext(`${firAssetEqSource}\n${fs.readFileSync(new URL(`../../plugins/${file}.js`, import.meta.url), 'utf8')}\nthis.Plugin = ${className};`, context);
   return context.Plugin;
 }
 

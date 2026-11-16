@@ -895,7 +895,9 @@ export class PlaybackManager {
     }
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const currentOrdinal = state?.currentTrackIndex ?? 0;
-    const repeatMode = options.ignoreRepeatOne ? 'OFF' : (state?.repeatMode ?? 'OFF');
+    const repeatMode = options.ignoreRepeatOne === true
+      ? 'OFF'
+      : manualRepeatMode(state?.repeatMode, userInitiated);
     const sequence = this.catalogSequence;
     const previousShuffleState = captureShuffleState(sequence);
     const nextOrdinal = sequence.moveTransportOrdinal(currentOrdinal, 1, repeatMode);
@@ -951,7 +953,7 @@ export class PlaybackManager {
     const previousOrdinal = sequence.moveTransportOrdinal(
       currentOrdinal,
       -1,
-      state?.repeatMode ?? 'OFF'
+      manualRepeatMode(state?.repeatMode, true)
     );
     const transportRollback = createTransportRollback(sequence, previousShuffleState);
     if (previousOrdinal === null) {
@@ -2832,6 +2834,13 @@ function samePlaybackEntry(left, right) {
       left.file.lastModified === right.file.lastModified;
   }
   return false;
+}
+
+// Repeat One only replays the track at its natural end; manual Next/Previous
+// still moves through the queue (without wrapping, as with Repeat Off).
+function manualRepeatMode(repeatMode, manual) {
+  const mode = repeatMode ?? 'OFF';
+  return manual && mode === 'ONE' ? 'OFF' : mode;
 }
 
 function normalizeShuffleModeForRepeat(repeatMode, shuffleMode) {

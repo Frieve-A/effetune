@@ -14,7 +14,7 @@ On the draggable point graphs in 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Del
 
 ## Mobile Band Selection
 
-On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ's Additional EQ, and Tonal Balance EQ's Target Adjust show one band's settings at a time. Tap a numbered band button to switch bands. All band settings are retained.
+On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Headphone EQ's Target Adjust, Room EQ's Additional EQ, and Tonal Balance EQ's Target Adjust show one band's settings at a time. Tap a numbered band button to switch bands. All band settings are retained.
 
 ## Plugin List
 
@@ -28,6 +28,7 @@ On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ's Additional EQ, a
 - [Earphone Cable Sim](#earphone-cable-sim) - Helps check how small normal earphone-cable response shifts usually are
 - [Group Delay EQ](#group-delay-eq) - Adjusts the delay of each frequency band without changing the tone
 - [Group Delay PEQ](#group-delay-peq) - Five-band parametric control of per-frequency delay without changing the tone
+- [Headphone EQ](#headphone-eq) - FIR correction of headphones from a measurement curve toward a target curve
 - [Hi Pass Filter](#hi-pass-filter) - Remove unwanted low frequencies with precision
 - [Lo Pass Filter](#lo-pass-filter) - Remove unwanted high frequencies with precision
 - [Loudness Equalizer](#loudness-equalizer) - Frequency balance correction for low volume listening
@@ -120,6 +121,7 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
     - 1kHz, 1.6kHz, 2.5kHz (Middle Sound)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (High Sound)
 - **Controls Per Band**
+  - Each band tab lists Type, Freq, Gain, and Q on separate rows; set Freq, Gain, and Q with the slider or by typing a value
   - Center Frequency: Adjustable from 20Hz to 20kHz
   - Gain Range: ±20dB for Peaking and Low/High Shelf filters
   - Q Factor: 0.1-10.0 for most filter types; Low/High Shelf is limited to 0.1-2.0
@@ -132,11 +134,14 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
     - Band Pass: Focused frequency isolation
     - Notch: Precise frequency removal
     - AllPass: Phase-focused frequency alignment
+- **Master Tab**
+  - Gain: Adjusts the overall level from -20dB to +20dB after all bands. Lower it to keep headroom when the bands boost the signal; the response graph includes this gain
 - **Preset Management**
   - Import: Load Equalizer APO-style TXT filter lines
-  - Up to 15 `ON` PK/LS/LSC/HS/HSC filters are imported; `Preamp` lines and unsupported filter types are ignored
+  - Up to 15 `ON` PK/LS/LSC/HS/HSC filters are imported, and a `Preamp` line sets Gain on the Master tab (0dB when the file has none); unsupported filter types are ignored
     - Example format:
       ```
+      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
@@ -500,6 +505,54 @@ Total latency is the Latency setting plus half the Taps count. It stays the same
 - The status line shows the total latency in samples and milliseconds, and the magnitude ripple of the filter. Ripple measures how far the realized magnitude response departs from the flat design target: smaller values are closer to the target, and 0.3 dB is the accuracy-warning threshold.
 - Hover over the graph, or touch and drag on it, to read the values at that point.
 
+## Headphone EQ
+
+Headphone EQ corrects the frequency response of your headphones toward a target curve. Search for your headphone model, and the plugin downloads its measurement and a matching target curve from the AutoEQ project, then designs an FIR correction filter that reduces the difference between them. You can also load your own measurement and target files. The same correction is applied to every channel. Unlike importing ready-made settings into 15Band PEQ, Headphone EQ designs the correction itself, so you can change its strength, its frequency range, the boost limit, and the target at any time. The plugin requires the WASM DSP engine; without it, the signal passes through unchanged.
+
+### Sound Enhancement Guide
+
+- **Start by searching for your headphones**: Type the model name in the search box and pick it from the list. The measurement and its target are loaded together, so the correction starts right away. When a model is listed with several measurement sources, any of them is a reasonable choice; each comes with the target for the same source and measuring rig. To correct toward a different target, click **Load Target** and choose a target curve file.
+- **Starting settings**: The defaults (**Minimum Phase**, **Correction Amount: 100%**, **Upper Limit: 10000 Hz**, **Max Boost: 6 dB**, **Smoothing: 0.17 oct**, **Auto Headroom** on) are a good baseline. Toggle the effect on and off to compare.
+- **Treble range**: Measurements above about 10 kHz change with how the headphones sit and with the measuring setup, so the default **Upper Limit** leaves that region uncorrected. Raise it only when you trust the measurement there, and lower it (for example, to 6000 Hz) if correcting the upper range makes the treble worse.
+- **Avoid large boosts**: If the correction tries to fill narrow dips with large boosts, lower **Max Boost** or raise **Smoothing**. At 0 dB, peaks are still reduced but nothing is boosted.
+- **Gentler correction**: Lower **Correction Amount** (for example, to 50%) to move only part of the way toward the target.
+- **Simulate another headphone**: Correct your own headphones with one Headphone EQ, then add a second Headphone EQ with the other model's measurement and **Correction Amount** at -100%. The second one adds that model's deviation from its target, so your headphones take on its character. Use the same target in both for the closest match.
+- **More bass to taste**: In **Target Adjust**, set a band's type to **LowShelv** around 100 Hz and raise its gain by 2 to 4 dB. Like Room EQ's Additional EQ, Target Adjust applies across the whole range and is not limited by **Correction Amount**, **Upper Limit**, or **Max Boost**.
+- **One preset per headphone**: The loaded curves are saved in presets and URLs, so save a preset for each pair of headphones.
+
+### Parameters
+
+- **Search box** (`Search headphones (AutoEQ) or paste a URL`) - Type a headphone model and pick it from the list to load its measurement and target. You can also paste a link to a measurement file and press Enter; links to an AutoEQ result page or folder on GitHub work as well. The headphone list and the measurements come from the [AutoEQ project](https://github.com/jaakkopasanen/AutoEq) by Jaakko Pasanen and are downloaded from GitHub only when you use this box. The loaded measurement is named after the model and its measurement source (for example, oratory1990), and the status line shows this name. If a download fails, the status line shows an error and the previously loaded curves stay in use.
+- **Drag and drop** - Drop a `.csv` or `.txt` file onto the plugin to load it as the measurement, just like **Load Measurement**.
+- **Load Measurement** - Loads a measurement from your own `.csv` or `.txt` file. From an AutoEQ CSV, the `raw` column is used, and a `target` column, if present, also replaces the target.
+- **Load Target** - Loads the target curve. From an AutoEQ CSV, the `target` column is used if present; otherwise the `raw` column.
+- **Accepted files** - An AutoEQ-style CSV whose first row names the columns, including `frequency`, or a plain text file with frequency and level (dB) columns separated by commas, tabs, semicolons, or spaces. Lines that are not numbers are skipped, and only the first two columns are used. If a file cannot be read, the status line shows an error and the previously loaded curves stay in use. The levels of the measurement and target do not need to match; their overall levels are aligned before comparison.
+- The correction starts once both a measurement and a target are loaded. Until then the signal passes unchanged, and the correction settings and Target Adjust are disabled.
+- **Phase**
+  - **Minimum Phase** - Adds no FIR delay beyond the selected Latency.
+  - **Linear Phase** - Gives every frequency the same delay, adding `Taps / 2` samples in addition to the selected Latency.
+- **Taps** - FIR length: 8192, 16384, 32768, 65536, or 131072. More taps reproduce bass and fine detail more accurately, but increase memory use, design time, and Linear Phase delay.
+- **Latency** - Convolution-engine head latency: 0, 128, 256, 512, or 1024 samples. Lower values reduce delay but require more processing.
+- **Correction Amount** (-100% to 100%; default 100%) - Scales the automatic correction in dB. 50% halves every boost and cut; 0% leaves only Target Adjust. Negative values invert the correction and add the headphone's deviation from the target instead; at -100% the full deviation is reproduced. **Max Boost** then limits the boosts that reproduce its peaks.
+- **Upper Limit** (1000 to 20000 Hz; default 10000 Hz) - Highest frequency to correct. Above it the automatic correction is 0 dB, with a smooth transition at the boundary. The lower end is always 20 Hz.
+- **Max Boost** (0 to 18 dB; default 6 dB) - Caps the boosts of the automatic correction. Cuts and Target Adjust are not limited.
+- **Smoothing** (0.02 to 1 oct; default 0.17 oct) - Smooths the correction curve. Higher values give broader, more conservative correction; lower values also follow narrow peaks and dips, which often vary with fit.
+- **Auto Headroom** (default on) - Lowers the whole output by the largest boost in the filter, including Target Adjust, so the filter's highest gain is 0 dB and boosted regions do not raise the level above the input. The applied amount appears in the status line. When off, the output level is kept, but loud passages can clip after a boost; lower the level in a later stage or add a limiter.
+- **Target Adjust** - Five parametric bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves; default Q 1) that reshape the target. Positive gain asks for more of that region, negative gain for less. For **Peaking**, a higher Q affects a narrower band and a lower Q a wider one; for the shelves, Q changes the shape near the transition.
+
+### Visual Display
+
+- The horizontal axis is frequency from 20 Hz to 20 kHz, and the vertical axis is level from -20 to +20 dB. Parts of a curve outside this range are cut off at the edge.
+- **Measurement** is the measurement, aligned to the level of the target, or centered around 0 dB when no target is loaded. It is smoothed once the correction is designed.
+- **Target** is the target curve including Target Adjust.
+- **Correction** is the boost and cut of the correction filter around 0 dB, including Target Adjust. The overall level reduction by **Auto Headroom** is not included; its amount appears in the status line.
+- **Corrected** is the calculated result after correction, not a new measurement. Where it lies on **Target**, the correction is complete; it stays apart above **Upper Limit**, where **Max Boost** limits a boost, and when **Correction Amount** is not 100%.
+- Until both a measurement and a target are loaded, only the loaded curves are shown.
+- A vertical line marks **Upper Limit**.
+- Numbered handles show the Target Adjust bands. Drag a handle to change frequency and gain, turn the mouse wheel over it to change Q, and right-click it to turn the band on or off.
+- The status line shows whether the filter is being designed or is ready, the applied headroom, and a warning when the filter may be inaccurate (increase **Taps** or **Smoothing**). The line below it shows the total processing latency in samples and milliseconds.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
+
 ## Hi Pass Filter
 
 A precision high-pass filter that removes unwanted low frequencies while preserving the clarity of higher frequencies. Based on Linkwitz-Riley filter design for optimal phase response and transparent sound quality.
@@ -693,7 +746,7 @@ Room EQ builds FIR correction filters from frequency-response measurements saved
 
 ### Parameters
 
-- **Measurement** - Selects the shared saved measurement (showing name, point count, and `IR` when impulse data is present). Click **Refresh measurements** after adding or editing measurements.
+- **Measurement** - Selects the shared saved measurement (showing name, point count, and `IR` when impulse data is present). Click **Refresh measurements** after adding or editing measurements. To add Room EQ with a measurement already selected, click **Copy Room EQ Settings** below the result in Acoustic Measurement, click an empty area of the Effect Pipeline and paste (Ctrl+V); a multichannel measurement fills **Measurement ChN** for each measured channel.
 - **Measurement ChN** - Optional per-channel measurement override for each routed bus channel. Leave at **(Shared)** to use the shared **Measurement**.
 - **Delay** (0 to 20 ms) - Manual delay applied to all routed channels; it is not included in the reported processing latency.
 - **Phase** - Selects FIR phase behavior:
@@ -716,7 +769,7 @@ Room EQ builds FIR correction filters from frequency-response measurements saved
 - **Reverb Max Freq** (20 to 20000 Hz; default 250 Hz) - Upper frequency limit for **Reverb Correction**, capped by **Correction High** (keeping it around 250 Hz focuses on low-frequency room decay that behaves consistently across nearby seats).
 - **Reverb Smoothing** (0.02 to 1.00 oct) - Gaussian smoothing applied to the reverb excess-phase delay.
 - **Reference Point** - Selects **Consensus (all points)** (reliability-weighted average across measurement points) or a single measurement point for excess-phase analysis. If the selected point is removed, it returns to Consensus.
-- **Additional EQ (folded into FIR)** - Five parametric target-shaping bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves) built directly into the FIR filter. Their phase is zero in Linear mode and minimum-phase in Minimum and Correction modes.
+- **Additional EQ (folded into FIR)** - Five parametric target-shaping bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves) built directly into the FIR filter. For **Peaking**, a higher Q affects a narrower band and a lower Q a wider one; for the shelves, Q changes the shape near the transition. Their phase is zero in Linear mode and minimum-phase in Minimum and Correction modes.
 - **Gain** (-12 to +12 dB) - Output level trim.
 
 ### Visual Display
@@ -757,7 +810,7 @@ The plugin compares the measured spectrum with the target after aligning overall
 - **One steady correction for an album**: Click **Reset** at the start of the album and set **Averaging Time** to **∞** so the correction averages the entire playback session and settles into a fixed curve.
 - **Genre-specific targets**: Choose **Classical**, **Electronic**, **Pop**, or **Rock** to match a specific style, or **All** for mixed listening.
 - **Gentler shaping**: Lower **Amount** (e.g., 50%), reduce **Range** (e.g., 3 dB), or raise **Smoothing** (e.g., 1 oct) for broad, subtle tilts.
-- **Custom house curve**: Use the five **Target Adjust** bands below the graph to tilt or shape the target to your taste (for example, +1.5 dB High shelf at 8 kHz). Each recording is then corrected toward your custom target only as much as needed.
+- **Custom house curve**: Use the five **Target Adjust** bands below the graph to tilt or shape the target to your taste (for example, a **HighShel** band at 8 kHz with +1.5 dB). Each recording is then corrected toward your custom target only as much as needed.
 - **Fixed slope reference**: Select **Target: Tilt** for a flat response below **Corner** followed by a constant roll-off **Slope** (−5 dB/oct approximates typical commercial masters; −3 dB/oct matches pink noise).
 
 The make-up gain keeps loudness, not peak level, so peaks can rise; if a later stage clips, lower the level after this plugin or add a limiter.
@@ -772,7 +825,7 @@ The make-up gain keeps loudness, not peak level, so peaks can rise; if a later s
 - **Averaging Time** (0.1 s to ∞; default 30 s) - Measurement integration window. Short values (e.g., 0.5 to 1 s) follow changes within a song, such as a dark verse and a bright chorus; long values give a steady correction (**∞** averages continuously since the last **Reset**).
 - **Low** (20 to 200 Hz; default 20 Hz) / **High** (2000 to 20000 Hz; default 16000 Hz) - Lower and upper frequency bounds of active reshaping (outside these bounds, correction holds constant). Raise **Low** to leave the deep bass alone, or lower **High** to leave the top octave alone.
 - **Average SPL** (60 to 96 dB; default 83 dB) - Estimated listening level used to determine which quiet frequency bands are audible enough to be lifted; it does not change the output level. Lower values treat more faint bands as inaudible, so they are not lifted; higher values count more of them as audible.
-- **Target Adjust** - Five parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves; default Q 0.7) that reshape the target curve. Positive gain asks for more of that region, negative gain for less.
+- **Target Adjust** - Five parametric bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves; default Q 0.7) that reshape the target curve. Positive gain asks for more of that region, negative gain for less. For **Peaking**, a higher Q affects a narrower band and a lower Q a wider one; for the shelves, Q changes the shape near the transition.
 
 **Target Adjust** changes only the target; each recording is still corrected toward it within **Amount** and **Range**, so a larger adjustment may need a larger **Range**. Raising the whole target by the same amount changes nothing, because overall levels are aligned before comparison. Narrow peaks and dips are smoothed out; use 5Band PEQ for narrow fixes.
 

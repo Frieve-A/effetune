@@ -1,8 +1,12 @@
 // Larger drifts jump to the audible position; smaller ones are absorbed by the rate.
 const SEEK_DRIFT = 0.25;
 const PAUSED_DRIFT = 1 / 60;
-const RATE_CORRECTION = 0.5;
-const MAX_RATE_CORRECTION = 0.05;
+// Every playbackRate change disturbs the decoder clock and the display cadence, so drift
+// within SYNC_DRIFT keeps the exact speed. Larger drift is corrected at a fixed rate until
+// it falls within SYNC_SETTLED.
+const SYNC_DRIFT = 0.03;
+const SYNC_SETTLED = 0.005;
+const RATE_CORRECTION = 0.05;
 
 // A muted display decoder shared by the player and Visualizer; the audio source stays independent.
 export class SynchronizedVideo {
@@ -66,16 +70,18 @@ export class SynchronizedVideo {
             // Calling play() on an ended decoder implicitly rewinds it, even for a tiny drift.
             if (!video.seeking && (video.ended || drift > SEEK_DRIFT || drift < -SEEK_DRIFT - recoveryLag)) {
                 this.seek(entry, target);
+            } else if (!(entry.rateDirection * drift > SYNC_SETTLED)) {
+                entry.rateDirection = drift > SYNC_DRIFT ? 1 : drift < -SYNC_DRIFT ? -1 : 0;
             }
-            const correction = -drift * RATE_CORRECTION;
-            video.playbackRate = playbackSpeed * (1 + (correction > MAX_RATE_CORRECTION ? MAX_RATE_CORRECTION
-                : correction < -MAX_RATE_CORRECTION ? -MAX_RATE_CORRECTION : correction));
+            const rate = playbackSpeed * (1 - entry.rateDirection * RATE_CORRECTION);
+            if (video.playbackRate !== rate) video.playbackRate = rate;
             if (video.paused && !video.seeking && !video.ended) {
                 video.play().catch(error => console.warn('[SynchronizedVideo] Video playback did not start:', error));
             }
         } else {
             entry.seekRecoveryLag = 0;
             entry.syncSeekPending = false;
+            entry.rateDirection = 0;
             if (!video.paused) video.pause();
             if (!video.seeking && (drift > PAUSED_DRIFT || drift < -PAUSED_DRIFT)) video.currentTime = target;
         }
@@ -85,6 +91,7 @@ export class SynchronizedVideo {
     seek(entry, target) {
         entry.element.currentTime = target;
         entry.seekRecoveryLag = 0;
+        entry.rateDirection = 0;
         entry.syncSeekPending = entry.element.seeking;
     }
 
@@ -174,7 +181,7 @@ export class SynchronizedVideo {
     }
 
     createSource(source, generation) {
-        const entry = { source, generation, element: null, url: null, ready: !source };
+        const entry = { source, generation, element: null, url: null, ready: !source, rateDirection: 0 };
         if (!source) return entry;
         const video = entry.element = document.createElement('video');
         video.muted = true;

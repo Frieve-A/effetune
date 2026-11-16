@@ -57,6 +57,7 @@ _STREAM_RECONFIGURATION_PARAMETERS = {
     "FiveBandFIRPEQ": frozenset({"latencyMode", "filterDelaySamples"}),
     "GroupDelayEQ": frozenset({"latencyMode", "filterDelaySamples"}),
     "GroupDelayPEQ": frozenset({"latencyMode", "filterDelaySamples"}),
+    "HeadphoneEQ": frozenset({"latencyMode", "filterDelaySamples"}),
     "IRReverb": frozenset({"channelMode", "latency", "convolutionRate"}),
     "RoomEQ": frozenset({"latencyMode", "filterDelaySamples"}),
 }

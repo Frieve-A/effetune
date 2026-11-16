@@ -51,6 +51,9 @@ async function loadPluginClasses() {
   vm.runInContext(await fs.readFile(path.join(pluginRoot, 'plugin-base.js'), 'utf8'), context, {
     filename: 'plugins/plugin-base.js'
   });
+  vm.runInContext(await fs.readFile(path.join(pluginRoot, 'fir-asset-eq.js'), 'utf8'), context, {
+    filename: 'plugins/fir-asset-eq.js'
+  });
   vm.runInContext(await fs.readFile(path.join(pluginRoot, 'sfz-instrument.js'), 'utf8'), context, {
     filename: 'plugins/sfz-instrument.js'
   });
@@ -214,8 +217,9 @@ test('ParamAdapter reachability matches the frozen exclusions for every generate
       assert.equal(changed, true, `${id} must change through the adapter`);
     }
   }
-  // SFZ Note Player adds fourteen descriptors; Cassette Artifacts Mode adds one.
-  assert.equal(descriptorCount, 1036);
+  // SFZ Note Player adds fourteen descriptors; Cassette Artifacts Mode adds one;
+  // Distortion Correction adds two; Fifteen Band PEQ Master Gain adds one.
+  assert.equal(descriptorCount, 1039);
   assert.deepEqual(observedUnassignable, UNASSIGNABLE_DESCRIPTORS);
 });
 

@@ -79,12 +79,12 @@ const LevelAdjustment = {
 
     /**
      * Start the level meter updates
+     * @param {HTMLElement} levelBar - Bar to drive; defaults to the one on the level adjustment screen
      */
-    startLevelMeter() {
+    startLevelMeter(levelBar = document.getElementById('levelBar')) {
         // Clear any existing interval
         this.stopLevelMeter();
-        
-        const levelBar = document.getElementById('levelBar');
+
         const levelWarning = document.getElementById('levelWarning');
         
         // Clear any previous warning message
@@ -92,7 +92,7 @@ const LevelAdjustment = {
         
         this.levelMeterInterval = setInterval(() => {
             const inputLevel = audioUtils.getInputLevel();
-            
+
             // Update level meter (convert dB to percentage)
             const levelPercent = this.dbToPercent(inputLevel);
             levelBar.style.width = `${levelPercent}%`;

@@ -458,6 +458,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | EQ        | Earphone Cable Sim | Helps check how small normal earphone-cable response shifts usually are | [Details](docs/plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Adjusts the delay of each frequency band without changing the tone | [Details](docs/plugins/eq.md#group-delay-eq) |
 | EQ        | Group Delay PEQ | Five-band parametric control of per-frequency delay without changing the tone | [Details](docs/plugins/eq.md#group-delay-peq) |
+| EQ        | Headphone EQ | FIR correction of headphones from a measurement curve toward a target curve | [Details](docs/plugins/eq.md#headphone-eq) |
 | EQ        | Hi Pass Filter | Remove unwanted low frequencies with precision | [Details](docs/plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Remove unwanted high frequencies with precision | [Details](docs/plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Frequency balance correction for low-volume listening | [Details](docs/plugins/eq.md#loudness-equalizer) |
@@ -525,6 +526,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Phase Select EQ | Boosts or cuts frequency components selected by L/R phase difference and Balance | [Details](docs/plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | Separates direct, diffuse, and residual sound for flexible multichannel routing | [Details](docs/plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Controls stereo width from polarity-swapped stereo through mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
+| Others    | Distortion Correction | Reduces the distortion of your own speakers using a measurement made in EffeTune | [Details](docs/plugins/others.md#distortion-correction) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Plays detected notes with SF2/SF3 SoundFonts and SFZ instruments | [Details](docs/plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Plays MIDI with SF2/SF3 SoundFonts or SFZ instruments, with 16 independent SF2/SF3 channels | [Details](docs/plugins/others.md#soundfont-player) |

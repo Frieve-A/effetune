@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter } = require('node:events');
-const { NetworkOutputHost, DelayLine, normalizeConfiguration, sanitizeConfiguration, DEFAULT_CONFIGURATION, SAMPLE_RATE, L0_MS, LATENCY_SAMPLES, CAST_POLL_MS } = require('../../electron/network-output-host.cjs');
+const { NetworkOutputHost, DelayLine, normalizeConfiguration, sanitizeConfiguration, DEFAULT_CONFIGURATION, SAMPLE_RATE, L0_MS, LATENCY_SAMPLES, CAST_POLL_MS, RESYNC_TIMEOUT_MS } = require('../../electron/network-output-host.cjs');
 const { CastSession } = require('../../electron/cast-sender.cjs');
 const { FEEDBACK_FRESHNESS_MS } = require('../../electron/network-output-live.cjs');
 
@@ -145,7 +145,7 @@ test('network output configuration rejects malformed values with TypeError', asy
   const { host } = createHarness();
   await assert.rejects(host.setConfiguration({ enabled: true }), TypeError);
   assert.deepEqual(host.getStatus(), { enabled: false, localEnabled: true, localTrimMs: 0, localDelayMs: 0,
-    syncDelayMs: 0, syncRevision: 0, targets: [] });
+    syncDelayMs: 0, syncRevision: 0, syncing: false, resyncing: false, targets: [] });
 });
 
 test('opening the picker discovers devices without starting disabled network output', async () => {
@@ -607,7 +607,7 @@ test('a Cast receiver that keeps closing its stream goes offline after repeated 
   assert.equal(casts.length, 3, 'the third drop stops reloading');
   const failed = diagnostics.filter(([code]) => code === 'network-output-cast-failed');
   assert.equal(failed.length, 3);
-  assert.ok(failed.every(([, error]) => error.message === 'Receiver closed the stream'));
+  assert.ok(failed.every(([, reason]) => reason === 'Receiver closed the stream'));
   await clock.advance(29_000);
   assert.equal(casts.length, 3);
   await clock.advance(1000);
@@ -854,6 +854,7 @@ test('cast latency measured from the receiver position raises the local delay an
   const upnpSession = host.sessions.get('uuid:b');
   casts[0].emit('media', { playerState: 'PLAYING', idleReason: null, mediaSessionId: 1, contentId: castSession.url });
   assert.equal(host.getStatus().localDelayMs, L0_MS, 'nothing is measured yet');
+  assert.equal(host.getStatus().syncing, true, 'an unmeasured Cast receiver is still syncing');
   assert.equal(castSession.delay.frames, 0);
   assert.equal(upnpSession.delay.frames, 0);
 
@@ -882,8 +883,10 @@ test('cast latency measured from the receiver position raises the local delay an
   assert.equal(host.getStatus().localDelayMs, 4500, 'an invalid sample window keeps the accepted estimate');
   await poll(44100 * 6, 1.0, 2 * LATENCY_SAMPLES - 2);
   assert.equal(host.getStatus().localDelayMs, 4500, 'a new estimate requires consecutive usable windows');
+  assert.equal(host.getStatus().syncing, true, 'a drift correction being confirmed is shown as syncing');
   await poll(44100 * 6, 1.0, 1);
   assert.equal(host.getStatus().localDelayMs, 5000);
+  assert.equal(host.getStatus().syncing, false);
   assert.equal(upnpSession.delay.frames, framesFor(3000));
 
   const loadsBefore = log.filter(entry => entry[0] === 'cast-load').length;
@@ -895,10 +898,55 @@ test('cast latency measured from the receiver position raises the local delay an
   assert.equal(log.filter(entry => entry[0] === 'cast-load').length, loadsBefore + 1, 'two seconds of over-limit observations restart the receiver');
   assert.equal(host.getStatus().localDelayMs, L0_MS, 'the measurement is forgotten with the session');
   assert.equal(host.sessions.get('uuid:b').delay.frames, 0);
-  assert.equal(harness.diagnostics.at(-1)[1].message, 'Cast playback is 15000 ms behind');
+  assert.equal(harness.diagnostics.at(-1)[1], 'Cast playback is 15000 ms behind');
 
   await host.setConfiguration({ enabled: false, localTrimMs: 0, targets: [] });
   assert.equal(host.getStatus().localDelayMs, 0);
+  await host.dispose();
+});
+
+test('resync measures playing Cast receivers again without reloading them and changes the delays once', async () => {
+  const { host, castDiscovery, clock, casts, log } = createHarness();
+  castDiscovery.devices.set('cast1', { id: 'cast1', name: 'Kitchen', address: '192.168.1.40', port: 8010 });
+  castDiscovery.devices.set('cast2', { id: 'cast2', name: 'Lounge', address: '192.168.1.41', port: 8010 });
+  await host.setConfiguration({ enabled: true, localTrimMs: 0, targets: [target('cast1', 'cast', 'Kitchen'), target('cast2', 'cast', 'Lounge')] });
+  await settle();
+  const sessions = ['cast1', 'cast2'].map(id => host.sessions.get(id));
+  const play = (index, currentTime) => {
+    sessions[index].stream.frames = 44100 * 6;
+    casts[index].status = currentTime === null ? null : { playerState: 'PLAYING', currentTime };
+  };
+  sessions.forEach((session, index) => {
+    casts[index].emit('media', { playerState: 'PLAYING', idleReason: null, mediaSessionId: 1, contentId: session.url });
+    play(index, 1.5);
+  });
+  await clock.advance(2 * LATENCY_SAMPLES * CAST_POLL_MS);
+  assert.equal(host.getStatus().localDelayMs, 4500);
+  assert.deepEqual([host.getStatus().syncing, host.getStatus().resyncing], [false, false]);
+
+  const loads = () => log.filter(entry => entry[0] === 'cast-load').length;
+  const loadsBefore = loads();
+  const streams = sessions.map(session => session.stream);
+  await host.resync();
+  await settle();
+  assert.equal(loads(), loadsBefore, 'playing Cast receivers keep playing');
+  assert.deepEqual(sessions.map(session => session.stream), streams);
+  assert.deepEqual([host.getStatus().syncing, host.getStatus().resyncing], [true, true]);
+
+  play(0, 1.0);
+  play(1, null);
+  await clock.advance(2 * LATENCY_SAMPLES * CAST_POLL_MS);
+  assert.equal(host.getStatus().localDelayMs, 4500, 'a finished measurement waits for the other resynced receivers');
+  await clock.advance(RESYNC_TIMEOUT_MS);
+  assert.equal(host.getStatus().localDelayMs, 5000, 'the held estimate is applied when the resync times out');
+  assert.deepEqual([host.getStatus().syncing, host.getStatus().resyncing], [false, false]);
+
+  play(1, 1.0);
+  await host.resync();
+  await clock.advance(2 * LATENCY_SAMPLES * CAST_POLL_MS);
+  assert.equal(host.getStatus().resyncing, false, 'the resync ends as soon as every receiver has its measurement');
+  assert.equal(host.getStatus().localDelayMs, 5000);
+  assert.equal(loads(), loadsBefore);
   await host.dispose();
 });
 

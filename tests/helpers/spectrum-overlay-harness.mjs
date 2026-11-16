@@ -138,7 +138,7 @@ export function createOverlayHarness() {
     const root = new Element();
     const mount = root.appendChild(new Element());
     const target = overlay.TARGETS.get(targetPlugin.constructor.name);
-    const plot = target?.inset ? mount : mount.appendChild(new Element('canvas'));
+    const plot = target?.svgPlot ? mount : mount.appendChild(new Element('canvas'));
     root.querySelector = selector => selector === target?.plotSelector ? plot : mount;
     return { root, mount, plot };
   }

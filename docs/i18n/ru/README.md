@@ -454,6 +454,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | EQ        | Earphone Cable Sim | Помогает проверить, насколько малы обычные сдвиги АЧХ из-за кабеля наушников | [Подробнее](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Регулирует задержку каждой полосы частот, не изменяя тембр | [Подробнее](plugins/eq.md#group-delay-eq) |
 | EQ        | Group Delay PEQ | Параметрическое управление задержкой по частоте в пяти полосах, не изменяя тембр | [Подробнее](plugins/eq.md#group-delay-peq) |
+| EQ        | Headphone EQ | FIR-коррекция наушников по измеренной кривой к целевой кривой | [Подробнее](plugins/eq.md#headphone-eq) |
 | EQ        | Hi Pass Filter | Точно убирает нежелательные низкие частоты | [Подробнее](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | Точно убирает нежелательные высокие частоты | [Подробнее](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | Коррекция частотного баланса для тихого прослушивания | [Подробнее](plugins/eq.md#loudness-equalizer) |
@@ -521,6 +522,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial   | Phase Select EQ | Усиливает или ослабляет частотные компоненты, выбранные по разности фаз L/R и Balance | [Подробнее](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | Разделяет звук на Direct, Diffuse и Residual для гибкой многоканальной маршрутизации | [Подробнее](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Управляет шириной стерео: от стерео с инвертированной полярностью через моно до расширенного стерео | [Подробнее](plugins/spatial.md#stereo-blend) |
+| Others    | Distortion Correction | Снижает искажения ваших собственных колонок по измерению, выполненному в EffeTune | [Подробнее](plugins/others.md#distortion-correction) |
 | Others    | Oscillator | Генератор тестовых тонов и шума для проверки колонок и наушников | [Подробнее](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | Воспроизводит обнаруженные ноты с SoundFont SF2/SF3 и инструментами SFZ | [Подробнее](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | Воспроизводит MIDI с SoundFont SF2/SF3 или инструментами SFZ; 16 независимых каналов SF2/SF3 | [Подробнее](plugins/others.md#soundfont-player) |

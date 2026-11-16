@@ -722,6 +722,7 @@ const assetRequirements = Object.freeze({
   FiveBandFIRPEQ: monoFirAsset,
   GroupDelayEQ: monoFirAsset,
   GroupDelayPEQ: monoFirAsset,
+  HeadphoneEQ: monoFirAsset,
   IRReverb: '`channelMode` sets the topology. `mono` uses one IR channel for every selected channel. `independent` uses one IR channel per selected channel. `trueStereo` uses four IR channels (LL, LR, RL, RR) and exactly two selected channels. `matrix` uses explicit convolution paths. `automatic` chooses `mono` for a one-channel IR, `trueStereo` for a four-channel IR on two selected channels, and `independent` when the IR has one channel per selected channel; give other layouts explicitly as `matrix`.',
   RoomEQ: 'One shared coefficient channel (`mono`) or one coefficient channel per selected channel (`independent`).'
 });
@@ -1733,7 +1734,8 @@ other than \`bassGain\`, \`lfeGain\`, and \`headroom\` (including \`phase\`, \`t
 \`lfeFrequency\`, and \`lfeSlope\`), or after changing \`IRReverb.channelMode\`,
 \`latency\`, or \`convolutionRate\`; \`FIRCrossover.bandCount\`, \`latencyMode\`, or
 \`filterDelaySamples\`; or \`latencyMode\` / \`filterDelaySamples\` on
-\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`CrosstalkCancellation\`, or \`RoomEQ\`. Live updates to those
+\`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`HeadphoneEQ\`, \`CrosstalkCancellation\`, or
+\`RoomEQ\`. Live updates to those
 asset-configuration parameters raise \`ValidationError\` before processing or posting
 a Worklet command.
 
@@ -1830,8 +1832,8 @@ ${codeBlock('js', volumeJavascriptSnippet)}
   add('assets-and-bundles', `
 ## Asset-required effects
 
-\`CrosstalkCancellation\`, \`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`IRReverb\`, and
-\`RoomEQ\` require \`assets.impulseResponse\`. The resolver returns Python \`AssetData\` or
+\`CrosstalkCancellation\`, \`FIRCrossover\`, \`FiveBandFIRPEQ\`, \`GroupDelayEQ\`, \`GroupDelayPEQ\`, \`HeadphoneEQ\`,
+\`IRReverb\`, and \`RoomEQ\` require \`assets.impulseResponse\`. The resolver returns Python \`AssetData\` or
 deterministic ETA1 bytes/\`{bytes, format}\` in JavaScript. It never relies on
 repository fixtures. \`SoundFontPlayer\` requires \`assets.soundFont\` instead; see
 [SoundFont banks](#soundfont-banks).

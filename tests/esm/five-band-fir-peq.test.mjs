@@ -9,6 +9,10 @@ const graphPointInteractionSource = fs.readFileSync(
   new URL('../../plugins/graph-point-interaction.js', import.meta.url),
   'utf8'
 );
+const firAssetEqSource = fs.readFileSync(
+  new URL('../../plugins/fir-asset-eq.js', import.meta.url),
+  'utf8'
+);
 const pluginCss = fs.readFileSync(
   new URL('../../plugins/eq/five_band_fir_peq.css', import.meta.url),
   'utf8'
@@ -106,7 +110,7 @@ function loadPlugin() {
     clearTimeout
   };
   vm.runInNewContext(
-    `${graphPointInteractionSource}\n${pluginSource}\nthis.Plugin = FiveBandFIRPEQPlugin;`,
+    `${graphPointInteractionSource}\n${firAssetEqSource}\n${pluginSource}\nthis.Plugin = FiveBandFIRPEQPlugin;`,
     context,
     { filename: pluginUrl.pathname }
   );
@@ -223,8 +227,8 @@ test('5Band FIR PEQ keeps the dragged marker aligned during and after drag', () 
 
   plugin.handleDragMove({ clientX: 800, clientY: 300, shiftKey: false });
   const during = { left: plugin.markers[0].style.left, top: plugin.markers[0].style.top };
-  assert.equal(during.left, `${plugin.getGraphPlotArea().leftPercent + plugin.freqToX(plugin.f0) / 100 * plugin.getGraphPlotArea().widthPercent}%`);
-  assert.equal(during.top, `${plugin.getGraphPlotArea().topPercent + plugin.gainToY(plugin.g0) / 100 * plugin.getGraphPlotArea().heightPercent}%`);
+  assert.equal(during.left, `${plugin.freqToX(plugin.f0)}%`);
+  assert.equal(during.top, `${plugin.gainToY(plugin.g0)}%`);
 
   plugin.handleDragEnd();
   assert.equal(plugin.activeDragMarker, null);
@@ -288,6 +292,31 @@ test('5Band FIR PEQ stages a mono FIR through the shared asset contract', async 
   assert.equal(stage[2].processingChannels, 2);
   assert.equal(stage[2].formatTag, 1);
   assert.equal(plugin._candidateAssetRevision, 17);
+  plugin.cleanup();
+});
+
+test('5Band FIR PEQ keeps the power gain bound of the staged payload when Taps change', async () => {
+  const { Plugin } = loadPlugin();
+  const plugin = new Plugin();
+  const frames = plugin.tp;
+  const payload = new ArrayBuffer(32 + frames * Float32Array.BYTES_PER_ELEMENT);
+  new DataView(payload).setUint32(8, frames, true);
+  new Float32Array(payload, 32).fill(2 / frames);
+  const result = { payload, qualityWarnings: [] };
+  plugin._lastDesign = result;
+  plugin._designGeneration = 4;
+  plugin._runtimePromise = Promise.resolve({
+    IR_ASSET_TOPOLOGY: { mono: 1 },
+    selectedIrChannelCount: () => 2,
+    estimateIrKernelCommitFootprint: () => 4 * 1024 * 1024
+  });
+  assert.equal(await plugin._stageDesign(result, 4), true);
+  const staged = plugin.powerGainUpperBoundDb;
+  assert.ok(Math.abs(staged - 20 * Math.log10(2)) < 1e-6);
+
+  plugin.setParameters({ tp: Plugin.TAP_OPTIONS.at(-1) });
+  assert.notEqual(plugin.tp, frames);
+  assert.equal(plugin.powerGainUpperBoundDb, staged);
   plugin.cleanup();
 });
 

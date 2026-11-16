@@ -14,7 +14,7 @@ lang: zh
 
 ## 移动端频段选择
 
-在移动端，5Band PEQ、5Band FIR PEQ、Group Delay PEQ、Room EQ 的 Additional EQ 和 Tonal Balance EQ 的 Target Adjust 每次只显示一个频段的设置。点击带编号的频段按钮即可切换频段。所有频段的设置都会保留。
+在移动端，5Band PEQ、5Band FIR PEQ、Group Delay PEQ、Headphone EQ 的 Target Adjust、Room EQ 的 Additional EQ 和 Tonal Balance EQ 的 Target Adjust 每次只显示一个频段的设置。点击带编号的频段按钮即可切换频段。所有频段的设置都会保留。
 
 ## 插件列表
 
@@ -28,6 +28,7 @@ lang: zh
 - [Earphone Cable Sim](#earphone-cable-sim) - 帮助确认普通耳机线造成的频率响应差异通常有多小
 - [Group Delay EQ](#group-delay-eq) - 在不改变音色的前提下调整各频段的延迟
 - [Group Delay PEQ](#group-delay-peq) - 在不改变音色的前提下用五个参数频段调整各频率的延迟
+- [Headphone EQ](#headphone-eq) - 根据耳机的测量曲线，用 FIR 滤波将其校正到目标曲线
 - [Hi Pass Filter](#hi-pass-filter) - 精确去除不需要的低频
 - [Lo Pass Filter](#lo-pass-filter) - 精确去除不需要的高频
 - [Loudness Equalizer](#loudness-equalizer) - 针对低音量聆听的频率平衡校正
@@ -120,6 +121,7 @@ lang: zh
     - 1kHz, 1.6kHz, 2.5kHz (中音域)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (高音域)
 - **每个频段的控制项**
+  - 每个频段标签页中 Type、Freq、Gain、Q 各占一行；Freq、Gain、Q 可用滑块调节，也可直接输入数值
   - Center Frequency：可在 20Hz 到 20kHz 之间调整
   - Gain Range：Peaking 和 Low/High Shelf 滤波器可调 ±20dB
   - Q Factor：多数滤波类型为 0.1-10.0；Low/High Shelf 限制为 0.1-2.0
@@ -132,11 +134,14 @@ lang: zh
     - Band Pass：聚焦于特定频率的隔离
     - Notch: 精确的频率去除
     - AllPass: 聚焦相位的频率对齐
+- **Master 标签页**
+  - Gain：在所有频段之后调整整体电平，范围为 -20dB 到 +20dB。各频段提升了信号时，可调低它以留出余量；响应曲线图也会计入该增益
 - **预设管理**
   - 导入：加载 Equalizer APO 风格的 TXT 滤波器行
-  - 最多导入 15 个 `ON` 的 PK/LS/LSC/HS/HSC 滤波器；`Preamp` 行和不支持的滤波类型会被忽略
+  - 最多导入 15 个 `ON` 的 PK/LS/LSC/HS/HSC 滤波器，`Preamp` 行会设置 Master 标签页的 Gain（文件中没有时为 0dB）；不支持的滤波类型会被忽略
     - 示例格式：
       ```
+      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
@@ -500,6 +505,54 @@ Group Delay PEQ是Group Delay EQ的参数版本。它不使用15个固定滑块�
 - 状态行显示总延迟（samples 与 milliseconds）以及滤波器的幅度 Ripple。Ripple 表示实际幅度响应偏离平坦设计目标的程度：数值越小就越接近目标，0.3 dB是精度警告的阈值。
 - 将鼠标悬停在图表上，或触摸并拖动，即可读取该位置的数值。
 
+## Headphone EQ
+
+Headphone EQ 将耳机的频率响应校正到目标曲线。搜索您所用的耳机型号后，插件会从 AutoEQ 项目下载该型号的测量数据和对应的目标曲线，并设计一条 FIR 校正滤波器，缩小两者之间的差距。也可以载入您自己的测量数据和目标曲线文件。同样的校正会应用到所有声道。与把现成设置导入 15Band PEQ 不同，校正由本插件自行设计，因此校正强度、校正的频率范围、提升上限和目标都可以随时修改。使用时需要 WASM DSP 引擎，无法使用时信号将原样通过。
+
+### 音质增强指南
+
+- **从搜索耳机开始**：在搜索框中输入型号名称，然后从列表中选择。测量数据和目标会一起载入，校正随即开始。如果同一型号有多个测量来源，选哪个都可以；每个来源都附带同一来源、同一测量设备对应的目标。若想校正到其他目标，请点击 **Load Target** 并选择目标曲线文件。
+- **起始设置**：默认值（**Minimum Phase**、**Correction Amount: 100%**、**Upper Limit: 10000 Hz**、**Max Boost: 6 dB**、**Smoothing: 0.17 oct**、**Auto Headroom** 开启）是不错的起点。可以开关效果进行对比。
+- **高频范围**：约 10 kHz 以上的测量值会随佩戴状态和测量环境而变化，因此默认的 **Upper Limit** 不校正这一区域。只有在信任该区域的测量时才提高它；如果校正高频段后高音反而变差，请降低它（例如 6000 Hz）。
+- **避免大幅提升**：如果校正试图用很大的提升去填补狭窄的凹陷，请降低 **Max Boost** 或提高 **Smoothing**。设为 0 dB 时，峰值仍会被削减，但任何频段都不会被提升。
+- **让校正更温和**：降低 **Correction Amount**（例如 50%），只向目标靠近一部分。
+- **模拟另一副耳机**：用第一个 Headphone EQ 校正你自己的耳机，再添加第二个 Headphone EQ，载入另一型号的测量数据并把 **Correction Amount** 设为 -100%。第二个会加上该型号相对其目标的偏差，让你的耳机带上它的特点。两者使用相同的目标，效果最接近。
+- **按喜好增加低音**：在 **Target Adjust** 中，把一个频段的类型设为 **LowShelv**，放在 100 Hz 附近，并将增益提高 2 到 4 dB。与 Room EQ 的 Additional EQ 一样，Target Adjust 作用于整个频率范围，不受 **Correction Amount**、**Upper Limit** 和 **Max Boost** 的限制。
+- **为每副耳机保存预设**：载入的曲线会保存在预设和 URL 中，因此可以为每副耳机各保存一个预设。
+
+### 参数
+
+- **搜索框**（`Search headphones (AutoEQ) or paste a URL`）- 输入耳机型号并从列表中选择，即可载入该型号的测量数据和目标。也可以粘贴测量数据文件的链接后按 Enter 键载入；GitHub 上 AutoEQ 结果页面或文件夹的链接同样可用。耳机列表和测量数据来自 Jaakko Pasanen 的 [AutoEQ 项目](https://github.com/jaakkopasanen/AutoEq)，只有在使用此搜索框时才会从 GitHub 下载。载入的测量数据会以型号名称加测量来源（例如 oratory1990）命名，状态行也会显示这个名称。下载失败时状态行会显示错误，此前载入的曲线继续使用。
+- **拖放** - 将 `.csv` 或 `.txt` 文件拖放到插件上，即可像 **Load Measurement** 一样将其作为测量数据载入。
+- **Load Measurement** - 从 `.csv` 或 `.txt` 文件载入您自己的测量数据。对于 AutoEQ 的 CSV，使用 `raw` 列；如果有 `target` 列，也会同时替换目标。
+- **Load Target** - 载入目标曲线。对于 AutoEQ 的 CSV，有 `target` 列时使用该列，否则使用 `raw` 列。
+- **可读取的文件** - 第一行列出包含 `frequency` 的列名的 AutoEQ 格式 CSV，或以逗号、制表符、分号、空格分隔频率与电平（dB）两列的纯文本文件。非数字的行会被跳过，有三列以上时只使用前两列。读取失败时状态行会显示错误，此前载入的曲线继续使用。测量与目标的电平不必一致，比较之前会先对齐整体电平。
+- 只有在测量和目标都已载入后才会开始校正。在此之前信号原样通过，校正设置和 Target Adjust 无法操作。
+- **Phase**
+  - **Minimum Phase** - 除所选的 Latency 之外，不增加 FIR 带来的延迟。
+  - **Linear Phase** - 所有频率延迟相同的时间。在所选 Latency 之外，还会增加 `Taps / 2` samples 的延迟。
+- **Taps** - FIR 长度，可选 8192、16384、32768、65536 或 131072。增加后可以更准确地重现低频和细微的起伏，但内存占用、设计时间和 Linear Phase 的延迟也会增加。
+- **Latency** - 卷积引擎起始部分的延迟，可选 0、128、256、512 或 1024 samples。数值越小延迟越低，但处理负载越高。
+- **Correction Amount**（-100% 到 100%，默认 100%）- 按 dB 值成比例缩放自动校正量。50% 时所有提升和衰减都减半；0% 时只剩下 Target Adjust。设为负值时校正反转，不是消除耳机相对目标的偏差，而是把它加上去；-100% 时完整重现该偏差。此时 **Max Boost** 限制的是重现峰值的提升。
+- **Upper Limit**（1000 到 20000 Hz，默认 10000 Hz）- 校正的上限频率。高于此频率时自动校正为 0 dB，边界处平滑过渡。下限始终为 20 Hz。
+- **Max Boost**（0 到 18 dB，默认 6 dB）- 限制自动校正的提升量。衰减和 Target Adjust 不受限制。
+- **Smoothing**（0.02 到 1 oct，默认 0.17 oct）- 平滑校正曲线。数值越大，校正越宽缓保守；数值越小，越会跟随狭窄的峰和谷，而这些细微起伏往往随佩戴状态而变化。
+- **Auto Headroom**（默认开启）- 将整体输出降低滤波器（含 Target Adjust）的最大提升量，使滤波器的最大增益为 0 dB，这样被提升的频段也不会使电平高于输入。实际应用的量会显示在状态行中。关闭后输出电平不会下降，但提升可能使响度较大的部分削波。此时请在后级降低电平，或加入限幅器。
+- **Target Adjust** - 五个重塑目标的参数频段（类型为 **Peaking**、**LowShelv**、**HighShel**；20 Hz–20 kHz、±20 dB、Q 0.1–10，搁架型最大为 2；默认 Q 1）。正增益表示目标在该区域要求更多，负增益表示要求更少。对 **Peaking** 来说，Q 越高作用的频带越窄，Q 越低作用的频带越宽；对搁架型，Q 改变过渡区附近的形状。
+
+### 可视化显示
+
+- 横轴为 20 Hz 到 20 kHz 的频率，纵轴为 -20 到 +20 dB 的电平。超出此范围的曲线部分会在边缘被截断。
+- **Measurement** 是测量曲线，按目标的电平对齐显示；未载入目标时以 0 dB 附近为中心显示。校正设计完成后显示为平滑后的曲线。
+- **Target** 是包含 Target Adjust 的目标曲线。
+- **Correction** 以 0 dB 为中心显示校正滤波器的提升和衰减，包含 Target Adjust。**Auto Headroom** 带来的整体电平降低不包含在内，其数值显示在状态行中。
+- **Corrected** 是校正后响应的计算值，并非新的测量。与 **Target** 重合的频段已校正到位；在 **Upper Limit** 以上、**Max Boost** 限制了提升的频段，以及 **Correction Amount** 不是 100% 时，它会与 Target 分开。
+- 在测量和目标都载入之前，只显示已载入的曲线。
+- 竖线表示 **Upper Limit** 的位置。
+- 带编号的手柄表示 Target Adjust 的频段。拖动手柄可改变频率和增益，在手柄上滚动鼠标滚轮可改变 Q，右键点击可开启或关闭该频段。
+- 状态行显示滤波器正在设计还是已就绪、应用的余量（headroom），以及滤波器可能不准确时的警告（请增大 **Taps** 或 **Smoothing**）。其下一行显示总处理延迟（samples 和 milliseconds）。
+- 在图表上悬停或触摸并拖动，可读取该位置的数值。
+
 ## Hi Pass Filter
 
 一款精密的高通滤波器，能够去除不需要的低频，同时保持高频的清晰度。基于 Linkwitz-Riley 滤波器设计，实现最佳相位响应和透明的音质。
@@ -693,7 +746,7 @@ Room EQ 根据 EffeTune 保存的频率响应测量生成 FIR 校正滤波器。
 
 ### 参数
 
-- **Measurement** - 选择共享的已保存测量（显示名称、测量点数量，有脉冲数据时显示 `IR`）。添加或编辑测量后，请点击 **Refresh measurements**。
+- **Measurement** - 选择共享的已保存测量（显示名称、测量点数量，有脉冲数据时显示 `IR`）。添加或编辑测量后，请点击 **Refresh measurements**。要添加已选好测量的 Room EQ，请在频率响应测量工具中点击结果下方的 **复制 Room EQ 设置**，再点击效果管道的空白处并按 Ctrl+V 粘贴。多声道测量会为每个已测量的声道设置 **Measurement ChN**。
 - **Measurement ChN** - 可选，为每个路由的总线声道单独指定测量。保持 **(Shared)** 时使用共享的 **Measurement**。
 - **Delay**（0 到 20 ms）- 应用于所有路由声道的手动延迟；不计入显示的处理延迟。
 - **Phase** - 选择 FIR 的相位特性：
@@ -716,7 +769,7 @@ Room EQ 根据 EffeTune 保存的频率响应测量生成 FIR 校正滤波器。
 - **Reverb Max Freq**（20 到 20000 Hz；默认 250 Hz）- **Reverb Correction** 的上限频率，不会超过 **Correction High**（保持在 250 Hz 左右，可将校正集中于在相邻座位间表现一致的低频房间衰减）。
 - **Reverb Smoothing**（0.02 到 1.00 oct）- 应用于混响额外相位延迟的高斯平滑。
 - **Reference Point** - 为额外相位分析选择 **Consensus (all points)**（按可靠性加权的各测量点平均）或单个测量点。如果所选测量点被删除，会恢复为 Consensus。
-- **Additional EQ (folded into FIR)** - 五个用于塑造目标的参数频段（Peak、Low shelf、High shelf；20 Hz–20 kHz、±20 dB、Q 0.1–10，搁架型最大为 2），直接合并到 FIR 滤波器中。其相位在 Linear 模式下为零相位，在 Minimum 和 Correction 模式下为最小相位。
+- **Additional EQ (folded into FIR)** - 五个用于塑造目标的参数频段（类型为 **Peaking**、**LowShelv**、**HighShel**；20 Hz–20 kHz、±20 dB、Q 0.1–10，搁架型最大为 2），直接合并到 FIR 滤波器中。对 **Peaking** 来说，Q 越高作用的频带越窄，Q 越低作用的频带越宽；对搁架型，Q 改变过渡区附近的形状。其相位在 Linear 模式下为零相位，在 Minimum 和 Correction 模式下为最小相位。
 - **Gain**（-12 到 +12 dB）- 输出电平微调。
 
 ### 可视化显示
@@ -757,7 +810,7 @@ Room EQ 根据 EffeTune 保存的频率响应测量生成 FIR 校正滤波器。
 - **为整张专辑施加一条稳定的校正**：在专辑开始时点击 **Reset**，并将 **Averaging Time** 设为 **∞**，校正会对整个播放过程取平均，并稳定为一条固定曲线。
 - **按风格选择目标**：选择 **Classical**、**Electronic**、**Pop** 或 **Rock** 以匹配特定风格，混合聆听时选择 **All**。
 - **更温和的塑形**：降低 **Amount**（例如 50%）、减小 **Range**（例如 3 dB）或提高 **Smoothing**（例如 1 oct），可得到宽广而细微的倾斜。
-- **自定义目标曲线（house curve）**：用图表下方的五个 **Target Adjust** 频段，按喜好倾斜或塑造目标（例如在 8 kHz 处 +1.5 dB 的 High shelf）。之后每张录音只会按需向您的自定义目标校正。
+- **自定义目标曲线（house curve）**：用图表下方的五个 **Target Adjust** 频段，按喜好倾斜或塑造目标（例如在 8 kHz 处 +1.5 dB 的 **HighShel** 频段）。之后每张录音只会按需向您的自定义目标校正。
 - **固定斜率参考**：选择 **Target: Tilt**，目标在 **Corner** 以下保持平直，之后按恒定的 **Slope** 滚降（−5 dB/oct 接近典型商业母带；−3 dB/oct 与粉红噪声一致）。
 
 补偿增益保持的是响度而不是峰值电平，因此峰值可能升高；如果后级出现削波，请在本插件之后降低电平或加入限幅器。
@@ -772,7 +825,7 @@ Room EQ 根据 EffeTune 保存的频率响应测量生成 FIR 校正滤波器。
 - **Averaging Time**（0.1 s 到 ∞；默认 30 s）- 测量积分时间窗。较短的值（例如 0.5 到 1 s）会跟随曲内变化，例如偏暗的主歌和明亮的副歌；较长的值给出稳定的校正（**∞** 会从上次 **Reset** 起持续取平均）。
 - **Low**（20 到 200 Hz；默认 20 Hz）/ **High**（2000 到 20000 Hz；默认 16000 Hz）- 主动塑形的频率下限和上限（范围之外校正保持恒定）。不想改动深低频时提高 **Low**，不想改动最高倍频程时降低 **High**。
 - **Average SPL**（60 到 96 dB；默认 83 dB）- 估算的聆听电平，用于判断哪些安静的频段足够可闻、可以提升；它不会改变输出电平。数值越低，越多微弱频段被视为不可闻而不予提升；数值越高，越多频段被视为可闻。
-- **Target Adjust** - 五个重塑目标曲线的参数频段（Peak、Low shelf、High shelf；20 Hz–20 kHz、±20 dB、Q 0.1–10，搁架型最大为 2；默认 Q 0.7）。正增益表示目标在该区域要求更多，负增益表示要求更少。
+- **Target Adjust** - 五个重塑目标曲线的参数频段（类型为 **Peaking**、**LowShelv**、**HighShel**；20 Hz–20 kHz、±20 dB、Q 0.1–10，搁架型最大为 2；默认 Q 0.7）。正增益表示目标在该区域要求更多，负增益表示要求更少。对 **Peaking** 来说，Q 越高作用的频带越窄，Q 越低作用的频带越宽；对搁架型，Q 改变过渡区附近的形状。
 
 **Target Adjust** 只改变目标；每张录音仍在 **Amount** 和 **Range** 范围内向目标校正，因此较大的调整可能需要更大的 **Range**。整体电平会在比较前对齐，所以把整条目标抬高相同的量不会产生任何变化。狭窄的峰和谷会被平滑掉；狭窄的修正请使用 5Band PEQ。
 

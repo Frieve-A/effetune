@@ -1,4 +1,4 @@
-class GroupDelayEqPlugin extends PluginBase {
+class GroupDelayEqPlugin extends FirAssetEqPlugin {
     static BANDS = [
         { freq: 25, name: '25 Hz' },
         { freq: 40, name: '40 Hz' },
@@ -17,40 +17,34 @@ class GroupDelayEqPlugin extends PluginBase {
         { freq: 16000, name: '16 kHz' }
     ];
 
-    static TAPS_CHOICES = [4096, 8192, 16384, 32768];
-    static LATENCY_CHOICES = ['0', '128', '256', '512', '1024'];
+    static TAP_OPTIONS = [4096, 8192, 16384, 32768];
     static GRID_STEPS_MS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
     static MINIMUM_GRAPH_RANGE_MS = 5;
     static RIPPLE_WARNING_DB = 0.3;
+    static FIR_MESSAGES = {
+        name: 'Group Delay EQ',
+        designing: 'Designing filter…',
+        ready: 'The filter is ready.',
+        designFailed: 'The filter could not be designed. Try a different Taps setting.',
+        stageFailed: 'The filter could not be designed. Try a different Taps setting.',
+        prepareFailed: 'The filter could not be prepared. Try fewer taps or a higher latency.',
+        flat: 'All bands are at 0 ms, so audio passes through unchanged.'
+    };
 
     constructor() {
         super('Group Delay EQ', 'All-pass FIR that sets the group delay of each band');
         for (let band = 0; band < GroupDelayEqPlugin.BANDS.length; band += 1) this['d' + band] = 0;
         this.tp = 16384;
-        this.lt = '128';
         this.offlineDspAssetErrorMessageKey = 'groupDelayEq.error.design';
         this._sampleRate = this._getEngineSampleRate();
         this._outputChannelCount = this._getEngineChannelCount();
         this._runtime = null;
-        this._runtimePromise = null;
-        this._designer = null;
-        this._designTimer = null;
-        this._designGeneration = 0;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._lastDesign = null;
-        this._assetState = 0;
-        this._disposed = false;
-        this._statusMessage = '';
         this._statusState = '';
-        this._statusElement = null;
         this._detailsElement = null;
         this._sliders = [];
         this._valueDisplays = [];
         this._angleDisplays = [];
         this._graphCanvas = null;
-        this.executionState = { state: 'pending', reason: null };
         this.registerProcessor('return data;');
     }
 
@@ -61,19 +55,14 @@ class GroupDelayEqPlugin extends PluginBase {
         );
     }
 
-    process(context, data) {
-        return data;
-    }
-
     _getEngineSampleRate() {
-        const value = this._sampleRate || window.workletNode?.context?.sampleRate ||
+        const value = window.workletNode?.context?.sampleRate ||
             window.audioContext?.sampleRate || window.uiManager?.audioManager?.audioContext?.sampleRate;
         return Number.isFinite(value) && value > 0 ? value : 48000;
     }
 
     _getEngineChannelCount() {
         const candidates = [
-            this._outputChannelCount,
             window.workletNode?.channelCount,
             window.audioManager?.outputChannelCount,
             window.uiManager?.audioManager?.outputChannelCount
@@ -107,31 +96,14 @@ class GroupDelayEqPlugin extends PluginBase {
         return this._delays().some(value => value !== 0);
     }
 
-    _packedParameters() {
-        return {
-            ...super.getParameters(),
-            lt: this.lt,
-            fd: this.tp / 2
-        };
+    // The all-pass filter is always linear phase, so the bulk delay is half the taps.
+    _filterDelay(_phase, taps = this.tp) {
+        return taps / 2;
     }
 
     getParameters(options = {}) {
-        const sampleRate = Number.isFinite(options.sampleRate) && options.sampleRate > 0
-            ? options.sampleRate
-            : this._sampleRate;
-        const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-            options.outputChannelCount >= 1 && options.outputChannelCount <= 16
-            ? options.outputChannelCount
-            : this._outputChannelCount;
-        if (options.commitSampleRate &&
-            (sampleRate !== this._sampleRate || outputChannelCount !== this._outputChannelCount)) {
-            this._sampleRate = sampleRate;
-            this._outputChannelCount = outputChannelCount;
-            this._clampDelaysToLimit();
-            this._scheduleDesign(0);
-            this.setUIValues();
-        }
-        const parameters = { ...this._packedParameters(), tp: this.tp };
+        const parameters = super.getParameters(options);
+        delete parameters.pm;
         for (let band = 0; band < GroupDelayEqPlugin.BANDS.length; band += 1) {
             parameters['d' + band] = this['d' + band];
         }
@@ -144,13 +116,7 @@ class GroupDelayEqPlugin extends PluginBase {
         return serialized;
     }
 
-    setParameters(params = {}) {
-        const previous = this._designSignature();
-        const previousLatency = this.lt;
-        super._setValidatedParameters(params);
-        const taps = Number(params.tp);
-        if (GroupDelayEqPlugin.TAPS_CHOICES.includes(taps)) this.tp = taps;
-        if (GroupDelayEqPlugin.LATENCY_CHOICES.includes(String(params.lt))) this.lt = String(params.lt);
+    _setDesignParameters(params) {
         const limit = this._delayLimitMs();
         for (let band = 0; band < GroupDelayEqPlugin.BANDS.length; band += 1) {
             const value = params['d' + band];
@@ -160,10 +126,9 @@ class GroupDelayEqPlugin extends PluginBase {
         }
         // A smaller tap count shortens the filter, so stored delays may no longer fit.
         this._clampDelaysToLimit();
-        this.updateParameters();
-        const next = this._designSignature();
-        if (previous !== next) this._scheduleDesign(150);
-        else if (previousLatency !== this.lt && this._lastDesign) this._stageDesign(this._lastDesign);
+    }
+
+    _syncParameterUI() {
         this.setUIValues();
     }
 
@@ -177,104 +142,47 @@ class GroupDelayEqPlugin extends PluginBase {
         this.setParameters(params);
     }
 
-    _designSignature() {
-        return JSON.stringify([
-            this._delays(), this.tp, this._sampleRate, this._outputChannelCount, this.channel
-        ]);
+    _filterRequired() {
+        return this._hasDelay();
     }
 
-    onChannelSelectionChanged() {
-        this._scheduleDesign(0);
+    _engineFormatChanged() {
+        this._clampDelaysToLimit();
+        super._engineFormatChanged();
+        this.setUIValues();
     }
 
+    _renderDesign() {
+        this._renderDetails();
+        this.setUIValues();
+    }
+
+    _loadDesignerModule() {
+        return Promise.all([
+            import('../../js/group-delay-eq/designer.js'),
+            import('../../js/group-delay-eq/design-core.js')
+        ]).then(([designer, design]) => ({ ...designer, ...design }));
+    }
+
+    // The graph reads the target and realized curves from the loaded runtime.
     async _getRuntime() {
-        if (!this._runtimePromise) {
-            this._runtimePromise = Promise.all([
-                import('../../js/group-delay-eq/designer.js'),
-                import('../../js/group-delay-eq/design-core.js'),
-                import('../../js/ir-library/ir-asset-payload.js'),
-                import('../../js/ir-library/ir-plugin-contract.js')
-            ]).then(([designer, design, payload, contract]) => {
-                this._runtime = { ...designer, ...design, ...payload, ...contract };
-                return this._runtime;
-            });
-        }
-        return this._runtimePromise;
+        this._runtime = await super._getRuntime();
+        return this._runtime;
+    }
+
+    _createDesigner(runtime) {
+        return runtime.createGroupDelayEqDesigner();
     }
 
     _designConfig(sampleRate = this._sampleRate) {
         return { delaysMs: this._delays(), taps: this.tp, sampleRate };
     }
 
-    _scheduleDesign(delay = 150) {
-        if (this._disposed) return;
-        if (this._designTimer !== null) clearTimeout(this._designTimer);
-        const generation = ++this._designGeneration;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this.updateParameters();
-        if (this._hasDelay()) {
-            this._setStatus(this._t('groupDelayEq.status.designing', 'Designing filter…'), 'preparing');
-        }
-        this._designTimer = setTimeout(() => {
-            if (this._disposed || generation !== this._designGeneration) return;
-            this._designTimer = null;
-            this._designAndStage(generation);
-        }, delay);
-    }
-
-    _settleFlat(generation) {
-        if (this._disposed || generation !== this._designGeneration) return false;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._lastDesign = null;
-        this._assetState = 0;
-        this.clearWasmAsset(0);
-        this._updatePowerGainBound(null);
-        this.updateParameters();
-        this._setStatus(this._t('groupDelayEq.status.flat',
-            'All bands are at 0 ms, so audio passes through unchanged.'), '');
-        this._renderDetails();
-        this.setUIValues();
-        return true;
-    }
-
-    async _designAndStage(generation) {
-        try {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            if (!this._hasDelay()) return this._settleFlat(generation);
-            const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration) return false;
-            if (!this._designer) {
-                const designer = runtime.createGroupDelayEqDesigner();
-                if (this._disposed || generation !== this._designGeneration) {
-                    designer?.close?.();
-                    return false;
-                }
-                this._designer = designer;
-            }
-            const designer = this._designer;
-            const result = await designer.design(this._designConfig());
-            if (this._disposed || generation !== this._designGeneration || designer !== this._designer) {
-                return false;
-            }
-            this._lastDesign = result;
-            this._candidateWarning = this._qualityWarning(result);
-            // Show what was designed before handing it to the engine, so the graph does
-            // not wait for the asset to be admitted.
-            this._renderDetails();
-            this.setUIValues();
-            return await this._stageDesign(result, generation);
-        } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            console.error('Group Delay EQ design failed:', error);
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayEq.error.design',
-                'The filter could not be designed. Try a different Taps setting.'), 'error');
-            return false;
-        }
+    _readyStatus() {
+        const warning = this._lastDesign && this._qualityWarning(this._lastDesign);
+        return warning
+            ? [warning, 'warning']
+            : [GroupDelayEqPlugin.FIR_MESSAGES.ready, 'ready'];
     }
 
     _qualityWarning(result) {
@@ -290,195 +198,8 @@ class GroupDelayEqPlugin extends PluginBase {
         return null;
     }
 
-    async _stageDesign(result, generation = this._designGeneration) {
-        try {
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            this._candidateAssetRevision = null;
-            this._effectiveAssetRevision = null;
-            this._assetState = 1;
-            this.updateParameters();
-            const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            const channels = runtime.selectedIrChannelCount(this.channel, this._outputChannelCount);
-            const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-                frames: this.tp,
-                assetChannels: 1,
-                topology: runtime.IR_ASSET_TOPOLOGY.mono,
-                processingChannels: channels,
-                headBlock: Number(this.lt)
-            });
-            const operationRevision = this.setWasmAsset(0, {
-                payload: result.payload,
-                formatTag: 1,
-                headBlock: Number(this.lt),
-                rateDivider: 1,
-                pathCount: 0,
-                inputCount: 0,
-                processingChannels: channels,
-                footprintBytes,
-                externalAssetSignature: this._externalAssetSignature()
-            });
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            this._candidateAssetRevision = operationRevision;
-            this._updatePowerGainBound(result.payload);
-            this._renderDetails();
-            return true;
-        } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            console.error('Group Delay EQ asset staging failed:', error);
-            this._candidateAssetRevision = null;
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayEq.error.design',
-                'The filter could not be designed. Try a different Taps setting.'), 'error');
-            return false;
-        }
-    }
-
-    _externalAssetSignature({
-        sampleRate = this._sampleRate,
-        outputChannelCount = this._outputChannelCount
-    } = {}) {
-        return JSON.stringify([
-            1, this._designConfig(sampleRate), this.lt, this.channel, outputChannelCount
-        ]);
-    }
-
-    _updatePowerGainBound(payload = this._lastDesign?.payload) {
-        if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32 + this.tp * 4) {
-            this.powerGainUpperBoundDb = 0;
-            return;
-        }
-        const samples = new Float32Array(payload, 32);
-        let sum = 0;
-        for (let index = 0; index < this.tp; index += 1) {
-            const value = samples[index];
-            sum += value < 0 ? -value : value;
-        }
-        this.powerGainUpperBoundDb = 20 * Math.log10(sum > 1 ? sum : 1);
-    }
-
-    get offlineDspAssetRequired() {
-        return this.isOfflineDspAssetRequired();
-    }
-
-    isOfflineDspAssetRequired() {
-        return this._hasDelay();
-    }
-
-    _offlineStaleError() {
-        const error = new Error('Group Delay EQ settings changed during offline filter preparation.');
-        error.userMessageKey = this.offlineDspAssetErrorMessageKey;
-        return error;
-    }
-
-    async createOfflineDspState({
-        sampleRate,
-        outputChannelCount,
-        isCurrent = () => true
-    } = {}) {
-        const snapshot = {
-            generation: this._designGeneration,
-            config: this._designConfig(sampleRate),
-            latency: this.lt,
-            channel: this.channel,
-            baseParameters: { ...super.getParameters() }
-        };
-        const operationCurrent = () => !this._disposed && isCurrent() &&
-            snapshot.generation === this._designGeneration;
-        const parameters = {
-            ...snapshot.baseParameters,
-            lt: snapshot.latency,
-            fd: snapshot.config.taps / 2
-        };
-        if (!operationCurrent()) throw this._offlineStaleError();
-        if (!snapshot.config.delaysMs.some(value => value !== 0)) {
-            return { parameters, assets: new Map(), offlineDspAssetRequired: false };
-        }
-        const runtime = await this._getRuntime();
-        if (!operationCurrent()) throw this._offlineStaleError();
-        const designer = runtime.createGroupDelayEqDesigner();
-        let designed;
-        try {
-            designed = await designer.design(snapshot.config);
-        } finally {
-            designer.close();
-        }
-        if (!operationCurrent()) throw this._offlineStaleError();
-        const processingChannels = runtime.selectedIrChannelCount(snapshot.channel, outputChannelCount);
-        const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-            frames: snapshot.config.taps,
-            assetChannels: 1,
-            topology: runtime.IR_ASSET_TOPOLOGY.mono,
-            processingChannels,
-            headBlock: Number(snapshot.latency)
-        });
-        return {
-            parameters,
-            assets: new Map([[0, {
-                payload: designed.payload,
-                formatTag: 1,
-                headBlock: Number(snapshot.latency),
-                rateDivider: 1,
-                pathCount: 0,
-                inputCount: 0,
-                processingChannels,
-                footprintBytes,
-                warmupSamples: Number(snapshot.latency) + snapshot.config.taps / 2,
-                externalAssetSignature: this._externalAssetSignature({
-                    sampleRate,
-                    outputChannelCount
-                })
-            }]]),
-            offlineDspAssetRequired: true
-        };
-    }
-
-    onWasmAssetState(slot, state, operationRevision) {
-        if (this._disposed || slot !== 0 || !this._isCurrentWasmAssetOperation(slot, operationRevision)) {
-            return;
-        }
-        const status = state & 0xff;
-        const isCandidate = operationRevision === this._candidateAssetRevision;
-        const isEffective = operationRevision === this._effectiveAssetRevision;
-        if ((!isCandidate && status !== 4) || (!isCandidate && !isEffective)) return;
-        this._assetState = status;
-        if (status === 3) {
-            this._effectiveAssetRevision = operationRevision;
-            this._candidateAssetRevision = null;
-            this.updateParameters();
-            this._setStatus(this._candidateWarning ||
-                this._t('groupDelayEq.status.ready', 'The filter is ready.'),
-            this._candidateWarning ? 'warning' : 'ready');
-        } else if (status === 4) {
-            this._candidateAssetRevision = null;
-            this._effectiveAssetRevision = null;
-            this._candidateWarning = null;
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayEq.error.prepare',
-                'The filter could not be prepared. Try fewer taps or a higher latency.'), 'error');
-        }
-        this._renderDetails();
-    }
-
-    onWasmAssetRejected(slot, reason, operationRevision) {
-        if (this._disposed || slot !== 0 || operationRevision !== this._candidateAssetRevision) return;
-        console.warn('Group Delay EQ asset admission rejected:', reason);
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._assetState = 4;
-        this.updateParameters();
-        this._setStatus(this._t('groupDelayEq.error.prepare',
-            'The filter could not be prepared. Try fewer taps or a higher latency.'), 'error');
-        this._renderDetails();
-    }
-
+    // Group Delay EQ takes its sample rate only from the engine format commit, so it
+    // reads nothing but execution state from worklet messages.
     onMessage(message) {
         if (this._disposed || message.type !== 'dspExecutionState' || message.pluginId !== this.id ||
             message.validated !== true) return;
@@ -516,6 +237,11 @@ class GroupDelayEqPlugin extends PluginBase {
         this._statusElement.dataset.state = executionMessage ? 'error' : this._statusState || '';
     }
 
+    _renderStatus() {
+        this._renderStatusMessage();
+        this._renderDetails();
+    }
+
     _renderDetails() {
         if (this._disposed || !this._detailsElement) return;
         const active = Boolean(this._lastDesign) && this._hasDelay();
@@ -537,13 +263,13 @@ class GroupDelayEqPlugin extends PluginBase {
 
         container.appendChild(this.createSelectControl(
             this._t('groupDelayEq.parameter.taps', 'Taps'),
-            GroupDelayEqPlugin.TAPS_CHOICES.map(value => ({ value: String(value), label: String(value) })),
+            GroupDelayEqPlugin.TAP_OPTIONS.map(value => ({ value: String(value), label: String(value) })),
             String(this.tp),
             value => this.setParameters({ tp: Number(value) }), 'tp'
         ));
         container.appendChild(this.createSelectControl(
             this._t('groupDelayEq.parameter.latency', 'Latency'),
-            GroupDelayEqPlugin.LATENCY_CHOICES.map(value => ({
+            FirAssetEqPlugin.LATENCY_OPTIONS.map(value => ({
                 value,
                 label: `${value} samples`
             })),
@@ -632,8 +358,7 @@ class GroupDelayEqPlugin extends PluginBase {
         container.appendChild(statusLine);
 
         if (!this._statusMessage) {
-            this._setStatus(this._t('groupDelayEq.status.flat',
-                'All bands are at 0 ms, so audio passes through unchanged.'), '');
+            this._setStatus(GroupDelayEqPlugin.FIR_MESSAGES.flat, '');
         } else {
             this._renderStatusMessage();
         }
@@ -777,8 +502,8 @@ class GroupDelayEqPlugin extends PluginBase {
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
 
-        // Vertical grid lines (frequency)
-        const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        // Vertical grid lines (frequency); 20 Hz and 20 kHz sit on the canvas edges
+        const freqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
         freqs.forEach(freq => {
             const x = toX(freq);
             ctx.beginPath();
@@ -787,15 +512,14 @@ class GroupDelayEqPlugin extends PluginBase {
             ctx.stroke();
 
             // Frequency labels
-            if (freq !== 20 && freq !== 20000) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'center';
-                ctx.fillText(freq >= 1000 ? `${freq / 1000}k` : freq, x, height - 24);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'center';
+            ctx.fillText(freq >= 1000 ? `${freq / 1000}k` : freq, x, height - 24);
         });
 
-        // Horizontal grid lines (delay)
-        const gridLines = Math.floor(range / gridStep);
+        // Horizontal grid lines (delay); the ±range bounds sit on the canvas edges,
+        // so only the interior steps are drawn
+        const gridLines = Math.round(range / gridStep) - 1;
         for (let line = -gridLines; line <= gridLines; line += 1) {
             const ms = line * gridStep;
             const y = toY(ms);
@@ -804,12 +528,9 @@ class GroupDelayEqPlugin extends PluginBase {
             ctx.lineTo(width, y);
             ctx.stroke();
 
-            // Delay labels, kept clear of the top and bottom edges
-            if (Math.abs(ms) < range * 0.98) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'right';
-                ctx.fillText(`${Number(ms.toFixed(1))}ms`, 48, y + 4);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'right';
+            ctx.fillText(`${Number(ms.toFixed(1))}`, 48, y + 4);
         }
 
         // Draw axis labels
@@ -858,13 +579,6 @@ class GroupDelayEqPlugin extends PluginBase {
 
     cleanup() {
         if (this._disposed) return;
-        this._disposed = true;
-        ++this._designGeneration;
-        if (this._designTimer !== null) clearTimeout(this._designTimer);
-        this._designTimer = null;
-        this._designer?.close();
-        this._designer = null;
-        this._statusElement = null;
         this._detailsElement = null;
         this._graphCanvas = null;
         this._sliders = [];

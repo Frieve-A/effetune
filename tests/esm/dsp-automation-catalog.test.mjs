@@ -52,9 +52,9 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 115);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 95);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1036);
+  assert.equal(entries.length, 117);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 96);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1039);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,17 +86,18 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    '661dfb4d157567f7123b86698c9143d0296640fba375a31b46232e034562b62d'
+    '77d0e6a1029b2c9d81a7e2d54e3711b5893d3bc82f1adbda8570bb09a6a94528'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
-    'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'NetworkReceivePlugin', 'NetworkSendPlugin',
-    'NoteSpectrogramPlugin',
+    'GroupDelayPEQPlugin', 'HeadphoneEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'NetworkReceivePlugin',
+    'NetworkSendPlugin', 'NoteSpectrogramPlugin',
     'OscilloscopePlugin', 'PitchMeterPlugin', 'PolarityInversionPlugin', 'RhythmAnalyzerPlugin', 'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin', 'StereoMeterPlugin'
   ]);
   const nonAutomatedByReason = {
     hostOwned: {
+      SpeakerDistortionCorrectionPlugin: ['selectedFirst', 'selectedCount'],
       TonalBalanceEQPlugin: ['measurementPaused']
     },
     analyzerOnly: {
@@ -117,6 +118,7 @@ test('production schemas expose the audited automation population', async () => 
       FiveBandFIRPEQPlugin: ['latencyMode', 'filterDelaySamples'],
       GroupDelayEqPlugin: ['latencyMode', 'filterDelaySamples'],
       GroupDelayPEQPlugin: ['latencyMode', 'filterDelaySamples'],
+      HeadphoneEQPlugin: ['latencyMode', 'filterDelaySamples'],
       IRReverbPlugin: ['channelMode', 'latency', 'convRate'],
       CrosstalkCancellationPlugin: ['latencyMode', 'filterDelaySamples'],
       RoomEqPlugin: ['latencyMode', 'filterDelaySamples']

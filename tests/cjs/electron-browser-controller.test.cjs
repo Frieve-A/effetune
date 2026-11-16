@@ -75,8 +75,10 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   const sourceQueries = [];
   const systemAudioCapture = createSystemAudioCapture({
     mainWindow, ipcMain: ipc,
-    desktopCapturer: { async getSources(options) { sourceQueries.push(options); return [screenSource]; } }
+    desktopCapturer: { async getSources(options) { sourceQueries.push(options); return [screenSource]; } },
+    muteKeeper: { async prepare() {}, hold() {}, release() {}, reset() {}, dispose() {} }
   });
+  mainWindow.once('closed', systemAudioCapture.dispose);
   t.after(() => systemAudioCapture.dispose());
   const controller = createBrowserController({
     mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset, systemAudioCapture,

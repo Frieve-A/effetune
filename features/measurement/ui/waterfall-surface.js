@@ -60,7 +60,8 @@ export function buildWaterfallMesh(state) {
         const frequency = frequencies[index];
         return {
             u: Math.log(frequency / state.xMin) / Math.log(state.xMax / state.xMin),
-            v: clamp((level - state.yMin) / (state.yMax - state.yMin), 0, 1),
+            // Keep the true height; the rasterizer cuts the surface at the floor and top planes.
+            v: (level - state.yMin) / (state.yMax - state.yMin),
             w: (depth - depthMin) / (depthMax - depthMin),
             frequency, level, depth,
             time: cycles ? depth / frequency : depth / 1000,
@@ -155,12 +156,16 @@ export function rasterizeWaterfallSurface(triangles, plot, resolution, colors, d
             let wc = origin[2] + cy * (y - top);
             for (let x = left; x <= right; x++, wa += ax, wb += bx, wc += cx) {
                 if (wa < -1e-7 || wb < -1e-7 || wc < -1e-7) continue;
+                // Cut the surface at the floor and top planes instead of flattening it onto them.
+                // The tolerance keeps a plateau exactly at yMin or yMax despite barycentric rounding.
+                const v = wa * a.v + wb * b.v + wc * c.v;
+                if (v < -1e-9 || v > 1 + 1e-9) continue;
                 const offset = y * width + x;
                 const depth = wa * a.distance + wb * b.distance + wc * c.distance;
                 if (depth < depths[offset]) continue;
                 depths[offset] = depth;
                 owners[offset] = id;
-                const color = Math.round(clamp(wa * a.v + wb * b.v + wc * c.v, 0, 1) * 255) * 4;
+                const color = Math.round(clamp(v, 0, 1) * 255) * 4;
                 const pixel = offset * 4;
                 pixels[pixel] = colors[color];
                 pixels[pixel + 1] = colors[color + 1];
@@ -225,7 +230,9 @@ export function pickWaterfallSurface(raster, x, y) {
 }
 
 export class WaterfallSurface {
-    constructor(canvas, { onViewChange = () => {} } = {}) {
+    // background names the palette colour behind the surface, used to outline the labels.
+    constructor(canvas, { onViewChange = () => {}, background = 'graph-base' } = {}) {
+        this.background = background;
         this.canvas = canvas;
         this.onViewChange = onViewChange;
         this.view = { ...WATERFALL_VIEW_DEFAULTS };
@@ -377,7 +384,7 @@ export class WaterfallSurface {
         };
         const label = (text, x, y) => {
             if (!labelsOnly) return;
-            ctx.strokeStyle = palette('graph-base'); ctx.lineWidth = 3; ctx.lineJoin = 'round';
+            ctx.strokeStyle = palette(this.background); ctx.lineWidth = 3; ctx.lineJoin = 'round';
             ctx.strokeText(text, x, y);
             ctx.fillStyle = palette('graph-label-strong'); ctx.fillText(text, x, y);
         };

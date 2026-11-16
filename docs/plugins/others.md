@@ -1,6 +1,6 @@
 ---
-title: "Other Plugins - Test Tone & Noise Generator, SoundFont Note Player, SoundFont Player - EffeTune"
-description: "Oscillator generates test tones and white or pink noise for checking speakers and headphones, and SoundFont Note Player plays detected notes with an SF2/SF3/SFZ instrument. SoundFont Player plays MIDI songs with SF2/SF3 SoundFonts or SFZ instruments."
+title: "Other Plugins - Distortion Correction, Test Tone & Noise Generator, SoundFont Note Player, SoundFont Player - EffeTune"
+description: "Distortion Correction reduces distortion measured from your own speakers. Oscillator generates test tones and white or pink noise for checking speakers and headphones, and SoundFont Note Player plays detected notes with an SF2/SF3/SFZ instrument. SoundFont Player plays MIDI songs with SF2/SF3 SoundFonts or SFZ instruments."
 lang: en
 ---
 
@@ -10,9 +10,45 @@ A collection of specialized audio tools and generators that complement the main 
 
 ## Plugin List
 
+- [Distortion Correction](#distortion-correction) - Reduces distortion measured from your own speakers
 - [Oscillator](#oscillator) - Test tone and noise generator for checking speakers/headphones
 - [SoundFont Note Player](#sfz-note-player) - Plays detected notes with SF2/SF3 SoundFonts and SFZ instruments
 - [SoundFont Player](#soundfont-player) - Plays MIDI songs with SF2/SF3 SoundFonts and SFZ instruments
+
+## Distortion Correction
+
+Distortion Correction reduces distortion that your own speakers add to the music, using a measurement of those speakers made in EffeTune. It shapes the signal before it reaches the speaker so that part of the speaker's own distortion is cancelled. Use it when you listen at high volume, where speaker distortion is largest, and want cleaner playback from the speakers you already have.
+
+The effect reduces second-order (even-order) distortion and, on channels where the measurement shows that it helps, low-frequency odd-order distortion caused by large cone movement. How much it helps depends on the speaker, and "Off" for a channel is a common and normal result: many speakers distort in ways this correction cannot reduce. It cannot fix hard clipping, rattles, buzzes, or noise. It works at sample rates of 44.1 kHz or higher.
+
+### Sound Enhancement Guide
+
+1. **Measure your speakers.** In [Acoustic Measurement](../measurement.md), choose **+ New Measurement** > **Speaker distortion**. Place the microphone 0.5–1 m in front of the speaker and set the amplifier to the loudest volume you listen at. Save the result.
+2. **Place the effect last.** Add Distortion Correction at the end of the Effect Pipeline and choose the saved measurement in its **Measurement** list. If the effect was already in the pipeline with no measurement chosen, it starts using the newly saved one by itself. Keep the effect last: effects after it that change level or tone make the correction wrong, and the status line tells you while another effect follows it.
+3. **Change loudness inside EffeTune.** After measuring, adjust loudness with EffeTune's volume rather than the amplifier; lowering the volume inside EffeTune needs no change to this effect. If you turn the amplifier down, set **Amplifier Volume Change (dB)** or click **Check again**, which measures the change and sets it for you. If you turn the amplifier up beyond the measured volume, measure again.
+4. **Compare.** To hear what the correction does, switch the effect off and on with **Mode** set to **Reduce**. To learn what the corrected distortion sounds like, set **Mode** to **Add** for a moment, then return to **Reduce** for normal listening.
+5. **Watch for Overload.** The effect does not limit its output. When the status line shows **Overload**, lower the level before this effect, for example with a [Volume](basics.md#volume) effect placed before it.
+
+### Parameters
+
+- **Measurement** (**Measurement** tab) - Chooses the saved speaker-distortion measurement, newest first; **None** turns the correction off. Click **Refresh measurements** after measuring again. The line below the list shows when the measurement was made, its Signal Level and Upper Limit, and when the correction was last checked. If the measurement is not on this device, the correction is off until you measure on this device or choose another measurement.
+- **Amplifier Volume Change (dB)** (−24 to 0 dB, in 0.5 dB steps; default 0 dB) - How far the amplifier was turned down after the measurement. A wrong value makes the correction too strong or too weak, so set it to the actual change. **Check again** opens Acoustic Measurement, plays the test signal again, and sets this value from what it measures; it also re-measures how well the correction works.
+- **Filter Length** (**Correction** tab) - **Short** or **Long**. **Short** adds well under 1 ms of delay. **Long** adds about 2.5–3 ms depending on the sample rate, uses more processing, and can correct more on some speakers. Both lengths are checked during the measurement; the one marked **(recommended)** gave the larger reduction over all channels and is selected by default. Hover over the list to see the exact delays and the extra processing at the current sample rate.
+- **Mode** - **Reduce** (default) removes the distortion found in the measurement. **Add** makes that same distortion about 6 dB stronger (twice the level), so you can hear what it sounds like; the status line says so while **Add** is selected.
+- **Channels** tab - Each channel the effect processes and each measured channel has two rows, **Even-order** and **Odd-order**, each with **Auto**, **On**, and **Off**. The state beside each row shows what the effect is doing there:
+  - **Auto** (default) follows the measurement's decision for that channel. For low-frequency odd-order distortion, Auto turns the correction on only when the correction check measured a benefit at the set level and no harm at high volume, so it is usually off.
+  - **On** corrects the channel even though the measurement left it off. Hover over the state beside the row to read why it was left off; when the measurement found that the correction would make distortion worse, turning it on is not advised.
+  - **Off** leaves the channel uncorrected, for example to compare it with a corrected one.
+  - **Not measured** means the effect processes the channel but the chosen measurement does not include it, so it is not corrected; measure that channel to correct it. **Not used** means a measured channel is not processed by this effect.
+  - A channel that is not corrected keeps the same delay as the others, so the speakers stay in time. Clicking a row also shows that channel in the graph. If the odd-order row shows **Off (not checked)**, run **Check again** to let **Auto** decide.
+
+### Reading the Graph and Figures
+
+- **Graph**: Shows even-order distortion by frequency for the channel chosen in **Graph Ch**. The vertical axis, **Multitone Distortion (dB)**, is distortion measured with a music-like test signal of many simultaneous tones, relative to that signal, so its values cannot be compared directly with single-tone THD figures. The solid line is the measurement without the correction; the dotted line is the predicted result with the correction. For a channel that is not corrected, a separate line shows **What the correction would do (not used)**. Shading marks the range **Below the noise floor**, where the measurement cannot see distortion because it is hidden under the noise; the correction there is estimated from the range the measurement can see, so it usually still reduces distortion, but by less and with less certainty. A vertical line marks the measurement's **Upper Limit**, above which nothing is corrected. The box at the top right names each line and shows its value at the pointer. As on other frequency graphs, the spectrum icon adds the music's spectrum ([Spectrum Overlay](eq.md#spectrum-overlay)), and dragging along the frequency axis previews that frequency.
+- **As set** shows the level used for the figures. **All measured levels** adds the other measured levels (6 and 12 dB lower Signal Level and **Loud peaks**). **Show Odd-order** adds the odd-order distortion without correction.
+- **Figures table**: Covers 50 Hz to 8 kHz. **Total distortion** and **Even-order distortion** show the level before → after the correction, in dB and % of the test signal, marked **measured** (from the correction check) or **predicted**. **Loud peaks** shows the change in even-order distortion on loud musical peaks, and **If volume is off by 3 dB** shows the change if **Amplifier Volume Change (dB)** differs from the real amplifier change by 3 dB. Values that would increase distortion are highlighted. **State** shows whether the channel is corrected, turned on or off by you, or off; hover over it to read the reason.
+- The figures assume music at full level in EffeTune with the amplifier set as in **Amplifier Volume Change (dB)**, and they apply to the microphone position used in the measurement. At your seat the reduction is similar below about 2 kHz and usually smaller above. Nothing is known above the measured amplifier volume, and the quietest measured level is 12 dB below the set Signal Level; below that the distortion is smaller still. The microphone's own distortion is separated out as far as possible but cannot be ruled out completely.
+- **Status line**: Shows one message, followed by the delay the effect adds. The message normally lists the corrected channels. Instead, it shows **Overload** when the corrected signal exceeds full scale, a warning when the effect is not last, or why no channel is corrected when that is the case.
 
 ## Oscillator
 

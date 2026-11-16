@@ -1,6 +1,6 @@
 ---
-title: "其他音频工具 - 测试音与噪声发生器、SoundFont Note Player、SoundFont Player - EffeTune"
-description: "Oscillator 生成测试音、白噪声和粉红噪声，用于检查扬声器和耳机；SoundFont Note Player 用 SF2/SF3/SFZ 乐器播放从输入音频中检测到的音符。SoundFont Player 则用 SF2/SF3 SoundFont 或 SFZ 乐器演奏 MIDI 曲目。"
+title: "其他音频工具 - Distortion Correction、测试音与噪声发生器、SoundFont Note Player、SoundFont Player - EffeTune"
+description: "Distortion Correction 根据对自己扬声器的测量结果降低扬声器失真。Oscillator 生成测试音、白噪声和粉红噪声，用于检查扬声器和耳机；SoundFont Note Player 用 SF2/SF3/SFZ 乐器播放从输入音频中检测到的音符。SoundFont Player 则用 SF2/SF3 SoundFont 或 SFZ 乐器演奏 MIDI 曲目。"
 lang: zh
 ---
 
@@ -10,9 +10,45 @@ lang: zh
 
 ## 插件列表
 
+- [Distortion Correction](#distortion-correction) - 根据对自己扬声器的测量结果降低扬声器失真
 - [Oscillator](#oscillator) - 用于检查扬声器/耳机的测试音和噪声发生器
 - [SoundFont Note Player](#sfz-note-player) - 使用 SF2/SF3 SoundFont 和 SFZ 乐器演奏检测到的音符
 - [SoundFont Player](#soundfont-player) - 使用 SF2/SF3 SoundFont 和 SFZ 乐器播放 MIDI
+
+## Distortion Correction
+
+Distortion Correction 利用在 EffeTune 中对你自己的扬声器所做的测量，降低扬声器给音乐增加的失真。它会在信号到达扬声器之前先对其加以修整，从而抵消扬声器自身产生的一部分失真。扬声器的失真在大音量时最为明显，如果你想在大音量聆听时，用手头现有的扬声器获得更干净的声音，就可以使用它。
+
+它降低的是二次（偶次）失真，以及在测量证实有效的声道上，由锥盆大幅运动引起的低频奇次失真。效果的大小因扬声器而异，某个声道显示“Off”是常见且正常的结果：许多扬声器的失真类型是这种校正无法降低的。它无法修复硬削波、振动异响、嗡嗡声或噪声。它在采样率为 44.1 kHz 或更高时工作。
+
+### 音质增强指南
+
+1. **测量你的扬声器。** 在[声学特性测量](../measurement.md)中，选择 **+ 新测量** > **扬声器失真**。把麦克风放在扬声器正前方 0.5～1 m 处，并把功放调到你平时聆听的最大音量。完成后保存结果。
+2. **把此效果放在最后。** 把 Distortion Correction 添加到效果链的末尾，并在 **Measurement** 列表中选择保存的测量。如果此效果之前已在效果链中、但没有选择测量，它会自动开始使用新保存的测量。请让此效果保持在最后：排在它之后、会改变电平或音色的效果会使校正失准，只要后面还有其他效果，状态行就会提示。
+3. **在 EffeTune 内调节音量。** 测量之后，请用 EffeTune 的音量而不是功放来调节音量；在 EffeTune 内降低音量时，无需更改此效果。如果你把功放音量调低了，请设置 **Amplifier Volume Change (dB)**，或点击 **Check again**，它会测量这一变化并自动为你设定。如果你把功放调得比测量时更高，请重新测量。
+4. **对比。** 要听出校正的作用，请在 **Mode** 为 **Reduce** 的状态下开关此效果。想知道被校正的失真听起来是什么样，可以先把 **Mode** 暂时设为 **Add**，平时聆听时再改回 **Reduce**。
+5. **留意 Overload。** 此效果不会限制其输出。当状态行显示 **Overload** 时，请在此效果之前降低电平，例如在它之前放置 [Volume](basics.md#volume) 效果。
+
+### 参数
+
+- **Measurement**（**Measurement** 标签页）- 选择已保存的扬声器失真测量，按时间由新到旧排列；选择 **None** 会关闭校正。重新测量后，请点击 **Refresh measurements**。列表下方的一行显示测量的时间、其 Signal Level 和 Upper Limit，以及最后一次检查校正的时间。如果该测量不在这台设备上，校正会保持关闭，直到你在这台设备上测量，或选择其他测量。
+- **Amplifier Volume Change (dB)**（−24 至 0 dB，步进 0.5 dB；默认 0 dB）- 测量之后功放音量被调低了多少。数值不对会使校正过强或过弱，所以请设为实际的调整量。**Check again** 会打开声学特性测量，再次播放测试信号，并根据测得的结果设定此值；它还会重新测量校正的效果如何。
+- **Filter Length**（**Correction** 标签页）- **Short** 或 **Long**。**Short** 增加的延迟远小于 1 ms。**Long** 会根据采样率增加约 2.5～3 ms 的延迟，占用更多处理资源，但在某些扬声器上可以校正得更多。两种长度都会在测量时检查；标有 **(recommended)** 的那一种在所有声道上降低量更大，并默认被选中。把指针移到列表上，可以查看当前采样率下确切的延迟和增加的处理量。
+- **Mode** - **Reduce**（默认）会消除测量中发现的失真。**Add** 会把同样的失真加强约 6 dB（电平翻倍），让你听听它是什么样的；选中 **Add** 期间，状态行会提示这一点。
+- **Channels** 标签页 - 此效果处理的每个声道和每个已测量的声道都有两行，**Even-order** 和 **Odd-order**，每行都可选 **Auto**、**On**、**Off**。每行旁边的状态显示此效果在该行上正在做什么：
+  - **Auto**（默认）按测量对该声道的判定来处理。对于低频奇次失真，只有当校正检查在设定电平下测得收益、且在大音量下没有发现负面影响时，Auto 才会开启校正，所以通常是关闭的。
+  - **On** 会校正测量中被保持关闭的声道。把指针移到该行旁边的状态上，可以看到它为何被关闭；如果测量发现校正会使失真变得更糟，不建议开启。
+  - **Off** 让该声道保持不校正，例如用来与已校正的声道对比。
+  - **Not measured** 表示此效果处理该声道，但所选测量中不包含它，因此不会校正；要校正它，请测量该声道。**Not used** 表示某个已测量的声道没有经过此效果处理。
+  - 未校正的声道与其他声道延迟相同，因此各扬声器仍保持同步。点击某一行，也会在图表中显示该声道。如果奇次那一行显示 **Off (not checked)**，请运行 **Check again**，让 **Auto** 来判断。
+
+### 图表与数值的读法
+
+- **图表**：针对在 **Graph Ch** 中选择的声道，按频率显示偶次失真。纵轴 **Multitone Distortion (dB)** 表示多音失真，即用包含许多同时发声的音、接近音乐的测试信号测得的失真，以相对于该信号的 dB 表示，因此其数值不能与用单音测得的 THD 直接比较。实线是未校正的测量值，虚线是校正后的预测结果。对于未校正的声道，会另外显示一条 **What the correction would do (not used)** 的线。阴影标出 **Below the noise floor** 的范围，此范围内的失真被噪声掩盖，测量看不到；这里的校正是根据测量能看到的范围推算的，通常仍能降低失真，但幅度较小，也不那么确定。竖线标出测量的 **Upper Limit**，高于它的频率不会被校正。右上角的框会标出每条线的名称，并显示指针位置处的数值。与其他频率图表一样，可以用频谱图标叠加显示音乐的频谱（[频谱叠加](eq.md#频谱叠加)），沿频率轴拖动即可试听该频率。
+- **As set** 显示数字所使用的电平。选择 **All measured levels** 会加入其他已测电平（比设定的 Signal Level 低 6 dB 和 12 dB 的电平，以及 **Loud peaks**）。打开 **Show Odd-order** 会加入未校正的奇次失真。
+- **数值表**：涵盖 50 Hz 至 8 kHz。**Total distortion** 和 **Even-order distortion** 以 dB 和相对于测试信号的 % 显示校正前 → 校正后的电平，并标明是 **measured**（来自校正检查）还是 **predicted**。**Loud peaks** 显示在音乐的大峰值处偶次失真的变化，**If volume is off by 3 dB** 显示当 **Amplifier Volume Change (dB)** 与功放的实际变化相差 3 dB 时的变化。会使失真增大的数值以高亮显示。**State** 显示该声道是正在校正、被你手动开启或关闭，还是处于关闭；把指针移到它上面可以查看原因。
+- 这些数字对应的是在 EffeTune 中以满电平播放音乐、功放按 **Amplifier Volume Change (dB)** 所设置的情况，并且对应测量时所用的麦克风位置。在你的座位上，约 2 kHz 以下降低量相近，更高频段通常较小。高于测量时功放音量的情况是未知的，测得的最低电平比设定的 Signal Level 低 12 dB；低于该电平时失真还会更小。麦克风自身的失真已尽可能分离出去，但无法完全排除。
+- **状态行**：显示一条消息，随后是此效果增加的延迟。消息通常列出正在校正的声道。当校正后的信号超过满量程时改为显示 **Overload**，当此效果不在最后时改为显示警告，没有任何声道被校正时改为说明原因。
 
 ## Oscillator
 

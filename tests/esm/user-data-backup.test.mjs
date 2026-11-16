@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { UserDataBackupService } from '../../js/user-data-backup/service.js';
 import { prepareItems, chooseName, references, replaceReferences, encodeFloat32, decodeFloat32,
-    MAX_BACKUP_BYTES } from '../../js/user-data-backup/portable.js';
+    MAX_BACKUP_BYTES, MAX_JSON_BYTES } from '../../js/user-data-backup/portable.js';
+import { decodeSpeakerModel, encodeSpeakerModel } from '../../features/measurement/dataStorage.js';
+import { createSpeakerModel } from '../helpers/speaker-model-fixture.mjs';
 import { inspectZip } from '../../js/user-data-backup/archive.js';
 import { sha256IrBytes } from '../../js/ir-library/ir-library-id.js';
 import { createUserDataBackupAdapter } from '../../js/user-data-backup/adapters.js';
@@ -392,6 +394,23 @@ test('multi-point multi-channel measurements travel as one complete unit', async
     assert.deepEqual(adapter.items[0].data.measurement.points, item.data.measurement.points);
     assert.deepEqual(adapter.items[0].data.impulseResponses.map(({ measurementId, ...value }) => value),
         item.data.impulseResponses.map(({ measurementId, ...value }) => value));
+});
+
+test('a speaker model larger than one item description travels as its own payload, bit-exact', async () => {
+    const model = createSpeakerModel(3);
+    const item = measurement();
+    item.data.measurement.speakerModel = encodeSpeakerModel(model);
+    assert.ok(JSON.stringify(item.data.measurement.speakerModel).length > MAX_JSON_BYTES);
+    const backup = await makeBackup([item]);
+    const adapter = memoryAdapter();
+    const restore = service(adapter);
+    const opened = await restore.openBackup(backup.blob);
+    const plan = () => restore.planRestore(opened, [opened.items[0].key]);
+    assert.equal((await restore.restore(await plan())).added.length, 1);
+    const restored = decodeSpeakerModel(adapter.items[0].data.measurement.speakerModel);
+    assert.deepEqual(restored, model);
+    assert.ok(restored.channels[0].diagnosis.nx instanceof Uint16Array);
+    assert.equal((await restore.restore(await plan())).reused.length, 1);
 });
 
 test('duplicate paths and expansion beyond a ZIP declaration are rejected with bounded payload reads', async () => {

@@ -588,11 +588,17 @@ class TonalBalanceEQPlugin extends PluginBase {
         this.resizeGraphDisposer = graph.dispose;
         this.canvas.setAttribute('aria-label', 'Target curve, measured spectrum, and EQ response');
         container.appendChild(graph.container);
+        const legend = this.hasLocalAudio !== false ? this._graphSeries() : [this._graphSeries()[1]];
+        this._hoveredLegend = null;
         this._graphReadout = window.GraphReadout?.attach({
             mount: graph.container,
             surface: this.canvas,
             read: x => this._readGraph(x),
-            legend: this.hasLocalAudio !== false ? this._graphSeries() : [this._graphSeries()[1]]
+            legend,
+            onLegendHover: index => {
+                this._hoveredLegend = index === null ? null : legend[index].label;
+                this.drawGraph();
+            }
         }) ?? null;
 
         // Target adjust handles on the graph (the editor's plot maps the canvas axes, in percent)
@@ -773,7 +779,7 @@ class TonalBalanceEQPlugin extends PluginBase {
         const toX = logFrequency => (logFrequency - TONAL_BALANCE_EQ_LOG_MIN) / TONAL_BALANCE_EQ_LOG_SPAN * width;
         const toY = db => (Number.isFinite(db) ? (top - db) / span * height : NaN);
         const labelFont = `${Math.round(12 * dpr)}px Arial`;
-        const titleFont = `${Math.round(13 * dpr)}px Arial`;
+        const titleFont = `${Math.round(14 * dpr)}px Arial`;
         const labelZone = height - 38 * dpr;
 
         ctx.fillStyle = color('graph-bg-deep');
@@ -793,7 +799,8 @@ class TonalBalanceEQPlugin extends PluginBase {
         ctx.textAlign = 'center';
         for (const frequency of TONAL_BALANCE_EQ_FREQ_TICKS) {
             const x = toX(Math.log10(frequency));
-            if (x < 0 || x > width) continue;
+            // Ticks outside the axis or on its bounds (the canvas edges) are not drawn.
+            if (x <= 0 || x >= width) continue;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
@@ -804,7 +811,8 @@ class TonalBalanceEQPlugin extends PluginBase {
         }
         const step = span <= 36 ? 6 : span <= 72 ? 12 : 24;
         ctx.textAlign = 'right';
-        for (let db = Math.ceil(this.dbBottom / step) * step; db <= top; db += step) {
+        // Interior grid lines only; a multiple of the step on dbBottom or dbTop sits on the canvas edge.
+        for (let db = Math.floor(this.dbBottom / step) * step + step; db < top; db += step) {
             const y = toY(db);
             ctx.beginPath();
             ctx.moveTo(0, y);
@@ -849,8 +857,11 @@ class TonalBalanceEQPlugin extends PluginBase {
                 }
             };
 
+            // The target band sits halfway between the soft grid tone and the background.
             ctx.fillStyle = color('graph-grid-soft');
+            ctx.globalAlpha = 0.5;
             fillRuns(curves.targetLow, curves.targetHigh);
+            ctx.globalAlpha = 1;
             // The withheld fill is faint on dark themes; a 1 px edge marks its top.
             ctx.fillStyle = color('graph-trace-soft');
             fillRuns(curves.withheldLow, curves.withheldHigh);
@@ -875,7 +886,7 @@ class TonalBalanceEQPlugin extends PluginBase {
             strokeCurve(TONAL_BALANCE_EQ_GRID_LOG_FREQS, view.response);
         } else {
             ctx.fillStyle = color('graph-label');
-            ctx.font = titleFont;
+            ctx.font = `${Math.round(13 * dpr)}px Arial`;
             ctx.textAlign = 'center';
             // Above the 0 dB line, where the default handles and the adjust curve sit.
             ctx.fillText('Play audio to start measuring', width / 2, height / 4);
@@ -885,8 +896,21 @@ class TonalBalanceEQPlugin extends PluginBase {
             ctx.strokeStyle = color('graph-trace-secondary');
             strokeCurve(TONAL_BALANCE_EQ_ADJUST_LOG_FREQS, adjust);
         }
+        // Room EQ's legend hover: the hovered entry's curve is redrawn thick and on top.
+        const emphasized = {
+            'Target': view && [TONAL_BALANCE_EQ_CURVE_LOG_FREQS, view.curves.target, 'graph-overlay-compare'],
+            'Target adjust': adjust && [TONAL_BALANCE_EQ_ADJUST_LOG_FREQS, adjust, 'graph-trace-secondary'],
+            'Measured': view && [TONAL_BALANCE_EQ_CURVE_LOG_FREQS, view.curves.measured, 'graph-overlay-after'],
+            'EQ response': view && [TONAL_BALANCE_EQ_GRID_LOG_FREQS, view.response, 'graph-trace'],
+            'Withheld lift': view && [TONAL_BALANCE_EQ_CURVE_LOG_FREQS, view.curves.withheldEdge, 'graph-handle']
+        }[this._hoveredLegend];
+        if (emphasized) {
+            ctx.lineWidth = 3.5 * dpr;
+            ctx.strokeStyle = color(emphasized[2]);
+            strokeCurve(emphasized[0], emphasized[1]);
+        }
 
-        ctx.fillStyle = color('graph-axis-title');
+        ctx.fillStyle = color('text-primary');
         ctx.font = titleFont;
         ctx.textAlign = 'center';
         ctx.fillText('Frequency (Hz)', width / 2, height - 5 * dpr);

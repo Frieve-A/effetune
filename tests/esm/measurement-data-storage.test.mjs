@@ -8,6 +8,7 @@ import {
     MeasurementLoadError
 } from '../../features/measurement/dataStorage.js';
 import { getAnalysisCapabilities } from '../../features/measurement/measurement-model.js';
+import { createSpeakerModel } from '../helpers/speaker-model-fixture.mjs';
 
 function harmonicAnalysis() {
     return {
@@ -371,6 +372,94 @@ test('IR-OFF export imports as metadata-only with no IR badge or binary availabi
     assert.equal(database.impulseResponses.size, 0);
 });
 
+function speakerDistortionRecord() {
+    const speakerModel = createSpeakerModel();
+    speakerModel.lastCheck = { at: Date.UTC(2026, 10, 14), outcome: 'lower', dv: -1.5 };
+    // A NaN with a non-default payload must keep its bits.
+    new Uint32Array(speakerModel.channels[0].power.short.L[1].buffer)[3] = 0x7fc00123;
+    return {
+        id: 'speaker-source',
+        name: 'Speaker',
+        timestamp: '2026-11-13T09:30:00.000Z',
+        savedAt: Date.UTC(2026, 10, 13, 9, 31),
+        points: [],
+        nextPointId: 0,
+        speakerModel
+    };
+}
+
+const bytesOf = array => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+
+test('speakerModel and savedAt round trip bit-exactly through JSON export and import without points', async () => {
+    const { storage: source } = createStorage();
+    const record = speakerDistortionRecord();
+    source.measurements = [record];
+    const json = await source.exportMeasurementToJSON('speaker-source', false);
+    const exported = JSON.parse(json);
+    assert.equal(exported.savedAt, record.savedAt);
+    assert.equal(typeof exported.speakerModel.channels[0].checkFig.short.bandSums.f32, 'string');
+    assert.equal(typeof exported.speakerModel.channels[0].diagnosis.nx.u16, 'string');
+
+    const { storage: target } = createStorage();
+    target.generateId = () => 'speaker-imported';
+    assert.equal(await target.importMeasurementFromJSON(json), 'speaker-imported');
+    const imported = target.getMeasurementById('speaker-imported');
+    assert.equal(imported.savedAt, record.savedAt);
+    assert.deepEqual(imported.points, []);
+    assert.deepEqual(imported.speakerModel, record.speakerModel);
+    const [sourceChannel] = record.speakerModel.channels;
+    const [importedChannel] = imported.speakerModel.channels;
+    assert.deepEqual(bytesOf(importedChannel.power.short.L[1]), bytesOf(sourceChannel.power.short.L[1]));
+    assert.deepEqual(bytesOf(importedChannel.checkFig.short.bandSums), bytesOf(sourceChannel.checkFig.short.bandSums));
+    assert.ok(importedChannel.diagnosis.nx instanceof Uint16Array);
+});
+
+test('an invalid imported speakerModel is dropped with a warning and the record is kept', async t => {
+    const { storage: source } = createStorage();
+    const record = speakerDistortionRecord();
+    record.speakerModel.channels[0].checkFig.short.bandSums = new Float32Array(149);
+    source.measurements = [record];
+    const json = await source.exportMeasurementToJSON('speaker-source', false);
+
+    const { storage: target } = createStorage();
+    target.generateId = () => 'speaker-invalid';
+    const warnings = captureWarnings(t);
+    assert.equal(await target.importMeasurementFromJSON(json), 'speaker-invalid');
+    warnings.restore();
+    assert.equal(warnings.warnings.length, 1);
+    const imported = target.getMeasurementById('speaker-invalid');
+    assert.equal(imported.speakerModel, undefined);
+    assert.equal(imported.name, 'Speaker');
+    assert.equal(imported.savedAt, record.savedAt);
+});
+
+test('backup snapshot carries speakerModel in its export form and append restores it bit-exactly', async t => {
+    const { storage: source, database } = createStorage();
+    const record = speakerDistortionRecord();
+    database.measurements.set(record.id, record);
+    const [bundle] = await source.readBackupSnapshot();
+    assert.equal(typeof bundle.measurement.speakerModel.channels[0].diagnosis.nx.u16, 'string');
+
+    const { storage: target } = createStorage();
+    const portable = structuredClone(bundle.measurement);
+    await target.appendBackupMeasurement(portable, []);
+    assert.deepEqual(portable, bundle.measurement);
+    const [appended] = target.measurements;
+    assert.deepEqual(appended.speakerModel, record.speakerModel);
+    assert.deepEqual(bytesOf(appended.speakerModel.channels[0].power.short.L[1]),
+        bytesOf(record.speakerModel.channels[0].power.short.L[1]));
+
+    const { storage: invalidTarget } = createStorage();
+    const invalid = structuredClone(bundle.measurement);
+    invalid.speakerModel.channels[0].diagnosis.nx = { u16: 'AAA' };
+    const warnings = captureWarnings(t);
+    await invalidTarget.appendBackupMeasurement(invalid, []);
+    warnings.restore();
+    assert.equal(warnings.warnings.length, 1);
+    assert.equal(invalidTarget.measurements[0].speakerModel, undefined);
+    assert.equal(invalidTarget.measurements[0].name, 'Speaker');
+});
+
 test('measurement export and import preserve supported output widths through sixteen channels', async () => {
     for (const outputChannelCount of [2, 4, 6, 8, 10, 12, 14, 16]) {
         const { storage } = createStorage();
@@ -726,6 +815,26 @@ test('definite IndexedDB unavailability falls back to metadata-only localStorage
     const persisted = JSON.parse(values.get(storage.STORAGE_KEY));
     assert.equal(persisted[0].points[0].ir, undefined);
     assert.equal(JSON.stringify(persisted).includes('impulseResponses'), false);
+});
+
+test('a speaker result keeps its model when IndexedDB is unavailable and localStorage accepts writes', async t => {
+    const originalLocalStorage = globalThis.localStorage;
+    const values = new Map();
+    globalThis.localStorage = { setItem: (key, value) => values.set(key, value) };
+    t.after(() => { globalThis.localStorage = originalLocalStorage; });
+    t.mock.method(console, 'error', () => {});
+
+    const storage = new DataStorage();
+    storage.indexedDbUnavailable = true;
+    storage.openDatabase = async () => { throw new Error('IndexedDB is unavailable'); };
+    const record = speakerDistortionRecord();
+    const model = record.speakerModel;
+
+    assert.equal(await storage.putMeasurement(record), false);
+    await assert.rejects(storage.addMeasurement(record), /could not be saved/);
+    assert.equal(record.speakerModel, model);
+    assert.deepEqual(storage.getAllMeasurements(), []);
+    assert.equal(values.size, 0);
 });
 
 test('transient IndexedDB failures do not silently fall back to localStorage', async t => {

@@ -1,5 +1,6 @@
 export const PLUGIN_SUPPORT_SCRIPTS = [
     'plugins/plugin-base.js',
+    'plugins/fir-asset-eq.js',
     'plugins/graph-point-interaction.js',
     'plugins/frequency-axis.js',
     'plugins/spectrum-overlay.js',

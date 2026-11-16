@@ -8,6 +8,7 @@ Use this checklist when reviewing changes in this repository. Lead with concrete
 - For audio processing paths, verify channel counts, interleaved buffer indexing, bypass behavior, and real-time safety.
 - For Electron changes, check IPC boundaries, preload exposure, file path handling, and platform-specific behavior.
 - For UI changes, check keyboard and pointer workflows, state restoration, localization hooks, and failure states.
+- For graphs, never clamp data values or plotted coordinates to the displayed axis bounds, as this can misrepresent the data.
 
 ## Performance and Safety
 

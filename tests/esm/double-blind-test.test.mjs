@@ -461,7 +461,7 @@ function createHarness(options = {}) {
   const audioEvents = new Map();
   const audioManager = {
     pipelineA: options.pipelineA ?? [createPlugin('Alpha', { gain: 1, inputBus: 0, outputBus: 1, channel: 'L' })],
-    pipelineB: options.pipelineB ?? [createPlugin('Beta', { gain: 2 })],
+    pipelineB: 'pipelineB' in options ? options.pipelineB : [createPlugin('Beta', { gain: 2 })],
     currentPipeline: options.currentPipeline ?? 'B',
     audioContext: options.audioContext ?? { sampleRate: 48000 },
     _outputFadeToken: 0,
@@ -719,7 +719,7 @@ test('Browser roundtrip preserves a running test and suspends hidden sample and 
 test('validates pipeline availability and manages entry/exit gating', async () => {
   await withHarness({}, async h => {
     assert.equal(DoubleBlindTest.abValid(null), false);
-    assert.equal(DoubleBlindTest.abValid({ pipelineA: [], pipelineB: [] }), false);
+    assert.equal(DoubleBlindTest.abValid({ pipelineA: [], pipelineB: [] }), true);
     assert.equal(DoubleBlindTest.abValid({ pipelineA: [1], pipelineB: null }), false);
     assert.equal(DoubleBlindTest.abValid(h.uiManager.audioManager), true);
     assert.equal(h.dbt.isActive(), false);
@@ -964,7 +964,7 @@ test('builds the panel and runs every event listener path', async () => {
 });
 
 test('shows configuration states and localizes both ABX and preference text', async () => {
-  await withHarness({ pipelineB: [] }, async h => {
+  await withHarness({ pipelineB: null }, async h => {
     h.dbt.enterFresh();
     await flushMicrotasks();
     assert.equal(h.dbt.els.startAbx.disabled, true);
@@ -1065,29 +1065,70 @@ test('stores, loads, deletes, and recovers saved test definitions', async () => 
   });
 });
 
-test('loads saved tests with partial plugin creation failures', async () => {
+test('a failed saved test recall leaves both pipelines and settings in place', async () => {
   await withHarness({
     nullCreatePluginNames: new Set(['NullB']),
     throwCreatePluginNames: new Set(['ThrowA']),
     storage: {
       effetune_dbt_tests: JSON.stringify({
-        Empty: { v: 1, tc: 8, pA: [{ nm: 'ThrowA', en: true }], pB: [{ nm: 'NullB', en: true }] },
-        Mixed: { v: 1, tc: '6', pA: [{ nm: 'GoodA', en: false, ch: 'Right', gain: 7 }], pB: [{ nm: 'NullB', en: true }] }
+        Broken: { v: 1, tc: 8, pA: [{ nm: 'ThrowA' }], pB: [] },
+        Partial: { v: 1, tc: 6, fAB: false, pA: [{ nm: 'GoodA' }], pB: [{ nm: 'GoodB' }, { nm: 'NullB' }] },
+        Malformed: { v: 2, tc: 2, pA: [null], pB: [] }
       })
     }
   }, async h => {
-    h.dbt._buildPanel();
-    await h.dbt._loadTest('Missing');
-    await h.dbt._loadTest('Empty');
-    assert.equal(h.uiManager.audioManager.pipelineA.length, 0);
-    assert.equal(h.uiManager.audioManager.pipelineB, null);
+    h.dbt.enterFresh();
+    const { audioManager, expandedPlugins, pluginManager } = h.uiManager;
+    const { pipelineA, pipelineB } = audioManager;
+    for (const plugin of [...pipelineA, ...pipelineB]) expandedPlugins.add(plugin);
+    const create = pluginManager.createPlugin;
+    const cleaned = [];
+    pluginManager.createPlugin = name => {
+      const plugin = create(name);
+      if (plugin) plugin.cleanup = () => cleaned.push(name);
+      return plugin;
+    };
 
-    await h.dbt._loadTest('Mixed');
-    assert.equal(h.uiManager.audioManager.pipelineA[0].name, 'GoodA');
-    assert.equal(h.uiManager.audioManager.pipelineA[0].enabled, false);
-    assert.equal(h.uiManager.audioManager.pipelineA[0].channel, 'R');
-    assert.equal(h.uiManager.audioManager.pipelineB, null);
-    h.runTimers();
+    await h.dbt._loadTest('Broken');
+    await h.dbt._loadTest('Malformed');
+    h.dbt.els.testNameInput.value = 'Partial';
+    await h.dbt.els.testNameInput.dispatch('change');
+    assert.equal(audioManager.pipelineA, pipelineA);
+    assert.equal(audioManager.pipelineB, pipelineB);
+    assert.equal(audioManager.currentPipeline, 'B');
+    assert.equal(h.dbt.testCount, 20);
+    assert.equal(h.dbt.fixAB, true);
+    assert.equal(h.dbt.testName, '');
+    assert.equal(h.dbt.els.testNameInput.value, '');
+    assert.deepEqual(expandedPlugins, new Set([...pipelineA, ...pipelineB]));
+    assert.deepEqual(cleaned, ['GoodA', 'GoodB']);
+    assert.equal(h.errors.filter(error => error.isError && error.message === 'error.failedToLoadPreset').length, 3);
+  });
+});
+
+test('saved tests distinguish an intentional empty Pipeline B from an absent Pipeline B', async () => {
+  await withHarness({}, async h => {
+    h.dbt.enterFresh();
+    await h.dbt._persistTests({
+      Legacy: { v: 1, tc: 4, pA: [{ nm: 'GoodA', en: false, ch: 'Right', gain: 7 }], pB: [] }
+    });
+    await h.dbt._loadTest('Legacy');
+    const { audioManager } = h.uiManager;
+    assert.equal(audioManager.pipelineA[0].enabled, false);
+    assert.equal(audioManager.pipelineA[0].channel, 'R');
+    assert.equal(audioManager.pipelineB, null);
+    assert.equal(h.dbt.els.startAbx.disabled, true);
+    await h.dbt._saveTest('Absent');
+
+    audioManager.pipelineB = [];
+    await h.dbt._saveTest('Empty');
+    await h.dbt._loadTest('Absent');
+    assert.equal(audioManager.pipelineB, null);
+    assert.equal(h.dbt.els.startAbx.disabled, true);
+
+    await h.dbt._loadTest('Empty');
+    assert.deepEqual(audioManager.pipelineB, []);
+    assert.equal(h.dbt.els.startAbx.disabled, false);
   });
 });
 
@@ -1110,6 +1151,13 @@ test('restores shared payloads and rejects malformed or empty shares', async () 
   await withHarness({ throwCreatePluginNames: new Set(['Broken']) }, async h => {
     const encoded = encodePipelineState({ pA: [{ nm: 'Broken', en: true }], pB: [{ nm: 'Good', en: true }] });
     assert.equal(h.dbt.restoreFromShare(encoded), false);
+  });
+
+  await withHarness({}, async h => {
+    h.dbt._loadTestList = () => Promise.resolve();
+    const encoded = encodePipelineState({ pA: [{ nm: 'ShareA', en: true }], pB: [] });
+    assert.equal(h.dbt.restoreFromShare(encoded), true);
+    assert.deepEqual(h.uiManager.audioManager.pipelineB, []);
   });
 
   await withHarness({}, async h => {
@@ -1262,7 +1310,7 @@ test('starts tests, randomizes trials, switches labels, and handles keyboard sho
     h.dbt.enterFresh();
     await flushMicrotasks();
 
-    h.dbt.audioManager.pipelineB = [];
+    h.dbt.audioManager.pipelineB = null;
     h.dbt._startTest('ABX');
     assert.equal(h.dbt.testRunning, false);
     h.dbt.audioManager.pipelineB = [createPlugin('Beta')];

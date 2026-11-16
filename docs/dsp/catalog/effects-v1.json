@@ -2569,6 +2569,15 @@
             true,
             true
           ]
+        },
+        {
+          "name": "masterGain",
+          "type": "number",
+          "count": 1,
+          "default": 0,
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 20
         }
       ],
       "seeded": false,
@@ -3007,6 +3016,53 @@
       "displayName": "Group Delay PEQ",
       "category": "eq",
       "summary": "Applies an externally prepared FIR response for five-band parametric group-delay adjustment.",
+      "sourceGenerating": false
+    },
+    {
+      "type": "HeadphoneEQ",
+      "parameters": [
+        {
+          "name": "latencyMode",
+          "type": "string",
+          "count": 1,
+          "default": "128",
+          "values": [
+            "0",
+            "128",
+            "256",
+            "512",
+            "1024"
+          ]
+        },
+        {
+          "name": "filterDelaySamples",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65536
+        }
+      ],
+      "seeded": true,
+      "telemetry": [],
+      "latency": {
+        "kind": "dynamic",
+        "dependsOn": [
+          "latencyMode",
+          "filterDelaySamples",
+          "impulseResponse"
+        ]
+      },
+      "assets": [
+        {
+          "name": "impulseResponse",
+          "kind": "impulseResponse",
+          "required": true
+        }
+      ],
+      "displayName": "Headphone EQ",
+      "category": "eq",
+      "summary": "Applies an externally prepared FIR response that corrects a headphone toward a target curve.",
       "sourceGenerating": false
     },
     {
@@ -9940,7 +9996,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "fdde654b4049e53fd9bfe8cee41581255d4a3d8b855aafca89851eba62f377be",
-    "privateLayoutSha256": "cf1b7773e7a2796f2d45590f01ba264b0d404fb550538c3d4234812031fac713"
+    "publicCatalogSha256": "0acd85e5d6a2d6368f44b47696102f780abc3ce318e55f12b20e3ebef93798eb",
+    "privateLayoutSha256": "d8c5025a6f56dc5132e6e360c72b10ebb9cba550eb0c0f6a6994925ab21073b9"
   }
 }

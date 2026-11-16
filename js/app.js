@@ -325,21 +325,25 @@ function applyInitialStartupViewClass(config, windowRef = window) {
 // default wait, so the hand-off gives up early and lets navigation proceed.
 const MEASUREMENT_HANDOFF_ASSET_TIMEOUT_MS = 2000;
 
-async function saveMeasurementPipelineHandoff(audioManager, workletSync) {
+async function saveMeasurementPipelineHandoff(audioManager, workletSync, speakerDistortion) {
     const [{ buildPipelineProcessingSnapshot }, handoffStore] = await Promise.all([
         import('./pipeline-analyzer/pipeline-snapshot.js'),
         import('./pipeline-analyzer/pipeline-handoff-store.js')
     ]);
+    const put = processing => handoffStore.putPipelineHandoff({ ...processing, speakerDistortion });
     try {
-        await handoffStore.putPipelineHandoff(await buildPipelineProcessingSnapshot({
+        await put(await buildPipelineProcessingSnapshot({
             audioManager,
             workletSync,
             assetTimeoutMs: MEASUREMENT_HANDOFF_ASSET_TIMEOUT_MS
         }));
     } catch (error) {
         // Never leave an entry from an earlier navigation for the measurement page to pick up.
-        await handoffStore.clearPipelineHandoff().catch(clearError =>
-            console.warn('Failed to clear the previous pipeline hand-off:', clearError));
+        // Without a snapshot the page offers no pipeline option but still receives the
+        // effect's request.
+        await (speakerDistortion ? put({ snapshot: null, pluginNames: [] }) : handoffStore.clearPipelineHandoff())
+            .catch(replaceError =>
+                console.warn('Failed to replace the previous pipeline hand-off:', replaceError));
         throw error;
     }
 }
@@ -372,9 +376,10 @@ class App {
         });
         this.loadPipelineState = dependencies.loadPipelineState || loadPipelineState;
         this.savePipelineHandoff = dependencies.savePipelineHandoff ||
-            (() => saveMeasurementPipelineHandoff(
+            (speakerDistortion => saveMeasurementPipelineHandoff(
                 this.audioManager,
-                this.uiManager.pipelineManager?.core?.workletSync
+                this.uiManager.pipelineManager?.core?.workletSync,
+                speakerDistortion
             ));
 
         // Set pipeline manager reference in audio manager
@@ -407,6 +412,10 @@ class App {
         window.electronAPI?.onOpenFrequencyResponseMeasurement?.(
             () => this.openFeaturePage('features/measurement/measurement.html')
         );
+        // Entry point of the Distortion Correction effect; the request reaches
+        // Acoustic Measurement through the pipeline hand-off.
+        window.openSpeakerDistortionMeasurement = request =>
+            this.openFeaturePage('features/measurement/measurement.html', { speakerDistortion: request });
         window.electronAPI?.onReloadWithPipelineState?.(
             () => this.reloadWithPipelineState()
         );
@@ -416,7 +425,7 @@ class App {
         return getFullPipelineStateForSave(this.audioManager, this.uiManager?.pipelineManager);
     }
 
-    async openFeaturePage(path) {
+    async openFeaturePage(path, { speakerDistortion } = {}) {
         const isMeasurementPage = /(?:^|\/)measurement\/measurement\.html$/.test(path);
         if (!isMeasurementPage) {
             await this.audioManager.fadeOutOutputForTeardown?.();
@@ -434,7 +443,7 @@ class App {
             window.electronIntegration?.isElectronEnvironment?.() === true;
 
         if (isElectron && window.electronAPI?.openFrequencyResponseMeasurement) {
-            await this.handOffPipelineToMeasurement();
+            await this.handOffPipelineToMeasurement(speakerDistortion);
             const fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
             let opened = false;
             try {
@@ -475,16 +484,16 @@ class App {
             this.uiManager.setError('error.featureNavigationFailed', true);
             return;
         }
-        await this.handOffPipelineToMeasurement();
+        await this.handOffPipelineToMeasurement(speakerDistortion);
         await this.audioManager.fadeOutOutputForTeardown?.();
         window.location.href = path;
     }
 
     // Runs while the live pipeline is still intact. A failure only leaves the measurement
     // page without the pipeline option, so it is logged and navigation continues.
-    async handOffPipelineToMeasurement() {
+    async handOffPipelineToMeasurement(speakerDistortion) {
         try {
-            await this.savePipelineHandoff();
+            await this.savePipelineHandoff(speakerDistortion);
         } catch (error) {
             console.warn('The effect pipeline could not be handed to the measurement page:', error);
         }

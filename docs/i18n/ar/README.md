@@ -454,6 +454,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | EQ | Earphone Cable Sim | يساعد على التحقق من صغر تغيرات الاستجابة الترددية الناتجة عادةً عن كابلات سماعات الأذن العادية | [تفاصيل](plugins/eq.md#earphone-cable-sim) |
 | EQ | Group Delay EQ | يضبط تأخير كل نطاق ترددي دون تغيير طابع الصوت | [تفاصيل](plugins/eq.md#group-delay-eq) |
 | EQ | Group Delay PEQ | تحكم بارامتري بخمسة نطاقات في التأخير عند كل تردد دون تغيير طابع الصوت | [تفاصيل](plugins/eq.md#group-delay-peq) |
+| EQ | Headphone EQ | تصحيح FIR يقرّب استجابة سماعات الرأس من منحنى هدف استنادًا إلى قياسها | [تفاصيل](plugins/eq.md#headphone-eq) |
 | EQ | Hi Pass Filter | يزيل الترددات المنخفضة غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#hi-pass-filter) |
 | EQ | Lo Pass Filter | يزيل الترددات العالية غير المرغوبة بدقة | [تفاصيل](plugins/eq.md#lo-pass-filter) |
 | EQ | Loudness Equalizer | يصحح توازن الترددات عند الاستماع بمستوى منخفض | [تفاصيل](plugins/eq.md#loudness-equalizer) |
@@ -521,6 +522,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial | Phase Select EQ | يعزز أو يخفض مكونات التردد المحددة حسب فرق الطور بين L/R وBalance | [تفاصيل](plugins/spatial.md#phase-select-eq) |
 | Spatial | Spatial Mapper | يفصل الصوت إلى Direct وDiffuse وResidual لتوجيه مرن متعدد القنوات | [تفاصيل](plugins/spatial.md#spatial-mapper) |
 | Spatial | Stereo Blend | يتحكم في عرض الستيريو من ستيريو معكوس القطبية مرورًا بـ mono وصولًا إلى ستيريو معزز | [تفاصيل](plugins/spatial.md#stereo-blend) |
+| Others | Distortion Correction | يقلل تشوه سماعاتك الخاصة باستخدام قياس يُجرى في EffeTune | [تفاصيل](plugins/others.md#distortion-correction) |
 | Others | Oscillator | مولد نغمات وضوضاء اختبار لفحص السماعات أو سماعات الرأس | [تفاصيل](plugins/others.md#oscillator) |
 | Others | SoundFont Note Player | يعزف النغمات المكتشفة باستخدام SoundFont SF2/SF3 وآلات SFZ | [تفاصيل](plugins/others.md#sfz-note-player) |
 | Others | SoundFont Player | يشغّل MIDI باستخدام SoundFont SF2/SF3 أو آلات SFZ، مع 16 قناة SF2/SF3 مستقلة | [تفاصيل](plugins/others.md#soundfont-player) |

@@ -38,6 +38,7 @@ const FULL_SCREEN_EXIT_TIMEOUT_MS = 3000;
 const atomicFileWrites = new Map();
 let isMiniMode = false;
 let wasMaximizedBeforeMiniMode = false;
+let applicationMenuHidden = false;
 let pendingMeasurementPipelineRestore = null;
 let openMeasurementNavigation = null;
 let mainPageNavigation = null;
@@ -48,7 +49,7 @@ function setFullscreenMenuEnabled(enabled) {
 }
 
 function setMainMenuBarVisible(mainWin, visible) {
-  if (process.platform !== 'darwin') mainWin.setMenuBarVisibility(visible);
+  if (process.platform !== 'darwin') mainWin.setMenuBarVisibility(visible && !applicationMenuHidden);
 }
 
 function miniPlayerPlacementForWindow(mainWin, visualizerAspect = null) {
@@ -299,6 +300,7 @@ function getSaveFileDenialReason(filePath) {
 function setMainWindow(window) {
   isMiniMode = false;
   wasMaximizedBeforeMiniMode = false;
+  applicationMenuHidden = false;
   setFullscreenMenuEnabled(true);
   constants.setMainWindow(window);
 }
@@ -626,13 +628,47 @@ let currentMenuState = {};
 
 function createMenu(menuState = {}) {
   currentMenuState = menuState;
-  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(menuState));
-  Menu.setApplicationMenu(menu);
+  refreshMenu();
 }
 
 // Rebuild with the current labels, e.g. after the display list changes.
 function refreshMenu() {
-  createMenu(currentMenuState);
+  if (!applicationMenuHidden) installApplicationMenu();
+}
+
+function installApplicationMenu() {
+  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(currentMenuState));
+  Menu.setApplicationMenu(menu);
+}
+
+function disableMenuItems(menu) {
+  for (const item of menu?.items ?? []) {
+    item.enabled = false;
+    disableMenuItems(item.submenu);
+  }
+}
+
+// On Windows and Linux, removing the application menu destroys the native menu
+// bar, and Electron then crashes on the next Alt press once that bar has held
+// keyboard focus. Keep the menu instead: hide its bar and disable its items so
+// their shortcuts stay inactive.
+function hideApplicationMenu() {
+  if (applicationMenuHidden) return;
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(null);
+  } else {
+    disableMenuItems(Menu.getApplicationMenu());
+    const mainWin = constants.getMainWindow();
+    if (mainWin) setMainMenuBarVisible(mainWin, false);
+  }
+  applicationMenuHidden = true;
+}
+
+function restoreApplicationMenu() {
+  installApplicationMenu();
+  applicationMenuHidden = false;
+  const mainWin = constants.getMainWindow();
+  if (mainWin) setMainMenuBarVisible(mainWin, !isMiniMode);
 }
 
 // Register all IPC handlers
@@ -1464,8 +1500,7 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
   // Handle hide application menu request
   ipcMain.handle('hide-application-menu', () => {
     try {
-      // Hide the application menu
-      Menu.setApplicationMenu(null);
+      hideApplicationMenu();
       return { success: true };
     } catch (error) {
       console.error('Error hiding application menu:', error);
@@ -1476,8 +1511,7 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
   // Handle restore default application menu request
   ipcMain.handle('restore-default-menu', () => {
     try {
-      // Restore the default menu
-      createMenu();
+      restoreApplicationMenu();
       return { success: true };
     } catch (error) {
       console.error('Error restoring default menu:', error);
@@ -1493,9 +1527,6 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
       try {
         const mainWin = constants.getMainWindow();
         if (mainWin) {
-          // Restore the default menu first
-          createMenu();
-          // Then navigate back to the main page
           const restorePipeline = pendingMeasurementPipelineRestore;
           if (restorePipeline) {
             await mainWin.loadFile('effetune.html', {
@@ -1507,6 +1538,8 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
           } else {
             await mainWin.loadFile('effetune.html');
           }
+          // A cancelled beforeunload rejects the load and leaves Measurement active.
+          restoreApplicationMenu();
           return { success: true };
         }
         return { success: false, error: 'Main window not available' };

@@ -126,6 +126,20 @@ export const PARAMETER_HINTS = Object.freeze({
             e4: { control: 'checkbox', label: 'Band 5 Enabled' }
         });
     },
+    HeadphoneEQPlugin: Object.freeze({
+        fd: { format: 'internal', label: 'FIR Delay', description: 'Computed from the phase mode and taps (0 or taps / 2 samples); values sent are ignored.' },
+        ...Object.fromEntries(Array.from({ length: 5 }, (_, band) => [
+            [`ea${band}`, { control: 'checkbox', label: `Target Adjust ${band + 1} Enabled` }],
+            [`ta${band}`, { control: 'select', label: `Target Adjust ${band + 1} Type`, options: [{ value: 'pk', label: 'Peaking' }, { value: 'ls', label: 'LowShelv' }, { value: 'hs', label: 'HighShel' }] }],
+            [`fa${band}`, { control: 'number', label: `Target Adjust ${band + 1} Frequency`, min: 20, max: 20000, step: 1, unit: 'Hz', scale: 'linear' }],
+            [`ga${band}`, { control: 'number', label: `Target Adjust ${band + 1} Gain`, min: -20, max: 20, step: 0.1, unit: 'dB', scale: 'linear' }],
+            [`qa${band}`, { control: 'number', label: `Target Adjust ${band + 1} Q`, min: 0.1, max: 10, step: 0.01, unit: '', scale: 'linear', description: 'Limited to 2 for ls and hs bands.' }]
+        ]).flat()),
+        mr: { items: { control: 'number', label: 'Measurement Level', unit: 'dB', scale: 'linear' }, description: 'Headphone measurement: 241 levels at 20 * 1000^(i / 240) Hz (1/24 octave, 20 Hz to 20 kHz), or [] for none. Other lengths or non-finite values are ignored.' },
+        mt: { items: { control: 'number', label: 'Target Level', unit: 'dB', scale: 'linear' }, description: 'Target curve on the same 241-point grid as mr, or [] for none. Other lengths or non-finite values are ignored.' },
+        mn: { format: 'text', label: 'Measurement Name', description: 'Display name of the measurement in mr.' },
+        tn: { format: 'text', label: 'Target Name', description: 'Display name of the target curve in mt.' }
+    }),
     IRReverbPlugin: Object.freeze({
         ir: { format: 'ir-id', label: 'Impulse Response', description: 'IR library id: 24 lowercase hex characters (see listIRs), or "" for none; anything else is stored as "".' }
     }),
@@ -198,6 +212,9 @@ export const PARAMETER_HINTS = Object.freeze({
         dm: { items: { control: 'number', label: 'Direct Gain', min: -1, max: 1, step: 0.01, unit: '', scale: 'linear' }, description: 'Direct routing matrix: 256 linear gains, row-major 16x16, entry out * 16 + in feeds output Ch out+1 from input component Ch in+1; missing entries are 0.' },
         fm: { items: { control: 'number', label: 'Diffuse Gain', min: -1, max: 1, step: 0.01, unit: '', scale: 'linear' }, description: 'Diffuse routing matrix: 256 linear gains, row-major 16x16, entry out * 16 + in feeds output Ch out+1 from input component Ch in+1; missing entries are 0.' },
         rm: { items: { control: 'number', label: 'Residual Gain', min: -1, max: 1, step: 0.01, unit: '', scale: 'linear' }, description: 'Residual routing matrix: 256 linear gains, row-major 16x16, entry out * 16 + in feeds output Ch out+1 from input component Ch in+1; missing entries are 0.' }
+    }),
+    SpeakerDistortionCorrectionPlugin: Object.freeze({
+        fl: { control: 'select', label: 'Filter Length', options: [{ value: 'Short', label: 'Short' }, { value: 'Long', label: 'Long' }] }
     }),
     SpectrogramPlugin: Object.freeze({
         pt: { control: 'number', label: 'Points', min: 8, max: 14, step: 1, unit: 'log2 FFT size', scale: 'linear', integer: true, description: 'FFT size exponent: the analysis uses 2^pt points (256 to 16384).' },

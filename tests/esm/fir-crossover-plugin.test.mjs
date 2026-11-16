@@ -466,6 +466,9 @@ test('FIR Crossover graph follows Channel Divider axes and curve conventions', (
     fillText(text) {
       labels.push(String(text));
     },
+    measureText(text) {
+      return { width: String(text).length * 6 };
+    },
     save() {},
     translate() {},
     rotate() {},

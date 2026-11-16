@@ -74,9 +74,10 @@ function canvasHarness(t) {
     const canvases = [];
     const makeCanvas = () => {
         const ctx = {
-            labels: [], strokes: [], setTransform() {}, fillRect() {}, clearRect() {},
+            labels: [], strokes: [], setTransform() {}, clearRect() {},
             setLineDash(value) { this.dash = value; },
-            save() {}, restore() {}, rect() {}, clip() {}, scale() {}, drawImage() {},
+            save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {}, scale() {}, drawImage() {},
+            fills: [], fillRect() { this.fills.push(this.fillStyle); },
             beginPath() {}, moveTo() {}, lineTo() {},
             stroke() { this.strokes.push({ color: this.strokeStyle, width: this.lineWidth, dash: [...this.dash] }); },
             strokeRect() {}, strokeText() {},
@@ -97,6 +98,28 @@ function canvasHarness(t) {
     t.after(replaceGlobal('document', { createElement: makeCanvas }));
     return { canvases, makeCanvas };
 }
+
+test('effect style spans the canvas with interior bare tick values and titled axes', t => {
+    const { makeCanvas } = canvasHarness(t);
+    const renderer = new AnalysisPlot(makeCanvas(), null, null, { effectStyle: true });
+    t.after(() => renderer.surface.destroy());
+    const context = renderer.canvas.getContext('2d');
+    renderer.draw({ type: 'distortion', xMin: 20, xMax: 20000, yMin: 0, yMax: 10, unit: '%',
+        series: [{ label: 'H2', color: '#f00', points: [[20, 1], [20000, 2]] }] });
+    assert.equal(context.fills[0], 'graph-bg-deep');
+    assert.deepEqual(renderer.plot, { left: 0, top: 0, width: 800, height: 400 });
+    const texts = context.labels.map(label => label.text);
+    assert.ok(texts.includes('Frequency (Hz)') && texts.includes('Distortion (%)'));
+    // The axis bounds sit on the canvas edge and get no value.
+    for (const edge of ['0', '10', '20', '20k']) assert.ok(!texts.includes(edge));
+    assert.deepEqual(context.labels.filter(label => label.x === 48).map(label => label.text), ['2', '4', '6', '8']);
+    assert.ok(context.labels.filter(label => label.y === 376).map(label => label.text).includes('1k'));
+
+    renderer.draw({ type: 'waterfall', xMin: 100, xMax: 1000, yMin: -60, yMax: 0, unit: 'dB', series: [],
+        normalization: 'global', waterfall: { frequencies: [100, 300, 1000], slices: [
+            { time: 0, levels: [0, -1, -2] }, { time: 0.1, levels: [-20, -21, -22] }] } });
+    assert.equal(renderer.surface.background, 'graph-bg-deep');
+});
 
 test('legend hover brings only the selected frequency or distortion curve forward and never enters exports', t => {
     const { makeCanvas, canvases } = canvasHarness(t);

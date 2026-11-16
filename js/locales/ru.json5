@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "Этот компьютер",
   "dialog.config.networkOutput.delay": "Задержка (ms)",
   "dialog.config.networkOutput.resync": "Пересинхронизировать",
-  "dialog.config.networkOutput.resyncHelp": "Перезапускает все колонки одновременно. Используйте, если они перестали звучать синхронно.",
+  "dialog.config.networkOutput.resyncHelp": "Заново измеряет задержку колонок и выравнивает их. Воспроизведение не прерывается, а синхронизация меняется один раз, когда измерение завершено. Колонки, задержку которых измерить нельзя, переподключаются, поэтому звук в них ненадолго прерывается.",
+  "dialog.config.networkOutput.syncing": "Синхронизация колонок…",
   "dialog.config.networkOutput.status.searching": "Поиск",
   "dialog.config.networkOutput.status.connecting": "Подключение",
   "dialog.config.networkOutput.status.playing": "Воспроизведение",
@@ -950,12 +951,18 @@
   "bassManagement.error.design": "Не удалось подготовить фильтры Bass Management. Уменьшите Taps и повторите попытку.",
   "firCrossover.error.design": "Не удалось рассчитать фильтры FIR Crossover. Уменьшите Taps или смягчите настройки.",
   "fiveBandFirPeq.error.design": "Не удалось рассчитать фильтр 5Band FIR PEQ. Уменьшите Taps или смягчите настройки.",
+  "headphoneEq.error.design": "Не удалось рассчитать корректирующий фильтр Headphone EQ. Уменьшите Taps или загрузите измерение заново.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "Не удалось рассчитать фильтр. Попробуйте другое значение Taps.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "Не удалось рассчитать фильтр. Попробуйте другое значение Taps.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "Не удалось подготовить коррекцию колонок для этого экспорта, так как её измерения нет на этом устройстве. Измерьте искажения колонок на этом устройстве или выберите другое измерение, либо выключите эффект на время экспорта.",
+
+  // Controller mapping
   "midi.title": "Настройки назначений контроллера", "midi.openSettings": "Назначения контроллера...",
   "midi.devices": "MIDI-устройства", "midi.gamepads": "Геймпады", "midi.mappings": "Назначения",
   "midi.addLearn": "Добавить (Learn)", "midi.learnPrompt": "Переместите регулятор, нажмите клавишу или используйте геймпад. Для отмены нажмите Escape.",

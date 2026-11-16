@@ -19,10 +19,10 @@ In both cases EffeTune records your answers and reports a p-value, so you can se
 
 The test compares the two pipelines described in [Using AB Pipeline Features](../README.md#using-ab-pipeline-features):
 
-- **Pipeline A** and **Pipeline B** must each contain at least one effect.
+- **Pipeline B** must exist. Either pipeline may be empty, so you can also compare an effect against no processing at all.
 - Put one setting in Pipeline A and the other in Pipeline B, keeping everything else identical (for example, *With EQ* vs. *Without EQ*) so only the target difference is tested.
 - Remember which setting you placed in Pipeline A and which in Pipeline B. For an A/B Preference Test, the result reports whether Pipeline A or Pipeline B was significantly preferred.
-- The Double Blind Test menu and start buttons remain disabled until both Pipeline A and Pipeline B contain at least one effect.
+- The Double Blind Test menu and start buttons remain disabled until Pipeline B has been created.
 
 ## Opening the Test
 

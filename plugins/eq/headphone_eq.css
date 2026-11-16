@@ -1,0 +1,35 @@
+/* Full-width search field above the load buttons; the field itself uses the standard text input style. */
+.headphone-eq-plugin-ui .headphone-eq-search {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
+.headphone-eq-plugin-ui .headphone-eq-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.headphone-eq-plugin-ui .headphone-eq-buttons > button {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Long status texts and file names wrap at narrow widths. */
+.headphone-eq-plugin-ui .room-eq-status {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Target adjust handles stay above the graph readout layer. */
+.headphone-eq-graph .room-eq-additional-eq-marker {
+    z-index: 6;
+}
+
+/* Without both curves the adjust has no effect. */
+.headphone-eq-inactive .room-eq-additional-eq-marker {
+    pointer-events: none;
+    opacity: 0.4;
+}

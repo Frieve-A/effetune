@@ -352,6 +352,7 @@ test('worklet rejects asset reconfiguration before posting a native command', as
       ['FiveBandFIRPEQ', ['latencyMode', 'filterDelaySamples']],
       ['GroupDelayEQ', ['latencyMode', 'filterDelaySamples']],
       ['GroupDelayPEQ', ['latencyMode', 'filterDelaySamples']],
+      ['HeadphoneEQ', ['latencyMode', 'filterDelaySamples']],
       ['IRReverb', ['channelMode', 'latency', 'convolutionRate']],
       ['RoomEQ', ['latencyMode', 'filterDelaySamples']]
     ];

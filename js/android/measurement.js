@@ -1,6 +1,21 @@
 import { getAndroidBridge, bytesToBase64, base64ToBytes } from './bridge.js';
 import { createEssCapturePlan } from '../utils/measurement-dsp/ess.js';
 
+export const ANDROID_MEASUREMENT_OUTPUT_CHANNELS = 2;
+
+export function configureAndroidMeasurementOutput({ audioOutputId, outputChannelCount }, bridge = getAndroidBridge()) {
+    return bridge.request('audio.configure', {
+        outputDeviceId: !audioOutputId || audioOutputId === 'default' ? 0 : Number(audioOutputId),
+        channelCount: outputChannelCount || ANDROID_MEASUREMENT_OUTPUT_CHANNELS
+    });
+}
+
+export function validateAndroidMeasurementChannels(indices) {
+    if (indices.some(index => !Number.isInteger(index) || index < 0 || index >= ANDROID_MEASUREMENT_OUTPUT_CHANNELS)) {
+        throw new RangeError('Android measurement output is limited to channels 1 and 2');
+    }
+}
+
 export async function startAndroidNoise(buffer, { levelDb, outputDeviceId, channel = 'all',
     isCurrent = () => true, bridge = getAndroidBridge() } = {}) {
     const check = () => { if (!isCurrent()) throw new DOMException('Test signal cancelled', 'AbortError'); };
@@ -78,4 +93,12 @@ export async function captureAndroidSweep(sweep, { repetitions, levelDb, channel
     } finally {
         await bridge.request('measurement.cancel').catch(error => console.warn('Android measurement cleanup failed:', error));
     }
+}
+
+// Plays a prepared signal buffer ({channels, length, sampleRate}) and returns the recording
+// aligned to the buffer start.
+export async function captureAndroidBuffer(buffer, options) {
+    const capture = await captureAndroidSweep({ ...buffer, tailSamples: 0 }, options);
+    return { recording: capture.recording.slice(capture.preRoll, capture.preRoll + buffer.length),
+        sampleRate: capture.sampleRate };
 }

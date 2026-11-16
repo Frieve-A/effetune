@@ -94,6 +94,7 @@ function createCanvasContext() {
         translate(...args) { calls.push(['translate', depth, ...args]); },
         rotate(angle) { calls.push(['rotate', depth, angle]); },
         fillText(text, ...args) { calls.push(['fillText', depth, text, ...args]); },
+        strokeText(text, ...args) { calls.push(['strokeText', depth, text, ...args]); },
         measureText(text) { return { width: text.length * parseFloat(this._font) * 0.6 }; },
         set fillStyle(value) { this._fillStyle = value; },
         get fillStyle() { return this._fillStyle; },
@@ -330,10 +331,16 @@ test('Pitch Meter subscribes to frame 26 and keeps horizontal labels upright', a
     assert.ok(context.calls.some(call => call[0] === 'fillText' &&
         call[1] === 0 && call[2] === '+0.0 cent'));
 
+    // The time axis title is rotated -90 degrees beside the time axis in Horizontal.
+    const titleIndex = context.calls.findIndex(call => call[0] === 'fillText' && call[2] === 'Time (s)');
+    assert.ok(titleIndex > 0);
+    assert.ok(context.calls.slice(0, titleIndex).some(call => call[0] === 'rotate' && call[2] === -Math.PI / 2));
+
     context.calls.length = 0;
     plugin.setParameters({ ly: 'Vertical' });
     plugin.drawGraph();
     assert.equal(context.calls.some(call => call[0] === 'rotate'), false);
+    assert.ok(context.calls.some(call => call[0] === 'fillText' && call[2] === 'Time (s)'));
     plugin.cleanup();
     assert.equal(unsubscribed, 1);
 });
@@ -383,4 +390,18 @@ test('Pitch Meter uses continuous white keys with black overlays in both layouts
     const edgeTrace = context.calls.filter(call => call[0] === 'lineTo')
         .find(call => call[3] > plugin.canvas.height * 0.99);
     assert.ok(edgeTrace, 'fractional pitch remains visible inside the bottom half-row');
+});
+
+test('Pitch Meter draws no C/F grid line on the bottom edge of the roll', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ly: 'Vertical', mn: 24, mx: 48 });
+    const context = createCanvasContext();
+    plugin.canvas = new FakeElement('canvas', context);
+    plugin.canvasCtx = context;
+    plugin.drawGraph();
+    const height = plugin.canvas.height;
+    const rowHeight = height / 25;
+    const gridY = context.calls.filter(call => call[0] === 'moveTo' && call[2] === 0).map(call => call[3]);
+    assert.ok(gridY.some(y => Math.abs(y - (height - 5 * rowHeight)) < 1e-9), 'the E1/F1 line is drawn');
+    assert.equal(gridY.some(y => Math.abs(y - height) < 1e-9), false);
 });

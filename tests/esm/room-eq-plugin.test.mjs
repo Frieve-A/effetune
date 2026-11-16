@@ -1021,7 +1021,7 @@ test('Room EQ phase graph uses frequency and phase axes without connecting wrap 
     assert.equal(pathData.match(/\bL\b/g)?.length, 2);
     assert.match(pathData, /^M \d+\.\d{2},5\.56 M \d+\.\d{2},197\.22 L /);
     assert.match(pluginSource,
-        /\[180, 90, 0, -90, -180\], value => `\$\{value\}°`\)/);
+        /\[90, 0, -90\], String\)/);
     assert.match(pluginSource,
         /const ROOM_EQ_GRAPH_FREQUENCY_TICKS =\s*\[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000\]/);
     assert.match(pluginCss,
@@ -1082,9 +1082,10 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
     assert.equal(response.children[0].attributes.class, 'room-eq-group-delay-before');
     assert.equal(response.children[1].attributes.class, 'room-eq-group-delay-after');
     const labels = grid.children
-        .filter(child => child.attributes.x === '2')
+        .filter(child => child.attributes.x === '20')
         .map(child => child.textContent);
-    assert.deepEqual(labels, ['10 ms', '5 ms', '0 ms', '-5 ms', '-10 ms']);
+    // The +-10 ms axis bounds get no grid line or label.
+    assert.deepEqual(labels, ['5', '0', '-5']);
     // 0 ms sits on the middle grid line, so the 1 kHz reference is centered.
     assert.match(response.children[0].attributes.d, / \d+\.\d{2},100\.00 L/);
     assert.equal(plugin._groupDelayLimit([new Float32Array([0.4, -0.2])]), 1);
@@ -1096,9 +1097,9 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
     plugin._responseView = 'excessGroupDelay';
     plugin._drawGroupDelayResponse();
     const excessLabels = grid.children
-        .filter(child => child.attributes.x === '2')
+        .filter(child => child.attributes.x === '20')
         .map(child => child.textContent);
-    assert.deepEqual(excessLabels, ['100 ms', '50 ms', '0 ms', '-50 ms', '-100 ms']);
+    assert.deepEqual(excessLabels, ['50', '0', '-50']);
     assert.match(response.children[0].attributes.d, /,-400\.00/);
     assert.match(response.children[0].attributes.d, /,600\.00/);
     plugin.cleanup();

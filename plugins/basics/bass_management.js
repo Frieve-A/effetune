@@ -1141,7 +1141,6 @@ class BassManagementPlugin extends PluginBase {
     const { width, height } = this.canvas;
     if (!context || !width || !height) return;
     const dpr = this._getCanvasDpr(this.canvas);
-    const cssWidth = width / dpr;
     const tickFont = Math.round(11 * dpr);
     const axisFont = Math.round(13 * dpr);
     const bottomTickY = height - 26 * dpr;
@@ -1150,7 +1149,8 @@ class BassManagementPlugin extends PluginBase {
     const axisLabelX = 12 * dpr;
     context.clearRect(0, 0, width, height);
     const minimumLog = Math.log10(10);
-    const maximumLog = Math.log10(Math.min(20000, this._sampleRate * 0.48));
+    const maximumFrequency = Math.min(20000, this._sampleRate * 0.48);
+    const maximumLog = Math.log10(maximumFrequency);
 
     const role = this.ro[this._graphChannel];
     const hasResponse = role === 1 || role === 2 && this.lo;
@@ -1221,34 +1221,35 @@ class BassManagementPlugin extends PluginBase {
     context.font = `${tickFont}px Arial`;
     const gridFrequencies = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
     const frequencyLabelBounds = [];
-    const labeledFrequencies = cssWidth < 420
-      ? new Set([20, 100, 500, 2000, 10000])
-      : new Set(gridFrequencies);
+    // A frequency value that does not fit inside the canvas, or that would overlap the
+    // previous value, is omitted.
+    let previousRight = -Infinity;
     for (const frequency of gridFrequencies) {
-      if (frequency > 10 ** maximumLog) continue;
+      // The right axis bound gets no grid line
+      if (frequency >= maximumFrequency) continue;
       const x = width * (Math.log10(frequency) - minimumLog) / (maximumLog - minimumLog);
       context.beginPath();
       context.moveTo(x, 0);
       context.lineTo(x, height);
       context.stroke();
-      if (labeledFrequencies.has(frequency)) {
-        const label = frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
-        const halfWidth = context.measureText(label).width / 2;
-        if (x - halfWidth >= 0 && x + halfWidth <= width) {
-          context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
-          context.textAlign = 'center';
-          context.fillText(label, x, bottomTickY);
-          frequencyLabelBounds.push({
-            left: x - halfWidth,
-            right: x + halfWidth,
-            top: bottomTickY - tickFont,
-            bottom: bottomTickY + 3 * dpr
-          });
-        }
+      const label = frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
+      const halfWidth = context.measureText(label).width / 2;
+      if (x - halfWidth >= 0 && x + halfWidth <= width && x - halfWidth >= previousRight + 4 * dpr) {
+        context.fillStyle = window.ThemePalette?.get('graph-label') ?? '';
+        context.textAlign = 'center';
+        context.fillText(label, x, bottomTickY);
+        previousRight = x + halfWidth;
+        frequencyLabelBounds.push({
+          left: x - halfWidth,
+          right: previousRight,
+          top: bottomTickY - tickFont,
+          bottom: bottomTickY + 3 * dpr
+        });
       }
     }
-    const firstTick = Math.ceil(decibelMinimum / decibelTick) * decibelTick;
-    for (let decibels = firstTick; decibels <= decibelMaximum; decibels += decibelTick) {
+    // Interior ticks only: the axis bounds get no grid line or label
+    const firstTick = (Math.floor(decibelMinimum / decibelTick) + 1) * decibelTick;
+    for (let decibels = firstTick; decibels < decibelMaximum; decibels += decibelTick) {
       const y = height * (1 - (decibels - decibelMinimum) / decibelSpan);
       context.beginPath();
       context.moveTo(0, y);

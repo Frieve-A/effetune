@@ -1,0 +1,140 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "frames": 1024,
+    "channels": 2,
+    "channelMode": "stereo",
+    "blockSize": 37,
+    "params": { "dv": 0, "md": "Reduce" }
+  },
+  "cases": [
+    {
+      "id": "physical-routing-switches-with-fixed-bank",
+      "stimulus": "noise",
+      "frames": 1536,
+      "params": { "dv": 0, "md": "Reduce", "_scf": 0, "_scc": 2 },
+      "events": [
+        { "frame": 300, "params": { "_scf": 1, "_scc": 1 } },
+        { "frame": 600, "params": { "_scf": 2, "_scc": 2 } },
+        { "frame": 900, "params": { "_scf": 0, "_scc": 1 } },
+        { "frame": 1200, "params": { "_scf": 4, "_scc": 2 } }
+      ],
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5310, "scale": 0.002, "correctedChannels": [0, 2], "oddChannels": [3], "oddScale": 0.02, "step": 0 }
+      }
+    },
+    {
+      "id": "no-asset-noise-exact-bypass",
+      "stimulus": "noise",
+      "frames": 513
+    },
+    {
+      "id": "below-range-32000-short-noise-bypass",
+      "stimulus": "noise",
+      "sampleRate": 32000,
+      "frames": 513,
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5301, "scale": 0.002, "correctedChannels": [0], "step": 0 }
+      }
+    },
+    {
+      "id": "short-44100-noise-block3",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "blockSize": 3,
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5302, "scale": 0.002, "correctedChannels": [0], "oddChannels": [0, 1], "oddScale": 0.02, "step": 0 }
+      }
+    },
+    {
+      "id": "long-44100-sweep-block64",
+      "stimulus": "sweep",
+      "sampleRate": 44100,
+      "blockSize": 64,
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5303, "scale": 0.002, "correctedChannels": [0], "step": 1 }
+      }
+    },
+    {
+      "id": "short-48000-noise-dv-and-mode-events",
+      "stimulus": "noise",
+      "events": [
+        { "frame": 400, "params": { "dv": -6 } },
+        { "frame": 700, "params": { "md": "Add" } }
+      ],
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5304, "scale": 0.002, "correctedChannels": [0], "oddChannels": [0, 1], "oddScale": 0.02, "step": 0 }
+      }
+    },
+    {
+      "id": "long-48000-noise-mode-event-block61",
+      "stimulus": "noise",
+      "blockSize": 61,
+      "events": [{ "frame": 513, "params": { "md": "Add", "dv": -12.5 } }],
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5305, "scale": 0.002, "correctedChannels": [0], "step": 1 }
+      }
+    },
+    {
+      "id": "short-96000-noise-dv-event",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "frames": 1536,
+      "events": [{ "frame": 901, "params": { "dv": -3 } }],
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5306, "scale": 0.002, "correctedChannels": [0], "oddChannels": [0, 1], "oddScale": 0.02, "step": 0 }
+      }
+    },
+    {
+      "id": "long-96000-sweep-block127",
+      "stimulus": "sweep",
+      "sampleRate": 96000,
+      "frames": 1536,
+      "blockSize": 127,
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5307, "scale": 0.002, "correctedChannels": [0], "step": 1 }
+      }
+    },
+    {
+      "id": "short-192000-noise-block17",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "frames": 2048,
+      "blockSize": 17,
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5308, "scale": 0.002, "correctedChannels": [0], "step": 0 }
+      }
+    },
+    {
+      "id": "long-192000-noise-mode-event-block99",
+      "stimulus": "noise",
+      "sampleRate": 192000,
+      "frames": 2048,
+      "blockSize": 99,
+      "events": [{ "frame": 1200, "params": { "md": "Add" } }],
+      "asset": {
+        "slot": 0, "format": 1, "channels": 16, "frames": 1247,
+        "topology": 2, "headBlock": 0, "rateDivider": 1,
+        "ir": { "kind": "speaker-distortion-v1", "seed": 5309, "scale": 0.002, "correctedChannels": [0], "oddChannels": [0, 1], "oddScale": 0.02, "step": 1 }
+      }
+    }
+  ]
+}

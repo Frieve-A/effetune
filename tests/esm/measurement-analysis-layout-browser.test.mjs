@@ -8,20 +8,118 @@ import { chromium } from 'playwright';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json5': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
-test('analysis drags preserve completed pixels, captions and layout throughout reanalysis', { timeout: 180000 }, async () => {
-    const browser = await chromium.launch({ headless: true,
-        ...(process.env.MEASUREMENT_BROWSER_CHANNEL ? { channel: process.env.MEASUREMENT_BROWSER_CHANNEL } : {}) });
+const launchBrowser = () => chromium.launch({ headless: true,
+    ...(process.env.MEASUREMENT_BROWSER_CHANNEL ? { channel: process.env.MEASUREMENT_BROWSER_CHANNEL } : {}) });
+
+// Serves the repository at http://measurement.test/ without starting a server.
+async function measurementContext(browser) {
+    const context = await browser.newContext({ viewport: { width: 1450, height: 1100 }, locale: 'en-US' });
+    await context.route('**/*', async route => {
+        const url = new URL(route.request().url());
+        if (url.hostname !== 'measurement.test') return route.abort();
+        const filename = path.resolve(root, '.' + decodeURIComponent(url.pathname));
+        if (!filename.startsWith(root)) return route.abort();
+        if (url.pathname === '/features/measurement/app.js') return route.fulfill({ body: '', contentType: 'text/javascript' });
+        try { await route.fulfill({ body: await fs.readFile(filename), contentType: mime[path.extname(filename)] || 'application/octet-stream' }); }
+        catch { await route.fulfill({ status: 404, body: '' }); }
+    });
+    return context;
+}
+
+test('the diagnosis tabs appear only for speaker distortion results and lay out their charts at desktop and mobile widths', { timeout: 120000 }, async () => {
+    const browser = await launchBrowser();
     try {
-        const context = await browser.newContext({ viewport: { width: 1450, height: 1100 }, locale: 'en-US' });
-        await context.route('**/*', async route => {
-            const url = new URL(route.request().url());
-            if (url.hostname !== 'measurement.test') return route.abort();
-            const filename = path.resolve(root, '.' + decodeURIComponent(url.pathname));
-            if (!filename.startsWith(root)) return route.abort();
-            if (url.pathname === '/features/measurement/app.js') return route.fulfill({ body: '', contentType: 'text/javascript' });
-            try { await route.fulfill({ body: await fs.readFile(filename), contentType: mime[path.extname(filename)] || 'application/octet-stream' }); }
-            catch { await route.fulfill({ status: 404, body: '' }); }
+        const page = await (await measurementContext(browser)).newPage();
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.goto('http://measurement.test/features/measurement/measurement.html');
+        await page.evaluate(async () => {
+            const { UIManager } = await import('/features/measurement/ui/ui-manager.js');
+            const { default: storage } = await import('/features/measurement/dataStorage.js');
+            const { default: i18n } = await import('/features/measurement/i18n.js');
+            const { createSpeakerModel } = await import('/tests/helpers/speaker-model-fixture.mjs');
+            await i18n.initI18n();
+            const response = [[20, 0], [8000, 0]];
+            const point = { pointId: 1, name: 'Listening position', frequencyResponse: response };
+            const base = { sampleRate: 48000, timestamp: new Date().toISOString(), inputChannel: 'left', outputChannel: 'left',
+                averageFrequencyResponse: response, points: [point] };
+            storage.measurements = [
+                { ...base, id: 'sweep', name: 'Sweep only' },
+                { ...base, id: 'speaker', name: 'Speaker', speakerModel: createSpeakerModel(2) }
+            ];
+            const ui = new UIManager(); ui.selectedMeasurementId = 'sweep'; ui.initializeEventListeners();
+            ui.showScreen('resultsDisplayScreen'); ui.measurementDisplay.displayMeasurementDetails('sweep', true);
+            document.body.style.visibility = 'visible';
+            ui.analysisController.selectTab('diagnosis'); await ui.analysisController.refresh();
+            window.diagnosisFixture = { ui };
         });
+        const shownTabs = () => page.locator('[data-analysis-tab]').evaluateAll(buttons =>
+            buttons.filter(button => !button.hidden).map(button => button.dataset.analysisTab));
+        const panel = tab => page.locator(`#${tab}AnalysisPanel`);
+        // A frequency response result has no diagnosis tabs and falls back to Frequency Response.
+        assert.deepEqual(await shownTabs(), ['frequency', 'impulse', 'distortion', 'waterfall', 'details']);
+        assert.equal(await page.locator('#frequencyAnalysisTab').getAttribute('aria-selected'), 'true');
+        assert.equal(await panel('diagnosis').isVisible(), false);
+
+        await page.evaluate(async () => {
+            const { ui } = window.diagnosisFixture;
+            ui.selectedMeasurementId = 'speaker';
+            ui.analysisController.selectTab('diagnosis');
+            await ui.analysisController.refresh();
+        });
+        assert.deepEqual(await shownTabs(),
+            ['distortion', 'diagnosis', 'diagnosisTones', 'diagnosisHarmonics', 'diagnosisLevel', 'details']);
+        // One chart per row at the full card width, as tall as the acoustic graphs (48vh on the desktop, 300 px on mobile).
+        const charts = () => page.locator('.diagnosis-chart').evaluateAll(nodes => nodes.map(node => {
+            const rect = node.getBoundingClientRect();
+            const box = node.closest('.diagnosis-cards').getBoundingClientRect();
+            return { left: rect.left - box.left, width: rect.width - box.width, height: rect.height,
+                drawn: node.getAttribute('viewBox') === `0 0 ${Math.round(rect.width)} ${Math.round(rect.height)}` };
+        }));
+        const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        const expectCharts = async (height, label) => {
+            // A layout-mode change animates the content width; measure the settled layout.
+            await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished)));
+            await page.waitForFunction(() => [...document.querySelectorAll('.diagnosis-chart')].every(node =>
+                node.getAttribute('viewBox') === `0 0 ${Math.round(node.clientWidth)} ${Math.round(node.clientHeight)}`));
+            for (const chart of await charts()) {
+                assert.deepEqual(chart, { left: 0, width: 0, height, drawn: true }, label);
+            }
+        };
+        // Each tab renders only its own cards, every chart with its copy button.
+        const expected = {
+            diagnosis: ['diagnosis-reading', 'E', 'diagnosis-summary'],
+            diagnosisTones: ['T', 'T3', 'S'],
+            diagnosisHarmonics: ['H', 'C'],
+            diagnosisLevel: ['A', 'D', 'B']
+        };
+        for (const [tab, cards] of Object.entries(expected)) {
+            await page.click(`#${tab}AnalysisTab`);
+            await page.waitForSelector(`#${tab}AnalysisPanel .diagnosis-card`);
+            assert.equal(await panel(tab).isVisible(), true, tab);
+            assert.deepEqual(await panel(tab).locator('.diagnosis-cards > .diagnosis-card').evaluateAll(nodes =>
+                nodes.map(node => node.dataset.chart || node.className.replace('diagnosis-card ', ''))), cards, tab);
+            assert.equal(await page.locator('.diagnosis-card').count(), cards.length, `${tab}: only the active tab is rendered`);
+            assert.equal(await panel(tab).locator('.diagnosis-card[data-chart] .graph-copy-button').count(),
+                cards.filter(card => !card.startsWith('diagnosis-')).length, tab);
+            await expectCharts(Math.round(1100 * 0.48), `${tab}: desktop`);
+        }
+        await page.click('#diagnosisAnalysisTab');
+        await page.waitForSelector('#diagnosisAnalysisPanel .diagnosis-reading-list li');
+        for (const width of [430, 360]) {
+            await page.setViewportSize({ width, height: 1100 });
+            await page.waitForFunction(() => document.body.classList.contains('layout-mobile'));
+            await expectCharts(300, `${width}: one chart per row, 300 px high`);
+            assert.ok(await overflow() <= 0, `${width}: no horizontal page scroll`);
+        }
+        assert.deepEqual(errors, []);
+    } finally { await browser.close(); }
+});
+
+test('analysis drags preserve completed pixels, captions and layout throughout reanalysis', { timeout: 180000 }, async () => {
+    const browser = await launchBrowser();
+    try {
+        const context = await measurementContext(browser);
         const page = await context.newPage();
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
@@ -164,6 +262,47 @@ test('analysis drags preserve completed pixels, captions and layout throughout r
                     if (position === 1) assert.equal(value, max, `${name}: maximum reached`);
                     if (directory && position === 0.5) await page.screenshot({ path: path.join(directory, `${name}-after.png`) });
                 }
+            }
+        }
+        assert.deepEqual(errors, []);
+    } finally { await browser.close(); }
+});
+
+test('speaker distortion start, setup and result screens fit 375 px without horizontal scroll', { timeout: 120000 }, async () => {
+    const browser = await launchBrowser();
+    try {
+        const page = await (await measurementContext(browser)).newPage();
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.goto('http://measurement.test/features/measurement/measurement.html');
+        await page.evaluate(async () => {
+            const { UIManager } = await import('/features/measurement/ui/ui-manager.js');
+            const { default: i18n } = await import('/features/measurement/i18n.js');
+            const { createSpeakerModel } = await import('/tests/helpers/speaker-model-fixture.mjs');
+            await i18n.initI18n();
+            const ui = new UIManager(); ui.initializeEventListeners();
+            document.body.style.visibility = 'visible';
+            const speakerModel = createSpeakerModel(2);
+            ui.showSpeakerDistortionResult({ name: '', timestamp: new Date(speakerModel.measuredAt).toISOString(),
+                points: [], speakerModel });
+            window.speakerFixture = { ui };
+        });
+        await page.setViewportSize({ width: 375, height: 900 });
+        await page.waitForFunction(() => document.body.classList.contains('layout-mobile'));
+        const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        const section = page.locator('#speakerDistortionSection');
+        await section.locator('.speaker-distortion-grid').waitFor();
+        assert.equal(await section.locator('.speaker-distortion-grid').evaluate(grid =>
+            getComputedStyle(grid).gridTemplateColumns.split(' ').length), 1, 'one column on mobile');
+        await section.locator('details.speaker-distortion-details').evaluateAll(nodes => nodes.forEach(node => { node.open = true; }));
+        assert.ok(await overflow() <= 0, 'result: no horizontal page scroll');
+        for (const screen of ['newMeasurementScreen', 'speakerDistortionSetupScreen']) {
+            await page.evaluate(id => window.speakerFixture.ui.showScreen(id), screen);
+            assert.equal(await page.locator(`#${screen}`).isVisible(), true, `${screen}: shown`);
+            assert.ok(await overflow() <= 0, `${screen}: no horizontal page scroll`);
+            if (screen === 'newMeasurementScreen') {
+                assert.equal(await page.locator('.measurement-choices').evaluate(node =>
+                    getComputedStyle(node).gridTemplateColumns.split(' ').length), 1, 'choice cards stack on mobile');
             }
         }
         assert.deepEqual(errors, []);

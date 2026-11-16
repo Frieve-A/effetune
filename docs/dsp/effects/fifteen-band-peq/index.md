@@ -25,6 +25,7 @@ Provides fifteen configurable parametric equalizer bands.
 | `qValues` | `q_values` | number / 15 | `[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]` | Not declared in catalog | 0.1 … 10 |
 | `filterTypes` | `filter_types` | string / 15 | `["peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking","peaking"]` | Not declared in catalog | `peaking`, `lowPass`, `highPass`, `lowShelf`, `highShelf`, `bandPass`, `notch`, `allPass` |
 | `enabledBands` | `enabled_bands` | boolean / 15 | `[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]` | Not declared in catalog | Not declared in catalog |
+| `masterGain` | `master_gain` | number / 1 | `0` | dB | -20 … 20 |
 
 
 
@@ -64,6 +65,7 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
     - 1kHz, 1.6kHz, 2.5kHz (Middle Sound)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (High Sound)
 - **Controls Per Band**
+  - Each band tab lists Type, Freq, Gain, and Q on separate rows; set Freq, Gain, and Q with the slider or by typing a value
   - Center Frequency: Adjustable from 20Hz to 20kHz
   - Gain Range: ±20dB for Peaking and Low/High Shelf filters
   - Q Factor: 0.1-10.0 for most filter types; Low/High Shelf is limited to 0.1-2.0
@@ -76,11 +78,14 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
     - Band Pass: Focused frequency isolation
     - Notch: Precise frequency removal
     - AllPass: Phase-focused frequency alignment
+- **Master Tab**
+  - Gain: Adjusts the overall level from -20dB to +20dB after all bands. Lower it to keep headroom when the bands boost the signal; the response graph includes this gain
 - **Preset Management**
   - Import: Load Equalizer APO-style TXT filter lines
-  - Up to 15 `ON` PK/LS/LSC/HS/HSC filters are imported; `Preamp` lines and unsupported filter types are ignored
+  - Up to 15 `ON` PK/LS/LSC/HS/HSC filters are imported, and a `Preamp` line sets Gain on the Master tab (0dB when the file has none); unsupported filter types are ignored
     - Example format:
       ```
+      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...

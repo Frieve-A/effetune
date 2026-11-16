@@ -280,10 +280,12 @@ test('comparison spectrum tap captures input/output PCM and bypasses measurement
   await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'compare' });
   harness.processor.lastMessageTime = Number.MAX_SAFE_INTEGER;
   harness.processor.messageQueue.clear();
-  for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE), 1);
+  for (let block = 0; block < 31; block++) harness.process(sineBlock(block * BLOCK_SIZE), 1);
+  assert.equal(spectrumMessages(harness).length, 0, 'a partly filled window is never sent');
+  for (let block = 31; block < 48; block++) harness.process(sineBlock(block * BLOCK_SIZE), 1);
 
   const messages = spectrumMessages(harness);
-  assert.deepEqual(messages.map(({ message }) => message.bufferPosition), [2048, 0]);
+  assert.deepEqual(messages.map(({ message }) => message.bufferPosition), [0, 2048]);
   assert.equal(messages[0].message.timing.version, 1);
   assert.equal(messages[0].message.timing.windowAgeFrames, 2048);
   assert.equal(messages[0].message.timing.completionFrames, 0);
@@ -301,9 +303,9 @@ test('comparison spectrum tap captures input/output PCM and bypasses measurement
   assert.ok(harness.posts.some(({ message }) => message.type === 'processBuffer'));
   assert.equal(harness.processor.lastMessageTime, Number.MAX_SAFE_INTEGER);
   assert.equal(harness.processor.messageQueue.size, 1);
-  assert.ok(Math.abs(messages.at(-1).message.inputBuffer[25] -
+  assert.ok(Math.abs(messages[0].message.inputBuffer[25] -
     Math.sin(2 * Math.PI * 1000 * 25 / 48000)) < 1e-6);
-  assert.ok(Math.abs(messages.at(-1).message.outputBuffer[25] -
+  assert.ok(Math.abs(messages[0].message.outputBuffer[25] -
     0.5 * Math.sin(2 * Math.PI * 1000 * 25 / 48000)) < 1e-6);
 
   const analyze = await loadAnalyzer();
@@ -317,15 +319,32 @@ test('capture gaps start a new Spectrum Tap generation on the actual worklet tim
   const h = await createHarness();
   await setupFallback(h);
   await h.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
-  processBlocks(h, 16);
+  processBlocks(h, 32);
   const previous = spectrumMessages(h).at(-1).message.timing;
-  h.sandbox.currentFrame += 4096;
-  const resumedAt = h.sandbox.currentFrame;
+  h.processor.powerPolicy.displayDspBypassed = true;
   processBlocks(h, 16);
+  h.processor.powerPolicy.displayDspBypassed = false;
+  const resumedAt = h.sandbox.currentFrame;
+  processBlocks(h, 32);
   const next = spectrumMessages(h).at(-1).message.timing;
   assert.ok(next.generation > previous.generation);
   assert.equal(next.frameIndex, 0);
-  assert.equal(next.captureEndFrame, resumedAt + 2048);
+  assert.equal(next.captureEndFrame, resumedAt + 4096);
+});
+
+test('a repeated or skipped context frame does not restart a continuous capture', async () => {
+  const h = await createHarness();
+  await setupFallback(h);
+  await h.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
+  processBlocks(h, 32);
+  const { generation } = spectrumMessages(h).at(-1).message.timing;
+  h.sandbox.currentFrame -= BLOCK_SIZE;
+  processBlocks(h, 1);
+  h.sandbox.currentFrame += BLOCK_SIZE;
+  processBlocks(h, 31);
+  const messages = spectrumMessages(h);
+  assert.equal(messages.length, 3);
+  assert.equal(messages.at(-1).message.timing.generation, generation);
 });
 
 test('comparison aligns input to output across effect latency changes and processing resets', async () => {
@@ -344,7 +363,7 @@ test('comparison aligns input to output across effect latency changes and proces
       harness.process(input);
     }
     assert.equal(state.inputDelaySamples, latency);
-    assert.equal(spectrumMessages(harness).length, 2);
+    assert.equal(spectrumMessages(harness).length, 1);
     for (const { message } of spectrumMessages(harness)) {
       for (let index = 0; index < FFT_SIZE; index++) {
         assert.ok(Math.abs(message.inputBuffer[index] * 0.5 - message.outputBuffer[index]) < 1e-7,
@@ -361,7 +380,7 @@ test('comparison aligns input to output across effect latency changes and proces
   assert.ok(state.inputBuffer.every(value => value === 0));
   assert.ok(state.outputBuffer.every(value => value === 0));
   harness.posts.length = 0;
-  for (let block = 0; block < 16; block++) {
+  for (let block = 0; block < 32; block++) {
     harness.process([new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)]);
   }
   const resetMessage = spectrumMessages(harness).at(-1).message;
@@ -416,7 +435,7 @@ test('HQ comparison uses aligned continuous analysis and quality changes rebuild
   const normalState = harness.processor.spectrumTapState.get(7);
   assert.notEqual(normalState, hqState);
   assert.equal(normalState.outputAnalyzer, null);
-  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
   assert.equal(spectrumMessages(harness).at(-1).message.quality, 'normal');
 });
 
@@ -428,10 +447,10 @@ test('After mode omits Before capture and live mode changes reset only the requi
   let state = harness.processor.spectrumTapState.get(7);
   assert.equal(state.mode, 'after');
   assert.equal(state.inputBuffer, null);
-  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
   let message = spectrumMessages(harness).at(-1);
   assert.equal(message.message.mode, 'after');
-  assert.equal(message.message.endFrame, 48000 + FFT_SIZE / 2);
+  assert.equal(message.message.endFrame, 48000 + FFT_SIZE);
   assert.equal('inputBuffer' in message.message, false);
   assert.equal(message.transfer.length, 1);
   assert.equal(message.transfer[0], message.message.outputBuffer.buffer);
@@ -441,7 +460,7 @@ test('After mode omits Before capture and live mode changes reset only the requi
   assert.equal(state.mode, 'compare');
   assert.ok(state.inputBuffer instanceof Float32Array);
   assert.equal(state.position, 0);
-  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
   message = spectrumMessages(harness).at(-1);
   assert.equal(message.message.mode, 'compare');
   assert.ok(message.message.inputBuffer instanceof Float32Array);
@@ -469,7 +488,7 @@ test('route disables only the full DSP pipeline and visibility tap changes do no
   assert.equal(harness.processor.dspPipelineReady, false);
   assert.equal(harness.binding.calls.filter(call => call === 'pipelineConfigure').length, configuredBeforeRoute + 1);
   await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true });
-  for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+  for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
   assert.equal(harness.binding.calls.filter(call => call === 'pipelineProcess').length, 1);
   assert.ok(harness.binding.calls.includes('instanceProcess'));
   assert.equal(spectrumMessages(harness).length, 1);
@@ -495,7 +514,7 @@ test('plugin removal and replacement prune spectrum state before refreshing the 
     await harness.send({ type: 'dspModule', module: { compiled: true } });
     await harness.send({ type: 'setSpectrumTapRoute', pluginId: 7, enabled: true });
     await harness.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true });
-    for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
+    for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
     assert.equal(spectrumMessages(harness).length, 1);
 
     if (operation === 'removePlugin') await harness.send({ type: operation, pluginId: 7 });
@@ -544,7 +563,7 @@ test('same-node rebuild during master bypass preserves spectrum intent until act
       try {
         instance.enable();
         for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
-        assert.equal(spectrumMessages(harness).length, 2);
+        assert.equal(spectrumMessages(harness).length, 1);
         if (suspended) ui.intersect(false);
 
         pipeline.setMasterBypass(true);
@@ -554,7 +573,7 @@ test('same-node rebuild during master bypass preserves spectrum intent until act
         assert.equal(harness.processor.spectrumTapRoute.has(7), true);
         const input = sineBlock();
         assert.deepEqual(harness.process(input), input);
-        assert.equal(spectrumMessages(harness).length, 2);
+        assert.equal(spectrumMessages(harness).length, 1);
 
         pipeline.setMasterBypass(false);
         assert.equal(await pipeline.rebuildPipeline(), '');
@@ -567,7 +586,7 @@ test('same-node rebuild during master bypass preserves spectrum intent until act
         assert.equal(harness.binding.calls.filter(call => call === 'pipelineConfigure').length, configurations);
         assert.equal(ui.posts.filter(message => message.type === 'setSpectrumTapRoute').length, 1);
         for (let block = 0; block < 32; block++) harness.process(sineBlock(block * BLOCK_SIZE));
-        assert.equal(spectrumMessages(harness).length, 4);
+        assert.equal(spectrumMessages(harness).length, 2);
         assert.equal(instance.pending?.type, 'spectrumOverlay');
 
         instance.dispose();
@@ -591,7 +610,7 @@ test('spectrum tap honors the existing UI telemetry gate and leaves audio sample
   await setupFallback(tapped);
   await tapped.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true });
 
-  for (let block = 0; block < 16; block++) {
+  for (let block = 0; block < 32; block++) {
     const input = sineBlock(block * BLOCK_SIZE);
     const expected = baseline.process(input);
     const actual = tapped.process(input);

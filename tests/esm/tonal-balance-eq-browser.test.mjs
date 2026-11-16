@@ -80,7 +80,7 @@ test('Tonal Balance EQ lays out its controls and graph at desktop and mobile wid
                     const ui = plugin.createUI();
                     document.getElementById('host').appendChild(ui);
                     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                    // Every graph colour is a theme palette role as defined, so the draw never dims it with globalAlpha.
+                    // Record the target band opacity and the reset before the remaining curves.
                     const alphaDescriptor = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'globalAlpha');
                     const alphas = new Set();
                     Object.defineProperty(CanvasRenderingContext2D.prototype, 'globalAlpha', {
@@ -135,7 +135,7 @@ test('Tonal Balance EQ lays out its controls and graph at desktop and mobile wid
                     };
                 });
                 const label = `${width}px ${theme}`;
-                assert.deepEqual(result.alphas, [], label);
+                assert.deepEqual(result.alphas, [0.5, 1], label);
                 assert.ok(result.ink > 5000, label);
                 assert.ok(result.canvasInside, label);
                 assert.ok(result.copyBesideReset, label);

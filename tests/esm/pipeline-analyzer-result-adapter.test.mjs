@@ -74,7 +74,7 @@ test('adapts Worker Before and After data into normalized real-unit views', () =
     assert.ok(Math.abs(result.views.frequency.xTicks[0].position - Math.log(2) / Math.log(4000)) < 1e-12);
     assert.ok(Math.abs(result.views.frequency.xTicks.at(-1).position - Math.log(2000) / Math.log(4000)) < 1e-12);
     assert.deepEqual(result.views.frequency.yTicks.map(tick => tick.label),
-        ['18dB', '12dB', '6dB', '0dB', '-6dB', '-12dB', '-18dB']);
+        ['18', '12', '6', '0', '-6', '-12', '-18']);
     assert.equal(result.views.frequency.yTicks[0].position, 0.05);
     assert.equal(result.views.frequency.yTicks.at(-1).position, 0.95);
     const expectedNormalization = 10 * Math.log10((10 ** -0.6 + 1 + 10 ** -0.3) / 3);
@@ -97,7 +97,7 @@ test('adapts Worker Before and After data into normalized real-unit views', () =
         if (!view.curves) continue;
         assert.equal(view.curves.length, 2);
         assert.ok(view.xTicks.length >= 2);
-        assert.equal(view.yTicks.length, name === 'frequency' ? 7 : 5);
+        assert.equal(view.yTicks.length, name === 'frequency' ? 7 : 3);
         for (const curve of view.curves) {
             for (const point of curve.points) {
                 if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
@@ -210,7 +210,7 @@ test('plots mute and exact cancellation at the frequency floor only', () => {
 
     for (const curve of result.views.frequency.curves) {
         assert.equal(curve.points.length, 2);
-        assert.equal(curve.points.every(point => Number.isFinite(point.y) && point.y === 1), true);
+        assert.equal(curve.points.every(point => Number.isFinite(point.y) && point.y === 3.5), true);
         assert.equal(curve.points.every(point => point.yLabel === '−∞ dB'), true);
     }
     assert.equal(result.displayReference.before.frequencyNormalizationDb, 0);
@@ -372,11 +372,11 @@ test('caps only the Excess Group Delay display axis while preserving hover value
 
     const excess = result.views.excessGroupDelay;
     assert.deepEqual(excess.yTicks.map(tick => tick.label),
-        ['100 ms', '50.0 ms', '0.00 ms', '-50.0 ms', '-100 ms']);
+        ['50', '0', '-50']);
     assert.equal(excess.curves[0].points[0].y, -2);
     assert.equal(excess.curves[0].points[2].y, 3);
     assert.equal(excess.curves[0].points[0].yValue, 500);
-    assert.equal(result.views.minimumGroupDelay.yTicks[0].label, '500 ms');
+    assert.equal(result.views.minimumGroupDelay.yTicks[0].label, '250');
 });
 
 test('normalizes each impulse by its full peak and uses the selected fixed time window', () => {
@@ -397,9 +397,9 @@ test('normalizes each impulse by its full peak and uses the selected fixed time 
     const [before, after] = result.views.impulse.curves;
     assert.deepEqual(before.points.map(point => point.yValue), [0, 1, -0.5]);
     assert.deepEqual(after.points.map(point => point.yValue), [0, -1, 0.5]);
-    assert.deepEqual(result.views.impulse.yTicks.map(tick => tick.label), ['', '0.5', '0', '-0.5', '']);
+    assert.deepEqual(result.views.impulse.yTicks.map(tick => tick.label), ['0.5', '0', '-0.5']);
     assert.deepEqual(result.views.impulse.xTicks.map(tick => tick.label),
-        ['-1.5', '-1.0', '-0.5', '0.0', '0.5 ms']);
+        ['-1.5', '-1.0', '-0.5', '0.0', '0.5']);
     assert.ok(Math.abs(result.views.impulse.xTicks[3].position - 2 / 3) < 1e-12);
     assert.equal(result.displayReference.before.impulseDivisor, 2);
     assert.equal(result.displayReference.after.impulseDivisor, 4);

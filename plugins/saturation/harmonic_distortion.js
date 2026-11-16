@@ -186,48 +186,41 @@ class HarmonicDistortionPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
         
-        // Vertical grid lines
-        for (let x = 0; x <= width; x += width / 4) {
+        // Interior quarter lines only; the axis bounds get no grid line
+        for (let i = 1; i < 4; i++) {
+            const x = width * i / 4;
+            const y = height * i / 4;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
-            ctx.stroke();
-        }
-        
-        // Horizontal grid lines
-        for (let y = 0; y <= height; y += height / 4) {
-            ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
         }
-        
-        // Draw labels on canvas - just like saturation.js
+
+        // Draw axis titles - just like saturation.js
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('in', width / 2, height - 5);
+        ctx.fillText('Input (FS)', width / 2, height - 5);
         ctx.save();
         ctx.translate(20, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('out', 0, 0);
+        ctx.fillText('Output (FS)', 0, 0);
         ctx.restore();
         
-        // Draw dB markings
+        // Draw +-0.5 FS (-6 dB) tick values
         ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.font = '20px Arial';
-        ctx.fillText('-6dB', width * 0.25, height - 5);
-        ctx.fillText('-6dB', width * 0.75, height - 5);
-        ctx.save();
-        ctx.translate(20, height * 0.25);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('-6dB', 0, 0);
-        ctx.restore();
-        ctx.save();
-        ctx.translate(20, height * 0.75);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('-6dB', 0, 0);
-        ctx.restore();
+        // The 400 px canvas is shown at 200 CSS px: 24 px is a 12 px tick value. Tick values sit
+        // one row above the Input title and one column right of the Output title.
+        ctx.font = '24px Arial';
+        ctx.fillText('-0.5', width * 0.25, height - 40);
+        ctx.fillText('0', width / 2, height - 40);
+        ctx.fillText('0.5', width * 0.75, height - 40);
+        ctx.textAlign = 'right';
+        ctx.fillText('0.5', 80, height * 0.25 + 8);
+        ctx.fillText('0', 80, height / 2 + 8);
+        ctx.fillText('-0.5', 80, height * 0.75 + 8);
         
         // Draw the transfer function
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');

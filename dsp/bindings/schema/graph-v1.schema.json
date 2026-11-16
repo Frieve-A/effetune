@@ -220,6 +220,9 @@
           "$ref": "#/$defs/GroupDelayPEQ"
         },
         {
+          "$ref": "#/$defs/HeadphoneEQ"
+        },
+        {
           "$ref": "#/$defs/HiPassFilter"
         },
         {
@@ -3384,6 +3387,13 @@
                 true,
                 true
               ]
+            },
+            "masterGain": {
+              "type": "number",
+              "minimum": -20,
+              "maximum": 20,
+              "x-effetune-unit": "dB",
+              "default": 0
             }
           }
         }
@@ -3922,6 +3932,67 @@
               "minimum": 0,
               "maximum": 65536,
               "default": 8192
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "impulseResponse"
+          ],
+          "properties": {
+            "impulseResponse": {
+              "$ref": "#/$defs/assetReference"
+            }
+          }
+        }
+      }
+    },
+    "HeadphoneEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters",
+        "assets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "HeadphoneEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latencyMode": {
+              "type": "string",
+              "enum": [
+                "0",
+                "128",
+                "256",
+                "512",
+                "1024"
+              ],
+              "default": "128"
+            },
+            "filterDelaySamples": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 0
             }
           }
         },

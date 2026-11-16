@@ -68,9 +68,17 @@
     display: flex;
 }
 
+/* The whole legend box, padding and row gaps included, is a hover target. */
 .graph-readout-legend {
     top: max(5px, var(--graph-readout-inset-top, 0px));
     right: max(7px, var(--graph-readout-inset-right, 0px));
+    pointer-events: auto;
+    cursor: default;
+}
+
+/* With the pointer over the legend the values hide but keep their space, so the box does not resize under it. */
+.graph-readout:not(.graph-readout-active) .graph-readout-legend :is(.graph-readout-cursor, .graph-readout-value) {
+    visibility: hidden;
 }
 
 .graph-readout-cursor {
@@ -88,18 +96,24 @@
     gap: 5px;
 }
 
-.graph-readout-legend .graph-readout-row {
-    pointer-events: auto;
-    cursor: default;
-}
-
-.graph-readout-legend .graph-readout-row:hover {
-    font-weight: 600;
+/* A stroke instead of a bolder weight, so emphasizing the hovered row does not widen the legend. */
+.graph-readout-row-hovered {
+    -webkit-text-stroke: 0.04em currentColor;
 }
 
 .graph-readout-swatch {
     width: 14px;
     border-top: 2px solid currentColor;
+}
+
+.graph-readout-swatch-dashed { border-top-style: dashed; }
+.graph-readout-swatch-dotted { border-top-style: dotted; }
+
+/* An area: a filled block instead of a line. */
+.graph-readout-swatch-fill {
+    height: 8px;
+    border-top: 0;
+    background: currentColor;
 }
 
 .graph-readout-value {

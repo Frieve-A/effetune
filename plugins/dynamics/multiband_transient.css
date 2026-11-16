@@ -76,7 +76,6 @@
     position: relative;
     background: color-mix(in srgb, var(--et-graph-base), var(--et-graph-bg-deep) 25%);
     border: 1px solid var(--et-surface-13);
-    border-radius: 4px;
     padding: 10px;
 }
 

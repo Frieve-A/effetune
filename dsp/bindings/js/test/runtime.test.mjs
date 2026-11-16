@@ -565,6 +565,7 @@ test('all generated effects normalize and pack against their private layouts', (
     'FiveBandFIRPEQ',
     'GroupDelayEQ',
     'GroupDelayPEQ',
+    'HeadphoneEQ',
     'IRReverb',
     'RoomEQ'
   ]);

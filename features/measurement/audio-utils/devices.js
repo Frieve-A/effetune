@@ -39,33 +39,62 @@ async function enumerateDevices() {
     }
 }
 
+// Browsers cannot dismiss a pending permission prompt. Release any stream it grants after cancellation.
+function requestMicrophoneStream(constraints, signal) {
+    const acquisition = navigator.mediaDevices.getUserMedia(constraints);
+    return new Promise((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        acquisition.then(stream => {
+            signal.removeEventListener('abort', abort);
+            if (signal.aborted) stream.getTracks().forEach(track => track.stop());
+            else resolve(stream);
+        }, error => {
+            signal.removeEventListener('abort', abort);
+            reject(error);
+        });
+    });
+}
+
 /**
  * Start microphone input
  * @param {string} deviceId - The input device ID, or null for default
  * @param {string} channel - The input channel to use ('left', 'right', 'both')
  */
-async function startMicrophoneInput(deviceId = null, channel = 'left') {
-    if (isAndroidHost()) {
-        const nativeDeviceId = deviceId ? Number(deviceId) : 0;
-        if (!Number.isInteger(nativeDeviceId) || nativeDeviceId < 0) throw new Error('Choose a microphone for this measurement.');
-        await getAndroidBridge().request('audio.input', { deviceId: nativeDeviceId });
-        const devices = await getAndroidBridge().request('audio.devices');
-        this.nativeInputUnprocessed = devices.unprocessed === true;
-        this.selectedInputChannel = channel;
-        this.microphone = { native: true };
-        return;
-    }
+async function startMicrophoneInput(deviceId = null, channel = 'left', { signal: ownerSignal } = {}) {
+    ownerSignal?.throwIfAborted();
+    const android = isAndroidHost();
+    if (android) this.microphoneRequest?.abort();
+    else this.stopMicrophoneInput();
+    const request = new AbortController();
+    this.microphoneRequest = request;
+    const signal = ownerSignal ? AbortSignal.any([request.signal, ownerSignal]) : request.signal;
     const useRightChannel = channel === 'right' || channel === 1;
     try {
-        // Stop any existing microphone input
-        this.stopMicrophoneInput();
-        
+        if (android) {
+            const nativeDeviceId = deviceId ? Number(deviceId) : 0;
+            if (!Number.isInteger(nativeDeviceId) || nativeDeviceId < 0) {
+                throw new Error('Choose a microphone for this measurement.');
+            }
+            const bridge = getAndroidBridge();
+            // Release can post the corresponding native stop even while acquisition is pending.
+            this.microphone = { native: true };
+            await bridge.request('audio.input', { deviceId: nativeDeviceId });
+            signal.throwIfAborted();
+            const devices = await bridge.request('audio.devices');
+            signal.throwIfAborted();
+            this.nativeInputUnprocessed = devices.unprocessed === true;
+            this.selectedInputChannel = channel;
+            return;
+        }
+
         // Make sure audio context exists and is running
         if (!this.audioContext) {
-            await this.reinitialize();
+            await this.initialize();
         } else if (this.audioContext.state !== 'running') {
             await this.ensureAudioContextRunning();
         }
+        signal.throwIfAborted();
         
         // Get microphone stream
         const constraints = {
@@ -78,7 +107,11 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
             }
         };
         
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await requestMicrophoneStream(constraints, signal);
+        if (signal.aborted) {
+            stream.getTracks().forEach(track => track.stop());
+            signal.throwIfAborted();
+        }
         this.inputStream = stream;
         
         // Log track information
@@ -144,11 +177,13 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
         
         // Setup level meter with AudioWorklet
         try {
-            this.levelMeterNode = await this.createLevelMeterWorkletNode();
+            const levelMeterNode = await this.createLevelMeterWorkletNode();
+            signal.throwIfAborted();
+            this.levelMeterNode = levelMeterNode;
             
             // Handle level meter messages
             this.levelMeterNode.port.onmessage = (event) => {
-                if (event.data.level !== undefined) {
+                if (!signal.aborted && event.data.level !== undefined) {
                     this.currentInputLevel = event.data.level;
                 }
             };
@@ -159,12 +194,15 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
             // Connect to output (necessary for AudioWorkletNode to process)
             this.levelMeterNode.connect(this.audioContext.destination);
         } catch (error) {
+            signal.throwIfAborted();
             console.error('Failed to create level meter worklet:', error);
             throw new Error(`Failed to create level meter: ${error.message}`);
         }
         
         return true;
     } catch (error) {
+        if (signal.aborted && this.microphoneRequest === request) this.stopMicrophoneInput();
+        signal.throwIfAborted();
         console.error('Error starting microphone input:', error);
 
         // Ensure microphone resources are cleaned up on error
@@ -188,10 +226,12 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
  * Stop microphone input
  */
 function stopMicrophoneInput() {
+    this.microphoneRequest?.abort();
+    this.microphoneRequest = null;
     if (isAndroidHost()) {
         if (this.microphone?.native) {
             this.microphone = null;
-            void getAndroidBridge().request('audio.input', { deviceId: -1 }).catch(error => console.warn('Android input release failed:', error));
+            return getAndroidBridge().request('audio.input', { deviceId: -1 }).catch(error => console.warn('Android input release failed:', error));
         }
         return;
     }

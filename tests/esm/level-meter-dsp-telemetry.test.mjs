@@ -473,7 +473,7 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
     clearRect() { mainFills.length = 0; labels.length = 0; gridLines = 0; },
     fillRect(...args) { mainFills.push(args); },
     beginPath() {}, moveTo() {}, lineTo() {}, stroke() { gridLines++; },
-    save() {}, restore() {}, measureText() { return { width: 60 }; }
+    save() {}, restore() {}, translate() {}, rotate() {}, measureText() { return { width: 60 }; }
   };
   const signal = { fillRect(...args) { signalFills.push({ style: this.fillStyle, args }); } };
   const canvas = { width: 600, height: 60, getContext: () => main };
@@ -501,7 +501,8 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
   plugin.updateMeter(1000);
   assert.equal(gridLines, 0);
   assert.ok(labels.includes('-84'));
-  assert.equal(labels.some(label => label.includes('dB')), false);
+  // A meter scale: bare tick values and no axis title.
+  assert.deepEqual(labels.filter(label => label.includes('dB')), []);
   plugin.displayOptions.showLevelValues = true;
   plugin.displayOptions.channel = 'L';
   plugin.handleDspLevelTelemetry(makeLevelFrame({ peaks: [0.5, 0.5], clipFlags: 1 }).frame);

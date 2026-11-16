@@ -73,7 +73,7 @@ body.layout-mobile .point-item {
     padding-right: 48px;
 }
 
-body.layout-mobile #configForm .form-group {
+body.layout-mobile :is(#configForm, .speaker-distortion-screen) .form-group {
     margin-top: 20px;
 }
 
@@ -166,6 +166,9 @@ body.layout-mobile .result-header {
     flex-wrap: wrap;
     gap: 8px;
 }
+
+body.layout-mobile .result-name { flex: 1 1 100%; margin-left: 0; }
+body.layout-mobile .result-name input { max-width: none; min-height: 40px; font-size: 16px; }
 
 body.layout-mobile .edit-actions {
     flex-wrap: wrap;
@@ -265,7 +268,7 @@ body.layout-mobile .measurement-item-preview canvas {
 }
 
 body.layout-mobile .left-pane { flex: auto; }
-body.layout-mobile #measurementResults canvas { height: 300px; }
+body.layout-mobile #measurementResults :is(canvas, .diagnosis-chart) { height: 300px; }
 body.layout-mobile .analysis-tabs .tab-button { height: 40px; min-height: 40px; }
 body.layout-mobile #measurementResults :is(.analysis-setting-actions, .analysis-correction, .export-section, .impulse-response-controls, .impulse-response-export, .analysis-graph-header) button,
 body.layout-mobile #measurementResults #exportAnalysisJson { height: 40px; min-height: 40px; }
@@ -291,3 +294,31 @@ body.layout-mobile .plugin-parameter-ui .parameter-row > :is(input[type=number],
 body.layout-mobile .plugin-parameter-ui .parameter-row > :is(input[type=text], select) {
     flex: 1 1 180px; width: auto; min-width: 80px; max-width: 100%; box-sizing: border-box;
 }
+
+/* ---- Diagnosis tabs (plan-diagnosis.md §4.2) ---- */
+body.layout-mobile .diagnosis-toolbar { flex-direction: column; align-items: stretch; }
+body.layout-mobile .diagnosis-control select { flex: 1 1 180px; min-height: 40px; font-size: 16px; }
+body.layout-mobile .diagnosis-segment button { min-height: 40px; }
+/* The chart legend is too tall to sit over a phone-width plot, so it follows the plot in normal flow;
+   the crosshair, dots and hover values keep their place (the mount stays their containing block). */
+body.layout-mobile .diagnosis-chart-mount .graph-readout { position: static; }
+body.layout-mobile .diagnosis-chart-mount .graph-readout-legend { position: static; margin-top: 4px; white-space: normal; }
+body.layout-mobile .diagnosis-table :is(thead) { display: none; }
+body.layout-mobile .diagnosis-table :is(tbody, tr, th, td) { display: block; }
+body.layout-mobile .diagnosis-table tr { padding: 6px 0; border-bottom: 1px solid var(--et-graph-grid); }
+body.layout-mobile .diagnosis-table :is(th, td) { border: 0; padding: 2px 0; }
+body.layout-mobile .diagnosis-table td::before { content: attr(data-label) ": "; color: var(--et-text-secondary); }
+body.layout-mobile .diagnosis-reading-list button { min-height: 40px; }
+
+/* ---- Shared with the speaker distortion measurement (plan-measurement.md), added by P6 ---- */
+body.layout-mobile .speaker-distortion-grid { grid-template-columns: minmax(0, 1fr); }
+/* ---- End of the shared block ---- */
+
+/* ---- Speaker distortion measurement (plan-measurement.md §1.3) ---- */
+body.layout-mobile .measurement-choices { grid-template-columns: minmax(0, 1fr); }
+body.layout-mobile .speaker-distortion-steps li { padding: 6px 4px; font-size: 13px; }
+body.layout-mobile .speaker-distortion-save { flex: 1 1 100%; }
+body.layout-mobile .speaker-distortion-limit input { min-height: 40px; font-size: 16px; }
+/* The details chart gives each row label its own line above the bars so that the plot keeps the full width. */
+body.layout-mobile .speaker-distortion-bars :is(thead, tbody, tr, th, td) { display: block; }
+body.layout-mobile .speaker-distortion-bars tbody th[scope="row"] { width: auto; padding-top: 4px; }

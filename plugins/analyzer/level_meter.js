@@ -424,11 +424,26 @@ class LevelMeterPlugin extends PluginBase {
         const palette = options?.themePalette ?? window.ThemePalette;
         bgCtx.strokeStyle = (palette?.get('graph-grid-soft') ?? '');
         bgCtx.lineWidth = dpr;
+        const fontSize = (options?.visualizerAxisLabels ? (isNarrow ? 11 : 12) : 10) * dpr;
+        bgCtx.font = `${fontSize}px Arial`;
+        const drawText = (text, x, y) => {
+            if (options?.visualizerAxisLabels) {
+                bgCtx.save();
+                bgCtx.strokeStyle = palette?.get('graph-bg-deep') ?? '';
+                bgCtx.lineWidth = 2 * dpr;
+                bgCtx.lineJoin = 'round';
+                (options.textContext ?? bgCtx).strokeText(text, x, y);
+                bgCtx.restore();
+            }
+            (options?.textContext ?? bgCtx).fillText(text, x, y);
+        };
+
+        // A meter scale rather than a graph axis: tick values only, no axis title.
         bgCtx.fillStyle = (palette?.get(options?.visualizerAxisLabels ? 'graph-label' : 'graph-label-soft') ?? '');
-        bgCtx.font = `${(options?.visualizerAxisLabels ? (isNarrow ? 11 : 12) : 10) * dpr}px Arial`;
         bgCtx.textAlign = vertical ? 'left' : 'center';
         bgCtx.textBaseline = vertical ? 'middle' : 'alphabetic';
-        for (let db = Math.ceil(this.dbStart / gridStep) * gridStep; db <= 0; db += gridStep) {
+        // Interior levels only; dbStart and 0 dB are the canvas edges.
+        for (let db = Math.floor(this.dbStart / gridStep) * gridStep + gridStep; db < 0; db += gridStep) {
             const position = (db - this.dbStart) / this.dbRange;
             const x = width * position;
             const y = height * (1 - position);
@@ -440,18 +455,8 @@ class LevelMeterPlugin extends PluginBase {
                 bgCtx.stroke();
             }
 
-            if (showNumbers && db % labelStep === 0 && db !== 0 && db !== this.dbStart) {
-                const text = db.toString(), textX = vertical ? 2 * dpr : x;
-                const textY = vertical ? y : height - (2 * dpr);
-                if (options?.visualizerAxisLabels) {
-                    bgCtx.save();
-                    bgCtx.strokeStyle = palette?.get('graph-bg-deep') ?? '';
-                    bgCtx.lineWidth = 2 * dpr;
-                    bgCtx.lineJoin = 'round';
-                    (options.textContext ?? bgCtx).strokeText(text, textX, textY);
-                    bgCtx.restore();
-                }
-                (options?.textContext ?? bgCtx).fillText(text, textX, textY);
+            if (showNumbers && db % labelStep === 0) {
+                drawText(db.toString(), vertical ? 2 * dpr : x, vertical ? y : height - (2 * dpr));
             }
         }
     }

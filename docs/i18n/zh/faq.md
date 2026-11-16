@@ -174,7 +174,7 @@ EffeTune 目前最多支持 16 个输出通道。
 ## 5. 频率响应和房间校正
 
 ### 5.1. 将 AutoEQ 设置导入 15Band PEQ
-可以通过右上角的按钮直接导入 AutoEQ 均衡器设置。
+可以通过右上角的按钮直接导入 AutoEQ 均衡器设置。如果想根据耳机的测量曲线来设计校正，可在 [Headphone EQ](plugins/eq.md#headphone-eq) 中搜索您的耳机型号。
 
 ### 5.2. 粘贴测量校正设置
 从测量页面复制 5Band PEQ 设置，并使用 **Ctrl+V** 或菜单粘贴到 **Effect Pipeline** 视图中。

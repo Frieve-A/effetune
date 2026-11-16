@@ -898,41 +898,44 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const ctx = this.transferCanvas.getContext('2d');
         const width = this.transferCanvas.width, height = this.transferCanvas.height;
         const dpr = this._getCanvasDpr(this.transferCanvas);
-        const tickFont = Math.round(11 * dpr);
-        const axisFont = Math.round(13 * dpr);
+        const tickFont = Math.round(12 * dpr);
+        const axisFont = Math.round(14 * dpr);
         const axisInset = 12 * dpr;
         const bottomInset = 4 * dpr;
         const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, width, height);
 
-        // Grid
+        // Grid (interior lines only; the canvas edges are axis bounds)
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
-        for (let x = 0; x <= width; x += width / 4) {
+        for (let i = 1; i < 4; i++) {
+            const x = width * i / 4, y = height * i / 4;
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-        }
-        for (let y = 0; y <= height; y += height / 4) {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
         }
 
-        // in / out labels
+        // Axis titles
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
-        ctx.fillText('in', width / 2, height - bottomInset);
+        ctx.fillText('Input (FS)', width / 2, height - bottomInset);
         ctx.save();
         ctx.translate(axisInset, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('out', 0, 0);
+        ctx.fillText('Output (FS)', 0, 0);
         ctx.restore();
 
-        // -6dB markers
+        // +-0.5 FS (-6 dB) tick values
         ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        // Tick values sit one row above the Input title and one column right of the Output title.
         ctx.font = `${tickFont}px Arial`;
-        ctx.fillText('-6dB', width * 0.25, height - bottomInset);
-        ctx.fillText('-6dB', width * 0.75, height - bottomInset);
-        ctx.save(); ctx.translate(axisInset, height * 0.25); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
-        ctx.save(); ctx.translate(axisInset, height * 0.75); ctx.rotate(-Math.PI / 2); ctx.fillText('-6dB', 0, 0); ctx.restore();
+        ctx.fillText('-0.5', width * 0.25, height - 22 * dpr);
+        ctx.fillText('0', width / 2, height - 22 * dpr);
+        ctx.fillText('0.5', width * 0.75, height - 22 * dpr);
+        ctx.textAlign = 'right';
+        ctx.fillText('0.5', 40 * dpr, height * 0.25 + 4 * dpr);
+        ctx.fillText('0', 40 * dpr, height / 2 + 4 * dpr);
+        ctx.fillText('-0.5', 40 * dpr, height * 0.75 + 4 * dpr);
 
         const Hnl = this.an / 100, b = this.eb / 100;
         const a2 = 2 * (Hnl * Math.sin(Math.PI * b / 2));
@@ -1058,8 +1061,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         const ctx = this.diffCanvas.getContext('2d');
         const W = this.diffCanvas.width, H = this.diffCanvas.height;
         const dpr = this._getCanvasDpr(this.diffCanvas);
-        const tickFont = Math.round(11 * dpr);
-        const axisFont = Math.round(13 * dpr);
+        const tickFont = Math.round(12 * dpr);
+        const axisFont = Math.round(14 * dpr);
         const bottomTickY = H - 26 * dpr;
         const axisBottomY = H - 4 * dpr;
         const leftLabelX = 40 * dpr;
@@ -1100,28 +1103,23 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.font = `${tickFont}px Arial`;
 
         // Vertical grid + frequency labels (center-aligned, like the EQ plugins).
-        // Labels whose value sits on a canvas edge are omitted, not shifted to fit.
-        const gridFreqs = [0, 5000, 10000, 15000, 20000];
+        // Edge values (0 Hz, 20 kHz) are axis bounds, so neither line nor label is drawn.
+        const gridFreqs = [5000, 10000, 15000];
         ctx.textAlign = 'center';
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         gridFreqs.forEach(freq => {
             const x = W * freq / fMax;
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-            if (freq > 0 && freq < fMax) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.fillText(`${freq / 1000}k`, x, bottomTickY);
-            }
+            ctx.fillText(`${freq / 1000}k`, x, bottomTickY);
         });
 
-        // Horizontal grid + dB labels (right-aligned). Edge values (0, -60) are omitted.
-        const gridDBs = [0, -12, -24, -36, -48, -60];
+        // Horizontal grid + dB labels (right-aligned). Edge values (0, -60 dB) are omitted.
+        const gridDBs = [-12, -24, -36, -48];
         ctx.textAlign = 'right';
         gridDBs.forEach(db => {
             const y = H * (1 - (db - dbBot) / dbSpan);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-            if (db < dbTop && db > dbBot) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
-            }
+            ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
         });
 
         // Axis titles
@@ -1138,7 +1136,8 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         // Difference-frequency density curve (unified green)
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
-        const dbToY = db => H * (1 - Math.max(0, Math.min(1, (db - dbBot) / dbSpan)));
+        // Unclamped: levels below the axis bound leave the canvas.
+        const dbToY = db => H * (1 - (db - dbBot) / dbSpan);
         const levelDb = new Float64Array(nF);
         ctx.beginPath();
         for (let j = 0; j < nF; j++) {

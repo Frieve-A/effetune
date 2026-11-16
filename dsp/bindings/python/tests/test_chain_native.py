@@ -1286,7 +1286,7 @@ class NativeChainTests(unittest.TestCase):
         bank = effetune.SoundFontBank.load(
             REPOSITORY_ROOT / "dsp" / "bindings" / "common" / "soundfont-sine-v1.etsf"
         )
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 112)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 113)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None

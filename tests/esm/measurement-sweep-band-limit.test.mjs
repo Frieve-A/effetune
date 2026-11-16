@@ -94,6 +94,7 @@ function createNode(properties = {}) {
 
 function createMeasurementSettingsDocument() {
     const sweepBandChannel = createNode({
+        closest: () => null,
         querySelector(selector) {
             return selector === 'input:checked'
                 ? this.children.flatMap(label => label.children).find(input => input.checked) : null;

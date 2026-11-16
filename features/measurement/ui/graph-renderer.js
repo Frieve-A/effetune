@@ -5,6 +5,8 @@ import { normalizeResponseToZeroDb as normalizeFrequencyResponseToZeroDb } from 
 import { resolveIrRecordTarget } from '../measurement-model.js';
 import { isValidImpulseResponse } from './impulse-response-plot.js';
 
+const RESPONSE_PREVIEW_FRAME = { xMin: 20, xMax: 20000, yMin: -24, yMax: 24 };
+
 class GraphRenderer {
     constructor(uiManager) {
         this.uiManager = uiManager;
@@ -42,7 +44,11 @@ class GraphRenderer {
         );
     }
 
-    drawPreviewGraph(container, data) {
+    /**
+     * Draws a [[Hz, dB]] curve in a history item. The default frame is the normalized frequency
+     * response; `frame` gives another fixed frame, drawn without normalization. A null or non-finite dB is a gap.
+     */
+    drawPreviewGraph(container, data, frame = null) {
         // Create canvas if it doesn't exist
         let canvas = container.querySelector('canvas');
         if (!canvas) {
@@ -66,13 +72,8 @@ class GraphRenderer {
         const graphHeight = height - padding.top - padding.bottom;
         
         // Setup scales (logarithmic for frequency)
-        const minFreq = 20;
-        const maxFreq = 20000;
-        const minDb = -24;
-        const maxDb = 24;
-        
-        // Process data - always normalize for preview graphs
-        const processedData = this.normalizeResponseToZeroDb([...data]);
+        const { xMin: minFreq, xMax: maxFreq, yMin: minDb, yMax: maxDb } = frame ?? RESPONSE_PREVIEW_FRAME;
+        const processedData = frame ? data : this.normalizeResponseToZeroDb([...data]);
         
         const scaleX = (freq) => {
             return padding.left + graphWidth * (Math.log10(freq) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq));
@@ -82,18 +83,26 @@ class GraphRenderer {
             return padding.top + graphHeight - graphHeight * (db - minDb) / (maxDb - minDb);
         };
         
-        // Draw the frequency response line
+        // Draw the frequency response line; out-of-range values run out through the plot border
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padding.left, padding.top, graphWidth, graphHeight);
+        ctx.clip();
         ctx.strokeStyle = this.uiManager.graphColors.original;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        
+
         let firstPoint = true;
-        
+
         for (const [freq, db] of processedData) {
             if (freq < minFreq || freq > maxFreq) continue;
-            
+            if (!Number.isFinite(db)) {
+                firstPoint = true;
+                continue;
+            }
+
             const x = scaleX(freq);
-            const y = scaleY(Math.max(minDb, Math.min(maxDb, db)));
+            const y = scaleY(db);
             
             if (firstPoint) {
                 ctx.moveTo(x, y);
@@ -102,8 +111,9 @@ class GraphRenderer {
                 ctx.lineTo(x, y);
             }
         }
-        
+
         ctx.stroke();
+        ctx.restore();
     }
 }
 

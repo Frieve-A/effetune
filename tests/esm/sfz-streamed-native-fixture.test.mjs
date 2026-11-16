@@ -11,7 +11,7 @@ import { sf2SamplerRegions } from '../../js/sf2/asset.js';
 import { createSf2Fixture } from '../helpers/sf2-fixture.mjs';
 
 const runner = process.env.SFZ_STREAM_BANK_TEST_RUNNER;
-test('native bank consumes compiler-produced streamed metadata and rejects unimplemented modulation routes', { skip: !runner }, async () => {
+test('native SFZ bank preserves streamed sample positions and prepares the CC1 volume route', { skip: !runner }, async () => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'effetune-stream-bank-')));
   try {
     for (const routes of [false, true]) {
@@ -22,16 +22,14 @@ test('native bank consumes compiler-produced streamed metadata and rejects unimp
       const samples = new Map([['a.wav', { frames: 16384, channels: 1, sampleRate: 48000, revision: 'a'.repeat(64) }],
         ['b.wav', { frames: 16777223, channels: 1, sampleRate: 44100, revision: 'f'.repeat(64) }]]);
       const descriptor = packStreamedSfzAsset(parsed.regions, samples, { cacheSlots: 8, modulation: parsed.modulation });
-      const bytes = Buffer.alloc(4 + descriptor.payload.byteLength);
-      bytes.writeUInt32LE(descriptor.footprintBytes); Buffer.from(descriptor.payload).copy(bytes, 4);
-      const file = path.join(root, 'bank.bin'); await writeFile(file, bytes);
-      const result = spawnSync(runner, routes ? [file, 'reject'] : [file], { encoding: 'utf8', timeout: 10000, windowsHide: true });
+      const file = path.join(root, 'bank.bin'); await writeFile(file, Buffer.from(descriptor.payload));
+      const result = spawnSync(runner, routes ? [file, 'routes'] : [file], { encoding: 'utf8', timeout: 10000, windowsHide: true });
       assert.equal(result.error, undefined); assert.equal(result.status, 0, result.stderr);
     }
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 3 }); }
 });
 
-test('native SF2 bank consumes the actual parser/compiler collection wire with a rendering capability gate', { skip: !runner }, async () => {
+test('native SF2 bank reads compiled presets and rejects invalid modulation records', { skip: !runner }, async () => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'effetune-sf2-bank-')));
   try {
     const fixture = createSf2Fixture();
@@ -43,9 +41,7 @@ test('native SF2 bank consumes the actual parser/compiler collection wire with a
     }]));
     const descriptor = packStreamedSfzAsset(sf2SamplerRegions(source), samples, { cacheSlots: 8,
       sourceProfile: source.compiled.sourceProfile, presets, modulation: source.compiled });
-    const bytes = Buffer.alloc(4 + descriptor.payload.byteLength);
-    bytes.writeUInt32LE(descriptor.footprintBytes); Buffer.from(descriptor.payload).copy(bytes, 4);
-    const file = path.join(root, 'bank.bin'); await writeFile(file, bytes);
+    const file = path.join(root, 'bank.bin'); await writeFile(file, Buffer.from(descriptor.payload));
     const result = spawnSync(runner, [file, 'sf2'], { encoding: 'utf8', timeout: 10000, windowsHide: true });
     assert.equal(result.error, undefined); assert.equal(result.status, 0, result.stderr);
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 3 }); }

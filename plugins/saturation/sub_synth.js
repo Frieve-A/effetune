@@ -435,9 +435,8 @@ class SubSynthPlugin extends PluginBase {
     const ctx = canvas.getContext("2d");
     const width = canvas.width, height = canvas.height;
     const dpr = this._getCanvasDpr(canvas);
-    const cssWidth = width / dpr;
-    const tickFont = Math.round(11 * dpr);
-    const axisFont = Math.round(13 * dpr);
+    const tickFont = Math.round(12 * dpr);
+    const axisFont = Math.round(14 * dpr);
     const bottomTickY = height - 26 * dpr;
     const axisBottomY = height - 4 * dpr;
     const leftLabelX = 40 * dpr;
@@ -448,34 +447,37 @@ class SubSynthPlugin extends PluginBase {
     // Draw grid
     ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
     ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
-    const freqs = [5, 10, 20, 50, 100, 200, 500];
-    const labeledFreqs = cssWidth < 420 ? [10, 50, 200, 500] : freqs;
-    freqs.forEach(freq => {
+    // Interior grid values only: 5 Hz and -30 dB are the axis bounds. A value that does
+    // not fit inside the canvas, or that would overlap the previous value, is omitted.
+    ctx.font = `${tickFont}px Arial`;
+    // Starting one gap left of the canvas makes the overlap test also keep the first value inside it.
+    let previousRight = -4 * dpr;
+    [10, 20, 50, 100, 200, 500].forEach(freq => {
       const x = width * (Math.log10(freq) - Math.log10(5)) / (Math.log10(1000) - Math.log10(5));
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
-      if (labeledFreqs.includes(freq) && x > 12 * dpr && x < width - 12 * dpr) {
+      const label = `${freq}`;
+      const halfWidth = ctx.measureText(label).width / 2;
+      if (x - halfWidth >= previousRight + 4 * dpr && x + halfWidth <= width) {
         ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.font = `${tickFont}px Arial`;
         ctx.textAlign = "center";
-        ctx.fillText(freq.toString(), x, bottomTickY);
+        ctx.fillText(label, x, bottomTickY);
+        previousRight = x + halfWidth;
       }
     });
-    const dBs = [-30, -24, -18, -12, -6, 0];
+    const dBs = [-24, -18, -12, -6, 0];
     dBs.forEach(db => {
       const y = height * (1 - (db + 30) / 36);
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
-      if (db > -30 && db < 6) {
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.font = `${tickFont}px Arial`;
-        ctx.textAlign = "right";
-        ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
-      }
+      ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+      ctx.font = `${tickFont}px Arial`;
+      ctx.textAlign = "right";
+      ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
     });
     ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = `${axisFont}px Arial`;

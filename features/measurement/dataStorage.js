@@ -11,6 +11,7 @@ import {
 } from './measurement-model.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
 import { validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
+import { validateSpeakerModel } from '../../js/utils/measurement-dsp/speaker-distortion/index.js';
 
 export class MeasurementImportError extends Error {
     constructor(kind, cause = null) {
@@ -47,10 +48,74 @@ function isFrequencyResponse(value) {
         Number.isFinite(entry[0]) && entry[0] > 0 && Number.isFinite(entry[1]));
 }
 
+// JSON form of the typed arrays of speakerModel: {tag: base64 of the raw bytes}, bit-exact.
+// The same base64 helpers encode impulse-response samples.
+const SPEAKER_MODEL_ARRAY_TAGS = [['f32', Float32Array], ['f64', Float64Array], ['u16', Uint16Array]];
+const BASE64_CHUNK = 0x8000;
+
+function typedArrayToBase64(array) {
+    const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += BASE64_CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK));
+    }
+    return btoa(binary);
+}
+
+function base64ToTypedArray(Type, base64) {
+    const binary = atob(base64);
+    if (binary.length % Type.BYTES_PER_ELEMENT !== 0) throw new TypeError('Typed array data length is invalid');
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Type(bytes.buffer);
+}
+
+export function encodeSpeakerModel(value) {
+    const tag = SPEAKER_MODEL_ARRAY_TAGS.find(([, Type]) => value instanceof Type)?.[0];
+    if (tag) return { [tag]: typedArrayToBase64(value) };
+    if (Array.isArray(value)) return value.map(encodeSpeakerModel);
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, encodeSpeakerModel(entry)]));
+    }
+    return value;
+}
+
+export function decodeSpeakerModel(value) {
+    if (Array.isArray(value)) return value.map(decodeSpeakerModel);
+    if (!value || typeof value !== 'object') return value;
+    const keys = Object.keys(value);
+    const Type = keys.length === 1 && typeof value[keys[0]] === 'string'
+        ? SPEAKER_MODEL_ARRAY_TAGS.find(([tag]) => tag === keys[0])?.[1]
+        : undefined;
+    if (Type) return base64ToTypedArray(Type, value[keys[0]]);
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, decodeSpeakerModel(entry)]));
+}
+
+// Decodes an exported speakerModel; an unusable model is dropped so the measurement itself still loads.
+function withImportedSpeakerModel(measurement) {
+    if (measurement.speakerModel === undefined) return measurement;
+    const { speakerModel, ...rest } = measurement;
+    try {
+        const model = decodeSpeakerModel(speakerModel);
+        if (!validateSpeakerModel(model)) throw new TypeError('Speaker model layout is invalid');
+        return { ...rest, speakerModel: model };
+    } catch (error) {
+        console.warn('Embedded speaker distortion model was ignored:', error);
+        return rest;
+    }
+}
+
 function normalizeMeasurement(measurement) {
     const normalized = { ...measurement };
     delete normalized.correctedResponse;
     return normalized;
+}
+
+// Stored measurement in the portable form shared by JSON export and user-data backup.
+function portableMeasurement(measurement) {
+    const portable = normalizeMeasurement(measurement);
+    if (portable.speakerModel) portable.speakerModel = encodeSpeakerModel(portable.speakerModel);
+    return portable;
 }
 
 function mapHarmonicSamples(analysis, transform) {
@@ -102,6 +167,7 @@ function metadataOnlyMeasurement(measurement) {
     delete metadata._deletedPointIds;
     delete metadata._originalPoints;
     delete metadata._editSnapshot;
+    delete metadata.speakerModel;
     for (const point of metadata.points || []) {
         delete point.ir;
         for (const entry of point.channels || []) {
@@ -137,7 +203,7 @@ function hasValidImportedScalars(data) {
 
     const optionalNumbers = [
         'requestedSampleRate', 'sampleRate', 'sweepMinFreq', 'sweepMaxFreq', 'averaging',
-        'correctionLowFreq', 'correctionHighFreq', 'smoothing', 'eqBandCount', 'maxSignalLevel'
+        'correctionLowFreq', 'correctionHighFreq', 'smoothing', 'eqBandCount', 'maxSignalLevel', 'savedAt'
     ];
     if (optionalNumbers.some(key => data[key] !== undefined && !Number.isFinite(data[key]))) {
         return false;
@@ -596,7 +662,8 @@ export class DataStorage {
             return true;
         } catch (error) {
             console.error('Error saving measurement record:', error);
-            if (this.indexedDbUnavailable && options.requireImpulseResponses !== true && options.appendOnly !== true) {
+            if (this.indexedDbUnavailable && !storedMeasurement.speakerModel &&
+                options.requireImpulseResponses !== true && options.appendOnly !== true) {
                 return this.saveMetadataFallback(measurement);
             }
             return false;
@@ -618,7 +685,7 @@ export class DataStorage {
                         byId.get(record.measurementId).push(record);
                     }
                     resolve(measurements.result.map(measurement => ({
-                        measurement: normalizeMeasurement(measurement),
+                        measurement: portableMeasurement(measurement),
                         impulseResponses: byId.get(measurement.id) || []
                     })));
                 };
@@ -646,7 +713,8 @@ export class DataStorage {
         return bundles;
     }
 
-    async appendBackupMeasurement(measurement, impulseResponses) {
+    async appendBackupMeasurement(portable, impulseResponses) {
+        const measurement = withImportedSpeakerModel(portable);
         validateMeasurementBackup(measurement, impulseResponses);
         if (!await this.putMeasurement(measurement, impulseResponses, { appendOnly: true, requireImpulseResponses: true })) {
             throw new MeasurementImportError('storage');
@@ -1239,7 +1307,7 @@ export class DataStorage {
             return null;
         }
         
-        const exported = normalizeMeasurement(structuredClone(measurement));
+        const exported = portableMeasurement(structuredClone(measurement));
         if (includeImpulseResponses) {
             let records;
             try {
@@ -1349,6 +1417,7 @@ export class DataStorage {
         data.id = this.generateId();
         data.imported = true;
         data.importTimestamp = new Date().toISOString();
+        data = withImportedSpeakerModel(data);
 
         const impulseResponses = Array.isArray(data.impulseResponses) ? data.impulseResponses : [];
         delete data.impulseResponses;
@@ -1449,20 +1518,7 @@ export class DataStorage {
      * @returns {string} Base64 encoded string
      */
     encodeFloat32Array(array) {
-        const buffer = new ArrayBuffer(array.length * 4);
-        const view = new DataView(buffer);
-        
-        for (let i = 0; i < array.length; i++) {
-            view.setFloat32(i * 4, array[i], true);
-        }
-        
-        const uint8Array = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < uint8Array.length; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-        }
-        
-        return btoa(binary);
+        return typedArrayToBase64(array instanceof Float32Array ? array : Float32Array.from(array));
     }
 
     /**
@@ -1471,18 +1527,9 @@ export class DataStorage {
      * @returns {Float32Array} Decoded Float32Array
      */
     decodeFloat32Array(base64) {
-        const binary = atob(base64);
-        if (binary.length === 0 || binary.length % Float32Array.BYTES_PER_ELEMENT !== 0) {
-            throw new TypeError('Impulse response data length is invalid');
-        }
-        const bytes = new Uint8Array(binary.length);
-        
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-        }
-        
-        const buffer = bytes.buffer;
-        return new Float32Array(buffer);
+        const samples = base64ToTypedArray(Float32Array, base64);
+        if (!samples.length) throw new TypeError('Typed array data length is invalid');
+        return samples;
     }
 
     /**

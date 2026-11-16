@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "Este computador",
   "dialog.config.networkOutput.delay": "Atraso (ms)",
   "dialog.config.networkOutput.resync": "Ressincronizar",
-  "dialog.config.networkOutput.resyncHelp": "Reinicia todas as caixas de som ao mesmo tempo. Use se elas saírem de sincronia.",
+  "dialog.config.networkOutput.resyncHelp": "Mede de novo o atraso das caixas de som e as realinha. A reprodução continua, e a sincronia muda uma única vez, quando a medição termina. As caixas de som cujo atraso não pode ser medido se reconectam e, por isso, param por um instante.",
+  "dialog.config.networkOutput.syncing": "Sincronizando as caixas de som…",
   "dialog.config.networkOutput.status.searching": "Procurando",
   "dialog.config.networkOutput.status.connecting": "Conectando",
   "dialog.config.networkOutput.status.playing": "Reproduzindo",
@@ -950,12 +951,18 @@
   "bassManagement.error.design": "Não foi possível preparar os filtros do Bass Management. Reduza Taps e tente novamente.",
   "firCrossover.error.design": "Não foi possível projetar os filtros do FIR Crossover. Use menos Taps ou ajustes menos extremos.",
   "fiveBandFirPeq.error.design": "Não foi possível projetar o filtro do 5Band FIR PEQ. Use menos Taps ou ajustes menos extremos.",
+  "headphoneEq.error.design": "Não foi possível projetar o filtro de correção do Headphone EQ. Use menos Taps ou carregue a medição novamente.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "Não foi possível projetar o filtro. Tente outro ajuste de Taps.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "Não foi possível projetar o filtro. Tente outro ajuste de Taps.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "Não foi possível preparar a correção dos alto-falantes para esta exportação porque a medição dela não está neste dispositivo. Meça a distorção dos alto-falantes neste dispositivo ou escolha outra medição, ou desative o efeito para a exportação.",
+
+  // Controller mapping
   "midi.title": "Configurações de mapeamento de controladores", "midi.openSettings": "Mapeamento de controladores...",
   "midi.devices": "Dispositivos MIDI", "midi.gamepads": "Gamepads", "midi.mappings": "Mapeamentos",
   "midi.addLearn": "Adicionar (Learn)", "midi.learnPrompt": "Mova um controle, pressione uma tecla ou use um gamepad. Pressione Escape para cancelar.",

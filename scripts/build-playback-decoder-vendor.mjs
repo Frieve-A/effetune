@@ -10,7 +10,7 @@ checkDsdWasm();
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(repoRoot, 'node_modules', 'mediabunny', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const expectedVersion = '1.65.2';
+const expectedVersion = '1.66.0';
 if (packageJson.version !== expectedVersion) {
   throw new Error(`Expected mediabunny ${expectedVersion}, found ${packageJson.version}`);
 }

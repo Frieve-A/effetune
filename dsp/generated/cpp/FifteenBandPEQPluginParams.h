@@ -12,10 +12,11 @@ struct FifteenBandPEQPluginParams {
   float q[15];
   float filterType[15];
   float bandEnabled[15];
-  static constexpr std::uint32_t kHash = 0x6197cd46u;
-  static constexpr std::uint32_t kFloatCount = 75u;
+  float masterGain;
+  static constexpr std::uint32_t kHash = 0x5b2fb687u;
+  static constexpr std::uint32_t kFloatCount = 76u;
 };
-static_assert(75u == 0u || sizeof(FifteenBandPEQPluginParams) == sizeof(float) * 75u);
+static_assert(76u == 0u || sizeof(FifteenBandPEQPluginParams) == sizeof(float) * 76u);
 
 } // namespace effetune::generated
 

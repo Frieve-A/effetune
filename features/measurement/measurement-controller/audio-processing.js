@@ -18,7 +18,9 @@ import i18n from '../i18n.js';
 import { activePipelineSnapshot, renderThroughPipeline } from './pipeline-render.js';
 import { createEssCapturePlan, analyzeEssRecording } from '../../../js/utils/measurement-dsp/ess.js';
 import { isAndroidHost } from '../../../js/android/bridge.js';
-import { captureAndroidSweep } from '../../../js/android/measurement.js';
+import { ANDROID_MEASUREMENT_OUTPUT_CHANNELS, captureAndroidBuffer, captureAndroidSweep,
+    validateAndroidMeasurementChannels } from '../../../js/android/measurement.js';
+import { channelIndexOf } from '../audio-utils/channel-selection.js';
 
 const SWEEP_START_DELAY_SECONDS = 0.05;
 
@@ -187,12 +189,140 @@ const AudioProcessing = {
                 if (this.nativeMeasurementAbort === abort) this.nativeMeasurementAbort = null;
             }
         }
+        const averagingCount = parseInt(this.measurementConfig.averaging);
+        // Get the current signal level setting
+        const signalLevel = parseFloat(document.getElementById('noiseLevel').value);
+        console.log(`Using signal level: ${signalLevel} dB`);
+        const capturePlan = createEssCapturePlan(sweepBuffer, averagingCount);
+        return this.recordPlayback({
+            outputChannel,
+            explicitOutputChannels,
+            createPlayback: async (audioContext, outputChannels, elements) => {
+                if (!activePipelineSnapshot(this)) {
+                    return {
+                        buffer: createRepeatedSweepAudioBuffer(audioContext, sweepBuffer,
+                            capturePlan.repeatCount, outputChannels, audioContext.sampleRate),
+                        gain: Math.pow(10, signalLevel / 20)
+                    };
+                }
+                const abort = new AbortController();
+                elements.cancelAnalysis = () => abort.abort();
+                let buffer = null;
+                let failureKey = null;
+                try {
+                    buffer = await createPipelineSweepAudioBuffer(this, audioContext,
+                        sweepBuffer, capturePlan.repeatCount, outputChannels, signalLevel, abort.signal);
+                    if (!buffer) failureKey = 'error:pipelineClipping';
+                } catch (error) {
+                    if (!abort.signal.aborted) {
+                        console.error('The sweep could not be rendered through the effect pipeline:', error);
+                        failureKey = 'error:pipelineRenderFailed';
+                    }
+                } finally {
+                    elements.cancelAnalysis = null;
+                }
+                if (abort.signal.aborted) throw new SweepCancelledError();
+                if (failureKey) {
+                    this.showErrorNotification(i18n.t(failureKey));
+                    throw new SweepCancelledError();
+                }
+                // The signal level is already part of the rendered buffer.
+                return { buffer, gain: 1 };
+            },
+            finish: async (recording, timing) => {
+                // Process the recording to extract the impulse response
+                const processStart = performance.now();
+                const processed = await this.processRecordedBuffer(recording, sweepBuffer, averagingCount,
+                    timing.sampleRate, {
+                        outputRoute: timing.outputRoute,
+                        scheduledPlaybackFrame: timing.scheduledPlaybackFrame,
+                        captureStartFrame: timing.captureStartFrame,
+                        levelDb: signalLevel,
+                        overloaded: timing.hasOverload
+                    });
+                console.log(`Processing: ${(performance.now() - processStart).toFixed(1)}ms`);
+                return this.createSweepMeasurementResult(processed, {
+                    frequencyResponse: processed.frequencyResponse,
+                    hasOverload: timing.hasOverload,
+                    maxSignalLevel: timing.maxSignalLevel,
+                    fullRecording: null,
+                    sampleRate: timing.sampleRate
+                });
+            }
+        });
+    },
+
+    /**
+     * Play one mono test-signal buffer once on a single output channel, directly (no effect
+     * pipeline, no calibration), and return the recording aligned to the buffer start.
+     * On the Web path, `stopWhen(chunk)` may end the capture early (see recordPlayback); the
+     * recording then stays zero after the stop.
+     * @param {Float32Array} samples - Signal samples, including any trailing silence
+     * @returns {Promise<{recording: Float32Array, sampleRate: number}>}
+     */
+    async playAndRecordBuffer(samples, outputChannel, explicitOutputChannels, { signal, stopWhen } = {}) {
+        signal?.throwIfAborted();
+        const index = channelIndexOf(outputChannel) ?? 0;
+        const toSignalBuffer = (width, sampleRate) => ({ length: samples.length, tailSamples: 0, sampleRate,
+            channels: Array.from({ length: width }, (_, channel) => channel === index ? samples : null) });
+        if (isAndroidHost()) {
+            validateAndroidMeasurementChannels([index]);
+            const abort = new AbortController();
+            this.nativeMeasurementAbort = abort;
+            const onAbort = () => abort.abort(new SweepCancelledError());
+            signal?.addEventListener('abort', onAbort, { once: true });
+            try {
+                const buffer = toSignalBuffer(ANDROID_MEASUREMENT_OUTPUT_CHANNELS, audioUtils.audioContext.sampleRate);
+                const capture = await captureAndroidBuffer(buffer, {
+                    repetitions: 1, levelDb: 0, channel: audioUtils.selectedInputChannel, signal: abort.signal });
+                abort.signal.throwIfAborted();
+                return capture;
+            } finally {
+                signal?.removeEventListener('abort', onAbort);
+                if (this.nativeMeasurementAbort === abort) this.nativeMeasurementAbort = null;
+            }
+        }
+        const onAbort = () => this.cancelActiveSweep();
+        signal?.addEventListener('abort', onAbort, { once: true });
+        try {
+            return await this.recordPlayback({
+                outputChannel,
+                explicitOutputChannels,
+                stopWhen,
+                createPlayback: (audioContext, outputChannels) => ({
+                    buffer: createRepeatedSweepAudioBuffer(audioContext,
+                        toSignalBuffer(outputChannels, audioContext.sampleRate), 1, outputChannels,
+                        audioContext.sampleRate),
+                    gain: 1
+                }),
+                finish: (captured, timing) => {
+                    const offset = outputTimeReferenceForRoute(timing.outputRoute, timing) === 'audio-context'
+                        ? timing.scheduledPlaybackFrame - timing.captureStartFrame
+                        : Math.round(0.5 * timing.sampleRate);
+                    const recording = new Float32Array(samples.length);
+                    recording.set(captured.subarray(offset, offset + samples.length));
+                    return { recording, sampleRate: timing.sampleRate };
+                }
+            });
+        } finally {
+            signal?.removeEventListener('abort', onAbort);
+        }
+    },
+
+    /**
+     * Shared Web Audio capture: prepares the output route, plays the buffer returned by
+     * `createPlayback(audioContext, outputChannels, elements)` after a 0.5 s pre-roll while
+     * recording the measurement input, and resolves with `finish(recording, timing)`. When
+     * `stopWhen(chunk)` returns true for a recorded chunk, playback stops and the recording ends early.
+     */
+    recordPlayback({ outputChannel, explicitOutputChannels, createPlayback, finish, stopWhen }) {
         return new Promise(async (resolve, reject) => {
             const operation = {
                 settled: false,
                 reject,
                 resolve
             };
+            let stopRequested = false;
             const settleResolve = value => {
                 if (operation.settled) return;
                 operation.settled = true;
@@ -233,26 +363,12 @@ const AudioProcessing = {
                 if (!audioUtils.microphone) {
                     throw new Error('Microphone input is not initialized. Please check browser settings.');
                 }
-                
+
                 console.log(`Audio context state: ${audioContext.state}, sample rate: ${audioContext.sampleRate}Hz`);
                 console.log(`Microphone connected: ${audioUtils.microphone !== null}`);
-                
+
                 const sampleRate = audioContext.sampleRate;
-                const averagingCount = parseInt(this.measurementConfig.averaging);
-                
-                // Get the current signal level setting
-                const signalLevel = parseFloat(document.getElementById('noiseLevel').value);
-                console.log(`Using signal level: ${signalLevel} dB`);
-                
-                // Calculate the expected playback duration
-                const sweepDuration = sweepBuffer.length / sampleRate;
-                const capturePlan = createEssCapturePlan(
-                    sweepBuffer,
-                    averagingCount
-                );
-                const totalPlaybackDuration = capturePlan.playbackSamples / sampleRate;
-                console.log(`Sweep duration: ${sweepDuration.toFixed(2)}s, Total playback: ${totalPlaybackDuration.toFixed(2)}s`);
-                
+
                 const outputRoute = await prepareMeasurementOutputRoute(
                     audioContext,
                     this.measurementConfig.audioOutputId,
@@ -269,44 +385,22 @@ const AudioProcessing = {
                 elements.mediaStreamDestination = outputRoute.mediaStreamDestination;
                 console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
-                let combinedSweepBuffer;
-                let playbackGain = Math.pow(10, signalLevel / 20);
-                if (activePipelineSnapshot(this)) {
-                    const abort = new AbortController();
-                    elements.cancelAnalysis = () => abort.abort();
-                    let failureKey = null;
-                    try {
-                        combinedSweepBuffer = await createPipelineSweepAudioBuffer(this, audioContext,
-                            sweepBuffer, capturePlan.repeatCount, outputChannels, signalLevel, abort.signal);
-                        if (!combinedSweepBuffer) failureKey = 'error:pipelineClipping';
-                    } catch (error) {
-                        if (!abort.signal.aborted) {
-                            console.error('The sweep could not be rendered through the effect pipeline:', error);
-                            failureKey = 'error:pipelineRenderFailed';
-                        }
-                    } finally {
-                        elements.cancelAnalysis = null;
-                    }
-                    if (operation.settled || this.activeSweepOperation !== operation) {
-                        releaseMeasurementOutputRoute(outputRoute);
-                        return;
-                    }
-                    if (abort.signal.aborted) throw new SweepCancelledError();
-                    if (failureKey) {
-                        this.showErrorNotification(i18n.t(failureKey));
-                        throw new SweepCancelledError();
-                    }
-                    // The signal level is already part of the rendered buffer.
-                    playbackGain = 1;
-                } else {
-                    combinedSweepBuffer = createRepeatedSweepAudioBuffer(
-                        audioContext,
-                        sweepBuffer,
-                        capturePlan.repeatCount,
-                        outputChannels,
-                        sampleRate
-                    );
+                let playback = null;
+                let playbackError = null;
+                try {
+                    playback = await createPlayback(audioContext, outputChannels, elements);
+                } catch (error) {
+                    playbackError = error;
                 }
+                if (operation.settled || this.activeSweepOperation !== operation) {
+                    releaseMeasurementOutputRoute(outputRoute);
+                    return;
+                }
+                if (playbackError) throw playbackError;
+                const combinedSweepBuffer = playback.buffer;
+                const playbackGain = playback.gain;
+                const totalPlaybackDuration = combinedSweepBuffer.length / sampleRate;
+                console.log(`Total playback: ${totalPlaybackDuration.toFixed(2)}s`);
 
                 // Calculate recording buffer length - match exactly with playback plus some padding
                 // Instead of using fixed delays, calculate exact timing:
@@ -314,17 +408,17 @@ const AudioProcessing = {
                 const prePostRollTime = 0.5; // seconds
                 const recordBufferLength = Math.ceil(sampleRate * (prePostRollTime + totalPlaybackDuration + prePostRollTime));
                 const recordBuffer = new Float32Array(recordBufferLength);
-                
+
                 console.log(`Recording buffer: ${(recordBufferLength/sampleRate).toFixed(2)}s (${recordBufferLength} samples)`);
-                
+
                 // Create analyzer to detect overload
                 const analyzer = audioContext.createAnalyser();
                 analyzer.fftSize = 2048;
                 const analyzerData = new Uint8Array(analyzer.frequencyBinCount);
-                
+
                 // Store analyzer in active elements
                 elements.analyzer = analyzer;
-                
+
                 let recordNode;
                 let recordingStarted = false;
                 let recordIndex = 0;
@@ -332,10 +426,10 @@ const AudioProcessing = {
                 let scheduledPlaybackFrame = null;
                 let hasOverload = false;
                 let maxSignalLevel = -100; // Variable to track maximum signal level
-                
+
                 // Store reference to this to use in inner functions
                 const self = this;
-                
+
                 // Function to update analyzer and check for overload
                 const checkOverload = () => {
                     analyzer.getByteTimeDomainData(analyzerData);
@@ -345,7 +439,7 @@ const AudioProcessing = {
                             break;
                         }
                     }
-                    
+
                     // Get current input level and update maximum value
                     const currentLevel = audioUtils.getInputLevel();
                     maxSignalLevel = Math.max(maxSignalLevel, currentLevel);
@@ -404,6 +498,11 @@ const AudioProcessing = {
                             if (copyLength > 0) {
                                 recordBuffer.set(bufferArray.subarray(0, copyLength), recordIndex);
                                 recordIndex += copyLength;
+                            }
+                            if (!stopRequested && stopWhen?.(bufferArray)) {
+                                // Silence the output now; the next check ends the recording.
+                                stopRequested = true;
+                                this.cleanupSweepOutput(operation);
                             }
                         } else if (event.data.status === 'stopped' || event.data.status === 'complete') {
                             console.log(`Recording ${event.data.status} with ${event.data.buffer?.length || 0} samples`);
@@ -529,7 +628,7 @@ const AudioProcessing = {
                     
                     // If playback has ended and we've recorded enough post-roll samples or record buffer is full
                     if ((playbackEnded && audioContext.currentTime > startTime + totalPlaybackDuration + prePostRollTime) ||
-                        recordIndex >= recordBuffer.length) {
+                        recordIndex >= recordBuffer.length || stopRequested) {
                         
                         clearInterval(checkInterval);
                         
@@ -581,38 +680,11 @@ const AudioProcessing = {
                     }
 
                     try {
-                        // Process the recording to extract the impulse response
-                        const processStart = performance.now();
-                        const processed = await this.processRecordedBuffer(
-                            finalBuffer,
-                            sweepBuffer,
-                            averagingCount,
-                            sampleRate,
-                            {
-                                outputRoute,
-                                scheduledPlaybackFrame,
-                                captureStartFrame,
-                                levelDb: signalLevel,
-                                overloaded: hasOverload
-                            }
-                        );
-                        if (operation.settled || this.activeSweepOperation !== operation) return;
-                        const frequencyResponse = processed.frequencyResponse;
-                        const freqStart = performance.now();
-                        const processEnd = performance.now();
-                        console.log(`Processing: ${(processEnd - processStart).toFixed(1)}ms (freq: ${(processEnd - freqStart).toFixed(1)}ms)`);
-
-                        // Clear large temporary buffers
+                        const result = await finish(finalBuffer, { outputRoute, scheduledPlaybackFrame,
+                            captureStartFrame, hasOverload, maxSignalLevel, sampleRate });
                         finalBuffer = null;
-
-                        // Resolve promise with processed data
-                        settleResolve(this.createSweepMeasurementResult(processed, {
-                            frequencyResponse: frequencyResponse,
-                            hasOverload: hasOverload,
-                            maxSignalLevel: maxSignalLevel,
-                            fullRecording: finalBuffer,
-                            sampleRate: sampleRate
-                        }));
+                        if (operation.settled || this.activeSweepOperation !== operation) return;
+                        settleResolve(result);
                     } catch (error) {
                         finalBuffer = null;
                         console.error('Recorded sweep processing failed:', error);

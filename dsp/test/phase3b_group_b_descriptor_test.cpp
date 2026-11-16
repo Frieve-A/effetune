@@ -27,7 +27,7 @@ struct ExpectedDescriptor final {
 int main() {
   const std::array<ExpectedDescriptor, 5u> expected = {{
       {et_kernel_descriptor_FiveBandPEQPlugin, "FiveBandPEQPlugin", 0x8835f2b9u, 25u},
-      {et_kernel_descriptor_FifteenBandPEQPlugin, "FifteenBandPEQPlugin", 0x6197cd46u, 75u},
+      {et_kernel_descriptor_FifteenBandPEQPlugin, "FifteenBandPEQPlugin", 0x5b2fb687u, 76u},
       {et_kernel_descriptor_FifteenBandGEQPlugin, "FifteenBandGEQPlugin", 0x6c4f898cu, 15u},
       {et_kernel_descriptor_EarphoneCableSimPlugin, "EarphoneCableSimPlugin", 0x41eff423u, 25u},
       {et_kernel_descriptor_CrossfeedFilterPlugin, "CrossfeedFilterPlugin", 0x2a9ec781u, 3u},

@@ -44,7 +44,6 @@
 
 .dsd64-imd-tc-canvas {
     background-color: var(--et-graph-bg-deep);
-    border-radius: 4px;
 }
 
 .dsd64-imd-viz-title {
@@ -55,7 +54,6 @@
 
 .dsd64-imd-canvas {
     background-color: var(--et-graph-bg-deep);
-    border-radius: 4px;
     max-width: 100%;
 }
 

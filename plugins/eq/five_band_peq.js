@@ -385,7 +385,7 @@ class FiveBandPEQPlugin extends PluginBase {
       line.setAttribute('y1', '0'); line.setAttribute('y2', '100%');
       gridSvg.appendChild(line);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', `${x}%`); text.setAttribute('y', '95%');
+      text.setAttribute('x', `${x}%`); text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
       text.setAttribute('text-anchor', 'middle');
       text.textContent = freq >= 1000 ? `${freq / 1000}k` : freq;
       gridSvg.appendChild(text);
@@ -399,7 +399,7 @@ class FiveBandPEQPlugin extends PluginBase {
       line.setAttribute('y1', `${y}%`); line.setAttribute('y2', `${y}%`);
       gridSvg.appendChild(line);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', '2%'); text.setAttribute('y', `${y}%`);
+      text.setAttribute('x', '20'); text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
       text.textContent = `${gain}`;
       gridSvg.appendChild(text);
@@ -721,7 +721,7 @@ class FiveBandPEQPlugin extends PluginBase {
     }
   }
 
-  freqToX(freq) { return (Math.log10(Math.max(10, Math.min(freq, 40000))) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100; }
+  freqToX(freq) { return (Math.log10(freq) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100; } // NEVER Clamp frequency
   xToFreq(xPercent) { return Math.pow(10, Math.log10(10) + (xPercent / 100) * (Math.log10(40000) - Math.log10(10))); }
   gainToY(gain) { return 50 - (gain / 20.0) * 50; } // NEVER Clamp gain
   yToGain(yPercent) { return -(yPercent - 50) / 50.0 * 20.0; }
@@ -771,13 +771,9 @@ class FiveBandPEQPlugin extends PluginBase {
     this.lastGraphSize = null;
   }
 
-  getGraphPlotArea(container = this.graphContainer) {
-    return GraphPlotArea.from(container);
-  }
 
   updateMarkers() {
     if (!this.markers || !this.graphContainer || !this.uiCreated) return;
-    const plotArea = this.getGraphPlotArea();
     const graphWidth = this.graphContainer.clientWidth;
     const graphHeight = this.graphContainer.clientHeight;
     if (graphWidth === 0 || graphHeight === 0) return;
@@ -786,9 +782,7 @@ class FiveBandPEQPlugin extends PluginBase {
       const marker = this.markers[i]; if (!marker) continue;
       const freq = this['f' + i]; const gain = this['g' + i]; const enabled = this['e' + i];
       const x = this.freqToX(freq); const y = this.gainToY(gain);
-      const xPos = plotArea.leftPercent + (x / 100) * plotArea.widthPercent;
-      const yPos = plotArea.topPercent + (y / 100) * plotArea.heightPercent;
-      marker.style.left = `${xPos}%`; marker.style.top = `${yPos}%`;
+      marker.style.left = `${x}%`; marker.style.top = `${y}%`;
       marker.classList.toggle('disabled', !enabled);
       marker.dataset.pluginId = this.id;
       const markerTextEl = marker.querySelector('.five-band-peq-marker-text'); if (!markerTextEl) continue;
@@ -798,8 +792,8 @@ class FiveBandPEQPlugin extends PluginBase {
       markerTextEl.innerHTML = `${freqDisplayText}Hz${type === 'lp' || type === 'hp' || type === 'bp' || type === 'ap' || type === 'no' ? '' : `<br>${gain.toFixed(1)}dB`}`;
       labelItems.push({
         el: markerTextEl,
-        cx: (xPos / 100) * graphWidth,
-        cy: (yPos / 100) * graphHeight
+        cx: (x / 100) * graphWidth,
+        cy: (y / 100) * graphHeight
       });
     }
     // Scatter the freq/gain labels so they don't overlap markers/each other or
@@ -936,7 +930,7 @@ class FiveBandPEQPlugin extends PluginBase {
     
     if (!container) return;
     
-    const plotArea = this.getGraphPlotArea(container);
+    const plotArea = container.getBoundingClientRect();
     let x = (clientX - plotArea.left) / plotArea.width;
     x = Math.max(0, Math.min(1, x));
     let y = (clientY - plotArea.top) / plotArea.height;

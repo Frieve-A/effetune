@@ -19,8 +19,13 @@ import AnalysisController from './analysis-controller.js';
 import { bindNumberInput, updateRangeFill } from '../../../js/ui/range-fill.js';
 import { isAndroidHost } from '../../../js/android/bridge.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from '../audio-utils/output-routing.js';
+import { confirmSpeakerDistortionLeave, initializeSpeakerDistortionScreens, restoreBorrowedControls,
+    saveUnsavedResult, showNewMeasurementScreen } from './speaker-distortion-setup.js';
+import { uiText } from './speaker-distortion-panel.js';
+import { startSpeakerResultOperation } from './speaker-distortion-refit.js';
 
-const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen']);
+const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen',
+    'speakerDistortionSetupScreen', 'speakerDistortionCheckScreen', 'speakerDistortionRunScreen']);
 
 // Switches an element to another translation key so later language changes keep it.
 function setTranslatedText(element, key) {
@@ -54,6 +59,9 @@ export class UIManager {
         this.configControlDisabledStates = new Map();
         // User settings that the Effect Pipeline selection temporarily overrides.
         this.effectPipelineRestoreValues = null;
+        // Speaker distortion result that is shown but not saved yet.
+        this.unsavedSpeakerResult = null;
+        this.speakerDistortionOpenedBySetupRequest = false;
     }
 
     /**
@@ -158,7 +166,13 @@ export class UIManager {
         this.analysisController.initialize();
 
         // Navigation buttons
-        document.getElementById('newMeasurementBtn').addEventListener('click', () => this.startNewMeasurement());
+        document.getElementById('newMeasurementBtn').addEventListener('click', async () => {
+            if (!await confirmSpeakerDistortionLeave()) return;
+            if (!this.confirmDiscardBeforeNewMeasurement(showNewMeasurementScreen)) showNewMeasurementScreen();
+        });
+        initializeSpeakerDistortionScreens(this);
+        this.initializeResultNameInput();
+        this.initializeSpeakerDistortionResultBar();
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
         document.getElementById('importInput').addEventListener('change', (e) => this.handleImport(e));
         document.getElementById('effectPipeline')?.addEventListener('change', () => this.syncEffectPipelineControls());
@@ -283,7 +297,8 @@ export class UIManager {
         if (AUDIO_ACTIVE_SCREENS.has(this.currentScreen) && !AUDIO_ACTIVE_SCREENS.has(screenId)) {
             this.cleanupAudioBeforeNavigation();
         }
-        
+        if (screenId === 'measurementConfigScreen') restoreBorrowedControls();
+
         // Show requested screen, hide others
         document.querySelectorAll('.screen').forEach(screen => {
             screen.style.display = screen.id === screenId ? 'block' : 'none';
@@ -350,7 +365,91 @@ export class UIManager {
      * @returns {boolean} Whether the selection was successful
      */
     async selectMeasurement(id) {
+        if (!await confirmSpeakerDistortionLeave()) return false;
         return this.measurementDisplay.selectMeasurement(id);
+    }
+
+    /** Shows a finished speaker distortion run before it is saved. */
+    showSpeakerDistortionResult(record) {
+        this.unsavedSpeakerResult = record;
+        this.selectedMeasurementId = null;
+        this.measurementDisplay.updateSelectedMeasurementHighlight();
+        this.showScreen('resultsDisplayScreen');
+        document.getElementById('noMeasurementMessage').style.display = 'none';
+        document.getElementById('measurementResults').style.display = 'block';
+        if (this.analysisController.activeTab === 'distortion') this.analysisController.refresh();
+        else this.analysisController.selectTab('distortion');
+    }
+
+    /** Renames the shown acoustic measurement; during point edits the name is kept with those edits. */
+    initializeResultNameInput() {
+        const input = document.getElementById('resultName');
+        input.addEventListener('change', async () => {
+            const measurement = dataStorage.getMeasurementById(this.selectedMeasurementId);
+            if (!measurement || measurement.speakerModel) return;
+            const name = input.value.trim() || uiText('label:untitled');
+            input.value = name;
+            if (this.hasUnsavedChanges) {
+                measurement.name = name;
+            } else if (!await dataStorage.updateMeasurement(measurement.id, { name })) {
+                input.value = measurement.name;
+                this.showNotification(i18n.t('message:saveFailed') ||
+                    'The measurement could not be saved. Check available storage and try again.', 'error');
+                return;
+            }
+            this.measurementDisplay.showResultTitle({ ...measurement, name });
+        });
+    }
+
+    initializeSpeakerDistortionResultBar() {
+        const nameInput = document.getElementById('speakerDistortionResultName');
+        const save = document.getElementById('speakerDistortionResultSave');
+        nameInput.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.repeat && !save.hidden) save.click(); });
+        save.addEventListener('click', async () => {
+            try {
+                const id = await saveUnsavedResult(nameInput.value);
+                await this.measurementDisplay.selectMeasurement(id);
+            } catch (error) {
+                console.error('Could not save the speaker distortion measurement:', error);
+                this.showNotification(uiText('error:speakerDistortionSaveFailed'), 'error');
+            }
+        });
+        nameInput.addEventListener('change', async () => {
+            const measurement = dataStorage.getMeasurementById(this.selectedMeasurementId);
+            if (!measurement?.speakerModel) return;
+            const name = nameInput.value.trim() || uiText('label:untitled');
+            if (name === measurement.name) {
+                nameInput.value = name;
+                return;
+            }
+            const operation = startSpeakerResultOperation('rename', measurement, () =>
+                dataStorage.updateMeasurement(measurement.id, { name }));
+            if (!operation) {
+                nameInput.value = measurement.name;
+                this.showNotification(uiText('message:speakerDistortionWaitForUpdate'));
+                return;
+            }
+            this.analysisController.refresh();
+            try {
+                if (!await operation.completion) {
+                    throw new Error('The renamed measurement was not written to storage.');
+                }
+            } catch (error) {
+                console.error('Could not rename the speaker distortion measurement:', error);
+                this.showNotification(uiText('error:speakerDistortionSaveFailed'), 'error');
+            } finally {
+                if (this.selectedMeasurementId === measurement.id) {
+                    nameInput.value = dataStorage.getMeasurementById(measurement.id)?.name ?? measurement.name;
+                }
+                this.analysisController.refresh();
+            }
+        });
+    }
+
+    /** `button:excludeRattle` of the Distortion Diagnosis tab: refit in the Distortion tab. */
+    excludeRattle(measurement, hz) {
+        this.analysisController.selectTab('distortion');
+        return this.analysisController.speakerPanel?.excludeRattle(measurement, hz);
     }
 
     /**
@@ -362,23 +461,23 @@ export class UIManager {
         return this.analysisController?.refresh();
     }
 
-    /**
-     * Start a new measurement workflow
-     */
+    /** Keeps the edited result selected until the user confirms discarding the changes. */
+    confirmDiscardBeforeNewMeasurement(continueToMeasurement) {
+        if (!this.hasUnsavedChanges) return false;
+        this.dialogController.showConfirmation(
+            i18n.t('confirm:discardChanges') || 'You have unsaved changes. Discard changes and continue?',
+            false
+        );
+        this.pendingAction = () => {
+            this.discardChanges();
+            continueToMeasurement();
+        };
+        return true;
+    }
+
+    /** Starts a new frequency-response measurement. */
     async startNewMeasurement() {
-        // Check for unsaved changes first
-        if (this.hasUnsavedChanges) {
-            this.dialogController.showConfirmation(
-                i18n.t('confirm:discardChanges') || 'You have unsaved changes. Discard changes and continue?',
-                false
-            );
-            // Set up a pending action to continue after user confirmation
-            this.pendingAction = () => {
-                this.rollbackMeasurementChanges();
-                this.startNewMeasurement(); // Re-call the function after confirmation
-            };
-            return;
-        }
+        if (this.confirmDiscardBeforeNewMeasurement(() => this.startNewMeasurement())) return;
 
         const noiseChannelMode = document.getElementById('noiseChannelMode');
         const autoNoiseChannelMode = noiseChannelMode?.querySelector('input[value="auto"]');

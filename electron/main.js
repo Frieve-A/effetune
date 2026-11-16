@@ -1488,7 +1488,10 @@ async function initializeApp() {
       const { openHomeDeviceId, upnpAvDeviceId } = openHomeControlHost.ensureDeviceId();
       return [openHomeDeviceId, upnpAvDeviceId].filter(Boolean).map(id => `uuid:${id}`);
     },
-    onDiagnostic: (diagnostic, detail) => console.error('Network output diagnostic:', diagnostic, detail),
+    // Exceptions keep their stack; a plain description is an expected event the host recovers from on its own.
+    onDiagnostic: (diagnostic, detail) => detail instanceof Error
+      ? console.error('Network output diagnostic:', diagnostic, detail)
+      : console.warn('Network output:', diagnostic, detail),
     onStatus: status => {
       const window = constants.getMainWindow();
       if (window?.webContents && !window.webContents.isDestroyed()) {

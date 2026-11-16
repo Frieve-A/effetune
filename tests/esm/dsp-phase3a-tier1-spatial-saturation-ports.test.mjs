@@ -38,7 +38,7 @@ const ports = [
     hash: 0x39cb58fd,
     floatCount: 3,
     caseCount: 16,
-    jsEngineHash: '855a05af21f6cbb6d9195a9d3ac6a734de6e35645e68c532763fcdef15a5def9'
+    jsEngineHash: '741ead0d7d35168644084c65be55670ec582d2771730adf158028899d30005a9'
   },
   {
     directory: 'saturation/saturation',
@@ -46,7 +46,7 @@ const ports = [
     hash: 0xae9fd2f7,
     floatCount: 5,
     caseCount: 16,
-    jsEngineHash: '5ad0d787a93e93fdfe9c655ac62a4d18db33cf209dc8b8a84761bc24aa64a232'
+    jsEngineHash: '23cab6e2fd34a56ef32a5a3f6a1bf7d751fc1c82fec45adfc0b3841452a40412'
   }
 ];
 

@@ -1,4 +1,4 @@
-import { peqChannelTokenFor } from '../audio-utils/channel-selection.js';
+import { channelDisplayLabel, channelIndexOf, peqChannelTokenFor } from '../audio-utils/channel-selection.js';
 
 const PEQ_DESCRIPTORS = {
     five: {
@@ -77,6 +77,30 @@ export function buildPEQClipboardPayload(measurement, bandCount, selectedChannel
 export function buildPerChannelPEQClipboardPayload(perChannelParameters, bandCount) {
     return JSON.stringify(perChannelParameters.map(({ channel, peqParams }) =>
         buildPEQEffect(peqParams, peqChannelTokenFor(channel), bandCount)), null, 2);
+}
+
+// Room EQ reads saved measurements by id; a multichannel measurement is exposed to it
+// as one virtual measurement per channel (see js/measurement-store/client.js).
+export function buildRoomEqClipboardPayload(measurement) {
+    const effect = { nm: 'Room EQ', en: true };
+    const channels = Array.isArray(measurement.outputChannels) ? measurement.outputChannels : [];
+    if (channels.length > 1) {
+        let highestIndex = 0;
+        for (const channel of channels) {
+            const index = channelIndexOf(channel);
+            effect[`ms${index}`] = `${measurement.id}::ch=${channel}`;
+            effect[`mn${index}`] = `${measurement.name} [${channelDisplayLabel(channel)}]`;
+            if (index > highestIndex) highestIndex = index;
+        }
+        // Slots follow the output channels from Ch 1; channels past Ch 2 need the all-channel routing.
+        if (highestIndex >= 2) effect.ch = 'A';
+    } else {
+        const channel = selectedPEQChannelToken(measurement);
+        if (channel) effect.ch = channel;
+        effect.ms = measurement.id;
+        effect.mn = measurement.name;
+    }
+    return JSON.stringify([effect], null, 2);
 }
 
 export async function copyPEQClipboardPayload(measurement, bandCount, writeText, selectedChannel) {

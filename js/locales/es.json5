@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "Este equipo",
   "dialog.config.networkOutput.delay": "Retardo (ms)",
   "dialog.config.networkOutput.resync": "Resincronizar",
-  "dialog.config.networkOutput.resyncHelp": "Reinicia todos los altavoces a la vez. Úselo si dejan de sonar sincronizados.",
+  "dialog.config.networkOutput.resyncHelp": "Vuelve a medir el retardo de los altavoces y los realinea. La reproducción continúa y la sincronía cambia una sola vez, cuando termina la medición. Los altavoces cuyo retardo no se puede medir se reconectan, por lo que se interrumpen brevemente.",
+  "dialog.config.networkOutput.syncing": "Sincronizando altavoces…",
   "dialog.config.networkOutput.status.searching": "Buscando",
   "dialog.config.networkOutput.status.connecting": "Conectando",
   "dialog.config.networkOutput.status.playing": "Reproduciendo",
@@ -950,12 +951,18 @@
   "bassManagement.error.design": "No se pudieron preparar los filtros de Bass Management. Reduce Taps y vuelve a intentarlo.",
   "firCrossover.error.design": "No se pudieron diseñar los filtros de FIR Crossover. Prueba con menos Taps o ajustes menos extremos.",
   "fiveBandFirPeq.error.design": "No se pudo diseñar el filtro de 5Band FIR PEQ. Prueba con menos Taps o ajustes menos extremos.",
+  "headphoneEq.error.design": "No se pudo diseñar el filtro de corrección de Headphone EQ. Prueba con menos Taps o vuelve a cargar la medición.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "No se pudo diseñar el filtro. Prueba con otro ajuste de Taps.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "No se pudo diseñar el filtro. Prueba con otro ajuste de Taps.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "No se pudo preparar la corrección de los altavoces para esta exportación porque su medición no está en este dispositivo. Mide la distorsión de los altavoces en este dispositivo o elige otra medición, o desactiva el efecto para la exportación.",
+
+  // Controller mapping
   "midi.title": "Ajustes de asignación de controladores",
   "midi.openSettings": "Asignación de controladores...",
   "midi.devices": "Dispositivos MIDI", "midi.gamepads": "Mandos", "midi.mappings": "Asignaciones",

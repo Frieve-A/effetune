@@ -485,18 +485,17 @@ class HiPassFilterPlugin extends PluginBase {
 
     const dbRange = [-60, 12];
     const totalDbSpan = dbRange[1] - dbRange[0];
-    const gridDBs = [-60, -48, -36, -24, -12, 0];
+    // Interior grid lines only; the -60 dB bound sits on the canvas edge.
+    const gridDBs = [-48, -36, -24, -12, 0];
     gridDBs.forEach(db => {
       const y = height * (1 - (db - dbRange[0]) / totalDbSpan);
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
-      if (db > -60) {
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.textAlign = "right";
-        ctx.fillText(`${db}`, 48, y + 4);
-      }
+      ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+      ctx.textAlign = "right";
+      ctx.fillText(`${db}`, 48, y + 4);
     });
 
     ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');

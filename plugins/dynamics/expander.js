@@ -623,8 +623,6 @@ class ExpanderPlugin extends PluginBase {
         // Draw grid and labels at dB positions
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.font = '20px Arial';
 
         [-48, -36, -24, -12].forEach(db => {
             const x = ((db + 60) / 60) * width;
@@ -639,12 +637,6 @@ class ExpanderPlugin extends PluginBase {
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-
-            ctx.textAlign = 'right';
-            ctx.fillText(`${db}dB`, 80, y + 6);
-
-            ctx.textAlign = 'center';
-            ctx.fillText(`${db}dB`, x, height - 40);
         });
 
         // Draw transfer function
@@ -662,17 +654,30 @@ class ExpanderPlugin extends PluginBase {
         }
         ctx.stroke();
 
+        // Tick values are drawn after the curve so it never covers them
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        // The 400 px canvas is shown at 200 CSS px, so fonts are doubled: 12 px ticks and 14 px titles.
+        ctx.font = '24px Arial';
+        [-48, -36, -24, -12].forEach(db => {
+            const x = ((db + 60) / 60) * width;
+            const y = height - ((db + 60) / 60) * height;
+            ctx.textAlign = 'right';
+            ctx.fillText(`${db}`, 80, y + 8);
+            ctx.textAlign = 'center';
+            ctx.fillText(`${db}`, x, height - 40);
+        });
+
         // Draw axis labels
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
 
-        ctx.fillText('in', width / 2, height - 5);
+        ctx.fillText('Input Level (dB)', width / 2, height - 7);
 
         ctx.save();
         ctx.translate(20, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('out', 0, 0);
+        ctx.fillText('Output Level (dB)', 0, 0);
         ctx.restore();
 
         const frame = (this._readoutFrame ??= {});
@@ -709,7 +714,7 @@ class ExpanderPlugin extends PluginBase {
         return totalGain < -60 ? -60 : (totalGain > 20 ? 20 : totalGain);
     }
 
-    // Reads the transfer curve at canvas pixel x; the boost strip on the left is outside the plot.
+    // Reads the transfer curve at canvas pixel x; the boost strip on the right is outside the plot.
     _readGraph(x) {
         const frame = this._readoutFrame;
         if (!frame?.valid) return null;
@@ -736,7 +741,11 @@ class ExpanderPlugin extends PluginBase {
         const width = canvas.width;
         const height = canvas.height;
 
+        // The strip sits on the right edge so it never covers the Y-axis title and tick values.
         const meterWidth = 32;
+        const meterX = width - meterWidth;
+        ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
+        ctx.fillRect(meterX, 0, meterWidth, height);
 
         // Clamp based on ratio: expansion (ratio > 1) or boost (ratio < 1)
         let clampedGb;
@@ -754,10 +763,10 @@ class ExpanderPlugin extends PluginBase {
             // Draw direction based on ratio: boost (ratio > 1) from bottom up, reduction (ratio < 1) from top down
             if (this.rt < 1.0) {
                 // Boost: draw from bottom up (current behavior)
-                ctx.fillRect(0, height - boostHeight, meterWidth, boostHeight);
+                ctx.fillRect(meterX, height - boostHeight, meterWidth, boostHeight);
             } else {
                 // Reduction: draw from top down (same as compressor)
-                ctx.fillRect(0, 0, meterWidth, boostHeight);
+                ctx.fillRect(meterX, 0, meterWidth, boostHeight);
             }
         }
     }
@@ -808,7 +817,7 @@ class ExpanderPlugin extends PluginBase {
         this._graphReadout = window.GraphReadout?.attach({
             mount: graphContainer,
             surface: canvas,
-            plot: () => ({ left: this.hasLocalAudio !== false ? 32 : 0, top: 0, width: canvas.width - (this.hasLocalAudio !== false ? 32 : 0), height: canvas.height }),
+            plot: () => ({ left: 0, top: 0, width: canvas.width - (this.hasLocalAudio !== false ? 32 : 0), height: canvas.height }),
             read: x => this._readGraph(x),
             crosshair: 'xy'
         });

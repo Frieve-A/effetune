@@ -130,18 +130,6 @@ test('mobile EQ band selectors show one band and preserve edits across layout ch
     }
   });
 
-const fontSizes = {
-  ChannelDividerPlugin: { tick: 11, axis: 13 },
-  FIRCrossoverPlugin: { tick: 11, axis: 13 },
-  FiveBandDynamicEQ: { tick: 12, axis: 13 },
-  SubSynthPlugin: { tick: 11, axis: 13 }
-};
-
-function expectedFontSize(name, svg) {
-  if (svg) return { tick: 10, axis: 10 };
-  return fontSizes[name] || { tick: 12, axis: 14 };
-}
-
 function rectangleMismatches(actual, expected) {
   return ['left', 'top', 'right', 'bottom']
     .filter(edge => Math.abs(actual[edge] - expected[edge]) >= 0.02)
@@ -173,6 +161,7 @@ async function loadTargetScripts(page) {
   for (const path of [
     'plugins/theme-palette.js',
     'plugins/plugin-base.js',
+    'plugins/fir-asset-eq.js',
     'plugins/graph-point-interaction.js',
     'plugins/frequency-axis.js',
     'plugins/spectrum-overlay.js',
@@ -289,20 +278,6 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                 x: axisGraph.getAttribute('data-x-axis-title'),
                 y: axisGraph.getAttribute('data-y-axis-title')
               } : null;
-              const overlayAxisTitle = instance.axisTitle;
-              const overlayAxisTitleRect = overlayAxisTitle ? rect(overlayAxisTitle) : null;
-              const overlayAxisTitleStyle = overlayAxisTitle
-                ? (() => {
-                    const style = getComputedStyle(overlayAxisTitle);
-                    return { fontSize: style.fontSize, fontFamily: style.fontFamily };
-                  })()
-                : null;
-              const leftAxisTitleStyle = axisGraph
-                ? (() => {
-                    const style = getComputedStyle(axisGraph, '::before');
-                    return { fontSize: style.fontSize, fontFamily: style.fontFamily };
-                  })()
-                : null;
               const svgLabels = [...plot.querySelectorAll('text')].map(element => element.textContent || '');
               const originalAxisLabels = [...graphCanvasLabels, ...svgLabels];
               const isDbUnitTick = text => /^[+-]?\d+(?:\.\d+)?\s*dB$/i.test(text.trim());
@@ -400,7 +375,7 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                 .filter(control => overlap(label, control.rect))
                 .map(control => ({ label: tickLabels[index].text, labelRect: label, control })));
               const title = calls.labels.find(label => label.text === 'Level (dBFS)');
-              const titleRect = overlayAxisTitleRect || {
+              const titleRect = {
                 left: canvas.right - 4 - title.ascent / dpr,
                 top: (canvas.top + canvas.bottom) / 2 - title.width / (2 * dpr),
                 right: canvas.right - 4 + title.descent / dpr,
@@ -415,7 +390,6 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                     const hidden = {
                       canvas: getComputedStyle(instance.canvas).display,
                       button: getComputedStyle(instance.button).display,
-                      axisTitle: getComputedStyle(instance.axisTitle).display,
                       legendRight: rect(root.querySelector('.graph-readout-legend')).right
                     };
                     plugin._setResponseView('frequency');
@@ -434,7 +408,6 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                   Object.keys(control.rect).every(edge => Math.abs(control.rect[edge] - original.rect[edge]) < 0.02);
               }) && graphControls().length === originalControls.length;
               const removedWhenOff = !root.contains(instance.canvas);
-              const axisTitleRemovedWhenOff = !overlayAxisTitle || !root.contains(overlayAxisTitle);
               const disposedLegendRight = name === 'RoomEqPlugin'
                 ? await (async () => {
                     instance.enable();
@@ -447,30 +420,17 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
               return {
                 canvas, button, icon: iconRect, iconStyles: spectrumIconStyles,
                 plot: plotRect, response: responseRect,
-                inset: instance.target.inset, styles: canvasStyles,
+                styles: canvasStyles,
                 buttonCollisions, scaleCollisions, titleCollisions, buttonTitleCollision,
                 originalAxisUnitLabels: originalAxisLabels.filter(isDbUnitTick),
                 originalAxisNumericTicks: originalAxisLabels.filter(isNumericTick),
                 originalAxisTitles,
-                overlayAxisTitle: overlayAxisTitle ? {
-                  text: overlayAxisTitle.textContent,
-                  rect: overlayAxisTitleRect,
-                  style: overlayAxisTitleStyle,
-                  leftStyle: leftAxisTitleStyle
-                } : null,
                 originalLegendRight, roomHover, disposedLegendRight,
-                calls, nonFrequency, removedWhenOff, axisTitleRemovedWhenOff, controlsRestored
+                calls, nonFrequency, removedWhenOff, controlsRestored
               };
             }, { name, id: index + 1, responseSelector: definition.response || null });
 
-            const expected = definition.response || result.inset === 0
-              ? result.response || result.plot
-              : {
-                  left: result.plot.left + result.inset,
-                  top: result.plot.top + result.inset,
-                  right: result.plot.right - result.inset,
-                  bottom: result.plot.bottom - result.inset
-                };
+            const expected = result.response || result.plot;
             const mismatch = rectangleMismatches(result.canvas, expected);
             if (mismatch.length) geometryMismatches.push({ name, width, dpr, mismatch });
             assert.ok(result.button.left >= expected.left && result.button.right <= expected.right &&
@@ -506,41 +466,26 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
               ['fill', 'rgba(140, 190, 255, 0.55)'],
               ['stroke', 'rgba(190, 190, 190, 0.9)']
             ], `${name} comparison must paint change before the After line`);
-            assert.deepEqual(result.calls.labels.map(({ text }) => text), result.inset
-              ? ['-24', '-48', '-72']
-              : ['-24', '-48', '-72', 'Level (dBFS)'], `${name} scale`);
-            const sizes = expectedFontSize(name, Boolean(definition.response));
-            const tickFont = `${sizes.tick * dpr}px Arial`;
-            const axisFont = `${sizes.axis * dpr}px Arial`;
+            assert.deepEqual(result.calls.labels.map(({ text }) => text),
+              ['-24', '-48', '-72', 'Level (dBFS)'], `${name} scale`);
+            const tickFont = `${12 * dpr}px Arial`;
+            const axisFont = `${14 * dpr}px Arial`;
             for (const label of result.calls.labels.slice(0, 3)) {
               assert.deepEqual(
                 { font: label.font, textAlign: label.textAlign, baseline: label.baseline },
                 { font: tickFont, textAlign: 'right', baseline: 'middle' }, `${name} tick font`
               );
             }
-            if (result.inset) {
-              assert.equal(result.overlayAxisTitle.text, 'Level (dBFS)', `${name} axis title text`);
-              assert.deepEqual(result.overlayAxisTitle.style, result.overlayAxisTitle.leftStyle,
-                `${name} axis title font must match the left axis`);
-              const titleCenterX = (result.overlayAxisTitle.rect.left + result.overlayAxisTitle.rect.right) / 2;
-              const titleCenterY = (result.overlayAxisTitle.rect.top + result.overlayAxisTitle.rect.bottom) / 2;
-              assert.ok(Math.abs(result.plot.right - titleCenterX - 10) < 0.02,
-                `${name} right axis title must mirror the left 10px inset`);
-              assert.ok(Math.abs((result.plot.top + result.plot.bottom) / 2 - titleCenterY) < 0.02,
-                `${name} right axis title must be vertically centered`);
-              assert.deepEqual(result.calls.transforms, [], `${name} axis title must use the shared DOM layout`);
-            } else {
-              assert.deepEqual(
-                {
-                  font: result.calls.labels[3].font,
-                  textAlign: result.calls.labels[3].textAlign,
-                  baseline: result.calls.labels[3].baseline
-                },
-                { font: axisFont, textAlign: 'center', baseline: 'alphabetic' }, `${name} axis title font`
-              );
-              assert.deepEqual(result.calls.transforms.map(([method]) => method),
-                ['save', 'translate', 'rotate', 'restore'], `${name} axis title transform`);
-            }
+            assert.deepEqual(
+              {
+                font: result.calls.labels[3].font,
+                textAlign: result.calls.labels[3].textAlign,
+                baseline: result.calls.labels[3].baseline
+              },
+              { font: axisFont, textAlign: 'center', baseline: 'alphabetic' }, `${name} axis title font`
+            );
+            assert.deepEqual(result.calls.transforms.map(([method]) => method),
+              ['save', 'translate', 'rotate', 'restore'], `${name} axis title transform`);
             assert.equal(result.buttonTitleCollision, false, `${name} title must not overlap its toggle`);
             assert.deepEqual(result.originalAxisUnitLabels, [], `${name} original left axis must not append dB`);
             assert.ok(result.originalAxisNumericTicks.length >= 3,
@@ -551,11 +496,10 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
               `${name} original graph axis titles`
             );
             assert.equal(result.removedWhenOff, true, `${name} must hide the overlay when off`);
-            assert.equal(result.axisTitleRemovedWhenOff, true, `${name} must remove the axis title when off`);
             assert.equal(result.controlsRestored, true, `${name} graph controls must return to their original position when off`);
             if (name === 'RoomEqPlugin') {
               assert.deepEqual(result.nonFrequency, {
-                canvas: 'none', button: 'none', axisTitle: 'none', legendRight: result.originalLegendRight
+                canvas: 'none', button: 'none', legendRight: result.originalLegendRight
               },
                 'Room EQ must hide the overlay outside its frequency graph');
               assert.match(result.roomHover.cursor, /(?:Hz|kHz)$/, 'Room EQ hover must expand its legend');
@@ -604,6 +548,12 @@ test('Frequency Preview preserves visible graphs through the real canvas CSS cas
           await page.evaluate(value => { document.body.style.zoom = value; }, zoom);
           await loadTargetScripts(page);
           await page.addScriptTag({ content: await fs.readFile('plugins/frequency-preview.js', 'utf8') });
+          // The preview canvas covers the whole graph, axis titles included. The titles are
+          // rasterized differently once they sit above a composited canvas, so the pixel
+          // comparison leaves them out.
+          await page.addStyleTag({
+            content: '.graph-axis-titled::before, .graph-axis-titled::after { visibility: hidden; }'
+          });
           for (const name of ['BandPassFilterPlugin', 'FiveBandPEQPlugin']) {
             await page.evaluate(async name => {
               window.previewFixture?.instance?.dispose();

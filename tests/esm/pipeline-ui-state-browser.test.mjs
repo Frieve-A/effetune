@@ -246,7 +246,7 @@ test('locked custom EQ editors retain passive graph events and display-only cont
         ]) {
             const page = await browser.newPage({ viewport: { width: 1440, height: 1200 }, hasTouch: true });
             await mount(page);
-            for (const script of ['graph-point-interaction', 'graph-readout', file]) {
+            for (const script of ['graph-point-interaction', 'graph-readout', 'fir-asset-eq', file]) {
                 await page.addScriptTag({ content: read(`../../plugins/${script}.js`) });
             }
             await page.addStyleTag({ content: read(`../../plugins/${file}.css`) + read('../../plugins/graph-readout.css') });

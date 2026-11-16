@@ -19,10 +19,10 @@ Em ambos os casos, o EffeTune registra suas respostas e informa um p-valor para 
 
 O teste compara os dois pipelines descritos em [Usando Recursos de Pipeline AB](README.md#usando-recursos-de-pipeline-ab):
 
-- O **Pipeline A** e o **Pipeline B** devem conter pelo menos um efeito cada.
+- O **Pipeline B** precisa existir. Qualquer um dos pipelines pode estar vazio, então você também pode comparar um efeito com o som sem nenhum processamento.
 - Coloque uma configuração no Pipeline A e a outra no Pipeline B, mantendo todo o restante idêntico (por exemplo, *Com EQ* vs. *Sem EQ*) para que apenas a diferença desejada seja testada.
 - Lembre-se de qual configuração você colocou no Pipeline A e qual colocou no Pipeline B. Em um teste de preferência A/B, o resultado informa se o Pipeline A ou o Pipeline B foi preferido de forma significativa.
-- A opção “Teste duplo-cego” do menu e os botões de início permanecem desativados até que o Pipeline A e o Pipeline B contenham pelo menos um efeito cada.
+- A opção “Teste duplo-cego” do menu e os botões de início permanecem desativados até que o Pipeline B seja criado.
 
 ## Abrindo o Teste
 

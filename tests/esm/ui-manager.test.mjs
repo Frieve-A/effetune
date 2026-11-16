@@ -1998,23 +1998,18 @@ test('pipeline menus follow copy sources and blind test availability after edits
     manager.updateEditButtons();
     assert.equal(menuRefreshes, 1);
 
+    // An empty pipeline still counts as present for the blind test.
+    audioManager.pipelineA = [];
     audioManager.pipelineB = [];
     manager.updateEditButtons();
-    assertDisabled(false, false, true);
-    assert.equal(menuRefreshes, 2);
-
-    audioManager.pipelineB = [createPlugin('B')];
-    manager.updateEditButtons();
     assertDisabled(false, false, false);
-
-    audioManager.pipelineA = [];
-    manager.updateEditButtons();
-    assertDisabled(false, false, true);
+    assert.equal(menuRefreshes, 1);
 
     audioManager.pipelineA = [createPlugin('A')];
     audioManager.pipelineB = null;
     audioManager.listeners.get('pipelineChanged')({ pipeline: 'A' });
     assertDisabled(false, true, true);
+    assert.equal(menuRefreshes, 2);
 
     audioManager.pipelineB = [createPlugin('B')];
     audioManager.listeners.get('pipelineChanged')({ pipeline: 'B' });

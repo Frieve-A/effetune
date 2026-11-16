@@ -18,6 +18,22 @@ const ZERO_OUTPUT_PROOF_KINDS = new Set([
     'post-dominating-mute'
 ]);
 
+// Plugins whose result is drawn rather than heard, so muting the audio after
+// them does not make their processing unobservable. Keep in sync with
+// DISPLAY_ONLY_DSP_TYPES in plugins/audio-processor.js.
+export const DISPLAY_DSP_PLUGIN_TYPES = new Set([
+    'AnalogMeterPlugin',
+    'ChromaSpiralPlugin',
+    'LevelMeterPlugin',
+    'NoteSpectrogramPlugin',
+    'OscilloscopePlugin',
+    'PitchMeterPlugin',
+    'RhythmAnalyzerPlugin',
+    'SpectrogramPlugin',
+    'SpectrumAnalyzerPlugin',
+    'StereoMeterPlugin'
+]);
+
 function deepFreeze(value) {
     if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
     for (const child of Object.values(value)) deepFreeze(child);
@@ -190,6 +206,12 @@ export function getZeroOutputProof(topologySnapshot) {
         plugin.inputBus === 0 && plugin.outputBus === 0);
     const lastPlugin = reachable.at(-1);
     if (serialMainBus && lastPlugin?.type === 'MutePlugin') {
+        // A trailing Mute is also how the app is used as a pure analyzer. The
+        // proof lets the worklet skip the whole pipeline, which would freeze
+        // every analyzer feeding on the audio ahead of the Mute.
+        if (reachable.some(plugin => DISPLAY_DSP_PLUGIN_TYPES.has(plugin.type))) {
+            return createZeroOutputProof(snapshot, false, null, 'display-dsp-before-mute');
+        }
         return createZeroOutputProof(snapshot, true, 'post-dominating-mute', null);
     }
     return createZeroOutputProof(snapshot, false, null, serialMainBus

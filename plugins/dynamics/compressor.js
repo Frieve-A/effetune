@@ -667,8 +667,6 @@ class CompressorPlugin extends PluginBase {
         // Draw grid and labels at dB positions
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = 1;
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.font = '20px Arial';
 
         [-48, -36, -24, -12].forEach(db => {
             const x = ((db + 60) / 60) * width;
@@ -683,12 +681,6 @@ class CompressorPlugin extends PluginBase {
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-
-            ctx.textAlign = 'right';
-            ctx.fillText(`${db}dB`, 80, y + 6);
-
-            ctx.textAlign = 'center';
-            ctx.fillText(`${db}dB`, x, height - 40);
         });
 
         // Draw transfer function
@@ -706,17 +698,30 @@ class CompressorPlugin extends PluginBase {
         }
         ctx.stroke();
 
+        // Tick values are drawn after the curve so it never covers them
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        // The 400 px canvas is shown at 200 CSS px, so fonts are doubled: 12 px ticks and 14 px titles.
+        ctx.font = '24px Arial';
+        [-48, -36, -24, -12].forEach(db => {
+            const x = ((db + 60) / 60) * width;
+            const y = height - ((db + 60) / 60) * height;
+            ctx.textAlign = 'right';
+            ctx.fillText(`${db}`, 80, y + 8);
+            ctx.textAlign = 'center';
+            ctx.fillText(`${db}`, x, height - 40);
+        });
+
         // Draw axis labels
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = '28px Arial';
         ctx.textAlign = 'center';
 
-        ctx.fillText('in', width / 2, height - 5);
+        ctx.fillText('Input Level (dB)', width / 2, height - 7);
 
         ctx.save();
         ctx.translate(20, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('out', 0, 0);
+        ctx.fillText('Output Level (dB)', 0, 0);
         ctx.restore();
 
         const frame = (this._readoutFrame ??= {});

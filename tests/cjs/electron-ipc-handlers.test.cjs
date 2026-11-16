@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
+const { runInNewContext } = require('node:vm');
 const fileAccess = require('../../electron/file-access.cjs');
 const { EventEmitter } = require('node:events');
 const {
@@ -102,6 +103,9 @@ function createMainWindow(calls, options = {}) {
       const next = loadFileResults.shift();
       if (next instanceof Error) throw next;
       return next;
+    },
+    setMenuBarVisibility(visible) {
+      calls.push(['window.setMenuBarVisibility', visible]);
     },
     isDestroyed() {
       return Boolean(options.destroyed);
@@ -434,6 +438,7 @@ async function withHarness(options, callback) {
         }, async () =>
           withPatchedPropertyAsync(global, 'setTimeout', timer, async () =>
             withModuleLoadStubAsync(harness.stubs, async () => {
+              loadFreshModule('../../electron/visualizer-feed.js');
               const moduleUnderTest = loadFreshModule('../../electron/ipc-handlers.js');
               return callback({ ...harness, moduleUnderTest });
             })
@@ -1277,15 +1282,15 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
 
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: true });
-    const defaultMenu = electron.Menu.getApplicationMenu();
-    assert.equal(defaultMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
-    assert.equal(defaultMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
-    assert.equal(defaultMenu.template[2].submenu[8].accelerator, 'CommandOrControl+Shift+V');
-    assert.equal(defaultMenu.template[2].submenu[9].type, 'checkbox');
-    assert.equal(defaultMenu.template[2].submenu[9].checked, false);
-    assert.equal(defaultMenu.getMenuItemById('settings.audioDevices').label, 'Audio Configuration...');
-    assert.equal(defaultMenu.getMenuItemById('file.doubleBlindTest').enabled, false);
-    clickMenu(defaultMenu);
+    const restoredMenu = electron.Menu.getApplicationMenu();
+    assert.equal(restoredMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
+    assert.equal(restoredMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
+    assert.equal(restoredMenu.template[2].submenu[8].accelerator, 'CommandOrControl+Shift+V');
+    assert.equal(restoredMenu.template[2].submenu[9].type, 'checkbox');
+    assert.equal(restoredMenu.template[2].submenu[9].checked, true);
+    assert.equal(restoredMenu.getMenuItemById('settings.audioDevices').label, 'Audio Configuration...');
+    assert.equal(restoredMenu.getMenuItemById('file.doubleBlindTest').enabled, false);
+    clickMenu(restoredMenu);
     await Promise.resolve();
     assert.deepEqual(
       calls.find(call => call[0] === 'webContents.send' && call[1] === 'open-visualizer-view'),
@@ -1425,18 +1430,21 @@ test('Measurement open and Back navigation deduplicate in-flight loads and consu
   });
 });
 
-test('Measurement navigation failures preserve a previously completed restore', async () => {
+test('A cancelled Measurement Back keeps the menu hidden and the pipeline ready to restore', async () => {
+  const cancelledLoad = deferred();
   await withHarness({
+    platform: 'win32',
     mainWindowOptions: {
       loadFileResults: [
         undefined,
         new Error('second open failed'),
-        new Error('first Back failed'),
+        cancelledLoad.promise,
         undefined
       ]
     }
-  }, async ({ calls, ipcMain, moduleUnderTest }) => {
+  }, async ({ calls, electron, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
+    moduleUnderTest.createMenu(createMenuState());
     const open = ipcMain.handlers.get('open-frequency-response-measurement');
     const back = ipcMain.handlers.get('navigate-to-main');
 
@@ -1447,18 +1455,65 @@ test('Measurement navigation failures preserve a previously completed restore', 
       success: false,
       error: 'Acoustic Measurement could not be opened.'
     });
-    assert.deepEqual(await back(), {
-      success: false,
-      error: 'first Back failed'
+    const renderer = new EventTarget();
+    const backButton = new EventTarget();
+    const confirmation = deferred();
+    let confirmLeave = async () => false;
+    let cancelledBack;
+    renderer.electronAPI = {
+      hideApplicationMenu: async () => ipcMain.handlers.get('hide-application-menu')(),
+      restoreDefaultMenu: async () => ipcMain.handlers.get('restore-default-menu')(),
+      navigateToMain: () => {
+        cancelledBack = back();
+        return cancelledBack;
+      }
+    };
+    const html = fs.readFileSync(path.resolve(__dirname, '../../features/measurement/measurement.html'), 'utf8');
+    const moduleStart = '<script type="module">';
+    const navigationScript = html.slice(html.lastIndexOf(moduleStart) + moduleStart.length, html.lastIndexOf('</script>'));
+    const confirmationImport = "import { confirmSpeakerDistortionLeave } from './ui/speaker-distortion-setup.js';";
+    assert.ok(navigationScript.includes(confirmationImport));
+    runInNewContext(navigationScript.replace(confirmationImport, ''), {
+      window: renderer,
+      document: { getElementById: () => backButton },
+      confirmSpeakerDistortionLeave: () => confirmLeave(),
+      console
     });
-    assert.deepEqual(await back(), { success: true });
+    renderer.dispatchEvent(new Event('load'));
+    const menu = electron.Menu.getApplicationMenu();
+    const visibility = () => calls.filter(call => call[0] === 'window.setMenuBarVisibility').map(call => call[1]);
+    renderer.addEventListener('beforeunload', event => event.preventDefault(), { once: true });
+    assert.equal(renderer.dispatchEvent(new Event('beforeunload', { cancelable: true })), false);
+    assert.deepEqual(visibility(), [false]);
+    assert.equal(electron.Menu.getApplicationMenu(), menu);
+    assert.equal(menu.getMenuItemById('file.openMusicFile').enabled, false);
 
-    const successfulRestore = calls.find(call =>
-      call[0] === 'window.loadFile' &&
-      call[1] === 'effetune.html' &&
-      call[2]?.query?.restorePipeline === 'transient'
-    );
-    assert.ok(successfulRestore);
+    backButton.dispatchEvent(new Event('click'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(cancelledBack, undefined, 'Stay does not start navigation');
+    assert.equal(backButton.disabled, false);
+
+    confirmLeave = () => confirmation.promise;
+    backButton.dispatchEvent(new Event('click'));
+    assert.equal(cancelledBack, undefined, 'Back waits for the confirmation');
+    confirmation.resolve(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(cancelledBack);
+    assert.deepEqual(visibility(), [false]);
+    cancelledLoad.reject(new Error('ERR_ABORTED'));
+    assert.deepEqual(await cancelledBack, {
+      success: false,
+      error: 'ERR_ABORTED'
+    });
+    moduleUnderTest.refreshMenu();
+    assert.deepEqual(visibility(), [false]);
+    assert.equal(electron.Menu.getApplicationMenu(), menu);
+
+    assert.deepEqual(await back(), { success: true });
+    assert.deepEqual(visibility(), [false, true]);
+    assert.equal(electron.Menu.getApplicationMenu().getMenuItemById('file.openMusicFile').enabled, true);
+    const mainLoads = calls.filter(call => call[0] === 'window.loadFile' && call[1] === 'effetune.html');
+    assert.deepEqual(mainLoads.map(call => call[2]?.query?.restorePipeline), ['transient', 'transient']);
   });
 });
 
@@ -1507,7 +1562,7 @@ test('IPC handlers recover from menu, tray preset, navigation, URL, and audio-de
     });
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });
     assert.deepEqual(handlers.get('restore-default-menu')(), { success: false, error: 'build menu failed' });
-    assert.deepEqual(await handlers.get('navigate-to-main')(), { success: false, error: 'build menu failed' });
+    assert.deepEqual(await handlers.get('navigate-to-main')(), { success: false, error: 'load failed' });
     assert.deepEqual(await handlers.get('open-external-url')({}, 'https://example.test'), { success: false, error: 'doc failed' });
 
     constants.setMainWindow({ webContents: null });
@@ -1744,7 +1799,7 @@ test('IPC handlers report menu click rejections and recover from IPC errors', as
     await Promise.resolve();
   });
 
-  await withHarness({ throwSetMenu: true }, async ({ ipcMain, moduleUnderTest }) => {
+  await withHarness({ throwSetMenu: true, platform: 'darwin' }, async ({ ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
     assert.deepEqual(ipcMain.handlers.get('hide-application-menu')(), { success: false, error: 'set menu failed' });
   });
@@ -1777,3 +1832,36 @@ test('IPC handlers report menu click rejections and recover from IPC errors', as
     await Promise.resolve();
   });
 });
+
+for (const platform of ['win32', 'linux', 'darwin']) {
+  test(`Measurement keeps its menu hidden across menu refreshes on ${platform}`, async () => {
+    await withHarness({ platform }, async ({ calls, electron, ipcMain, moduleUnderTest }) => {
+      moduleUnderTest.registerIpcHandlers();
+      moduleUnderTest.createMenu();
+      const menu = electron.Menu.getApplicationMenu();
+      const visibility = () => calls.filter(call => call[0] === 'window.setMenuBarVisibility').map(call => call[1]);
+      const hiddenMenu = platform === 'darwin' ? null : menu;
+      const displays = electron.screen.getAllDisplays();
+      electron.screen.getAllDisplays = () => displays;
+
+      assert.deepEqual(ipcMain.handlers.get('hide-application-menu')(), { success: true });
+      // The visualizer feed refreshes the menu when display settings change.
+      displays.push({ id: 2, label: 'Second display', scaleFactor: 1, bounds: { width: 1280, height: 720 } });
+      moduleUnderTest.refreshMenu();
+      assert.deepEqual(ipcMain.handlers.get('update-application-menu')({}, createMenuState()), { success: true });
+      assert.equal(electron.Menu.getApplicationMenu(), hiddenMenu);
+      if (hiddenMenu) {
+        assert.equal(hiddenMenu.getMenuItemById('file.openMusicFile').enabled, false);
+        assert.deepEqual(visibility(), [false]);
+      }
+
+      assert.deepEqual(ipcMain.handlers.get('restore-default-menu')(), { success: true });
+      const restored = electron.Menu.getApplicationMenu();
+      assert.notEqual(restored, menu);
+      assert.equal(restored.getMenuItemById('file.openMusicFile').enabled, true);
+      assert.equal(restored.getMenuItemById('view.visualizerFeed').label, 'Feed X');
+      assert.equal(restored.getMenuItemById('view.visualizerFeed').enabled, true);
+      assert.deepEqual(visibility(), hiddenMenu ? [false, true] : []);
+    });
+  });
+}

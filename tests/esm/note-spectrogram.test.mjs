@@ -553,7 +553,7 @@ test('onset marks draw over history in both layouts with Volume on or off', asyn
                         if (markerPath.length === 3 && this.strokeStyle === `rgba(${background.join(', ')}, 1)`) {
                             events.push('border');
                         }
-                    }, fillText() {}, measureText: () => ({ width: 10 }),
+                    }, fillText() {}, strokeText() {}, measureText: () => ({ width: 10 }),
                     createRadialGradient: (...coordinates) => createGradient('radial', coordinates)
                 };
                 plugin.drawGraph();
@@ -1551,7 +1551,8 @@ test('Volume bars use theme-appropriate compositing without confidence sorting',
         const context = createVolumeContext();
         plugin.vl = true;
         plugin.cl = 'Rainbow';
-        plugin.mn = 24;
+        // B0 at the bottom keeps the C1 guide off the roll's bottom edge, where no grid line is drawn.
+        plugin.mn = 23;
         plugin.mx = 25;
         plugin.graphDpr = 2;
         plugin.writeColumn = 1;
@@ -1694,6 +1695,7 @@ test('Volume meter remains above the bars and graph-side in both layouts', async
                 }
             },
             fillText() {},
+            strokeText() {},
             measureText() { return { width: 10 }; }
         };
         plugin.drawGraph();
@@ -2085,6 +2087,7 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
         lineTo() {},
         stroke() { if (this.lineStart.x === 0) lines.push({ ...this.lineStart, color: this.strokeStyle }); },
         fillText() {},
+        strokeText() {},
         measureText() { return { width: 10 }; }
     };
     const { blackDepth } = FrequencyAxis.keyboardDepths(12 * 5, 1024);
@@ -2242,7 +2245,7 @@ test('pitch resolution switches between five-cell history and semitone bag rows'
 test('layouts rotate the same piano keyboard while keeping labels upright', async () => {
     let now = 1000;
     const plugin = await loadPlugin({ now: () => now });
-    const fills = [], images = [], labels = [], lines = [], outlines = [];
+    const fills = [], images = [], labels = [], lines = [], outlines = [], titles = [];
     const stack = [];
     let angle = 0, origin = [0, 0];
     const point = (x, y) => [
@@ -2272,8 +2275,11 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
             images.push({ source, start: point(x, y), end: point(x + width, y + height) });
         },
         fillText(text, x, y) {
-            labels.push({ text, position: point(x, y), angle, textBaseline: this.textBaseline });
+            // The time-axis title is collected apart from the keyboard labels.
+            (text === 'Time (s)' ? titles : labels)
+                .push({ text, position: point(x, y), angle, textBaseline: this.textBaseline });
         },
+        strokeText() {},
         measureText() {
             return { width: 10, actualBoundingBoxAscent: 5, actualBoundingBoxDescent: 2 };
         },
@@ -2336,6 +2342,11 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
         assert.ok(Math.abs(left - (30 + octave * 120)) < 1e-6);
     }
     assert.ok(labels.every(label => Math.abs(label.angle) < 1e-6));
+    // Horizontal: the time title is rotated at the left, centred along the roll.
+    const horizontalTitle = titles.at(-1);
+    assert.ok(Math.abs(horizontalTitle.angle + Math.PI / 2) < 1e-6);
+    assert.ok(horizontalTitle.position[0] < 30);
+    assert.ok(Math.abs(horizontalTitle.position[1] - rollHeight / 2) < 1e-6);
     assert.ok(labels.every(label => Math.abs(label.position[1] - 438) < 1e-6));
     assert.ok(labels.every(label => label.textBaseline === 'bottom'));
     labels.forEach((label, index) => {
@@ -2377,6 +2388,11 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
         Math.abs(key.center[0] - (880 - vertical.gutter + vertical.blackDepth / 2)) < 1e-6));
     assert.ok(verticalWhiteKeys.every(key => Math.abs(key.center[0] - (880 - vertical.gutter / 2)) < 1e-6));
     assert.ok(labels.every(label => Math.abs(label.angle) < 1e-6));
+    // Vertical: the time title is horizontal, centred under the roll.
+    const verticalTitle = titles.at(-1);
+    assert.ok(Math.abs(verticalTitle.angle) < 1e-6);
+    assert.ok(Math.abs(verticalTitle.position[0] - (880 - vertical.gutter) / 2) < 1e-6);
+    assert.ok(verticalTitle.position[1] > 420);
     assert.ok(labels.every(label =>
         Math.abs(label.position[0] - (880 - (vertical.gutter - vertical.blackDepth) / 2)) < 1e-6));
     const verticalRowHeight = plugin.canvas.height / (plugin.mx - plugin.mn + 1);
@@ -2442,7 +2458,8 @@ test('piano roll scrolls by monotonic fractional time and freezes across pauses'
         ...keyShadingStubs,
         fillRect() {},
         drawImage(...args) { drawCalls.push(args); },
-        beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {},
+        beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {}, strokeText() {},
+        save() {}, restore() {}, translate() {}, rotate() {},
         measureText() { return { width: 10 }; }
     };
     const rollWidth = plugin.canvas.width - FrequencyAxis.keyboardDepths(
@@ -2576,7 +2593,7 @@ test('pitch bands, white keys and Normal confidence gradients follow the theme',
             plugin.canvasCtx = {
         ...keyShadingStubs,
                 fillRect(x) { if (x > 0) fills.push(this.fillStyle); },
-                drawImage() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {},
+                drawImage() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {}, strokeText() {},
                 save() {}, restore() {}, translate() {}, rotate() {}, measureText() { return { width: 8 }; }
             };
             const displayCount = resolution === 'High' ? pitchCount : noteCount;

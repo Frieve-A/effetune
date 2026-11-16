@@ -518,7 +518,7 @@ class OscilloscopePlugin extends PluginBase {
         surface: this.canvas,
         plot: () => {
           const frame = this._readoutFrame;
-          return frame && { left: frame.left, top: 0, width: frame.width, height: frame.height };
+          return frame && { left: 0, top: 0, width: frame.width, height: frame.height };
         },
         read: x => this._readWaveform(x)
       });
@@ -1027,15 +1027,16 @@ class OscilloscopePlugin extends PluginBase {
       const showAxisNumbers = options?.showAxisNumbers !== false;
       const dpr = this.graphDpr || 1;
       const isNarrow = this.graphCssWidth < 500;
-      const leftMargin = showAxisNumbers ? (isNarrow ? 52 : 80) * dpr : 0;
       const factor = 1 / Math.pow(10, this.displayLevel / 20);
       const centerY = height / 2 - (this.verticalOffset * height / 2);
 
       const snapshot = this.scopeSnapshot;
       const displayEnd = snapshot?.rolling ? this.scopeDisplayEnd(now) : snapshot?.captureSampleCount;
       const transform = ctx.getTransform();
+      // A rolling (untriggered) trace scrolls, so its time axis carries no tick values.
+      const scrolling = !!snapshot?.rolling;
       const gridKey = [width, height, this.displayTime, this.displayLevel, this.verticalOffset,
-        dpr, isNarrow, showAxes, showAxisNumbers, options?.transparent,
+        dpr, isNarrow, scrolling, showAxes, showAxisNumbers, options?.transparent,
         ...['graph-bg-deep', 'graph-grid-subtle', 'graph-label', 'text-primary'].map(theme),
         transform.a, transform.b, transform.c, transform.d, transform.e, transform.f].join('|');
       const traceColor = theme('graph-trace');
@@ -1110,6 +1111,8 @@ class OscilloscopePlugin extends PluginBase {
 
           for (let tick = tickStart; tick <= tickEnd + tickStep * 0.5; tick += tickStep) {
             const y = centerY - (tick * factor) * (height / 2);
+            // A tick on the top or bottom edge is an axis bound, so it gets no line or value.
+            if (y <= height * 1e-6 || y >= height * (1 - 1e-6)) continue;
             if (showAxes) {
               ctx.beginPath();
               ctx.moveTo(0, y);
@@ -1118,7 +1121,7 @@ class OscilloscopePlugin extends PluginBase {
             }
             // Only draw text if it does not overlap the top or bottom edge.
             if (showAxisNumbers && y - textMargin >= 0 && y + textMargin <= height) {
-              label(tick.toFixed(decimals), leftMargin - (16 * dpr), y);
+              label(tick.toFixed(decimals), ((isNarrow ? 52 : 80) - 16) * dpr, y);
             }
           }
 
@@ -1128,21 +1131,22 @@ class OscilloscopePlugin extends PluginBase {
           ctx.strokeStyle = theme('graph-grid-subtle');
           ctx.lineWidth = dpr;
           const timeDivisions = isNarrow ? 5 : 10;
-          for (let i = 0; i <= timeDivisions; i++) {
-            const x = leftMargin + ((width - leftMargin) * i) / timeDivisions;
+          // Interior divisions only; the first and last fall on the canvas edges.
+          for (let i = 1; i < timeDivisions; i++) {
+            const x = (width * i) / timeDivisions;
             if (showAxes) {
               ctx.beginPath();
               ctx.moveTo(x, 0);
               ctx.lineTo(x, height);
               ctx.stroke();
             }
-            if (showAxisNumbers && i !== 0 && i !== timeDivisions) {
+            if (showAxisNumbers && !scrolling) {
               ctx.fillStyle = theme('graph-label');
               ctx.font = `${tickFontSize}px Arial`;
               ctx.textAlign = 'center';
               const seconds = this.displayTime >= 1;
               const time = (i / timeDivisions) * this.displayTime * (seconds ? 1 : 1000);
-              label(time.toFixed(2) + (seconds ? ' s' : ' ms'), x, height - ((isNarrow ? 30 : 40) * dpr));
+              label(time.toFixed(2), x, height - ((isNarrow ? 30 : 40) * dpr));
             }
           }
 
@@ -1151,12 +1155,11 @@ class OscilloscopePlugin extends PluginBase {
             ctx.fillStyle = theme('text-primary');
             ctx.font = `${(isNarrow ? 12 : 14) * dpr}px Arial`;
             ctx.textAlign = 'center';
-            label(this.displayTime >= 1 ? 'Time (s)' : 'Time (ms)',
-              leftMargin + (width - leftMargin) / 2, height - (10 * dpr));
+            label(this.displayTime >= 1 ? 'Time (s)' : 'Time (ms)', width / 2, height - (10 * dpr));
             ctx.save();
             ctx.translate((isNarrow ? 16 : 20) * dpr, height / 2);
             ctx.rotate(-Math.PI / 2);
-            label('Amplitude', 0, 0);
+            label('Amplitude (FS)', 0, 0);
             ctx.restore();
           }
         }
@@ -1179,32 +1182,31 @@ class OscilloscopePlugin extends PluginBase {
       const denominator = sampleCount > 1 ? sampleCount - 1 : 1;
       const firstBucket = snapshot?.rolling
         ? Math.floor((snapshot.endSample - 1) / snapshot.bucketSamples) - snapshot.bucketCount + 1 : 0;
-      const plotWidth = width - leftMargin;
       let signalRaster, signalOffset = 0;
       if (snapshot?.extrema) {
-        if (plotWidth > 0) {
-          const geometry = { width: plotWidth, height, factor, centerY, dpr };
+        if (width > 0) {
+          const geometry = { width, height, factor, centerY, dpr };
           if (snapshot.rolling) {
             signalRaster = this.updateRollingRaster(snapshot, geometry);
-            signalOffset = signalRaster.startColumn - (displayEnd - sampleCount) / (sampleCount / plotWidth);
+            signalOffset = signalRaster.startColumn - (displayEnd - sampleCount) / (sampleCount / width);
           } else {
-            const key = ['capture', plotWidth, height, factor, centerY, dpr].join('|');
+            const key = ['capture', width, height, factor, centerY, dpr].join('|');
             if (this.scopeRaster?.key !== key || this.scopeRaster.snapshot !== snapshot) {
               const mask = document.createElement('canvas');
-              mask.width = Math.ceil(plotWidth);
+              mask.width = Math.ceil(width);
               mask.height = height;
               this.paintEnvelopeColumns(mask.getContext('2d'), snapshot, 0,
-                sampleCount / plotWidth, 0, mask.width, geometry);
+                sampleCount / width, 0, mask.width, geometry);
               this.scopeRaster = { key, canvas: mask, snapshot };
             }
             signalRaster = this.scopeRaster;
           }
         }
-      } else if (displayBuffer && plotWidth > 0) {
-        const key = ['trace', plotWidth, height, factor, centerY, dpr].join('|');
+      } else if (displayBuffer && width > 0) {
+        const key = ['trace', width, height, factor, centerY, dpr].join('|');
         if (this.scopeRaster?.key !== key || this.scopeRaster.values !== displayBuffer) {
           const mask = document.createElement('canvas');
-          mask.width = Math.ceil(plotWidth);
+          mask.width = Math.ceil(width);
           mask.height = height;
           const target = mask.getContext('2d');
           target.strokeStyle = '#fff'; // theme-allow: Alpha mask; scopePaint applies the themed trace color with source-in.
@@ -1212,7 +1214,7 @@ class OscilloscopePlugin extends PluginBase {
           target.beginPath();
           for (let i = 0; i < displayBuffer.length; i++) {
             const sampleIndex = sampleIndices ? sampleIndices[i] : i;
-            const x = (sampleIndex / denominator) * plotWidth;
+            const x = (sampleIndex / denominator) * width;
             const sample = displayBuffer[i];
             const y = centerY - (sample * factor) * (height / 2);
             if (i === 0) {
@@ -1232,10 +1234,10 @@ class OscilloscopePlugin extends PluginBase {
         if (this.scopePaint.height !== height) this.scopePaint.height = height;
         const paint = this.scopePaint.getContext('2d');
         paint.clearRect(0, 0, width, height);
-        paint.drawImage(signalRaster.canvas, leftMargin + signalOffset, 0);
+        paint.drawImage(signalRaster.canvas, signalOffset, 0);
         paint.globalCompositeOperation = 'source-in';
         paint.fillStyle = options?.traceStyle?.(paint) ?? traceColor;
-        paint.fillRect(leftMargin, 0, plotWidth, height);
+        paint.fillRect(0, 0, width, height);
         paint.globalCompositeOperation = 'source-over';
         const draw = target => target.drawImage(this.scopePaint, 0, 0);
         if (options?.drawSignal) options.drawSignal(ctx, draw);
@@ -1244,8 +1246,7 @@ class OscilloscopePlugin extends PluginBase {
 
       // Keep the drawn mapping for the cursor readout.
       const frame = (this._readoutFrame ??= {});
-      frame.left = leftMargin;
-      frame.width = width - leftMargin;
+      frame.width = width;
       frame.height = height;
       frame.centerY = centerY;
       frame.factor = factor;
@@ -1265,11 +1266,11 @@ class OscilloscopePlugin extends PluginBase {
       const frame = this._readoutFrame;
       if (!frame || frame.width <= 0) return null;
       const { format, seriesValueAt, columnValueAt } = window.GraphReadout;
-      const { left, width, values, sampleIndices, denominator } = frame;
+      const { width, values, sampleIndices, denominator } = frame;
       if (frame.snapshot?.extrema) {
         const snapshot = frame.snapshot;
         const position = Math.min(snapshot.captureSampleCount - 1,
-          (x - left) / width * snapshot.captureSampleCount);
+          x / width * snapshot.captureSampleCount);
         const bucket = snapshot.rolling
           ? Math.floor((frame.displayEnd - snapshot.captureSampleCount + position) / snapshot.bucketSamples) - frame.firstBucket
           : Math.floor(position / snapshot.captureSampleCount * snapshot.bucketCount);
@@ -1278,9 +1279,9 @@ class OscilloscopePlugin extends PluginBase {
           return { label, color: 'var(--et-graph-trace)', value: format.number(value, 3),
             y: Number.isFinite(value) ? frame.centerY - value * frame.factor * frame.height / 2 : undefined };
         });
-        return { cursor: format.time((x - left) / width * frame.displayTimeMs), rows };
+        return { cursor: format.time(x / width * frame.displayTimeMs), rows };
       }
-      const position = (x - left) / width * denominator;
+      const position = x / width * denominator;
       const row = { label: 'Amplitude', color: 'var(--et-graph-trace)', value: format.number(NaN) };
       const sample = !values ? null
         : sampleIndices ? seriesValueAt(sampleIndices, values, position)
@@ -1289,7 +1290,7 @@ class OscilloscopePlugin extends PluginBase {
         row.value = format.number(sample, 3);
         row.y = frame.centerY - sample * frame.factor * frame.height / 2;
       }
-      return { cursor: format.time((x - left) / width * frame.displayTimeMs), rows: [row] };
+      return { cursor: format.time(x / width * frame.displayTimeMs), rows: [row] };
     }
 
     // ---------------------------

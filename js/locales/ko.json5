@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "이 PC",
   "dialog.config.networkOutput.delay": "지연 (ms)",
   "dialog.config.networkOutput.resync": "재동기화",
-  "dialog.config.networkOutput.resyncHelp": "모든 스피커를 함께 다시 시작합니다. 재생이 어긋날 때 사용하세요.",
+  "dialog.config.networkOutput.resyncHelp": "스피커의 지연을 다시 측정해 타이밍을 다시 맞춥니다. 재생은 계속되며, 측정이 끝나는 시점에 타이밍이 한 번만 바뀝니다. 지연을 측정할 수 없는 스피커는 다시 연결되므로 잠시 끊깁니다.",
+  "dialog.config.networkOutput.syncing": "스피커를 동기화하는 중…",
   "dialog.config.networkOutput.status.searching": "검색 중",
   "dialog.config.networkOutput.status.connecting": "연결 중",
   "dialog.config.networkOutput.status.playing": "재생 중",
@@ -950,12 +951,17 @@
   "bassManagement.error.design": "Bass Management 필터를 준비하지 못했습니다. Taps를 줄인 후 다시 시도하세요.",
   "firCrossover.error.design": "FIR Crossover 필터를 설계하지 못했습니다. Taps를 줄이거나 설정을 덜 극단적으로 조정해 보세요.",
   "fiveBandFirPeq.error.design": "5Band FIR PEQ 필터를 설계하지 못했습니다. Taps를 줄이거나 설정을 덜 극단적으로 조정해 보세요.",
+  "headphoneEq.error.design": "Headphone EQ 보정 필터를 설계하지 못했습니다. Taps를 줄이거나 측정 데이터를 다시 불러와 보세요.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "필터를 설계하지 못했습니다. Taps 설정을 바꿔 보십시오.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "필터를 설계하지 못했습니다. Taps 설정을 바꿔 보십시오.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "이 내보내기용 스피커 보정을 준비하지 못했습니다. 해당 측정이 이 기기에 없기 때문입니다. 이 기기에서 스피커 왜곡을 측정하거나 다른 측정을 선택하거나, 내보내는 동안 이펙트를 끄세요.",
+
   "midi.title": "컨트롤러 매핑 설정", "midi.openSettings": "컨트롤러 매핑...",
   "midi.devices": "MIDI 장치", "midi.gamepads": "게임패드", "midi.mappings": "매핑",
   "midi.addLearn": "추가(Learn)", "midi.learnPrompt": "컨트롤을 움직이거나 키 또는 게임패드를 조작하세요. Escape를 누르면 취소됩니다.",

@@ -7,6 +7,10 @@ const graphPointInteractionSource = fs.readFileSync(
   new URL('../../plugins/graph-point-interaction.js', import.meta.url),
   'utf8'
 );
+const firAssetEqSource = fs.readFileSync(
+  new URL('../../plugins/fir-asset-eq.js', import.meta.url),
+  'utf8'
+);
 
 function loadGraphPointInteractions() {
   const context = { window: {} };
@@ -58,7 +62,7 @@ function loadPeqClass(relativePath, className, calls, contextOverrides = {}) {
   Object.assign(context, contextOverrides);
 
   vm.runInNewContext(
-    `${graphPointInteractionSource}\n${source}\nthis.LoadedClass = ${className};`,
+    `${graphPointInteractionSource}\n${firAssetEqSource}\n${source}\nthis.LoadedClass = ${className};`,
     context
   );
   return context.LoadedClass;
@@ -119,7 +123,7 @@ function createMarker(classPrefix, calls) {
   };
 }
 
-function assertPeqUsesInsetPlotArea(relativePath, className, bandCount, classPrefix) {
+function assertPeqUsesWholeGraphAsPlot(relativePath, className, bandCount, classPrefix) {
   const calls = [];
   const PluginClass = loadPeqClass(relativePath, className, calls);
   const plugin = new PluginClass();
@@ -140,7 +144,7 @@ function assertPeqUsesInsetPlotArea(relativePath, className, bandCount, classPre
 
   plugin.updateMarkers();
 
-  assert.equal(marker.style.left, '1.953125%');
+  assert.equal(marker.style.left, '0%');
   assert.ok(Math.abs(parseFloat(marker.style.top) - 50) < 1e-9);
 
   let updatedBand = null;
@@ -154,8 +158,8 @@ function assertPeqUsesInsetPlotArea(relativePath, className, bandCount, classPre
   plugin.setUIBandValues = bandIndex => calls.push(['setUIBandValues', bandIndex]);
 
   plugin.handleDragMove({
-    clientX: 100 + 20 + ((1024 - 40) * 0.5),
-    clientY: 50 + 20 + ((480 - 40) * 0.25)
+    clientX: 100 + 1024 * 0.5,
+    clientY: 50 + 480 * 0.25
   });
 
   assert.equal(updatedBand.bandIndex, 0);
@@ -410,12 +414,12 @@ test('FifteenBand PEQ keeps marker pointer listeners after a drag ends', () => {
   assertPointerListenersSurviveDragEnd('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin');
 });
 
-test('FiveBand PEQ aligns markers and drag with the inset SVG plot area', () => {
-  assertPeqUsesInsetPlotArea('../../plugins/eq/five_band_peq.js', 'FiveBandPEQPlugin', 5, 'five-band-peq');
+test('FiveBand PEQ aligns markers and drag with the whole graph', () => {
+  assertPeqUsesWholeGraphAsPlot('../../plugins/eq/five_band_peq.js', 'FiveBandPEQPlugin', 5, 'five-band-peq');
 });
 
-test('FifteenBand PEQ aligns markers and drag with the inset SVG plot area', () => {
-  assertPeqUsesInsetPlotArea('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin', 15, 'fifteen-band-peq');
+test('FifteenBand PEQ aligns markers and drag with the whole graph', () => {
+  assertPeqUsesWholeGraphAsPlot('../../plugins/eq/fifteen_band_peq.js', 'FifteenBandPEQPlugin', 15, 'fifteen-band-peq');
 });
 
 test('all PEQ handles reach the pointer at CSS zoom levels', () => {
@@ -439,13 +443,7 @@ test('all PEQ handles reach the pointer at CSS zoom levels', () => {
           height: this.clientHeight * 1.5 };
       }
     };
-    const plot = plugin.getGraphPlotArea();
-    assert.equal(plot.left, 130, name);
-    assert.equal(plot.top, 100, name);
-    assert.equal(plot.width, 1440, name);
-    assert.equal(plot.height, 690, name);
-    assert.equal(plot.leftPercent, 2, name);
-    assert.equal(plot.widthPercent, 96, name);
+    const plot = plugin.graphContainer.getBoundingClientRect();
     plugin.activeDragMarker = 0;
     plugin.hasMoved = true;
     plugin.xToFreq = value => value;
@@ -490,11 +488,8 @@ test('FifteenBand PEQ resolves mobile graph taps to the nearest band without tog
 
     const targetBand = 8;
     const rect = plugin.graphContainer.getBoundingClientRect();
-    const plotArea = plugin.getGraphPlotArea();
-    const xPercent = plotArea.leftPercent +
-      plugin.freqToX(plugin[`f${targetBand}`]) / 100 * plotArea.widthPercent;
-    const yPercent = plotArea.topPercent +
-      plugin.gainToY(plugin[`g${targetBand}`]) / 100 * plotArea.heightPercent;
+    const xPercent = plugin.freqToX(plugin[`f${targetBand}`]);
+    const yPercent = plugin.gainToY(plugin[`g${targetBand}`]);
     const clientX = rect.left + xPercent / 100 * rect.width;
     const clientY = rect.top + yPercent / 100 * rect.height;
     const enabledBefore = plugin[`e${targetBand}`];

@@ -535,12 +535,12 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         }
 
         for (let i = 0; i < halfFft; i++) {
-            if (isNaN(this.peaks[i]) || this.peaks[i] < -145 || this.peaks[i] > 0) {
+            if (isNaN(this.peaks[i]) || this.peaks[i] < -145) {
                 this.peaks[i] = -145;
             }
             const decayedPeak = this.peaks[i] - decay;
             const newPeak = this.spectrum[i] > decayedPeak ? this.spectrum[i] : decayedPeak;
-            this.peaks[i] = newPeak < -145 ? -145 : newPeak > 0 ? 0 : newPeak;
+            this.peaks[i] = newPeak < -145 ? -145 : newPeak;
         }
         
         this.lastProcessTime = currentTime;
@@ -1051,7 +1051,6 @@ class SpectrumAnalyzerPlugin extends PluginBase {
     }
 
     drawGrid(ctx, width, height, dpr, isNarrow, deferTicks, keyboard) {
-        const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
         const maxDisplayFreq = this.maxDisplayFrequency;
         const deferredTicks = [];
 
@@ -1081,22 +1080,16 @@ class SpectrumAnalyzerPlugin extends PluginBase {
                 : (isNarrow
                     ? [20, 100, 1000, 10000, 20000]
                     : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
-            // Add Nyquist to the list if it's not too close to another major tick, or for the max label
-            // Filter and ensure min/max are present
-            let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
-            if (!gridFreqsToDraw.includes(minDisplayFreq) && minDisplayFreq > 0) gridFreqsToDraw.unshift(minDisplayFreq);
-            if (!gridFreqsToDraw.includes(maxDisplayFreq)) gridFreqsToDraw.push(maxDisplayFreq);
-            gridFreqsToDraw = [...new Set(gridFreqsToDraw)].sort((a, b) => a - b); // Unique & sorted
-
-            gridFreqsToDraw.forEach(freq => {
+            // Only interior frequencies get a grid line; the axis bounds are the canvas edges.
+            baseGridFreqs.forEach(freq => {
                 const x = this.frequencyToX(freq, width);
-                if (x >=0 && x <= width) { // Draw only if within canvas
+                if (x > 0 && x < width) {
                     ctx.beginPath();
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, height);
                     if (this.displayOptions?.showAxes !== false) ctx.stroke();
 
-                    if (freq !== minDisplayFreq && freq !== maxDisplayFreq && x > width*0.02 && x < width*0.98) { // Avoid clutter at edges
+                    if (x > width*0.02 && x < width*0.98) { // Avoid clutter at edges
                         ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-label') ?? '');
                         ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`;
                         ctx.textAlign = 'center';
@@ -1112,26 +1105,25 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             });
         }
 
-        // Horizontal grid lines (dB) - No change to this logic
+        // Horizontal grid lines (dB) at interior levels only; 0 dB and the range floor are the canvas edges.
         ctx.strokeStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = dpr;
         const dbStep = isNarrow ? 24 : 12;
-        for (let db = 0; db >= this.dr; db -= dbStep) {
+        for (let db = -dbStep; db > this.dr; db -= dbStep) {
             const y = height * (db / this.dr);
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             if (this.displayOptions?.showAxes !== false) ctx.stroke();
-            if (db !== 0 && db !== this.dr) {
-                ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-label') ?? ''); ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; ctx.textAlign = 'right';
-                const text = `${db}dB`;
-                const x = (isNarrow ? 46 : 80) * dpr;
-                const labelY = y + (6 * dpr);
-                if (deferTicks) {
-                    deferredTicks.push({ text, x, y: labelY, fillStyle: ctx.fillStyle, font: ctx.font, textAlign: ctx.textAlign });
-                } else {
-                    if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText(text, x, labelY);
-                }
+            const labelY = y + (6 * dpr);
+            if (labelY > height) continue; // Tick value would not fit inside the canvas.
+            ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-label') ?? ''); ctx.font = `${(isNarrow ? 11 : 12) * dpr}px Arial`; ctx.textAlign = 'right';
+            const text = `${db}`;
+            const x = (isNarrow ? 46 : 80) * dpr;
+            if (deferTicks) {
+                deferredTicks.push({ text, x, y: labelY, fillStyle: ctx.fillStyle, font: ctx.font, textAlign: ctx.textAlign });
+            } else {
+                if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText(text, x, labelY);
             }
         }
         return deferredTicks;
@@ -1217,12 +1209,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         for (let i = 0; i < columns.length; i++) {
             const x = columns[i];
             if (x < 0) continue;
-            const spectrumLevel = inputSpectrum[i] > 0 ? 0 : inputSpectrum[i];
+            const spectrumLevel = inputSpectrum[i];
             const projectedPeak = inputPeaks[i] - 20 * elapsedCapped;
-            const peakLevel = Math.max(
-                -145,
-                Math.min(0, spectrumLevel > projectedPeak ? spectrumLevel : projectedPeak)
-            );
+            const heldLevel = spectrumLevel > projectedPeak ? spectrumLevel : projectedPeak;
+            const peakLevel = heldLevel < -145 ? -145 : heldLevel;
 
             if (filled[x] === 0) {
                 filled[x] = 1;

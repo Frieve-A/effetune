@@ -47,6 +47,8 @@ export class AudioIOManager {
         // the controller notice when the default endpoint moves.
         this.systemAudioDisabled = false;
         this.systemAudioDefaultGroupId = null;
+        // System Audio streams whose default-output mute the main process keeps.
+        this._mutedSystemAudioStreams = new WeakSet();
         // iOS gates background Web Audio and the OS now-playing session on
         // navigator.audioSession.type; the controller mirrors microphone
         // liveness into it and is null on every other host. The initial
@@ -190,6 +192,11 @@ export class AudioIOManager {
     }
 
     _stopStreamTracksOnce(stream) {
+        // Report before stopping, so the unmute Chromium applies when the
+        // capture ends is not muted again.
+        if (this._mutedSystemAudioStreams.delete(stream)) {
+            window.electronAPI.systemAudio.captureStopped();
+        }
         const tracks = stream?.getTracks?.() || [];
         let stoppedTrackCount = 0;
         for (const track of tracks) {
@@ -682,6 +689,10 @@ export class AudioIOManager {
                 track.stop();
                 stream.removeTrack?.(track);
             }
+            // The main process keeps the default output muted until this
+            // stream's tracks are stopped through _stopStreamTracksOnce.
+            window.electronAPI.systemAudio.captureStarted();
+            this._mutedSystemAudioStreams.add(stream);
             const tracks = stream.getAudioTracks();
             if (tracks.length === 0 || tracks.some(track => track.readyState !== 'live')) {
                 this._stopStreamTracksOnce(stream);

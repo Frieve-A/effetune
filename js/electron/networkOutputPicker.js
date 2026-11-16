@@ -50,6 +50,9 @@ export function initNetworkOutputPicker(uiManager) {
   function render() {
     const devices = status?.targets ?? [];
     button.classList.toggle('active', !!status?.enabled && devices.some(device => device.enabled && device.state === 'playing'));
+    const syncing = !!status?.enabled && status.syncing === true;
+    button.classList.toggle('syncing', syncing);
+    button.setAttribute('aria-busy', String(syncing));
     if (!picker.matches(':popover-open')) return;
     const ids = new Set(devices.map(device => device.id));
     for (const [id, row] of rows) {

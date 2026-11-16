@@ -178,9 +178,13 @@ test('preload returns the System Audio capture reservation synchronously', () =>
   const systemAudio = harness.exposed.electronAPI.systemAudio;
 
   assert.equal(Object.isFrozen(systemAudio), true);
-  assert.deepEqual(Object.keys(systemAudio), ['prepareCapture']);
+  assert.deepEqual(Object.keys(systemAudio), ['prepareCapture', 'captureStarted', 'captureStopped']);
   assert.equal(systemAudio.prepareCapture(), reservation);
-  assert.deepEqual(syncCalls, [['system-audio:prepare-capture']]);
+  assert.equal(systemAudio.captureStarted(), undefined);
+  assert.equal(systemAudio.captureStopped(), undefined);
+  assert.deepEqual(syncCalls, [
+    ['system-audio:prepare-capture'], ['system-audio:capture-started'], ['system-audio:capture-stopped']
+  ]);
   assert.deepEqual(harness.invocations, []);
   assert.deepEqual(harness.sends, []);
 });

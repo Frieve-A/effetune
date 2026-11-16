@@ -709,6 +709,17 @@ test('route changes discard queued telemetry and acknowledge markerless receive 
   assert.equal(paths.visualizerTapStage, 'local');
 });
 
+test('only network route changes close the gate while a network marker is present', async () => {
+  const h = await createWorkletHarness({ sampleRate: 48000 });
+  const discontinuous = data => Object.getPrototypeOf(h.processor).mutationDiscontinuity.call(h.processor, data);
+  const plugin = (id, type, extra = {}) => ({ id, type, enabled: true, parameters: {}, ...extra });
+  await h.send({ type: 'updatePlugins', plugins: [plugin(1, 'Gain'), plugin(2, 'NetworkSendPlugin')] });
+  assert.equal(discontinuous({ type: 'updatePlugin', plugin: plugin(1, 'Gain', { parameters: { gain: -6 } }) }), false);
+  assert.equal(discontinuous({ type: 'updatePlugin', plugin: plugin(1, 'Gain', { enabled: false }) }), true);
+  assert.equal(discontinuous({ type: 'reorderPlugin', fromIndex: 0, toIndex: 1 }), true);
+  assert.equal(discontinuous({ type: 'removePlugin', pluginId: 2 }), true);
+});
+
 test('network markers always use the serial main route for persisted routing parameters', async () => {
   const h = await createWorkletHarness({ sampleRate: 48000 });
   const plugins = ['NetworkSendPlugin', 'NetworkReceivePlugin'].map((type, index) => ({

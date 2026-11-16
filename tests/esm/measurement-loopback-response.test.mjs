@@ -26,6 +26,7 @@ function createRecorderHarness() {
     const context = {
         AudioWorkletProcessor: FakeAudioWorkletProcessor,
         currentFrame: 0,
+        sampleRate: 48000,
         console: { error() {}, warn() {} },
         registerProcessor(name, Processor) {
             processors.set(name, Processor);
@@ -38,6 +39,7 @@ function createRecorderHarness() {
     return {
         context,
         messages,
+        processors,
         recorder: new (processors.get('recorder-processor'))()
     };
 }
@@ -80,6 +82,32 @@ test('recorder resets the capture frame for each recording start', () => {
         { status: 'capture-frame', startFrame: 512 },
         { status: 'capture-frame', startFrame: 1024 }
     ]);
+});
+
+test('level meter reports the sample peak, rising at once and falling with a 0.05 s time constant', () => {
+    const { messages, processors } = createRecorderHarness();
+    const meter = new (processors.get('level-meter-processor'))();
+    const quantum = value => [[new Float32Array(128).fill(value)]];
+    // A single -6 dBFS sample in the first of five quanta, then silence.
+    const burst = new Float32Array(128);
+    burst[7] = -0.5;
+    meter.process([[burst]], [], {});
+    for (let i = 0; i < 4; i++) meter.process(quantum(0), [], {});
+    const first = messages.at(-1);
+    assert.deepEqual(Object.keys(first), ['level']);
+    // The peak is held at the end of its quantum and falls through the four silent ones.
+    const elapsedSeconds = 4 * 128 / 48000;
+    assert.ok(Math.abs(first.level - 20 * Math.log10(0.5 * Math.exp(-elapsedSeconds / 0.05))) < 1e-9);
+    // Five more silent quanta continue the same exponential fall.
+    for (let i = 0; i < 5; i++) meter.process(quantum(0), [], {});
+    const later = 0.5 * Math.exp(-(elapsedSeconds + 5 * 128 / 48000) / 0.05);
+    assert.ok(Math.abs(messages.at(-1).level - 20 * Math.log10(later)) < 1e-9);
+    // Well within a second the reading reaches the -100 dB floor (300 quanta are 0.8 s).
+    for (let i = 0; i < 300; i++) meter.process(quantum(0), [], {});
+    assert.equal(messages.at(-1).level, -100);
+    // A louder block replaces the held peak at once.
+    for (let i = 0; i < 5; i++) meter.process(quantum(1), [], {});
+    assert.equal(messages.at(-1).level, 0);
 });
 
 test('sweep result preserves only complete direct and media-element output time references', () => {

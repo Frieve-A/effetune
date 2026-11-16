@@ -102,7 +102,6 @@
 .phase-select-eq-map {
     align-self: center;
     border: 1px solid var(--et-surface-13);
-    border-radius: 4px;
     background-color: var(--et-graph-bg-deep);
     overflow: hidden;
 }

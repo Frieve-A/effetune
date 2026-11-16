@@ -38,6 +38,7 @@ const NATIVE_DIRECT_REFERENCE_ENGINES = new Set([
   'native-five-band-fir-peq-direct-double-v1',
   'native-group-delay-eq-direct-double-v1',
   'native-group-delay-peq-direct-double-v1',
+  'native-headphone-eq-direct-double-v1',
   'native-ir-direct-double-v3',
   'native-room-eq-direct-double-v1',
   'native-room-eq-direct-double-v3'
@@ -254,8 +255,51 @@ export function packStructuredParams(schema, params = {}) {
   return packed;
 }
 
+// Speaker Distortion Correction weights: uniform values in [-scale, scale) on the corrected
+// channels, zeros elsewhere, and the Filter Length step in frame 1182 of every channel. On the
+// optional odd channels, frames 1183-1214 hold odd weights in [-oddScale, oddScale) and frames
+// 1215-1246 bounds in [0.5, 4.5).
+function syntheticSpeakerDistortionBytes(asset) {
+  const spec = asset.ir;
+  const oddChannels = spec.oddChannels ?? [];
+  if (asset.channels !== 16 || asset.frames !== 1247 || asset.topology !== 2 ||
+      !Array.isArray(spec.correctedChannels) || (spec.step !== 0 && spec.step !== 1) ||
+      !(spec.scale > 0) || !Array.isArray(oddChannels) ||
+      (oddChannels.length > 0 && !(spec.oddScale > 0))) {
+    throw new Error('Synthetic speaker distortion asset is invalid');
+  }
+  const stepFrame = 1182;
+  let state = Number(spec.seed ?? 12345) >>> 0;
+  const next = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state >>> 8) / 16777216 * 2 - 1;
+  };
+  const bytes = Buffer.alloc(32 + asset.channels * asset.frames * 4);
+  bytes.writeUInt32LE(0x31415445, 0);
+  bytes.writeUInt32LE(asset.channels, 4);
+  bytes.writeUInt32LE(asset.frames, 8);
+  bytes.writeUInt32LE(asset.topology, 16);
+  for (let channel = 0; channel < asset.channels; channel++) {
+    const offset = 32 + channel * asset.frames * 4;
+    if (spec.correctedChannels.includes(channel)) {
+      for (let index = 0; index < stepFrame; index++)
+        bytes.writeFloatLE(next() * spec.scale, offset + index * 4);
+    }
+    bytes.writeFloatLE(spec.step, offset + stepFrame * 4);
+  }
+  for (const channel of oddChannels) {
+    const offset = 32 + channel * asset.frames * 4;
+    for (let a = 0; a < 32; a++) {
+      bytes.writeFloatLE(next() * spec.oddScale, offset + (stepFrame + 1 + a) * 4);
+      bytes.writeFloatLE(2.5 + 2 * next(), offset + (stepFrame + 33 + a) * 4);
+    }
+  }
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
 function syntheticIrBytes(asset, sampleRate) {
   const spec = asset.ir;
+  if (spec?.kind === 'speaker-distortion-v1') return syntheticSpeakerDistortionBytes(asset);
   if (!spec || spec.kind !== 'sparse-decay-v1') return null;
   if (!Number.isInteger(sampleRate) || sampleRate <= 0 ||
       !Number.isInteger(asset.channels) || asset.channels <= 0 ||

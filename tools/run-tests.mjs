@@ -169,6 +169,7 @@ const ordinaryBrowserTests = browserTests.filter(file =>
 const performanceTests = [
   'tests/esm/measurement-dsp-performance.test.mjs',
   'tests/esm/room-eq-performance.test.mjs',
+  'tests/esm/speaker-distortion-correction-performance.test.mjs',
   'tests/esm/spectrum-overlay-analyze.test.mjs',
   'tests/esm/spectrum-overlay-worklet.test.mjs'
 ];

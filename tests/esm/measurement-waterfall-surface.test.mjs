@@ -47,6 +47,30 @@ test('mesh shares one level scale across slices and preserves missing cells', ()
     assert.ok(mesh.triangles.flat().every(point => point.time <= 0.1));
 });
 
+test('levels outside the level range are cut off rather than flattened onto the floor or top plane', () => {
+    const mesh = buildWaterfallMesh(state({ frequencies: [100, 1000], slices: [
+        { time: 0, levels: [-90, 30] }, { time: 0.1, levels: [-90, 30] }
+    ] }));
+    const vertices = mesh.triangles.flat();
+    assert.ok(vertices.filter(point => point.level === -90).every(point => point.v === -0.5));
+    assert.ok(vertices.filter(point => point.level === 30).every(point => point.v === 1.5));
+    const slope = [{ x: 10, y: 10, frequency: 100, level: -120, v: -1 }, { x: 90, y: 10, frequency: 1000, level: 60, v: 2 },
+        { x: 10, y: 90, frequency: 100, level: -120, v: -1 }].map(point => ({ ...point, distance: 0, depth: 10 }));
+    const contours = { min: -60, max: 0, ...createLinearTicks(-60, 0, 6, 'decibels') };
+    const raster = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', contours, [0.1, 0.5, 0.9]);
+    const inRange = pickWaterfallSurface(raster, 50, 15).level;
+    assert.ok(inRange >= -60 && inRange <= 0);
+    assert.equal(pickWaterfallSurface(raster, 15, 15), null);
+    assert.equal(pickWaterfallSurface(raster, 85, 15), null);
+    // Contour and frequency guide lines are drawn only on the visible surface.
+    for (const x of [15, 85]) assert.equal(raster.pixels[(15 * 100 + x) * 4 + 3], 0);
+    // A plateau exactly at the floor or top plane stays visible.
+    for (const [level, v] of [[-60, 0], [0, 1]]) {
+        const flat = overlappingTriangle(0, level, 10).map(point => ({ ...point, v }));
+        assert.ok(pickWaterfallSurface(rasterizeWaterfallSurface([flat], plot, 1, colors), 30, 30));
+    }
+});
+
 test('bounded mesh does not bridge a null sample skipped by frequency decimation', () => {
     const frequencies = Array.from({ length: 500 }, (_, i) => 100 * 10 ** (i / 499));
     const levels = frequencies.map(() => -20);

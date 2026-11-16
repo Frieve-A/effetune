@@ -1,0 +1,94 @@
+/* Graph colour tokens: the traces match the Acoustic Measurement window's chart; the grid,
+   labels and background follow the app's effect graphs such as Room EQ. */
+.speaker-distortion-correction-ui {
+    --sdc-l0: var(--et-accent);
+    --sdc-l6: var(--et-warning);
+    --sdc-l12: var(--et-success);
+    --sdc-pk: var(--et-danger);
+    --sdc-would: var(--et-graph-tone-50);
+    --sdc-odd: var(--et-graph-tone-89);
+    --sdc-lim: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 45%);
+    --sdc-range: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 50%);
+    --sdc-grid: var(--et-graph-grid-subtle);
+    --sdc-text: var(--et-graph-label);
+    --sdc-title: var(--et-text-primary);
+    --sdc-bg: var(--et-graph-bg-deep);
+}
+
+/* Three tabs fit one row on a phone; the shared rule lays tabs out two per row. */
+body.layout-mobile .speaker-distortion-correction-ui .room-eq-tabs { --et-effect-tab-min-width: calc(33.333% - 4px); }
+
+.speaker-distortion-correction-ui .sdc-line { margin: 4px 0; }
+.speaker-distortion-correction-ui .worse { color: var(--et-warning); }
+
+/* Tab panels stay in the layout (shared rule), so switching tabs never changes the height. */
+.speaker-distortion-correction-ui [hidden]:not(.room-eq-tab-content) { display: none !important; }
+
+.speaker-distortion-correction-ui .sdc-volume .parameter-row { flex-wrap: wrap; gap: 6px 10px; }
+.speaker-distortion-correction-ui .sdc-check-again { flex: 0 0 auto; white-space: nowrap; }
+
+/* A full-canvas graph like Tilt EQ's: the plot fills the box, with the tick values and axis titles in Arial over it. */
+.speaker-distortion-correction-ui .sdc-graph {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    max-width: 1024px;
+    aspect-ratio: 1024 / 480;
+    /* The effect graphs' 10px margin (Room EQ, Tone Control, Tilt EQ). */
+    margin: 10px auto;
+    background: var(--sdc-bg);
+}
+body.layout-mobile .speaker-distortion-correction-ui .sdc-graph { aspect-ratio: 4 / 3; }
+.speaker-distortion-correction-ui .sdc-graph > svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    font-family: Arial, sans-serif;
+    pointer-events: none;
+}
+/* Room EQ's legend hover emphasis; the chart writes each curve's width inline. */
+.speaker-distortion-correction-ui .sdc-graph .sdc-highlighted {
+    stroke-width: 3.5 !important;
+    opacity: 1;
+}
+
+/* The 10px Room EQ keeps between its controls and the status line. */
+.speaker-distortion-correction-ui table.figs { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.speaker-distortion-correction-ui table.figs th,
+.speaker-distortion-correction-ui table.figs td {
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--et-border-subtle);
+    text-align: right;
+}
+.speaker-distortion-correction-ui table.figs th:nth-child(-n+2),
+.speaker-distortion-correction-ui table.figs td:nth-child(-n+2) { text-align: left; }
+.speaker-distortion-correction-ui table.figs th { font-size: 12px; line-height: 1.3; }
+.speaker-distortion-correction-ui table.figs th:nth-child(n+3) { width: 17%; }
+.speaker-distortion-correction-ui .sdc-level { display: block; white-space: nowrap; }
+.speaker-distortion-correction-ui .sdc-tag { color: var(--et-text-muted); font-size: 0.85em; }
+
+@media (max-width: 600px) {
+    .speaker-distortion-correction-ui table.figs thead { display: none; }
+    .speaker-distortion-correction-ui table.figs tr {
+        display: block;
+        border-bottom: 1px solid var(--et-border-subtle);
+        padding: 4px 0;
+    }
+    .speaker-distortion-correction-ui table.figs td {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        border: none;
+        padding: 2px 4px;
+        text-align: right;
+        white-space: nowrap;
+    }
+    .speaker-distortion-correction-ui table.figs td::before {
+        content: attr(data-l);
+        color: var(--et-text-muted);
+        text-align: left;
+        white-space: normal;
+    }
+    .speaker-distortion-correction-ui table.figs td:first-child { font-weight: 600; }
+}

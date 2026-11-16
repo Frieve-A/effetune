@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "هذا الكمبيوتر",
   "dialog.config.networkOutput.delay": "التأخير (ms)",
   "dialog.config.networkOutput.resync": "إعادة المزامنة",
-  "dialog.config.networkOutput.resyncHelp": "يعيد تشغيل جميع مكبرات الصوت معًا. استخدمه إذا اختلّت المزامنة بينها.",
+  "dialog.config.networkOutput.resyncHelp": "يعيد قياس تأخير مكبرات الصوت ويعيد ضبط توقيتها. يستمر التشغيل، ويتغيّر التوقيت مرة واحدة فقط عند اكتمال القياس. أما مكبرات الصوت التي لا يمكن قياس تأخيرها فيُعاد توصيلها، لذا ينقطع صوتها لفترة قصيرة.",
+  "dialog.config.networkOutput.syncing": "جارٍ مزامنة مكبرات الصوت…",
   "dialog.config.networkOutput.status.searching": "جارٍ البحث",
   "dialog.config.networkOutput.status.connecting": "جارٍ الاتصال",
   "dialog.config.networkOutput.status.playing": "قيد التشغيل",
@@ -950,12 +951,17 @@
   "bassManagement.error.design": "تعذر إعداد مرشحات Bass Management. جرّب تقليل Taps ثم أعد المحاولة.",
   "firCrossover.error.design": "تعذر تصميم مرشحات FIR Crossover. جرّب قيمة أقل لـ Taps أو إعدادات أقل حدة.",
   "fiveBandFirPeq.error.design": "تعذر تصميم مرشح 5Band FIR PEQ. جرّب قيمة أقل لـ Taps أو إعدادات أقل حدة.",
+  "headphoneEq.error.design": "تعذر تصميم مرشح التصحيح في Headphone EQ. جرّب قيمة أقل لـ Taps أو أعد تحميل بيانات القياس.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "تعذر تصميم المرشح. جرّب إعدادًا آخر لـ Taps.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "تعذر تصميم المرشح. جرّب إعدادًا آخر لـ Taps.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "تعذّر تجهيز تصحيح السماعة لهذا التصدير لأن قياسه غير موجود على هذا الجهاز. قِس تشوه السماعة على هذا الجهاز أو اختر قياسًا آخر، أو أوقف المؤثر أثناء التصدير.",
+
   "midi.title": "إعدادات تعيين وحدة التحكم", "midi.openSettings": "تعيين وحدة التحكم...",
   "midi.devices": "أجهزة MIDI", "midi.gamepads": "أذرع الألعاب", "midi.mappings": "التعيينات",
   "midi.addLearn": "إضافة (Learn)", "midi.learnPrompt": "حرّك عنصر تحكم أو اضغط مفتاحًا أو استخدم ذراع ألعاب. اضغط Escape للإلغاء.",

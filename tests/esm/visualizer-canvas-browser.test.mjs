@@ -1170,20 +1170,26 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             host.remove();
             return result;
         });
+        const isPitchLabel = label => /^C\d+$/.test(label.text);
         const expectedCenter = (type, row, original) => {
             const [x, y] = original.center;
             // The default note range has 64 rows along the 800 px or 400 px pitch axis.
-            if (type === 'notes') return [x, row.flipY ? y - (400 - FrequencyAxis.keyboardDepths(12 * 800 / 64, 400).gutter) : y];
-            if (type === 'notes-vertical') return [row.flipX ? x - (800 - FrequencyAxis.keyboardDepths(12 * 400 / 64, 800).gutter) : x, y];
+            if (isPitchLabel(original)) {
+                if (type === 'notes') return [x, row.flipY ? y - (400 - FrequencyAxis.keyboardDepths(12 * 800 / 64, 400).gutter) : y];
+                if (type === 'notes-vertical') return [row.flipX ? x - (800 - FrequencyAxis.keyboardDepths(12 * 400 / 64, 800).gutter) : x, y];
+            }
             return [row.flipX ? 800 - x : x, row.flipY ? 400 - y : y];
         };
         for (const type of ['spectrum', 'spectrogram', 'stereo', 'notes', 'notes-vertical', 'notes-keyless', 'notes-vertical-keyless']) {
             const rows = results.filter(row => row.type === type), baseline = rows[0].labels;
             assert.ok(baseline.length > 0, `${type} has labels`);
             if (type.endsWith('keyless')) {
-                assert.ok(baseline.filter(label => label.method === 'fillText').every(label => label.color === '#666666'),
-                    `${type} labels use the default dark graph label color`);
-                assert.ok(baseline.some(label => label.method === 'strokeText'), `${type} labels over the roll are outlined`);
+                const pitchFills = baseline.filter(label => label.method === 'fillText' && isPitchLabel(label));
+                assert.ok(pitchFills.length > 0 && pitchFills.every(label => label.color === '#666666'),
+                    `${type} pitch labels use the default dark graph label color`);
+                assert.ok(baseline.some(label => label.method === 'strokeText' && isPitchLabel(label)), `${type} pitch labels over the roll are outlined`);
+                assert.deepEqual(baseline.filter(label => label.text === 'Time (s)').map(({ method, color }) => [method, color]),
+                    [['strokeText', '#000000'], ['fillText', '#f6f8fb']], `${type} time title uses the graph outline and primary text colors`);
             }
             for (const row of [...rows.slice(1, 4), ...results.filter(row => row.type === 'effect-labels' && row.analyzer === type)]) {
                 assert.equal(row.labels.length, baseline.length, type);
@@ -1209,9 +1215,9 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             assert.ok(numbers.every(label => label.color === '#9c2ee8'),
                 `${row.analyzer} numeric tick labels follow Graph labels`);
             if (row.analyzer === 'spectrogram') {
-                assert.ok(row.labels.some(label => label.method === 'fillText' && label.text === 'Time' &&
+                assert.ok(row.labels.some(label => label.method === 'fillText' && label.text === 'Time (s)' &&
                     label.color === '#d34261'), 'Spectrogram axis titles follow Axis titles');
-                assert.ok(row.labels.some(label => label.method === 'strokeText' && label.text === 'Time' &&
+                assert.ok(row.labels.some(label => label.method === 'strokeText' && label.text === 'Time (s)' &&
                     label.color === '#0b3e5a'), 'Spectrogram label outlines follow Graph base');
                 assert.ok(row.regularStrokes.includes('#126a92'), 'Spectrogram grid follows Fine grid');
                 assert.ok(row.keyboardStrokes.includes('#e2a224'), 'Spectrogram keyboard guides follow Major grid');

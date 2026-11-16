@@ -1228,7 +1228,7 @@ class SpectrogramPlugin extends PluginBase {
             : SPECTROGRAM_KEYBOARD_GRID_COLOR;
         for (const key of this.getKeyboardGeometry(height)) {
             const pitchClass = (key.midi % 12 + 12) % 12;
-            if (pitchClass !== 0) continue;
+            if (pitchClass !== 0 || key.end <= 0 || key.end >= height) continue;
             ctx.beginPath();
             ctx.moveTo(0, key.end);
             ctx.lineTo(plotWidth, key.end);
@@ -1364,11 +1364,8 @@ class SpectrogramPlugin extends PluginBase {
                     : (isNarrow
                         ? [20, 100, 1000, 10000, 20000]
                         : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
-                let gridFreqsToDraw = baseGridFreqs.filter(f => f >= minDisplayFreq && f <= maxDisplayFreq);
-                // Ensure min/max are candidates if not present, then sort.
-                if (!gridFreqsToDraw.includes(minDisplayFreq) && minDisplayFreq > 0) gridFreqsToDraw.push(minDisplayFreq);
-                if (!gridFreqsToDraw.includes(maxDisplayFreq)) gridFreqsToDraw.push(maxDisplayFreq);
-                gridFreqsToDraw = [...new Set(gridFreqsToDraw)].sort((a,b) => a-b);
+                // Only interior frequencies get a grid line; the axis bounds are the canvas edges.
+                const gridFreqsToDraw = baseGridFreqs.filter(f => f > minDisplayFreq && f < maxDisplayFreq);
 
                 ctx.fillStyle = frequencyLabelColor;
                 ctx.font = `${frequencyLabelFontSize}px Arial`; // Consistent font size
@@ -1405,6 +1402,7 @@ class SpectrogramPlugin extends PluginBase {
         const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
         for (let second = firstSecond; second <= lastSecond; second++) {
             const x = plotWidth + (second - displayTime) * pixelsPerSecond;
+            if (x <= 0 || x >= plotWidth) continue; // No marker on the canvas edges.
             ctx.beginPath();
             ctx.moveTo(x, targetHeight - (16 * dpr));
             ctx.lineTo(x, targetHeight);
@@ -1417,8 +1415,8 @@ class SpectrogramPlugin extends PluginBase {
         ctx.lineWidth = 2 * dpr;
         ctx.lineJoin = 'round';
         ctx.fillStyle = axisColor; ctx.font = `${(isNarrow ? 13 : 14) * dpr}px Arial`; ctx.textAlign = 'center';
-        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).strokeText('Time', plotWidth / 2, targetHeight - (8 * dpr));
-        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText('Time', plotWidth / 2, targetHeight - (8 * dpr));
+        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).strokeText('Time (s)', plotWidth / 2, targetHeight - (8 * dpr));
+        if (this.displayOptions?.showAxisNumbers !== false) (this.displayOptions?.textContext ?? ctx).fillText('Time (s)', plotWidth / 2, targetHeight - (8 * dpr));
         if (!keyboardGutter) {
             ctx.save();
             ctx.translate((isNarrow ? 18 : 20) * dpr, targetHeight / 2); ctx.rotate(-Math.PI / 2);

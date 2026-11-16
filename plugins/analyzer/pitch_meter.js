@@ -529,6 +529,7 @@ class PitchMeterPlugin extends PluginBase {
             blackKey: '#111', // theme-allow: Fixed self-painted black key color.
             trace: read('graph-trace'),
             label: read('graph-label'),
+            axis: read('text-primary'),
             strongGrid: read('graph-grid-strong'),
             subtleGrid: read('graph-grid-subtle')
         };
@@ -576,7 +577,8 @@ class PitchMeterPlugin extends PluginBase {
             const black = PITCH_METER_BLACK_KEY_CLASSES.has(midi % 12);
             context.fillStyle = black ? palette.blackBand : palette.whiteBand;
             context.fillRect(0, y, rollWidth, rowHeight);
-            if (midi % 12 === 0 || midi % 12 === 5) {
+            // The line below the lowest row would sit on the roll's bottom edge, so it is not drawn.
+            if (midi > this.mn && (midi % 12 === 0 || midi % 12 === 5)) {
                 context.strokeStyle = midi % 12 === 0 ? palette.strongGrid : palette.subtleGrid;
                 context.beginPath();
                 context.moveTo(0, y + rowHeight);
@@ -670,6 +672,26 @@ class PitchMeterPlugin extends PluginBase {
         }
         context.globalAlpha = 1;
         if (horizontal) context.restore();
+        // Time axis title along the roll, outlined so it stays legible over the trace: centred at the bottom in
+        // Vertical, rotated at the left in Horizontal.
+        const narrow = this.canvas.width / dpr < 500;
+        context.save();
+        context.font = `${(narrow ? 13 : 14) * dpr}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'alphabetic';
+        context.strokeStyle = palette.background;
+        context.lineWidth = 2 * dpr;
+        context.lineJoin = 'round';
+        context.fillStyle = palette.axis;
+        if (horizontal) {
+            context.translate((narrow ? 18 : 20) * dpr, rollWidth / 2);
+            context.rotate(-Math.PI / 2);
+        } else {
+            context.translate(rollWidth / 2, height - 8 * dpr);
+        }
+        context.strokeText('Time (s)', 0, 0);
+        context.fillText('Time (s)', 0, 0);
+        context.restore();
         Object.assign(frame, {
             valid: true, horizontal, canvasWidth: this.canvas.width, rollWidth, height, rowHeight,
             gutter, blackKeyDepth, palette, mn: this.mn, mx: this.mx, rf: this.rf, writeColumn: this.writeColumn

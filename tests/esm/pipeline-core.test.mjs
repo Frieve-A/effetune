@@ -582,6 +582,39 @@ test('plugin display state combines master bypass, plugin enabled, and section s
   ]);
 });
 
+test('plugins learn whether an enabled audio effect follows them', () => {
+  class SectionPlugin {
+    constructor(id, enabled) {
+      this.id = id;
+      this.enabled = enabled;
+    }
+  }
+  const reports = [];
+  const target = {
+    id: 1,
+    enabled: true,
+    onPipelinePositionChanged(state) {
+      reports.push(state.followedByAudioEffect);
+    }
+  };
+  const later = [
+    { id: 2, name: 'Level Meter', enabled: true },
+    { id: 3, name: 'Volume', enabled: false },
+    new SectionPlugin(4, false),
+    { id: 5, name: 'Volume', enabled: true }
+  ];
+  const { core } = createBareCore({ pipeline: [target, ...later] });
+  core.pluginManager = { effectCategories: { Analyzer: { plugins: ['Level Meter'] } } };
+  core.sectionHandler.getPluginSectionState = () => ({ insideSection: false, sectionEnabled: true });
+  const nameElement = { classList: { toggle() {} } };
+
+  core.updatePluginNameDisplayState(target, nameElement);
+  later[2].enabled = true;
+  core.updatePluginNameDisplayState(target, nameElement);
+
+  assert.deepEqual(reports, [false, true]);
+});
+
 test('updateAllPluginDisplayState updates matching items and ignores missing data', async () => {
   const { calls, core } = createBareCore({
     pipeline: [{ id: 1 }, { id: 2 }]

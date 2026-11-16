@@ -59,12 +59,14 @@ test('detached reattachment and IO suspension preserve intent and never release 
   const old = instance;
   ({ instance } = h.attach());
   assert.equal(old.disposed, true);
+  assert.deepEqual(commands(h), [], 'a rebuilt UI takes over the running tap without restarting it');
+  assert.equal(instance.active, true);
   h.intersect(false);
   assert.equal(instance.active, false);
   assert.equal(instance.button.getAttribute('aria-pressed'), 'mixed');
   h.intersect(true);
   assert.equal(instance.active, true);
-  assert.deepEqual(commands(h).filter(([type]) => type === 'setSpectrumTapRoute'), [['setSpectrumTapRoute', true]]);
+  assert.deepEqual(commands(h).filter(([type]) => type === 'setSpectrumTapRoute'), []);
   assert.deepEqual(commands(h).at(-1), ['setSpectrumTap', true]);
   for (let i = 0; i < 100; i++) ({ instance } = h.attach());
   assert.equal(h.resizes.size, 1);
@@ -212,12 +214,7 @@ test('Room EQ stops the effective tap outside the frequency view and keeps user 
   const h = createOverlayHarness();
   h.plugin.constructor.name = 'RoomEqPlugin';
   const { instance, mount } = h.attach();
-  assert.equal(mount.style['--spectrum-overlay-inset'], '20px');
   instance.enable();
-  assert.equal(instance.axisTitle.parentElement, mount);
-  assert.equal(instance.axisTitle.className, 'spectrum-overlay-axis-title');
-  assert.equal(instance.axisTitle.textContent, 'Level (dBFS)');
-  assert.equal(instance.axisTitle.getAttribute('aria-hidden'), 'true');
   h.plugin.runnable = false;
   h.advance(250);
   assert.equal(instance.active, false);
@@ -232,10 +229,8 @@ test('Room EQ stops the effective tap outside the frequency view and keeps user 
   assert.equal(instance.active, true);
   assert.equal(h.posts.filter(message => message.type === 'setSpectrumTapRoute').length, 1);
   instance.disable();
-  assert.equal(instance.axisTitle, null);
   instance.enable();
   instance.dispose();
-  assert.equal(mount.style['--spectrum-overlay-inset'], undefined);
 });
 
 test('the dBFS scale keeps only interior ticks and a vertical title before spectrum data arrives', () => {
@@ -331,6 +326,24 @@ test('below-range spectrum values leave the graph through Canvas clipping instea
   assert.ok(points.some(([, , y], index) => index > 0 && points[index - 1][2] <= canvas.height && y > canvas.height),
     'the final visible point must connect continuously to the clipped portion');
   assert.equal(instance.levels[2], -120, 'drawing must retain below-range levels');
+  instance.dispose();
+});
+
+test('above-range spectrum values leave the graph top instead of sticking to 0 dBFS', () => {
+  const h = createOverlayHarness();
+  const { instance } = h.attach();
+  instance.enable();
+  const canvas = instance.canvas;
+  canvas.width = 800;
+  canvas.height = 400;
+  instance.sampleRate = 48000;
+  instance.levels = new Float32Array(2048).fill(12);
+  h.frame();
+
+  const points = canvas.drawCalls.filter(([method]) => method === 'moveTo' || method === 'lineTo');
+  assert.ok(points.length > 0);
+  assert.ok(points.every(([, , y]) => Math.abs(y - 400 * 12 / -96) < 1e-9),
+    'levels above 0 dBFS must be plotted above the canvas, not on its top edge');
   instance.dispose();
 });
 

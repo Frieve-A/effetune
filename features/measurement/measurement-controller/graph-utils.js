@@ -143,23 +143,27 @@ const GraphUtils = {
         
         const maxTime = this.levelGraphDurationSeconds;
         
-        // Draw level data
+        // Draw level data; levels outside -60..0 dB run out through the plot border
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padding.left, padding.top, graphWidth, graphHeight);
+        ctx.clip();
         ctx.strokeStyle = '#4e79a7'; // theme-allow: Channel and response identity colors.
         ctx.lineWidth = 2;
         ctx.beginPath();
-        
+
         let isFirstPoint = true;
-        
+
         for (const point of this.levelGraphData) {
             // Skip points beyond the displayed time range
             if (point.time > maxTime) continue;
-            
+
             // Calculate x position (time)
             const x = padding.left + (point.time / maxTime) * graphWidth;
-            
-            // Calculate y position (level) - clamp between -60dB and 0dB
-            const clampedLevel = Math.max(-60, Math.min(0, point.level));
-            const normalizedLevel = (clampedLevel + 60) / 60; // Map -60..0 to 0..1
+
+            // Silence (-Infinity dB) maps far below the plot so the line leaves through the bottom
+            const level = point.level > -1000 ? point.level : -1000;
+            const normalizedLevel = (level + 60) / 60; // Map -60..0 to 0..1
             const y = padding.top + graphHeight * (1 - normalizedLevel);
             
             if (isFirstPoint) {
@@ -169,10 +173,11 @@ const GraphUtils = {
                 ctx.lineTo(x, y);
             }
         }
-        
+
         ctx.stroke();
+        ctx.restore();
     },
-    
+
     /**
      * Update the frequency response graph for the current measurement
      * @param {Array} frequencyResponse - Frequency response data
@@ -309,19 +314,29 @@ const GraphUtils = {
         ctx.lineTo(padding.left, height - padding.bottom);
         ctx.stroke();
         
-        // Draw frequency response
+        // Draw frequency response; out-of-range values run out through the plot border
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padding.left, padding.top,
+            width - padding.left - padding.right, height - padding.top - padding.bottom);
+        ctx.clip();
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        
+
         let firstPoint = true;
-        
+
         for (const [freq, db] of normalizedResponse) {
             if (freq < minFreq || freq > maxFreq) continue;
-            
+            // A non-finite level (silent bin) is a gap
+            if (!Number.isFinite(db)) {
+                firstPoint = true;
+                continue;
+            }
+
             const x = scaleX(freq);
-            const y = scaleY(Math.max(minDb, Math.min(maxDb, db)));
-            
+            const y = scaleY(db);
+
             if (firstPoint) {
                 ctx.moveTo(x, y);
                 firstPoint = false;
@@ -329,8 +344,9 @@ const GraphUtils = {
                 ctx.lineTo(x, y);
             }
         }
-        
+
         ctx.stroke();
+        ctx.restore();
         
         // Draw grid lines
         ctx.strokeStyle = window.ThemePalette?.get('graph-grid-subtle') ?? '';

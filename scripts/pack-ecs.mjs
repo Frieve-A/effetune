@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { access, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,16 @@ const platform = process.platform === 'win32' ? electronBuilder.Platform.WINDOWS
   : process.platform === 'darwin' ? electronBuilder.Platform.MAC : electronBuilder.Platform.LINUX;
 const targets = process.platform === 'linux' ? ['AppImage']
   : values.prepackaged ? process.platform === 'win32' ? ['nsis', 'portable'] : ['dmg'] : ['dir'];
+// electron-updater reads this file to locate its download cache, so in-app
+// updates fail without it. electron-builder writes it only while packing for
+// an installer target, which neither the directory build nor the prepackaged
+// installer build does.
+const windowsUpdateConfigPath = unpacked => join(unpacked, 'resources', 'app-update.yml');
+if (process.platform === 'win32' && values.prepackaged) {
+  await access(windowsUpdateConfigPath(resolve(values.prepackaged))).catch(() => {
+    throw new Error('The prepackaged application has no resources/app-update.yml; in-app updates would fail.');
+  });
+}
 let vmpDirectory;
 function runVmp(action, directory) {
   const result = spawnSync('python', [
@@ -75,5 +85,13 @@ if (process.platform === 'win32' && !values.prepackaged) {
   // Resource edits invalidate the runtime's development signature. Sign this final app separately.
   await rm(join(unpacked, 'electron.exe.sig'), { force: true });
   await rm(join(unpacked, `${packageJson.build.productName}.exe.sig`), { force: true });
+  const { owner, repo, provider } = packageJson.build.publish;
+  await writeFile(windowsUpdateConfigPath(unpacked), [
+    `owner: ${owner}`,
+    `repo: ${repo}`,
+    `provider: ${provider}`,
+    `updaterCacheDirName: ${packageJson.name}-updater`,
+    '',
+  ].join('\n'));
   console.log(`ECS application ready for VMP signing: ${unpacked}`);
 }

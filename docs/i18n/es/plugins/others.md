@@ -1,6 +1,6 @@
 ---
-title: "Otros plugins - Generador de tonos de prueba y ruido, SoundFont Note Player, SoundFont Player - EffeTune"
-description: "Oscillator genera tonos de prueba y ruido blanco o rosa para comprobar altavoces y auriculares; SoundFont Note Player reproduce con un instrumento SF2/SF3/SFZ las notas detectadas. SoundFont Player reproduce canciones MIDI con SoundFonts SF2/SF3 o instrumentos SFZ."
+title: "Otros plugins - Distortion Correction, Generador de tonos de prueba y ruido, SoundFont Note Player, SoundFont Player - EffeTune"
+description: "Distortion Correction reduce la distorsión medida en tus propios altavoces. Oscillator genera tonos de prueba y ruido blanco o rosa para comprobar altavoces y auriculares; SoundFont Note Player reproduce con un instrumento SF2/SF3/SFZ las notas detectadas. SoundFont Player reproduce canciones MIDI con SoundFonts SF2/SF3 o instrumentos SFZ."
 lang: es
 ---
 
@@ -10,9 +10,45 @@ Una colección de herramientas de audio especializadas y generadores que complem
 
 ## Lista de Plugins
 
+- [Distortion Correction](#distortion-correction) - Reduce la distorsión medida en tus propios altavoces
 - [Oscillator](#oscillator) - Generador de tonos y ruido de prueba para comprobar altavoces y auriculares
 - [SoundFont Note Player](#sfz-note-player) - Reproduce las notas detectadas con SoundFonts SF2/SF3 e instrumentos SFZ
 - [SoundFont Player](#soundfont-player) - Reproduce MIDI con SoundFonts SF2/SF3 e instrumentos SFZ
+
+## Distortion Correction
+
+Distortion Correction reduce la distorsión que tus propios altavoces añaden a la música, a partir de una medición de esos altavoces hecha en EffeTune. Da forma a la señal antes de que llegue al altavoz para que se cancele una parte de su distorsión. Úsalo cuando escuches a volumen alto, que es cuando la distorsión de los altavoces es mayor, y quieras una reproducción más limpia con los altavoces que ya tienes.
+
+El efecto reduce la distorsión de segundo orden (orden par) y, en los canales en los que la medición muestra que ayuda, la distorsión de orden impar en bajas frecuencias causada por los grandes movimientos del cono. Cuánto ayuda depende del altavoz, y que un canal quede en «Off» es un resultado habitual y normal: muchos altavoces distorsionan de maneras que esta corrección no puede reducir. No puede arreglar el recorte brusco (clipping), los traqueteos, los zumbidos ni el ruido. Funciona con frecuencias de muestreo de 44,1 kHz o superiores.
+
+### Guía de mejora del sonido
+
+1. **Mide tus altavoces.** En [Medición acústica](../measurement.md), elige **+ Nueva medición** > **Distorsión de altavoces**. Coloca el micrófono a 0,5–1 m delante del altavoz y pon el amplificador al volumen más alto con el que sueles escuchar. Guarda el resultado.
+2. **Coloca el efecto al final.** Añade Distortion Correction al final del Effect Pipeline y elige la medición guardada en su lista **Measurement**. Si el efecto ya estaba en el pipeline sin ninguna medición elegida, empieza a usar por sí solo la que acabas de guardar. Mantén el efecto en último lugar: los efectos posteriores que cambian el nivel o el tono hacen que la corrección sea errónea, y la línea de estado te avisa mientras otro efecto lo siga.
+3. **Cambia el volumen dentro de EffeTune.** Después de medir, ajusta el volumen con el de EffeTune y no con el del amplificador; bajar el volumen dentro de EffeTune no requiere cambiar nada en este efecto. Si bajas el amplificador, indica **Amplifier Volume Change (dB)** o pulsa **Check again**, que mide el cambio y lo ajusta por ti. Si subes el amplificador por encima del volumen medido, vuelve a medir.
+4. **Compara.** Para oír lo que hace la corrección, activa y desactiva el efecto con **Mode** en **Reduce**. Para saber cómo suena la distorsión corregida, pon **Mode** en **Add** un momento y vuelve a **Reduce** para escuchar con normalidad.
+5. **Vigila Overload.** El efecto no limita su salida. Cuando la línea de estado muestre **Overload**, baja el nivel antes de este efecto, por ejemplo con un efecto [Volume](basics.md#volume) colocado antes.
+
+### Parámetros
+
+- **Measurement** (pestaña **Measurement**) - Elige la medición de distorsión de altavoces guardada, de la más reciente a la más antigua; **None** desactiva la corrección. Pulsa **Refresh measurements** después de medir de nuevo. La línea bajo la lista muestra cuándo se hizo la medición, su Signal Level y su Upper Limit, y cuándo se comprobó la corrección por última vez. Si la medición no está en este dispositivo, la corrección queda desactivada hasta que midas en este dispositivo o elijas otra medición.
+- **Amplifier Volume Change (dB)** (de −24 a 0 dB, en pasos de 0,5 dB; por defecto 0 dB) - Cuánto se bajó el amplificador después de la medición. Un valor erróneo hace que la corrección sea demasiado fuerte o demasiado débil, así que indica el cambio real. **Check again** abre Medición acústica, vuelve a reproducir la señal de prueba y ajusta este valor con lo que mide; también vuelve a medir lo bien que funciona la corrección.
+- **Filter Length** (pestaña **Correction**) - **Short** o **Long**. **Short** añade un retardo muy inferior a 1 ms. **Long** añade unos 2,5–3 ms según la frecuencia de muestreo, usa más procesamiento y en algunos altavoces puede corregir más. Ambas longitudes se comprueban durante la medición; la marcada como **(recommended)** logró la mayor reducción en todos los canales y es la que viene seleccionada por defecto. Pasa el puntero sobre la lista para ver los retardos exactos y el procesamiento adicional con la frecuencia de muestreo actual.
+- **Mode** - **Reduce** (por defecto) elimina la distorsión encontrada en la medición. **Add** hace esa misma distorsión unos 6 dB más fuerte (el doble de nivel) para que puedas oír cómo suena; mientras **Add** está seleccionado, la línea de estado lo indica.
+- Pestaña **Channels** - Cada canal que procesa el efecto y cada canal medido tienen dos filas, **Even-order** y **Odd-order**, cada una con **Auto**, **On** y **Off**. El estado junto a cada fila muestra qué hace el efecto en ella:
+  - **Auto** (por defecto) sigue la decisión de la medición para ese canal. En la distorsión de orden impar en bajas frecuencias, Auto activa la corrección solo cuando la comprobación de la corrección midió una mejora con el nivel configurado y ningún empeoramiento a volumen alto, así que normalmente queda desactivada.
+  - **On** corrige el canal aunque la medición lo haya dejado desactivado. Pasa el puntero sobre el estado junto a la fila para leer por qué se dejó así; cuando la medición comprobó que la corrección empeoraría la distorsión, no se recomienda activarla.
+  - **Off** deja el canal sin corregir, por ejemplo para compararlo con uno corregido.
+  - **Not measured** indica que el efecto procesa el canal, pero la medición elegida no lo incluye, así que no se corrige; mide ese canal para corregirlo. **Not used** indica que este efecto no procesa un canal medido.
+  - Un canal sin corregir mantiene el mismo retardo que los demás, de modo que los altavoces siguen sincronizados. Al hacer clic en una fila también se muestra ese canal en el gráfico. Si la fila de orden impar muestra **Off (not checked)**, ejecuta **Check again** para que **Auto** decida.
+
+### Cómo leer el gráfico y las cifras
+
+- **Gráfico**: muestra la distorsión de orden par por frecuencia del canal elegido en **Graph Ch**. El eje vertical, **Multitone Distortion (dB)**, indica la distorsión multitono: la que se mide con una señal de prueba parecida a la música, con muchos tonos simultáneos, respecto a esa señal; por eso sus valores no se pueden comparar directamente con cifras de THD medidas con un solo tono. La línea continua es la medición sin la corrección; la de puntos es el resultado previsto con la corrección. En un canal sin corregir, una línea aparte muestra **What the correction would do (not used)**. El sombreado marca el rango **Below the noise floor**, donde la distorsión queda oculta bajo el ruido y la medición no puede verla; ahí la corrección se estima a partir del rango que la medición sí ve, así que normalmente sigue reduciendo la distorsión, aunque menos y con menos certeza. Una línea vertical marca el **Upper Limit** de la medición, por encima del cual no se corrige nada. El recuadro de la esquina superior derecha nombra cada línea y muestra su valor en la posición del puntero. Como en otros gráficos de frecuencia, el icono de espectro superpone el espectro de la música ([Superposición de espectro](eq.md#superposición-de-espectro)) y, al arrastrar a lo largo del eje de frecuencias, se escucha esa frecuencia.
+- **As set** muestra el nivel que se usa para las cifras. **All measured levels** añade los demás niveles medidos (Signal Level 6 y 12 dB más bajo y **Loud peaks**). **Show Odd-order** añade la distorsión de orden impar sin corrección.
+- **Tabla de cifras**: abarca de 50 Hz a 8 kHz. **Total distortion** y **Even-order distortion** muestran el nivel antes → después de la corrección, en dB y en % de la señal de prueba, marcado como **measured** (en la comprobación de la corrección) o **predicted**. **Loud peaks** muestra el cambio de la distorsión de orden par en los picos fuertes de la música, y **If volume is off by 3 dB** muestra el cambio si **Amplifier Volume Change (dB)** difiere en 3 dB del cambio real del amplificador. Los valores que aumentarían la distorsión aparecen resaltados. **State** indica si el canal está corregido, activado o desactivado por ti, o desactivado; pasa el puntero sobre él para leer el motivo.
+- Las cifras suponen música a nivel máximo en EffeTune con el amplificador ajustado como en **Amplifier Volume Change (dB)**, y valen para la posición del micrófono usada en la medición. En tu posición de escucha la reducción es similar por debajo de unos 2 kHz y normalmente menor por encima. No se sabe nada por encima del volumen del amplificador medido, y el nivel medido más bajo queda 12 dB por debajo del Signal Level configurado; por debajo de ese nivel la distorsión es aún menor. La propia distorsión del micrófono se separa en lo posible, pero no puede descartarse por completo.
+- **Línea de estado**: muestra un mensaje y, a continuación, el retardo que añade el efecto. Normalmente el mensaje enumera los canales corregidos. En su lugar, muestra **Overload** cuando la señal corregida supera el fondo de escala, una advertencia cuando el efecto no está en último lugar o el motivo por el que no se corrige ningún canal cuando es el caso.
 
 ## Oscillator
 

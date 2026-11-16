@@ -27,9 +27,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-cc-libs",
       "base": "mingw-w64-gcc",
-      "version": "16.2.0-6",
-      "file": "mingw-w64-ucrt-x86_64-cc-libs-16.2.0-6-any.pkg.tar.zst",
-      "sha256": "d8fff9e62443168bcda8ce746697243519c4f090ea607357ce94feac0bd10a50",
+      "version": "16.2.0-7",
+      "file": "mingw-w64-ucrt-x86_64-cc-libs-16.2.0-7-any.pkg.tar.zst",
+      "sha256": "bf7dea230d49527d4634cb959a9e500b0f15f44e8ccfc690b99cba2299f17797",
       "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
     },
     {
@@ -43,18 +43,18 @@
     {
       "name": "mingw-w64-ucrt-x86_64-ffmpeg",
       "base": "mingw-w64-ffmpeg",
-      "version": "9.0.2-3",
-      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.0.2-3-any.pkg.tar.zst",
-      "sha256": "846090a3277f249103705bbc48f3d7b49737463f279d6a5963050cd67ec3eb21",
+      "version": "9.0.2-4",
+      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.0.2-4-any.pkg.tar.zst",
+      "sha256": "22928bcab225fba6de842204d9e89998a8549ebca615c1de3fe8add560ef1cf0",
       "license": "spdx:GPL-3.0-or-later",
       "sourceOnly": true
     },
     {
       "name": "mingw-w64-ucrt-x86_64-gcc",
       "base": "mingw-w64-gcc",
-      "version": "16.2.0-6",
-      "file": "mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
-      "sha256": "0290e91f5a9a8a3699bcea6221a899403bb9bd5d6f7dbd98c883d74e2ef36338",
+      "version": "16.2.0-7",
+      "file": "mingw-w64-ucrt-x86_64-gcc-16.2.0-7-any.pkg.tar.zst",
+      "sha256": "c7c5ac5a7413e9a3b5afa367288568058dcecce8fdd690059c5bbfa07def01b9",
       "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
     },
     {
@@ -151,17 +151,17 @@
     {
       "name": "mingw-w64-ucrt-x86_64-libffi",
       "base": "mingw-w64-libffi",
-      "version": "3.8.0-1",
-      "file": "mingw-w64-ucrt-x86_64-libffi-3.8.0-1-any.pkg.tar.zst",
-      "sha256": "99ad12f4ecfa00a889ef9c5c0188592368a5bac109d0c508ce4e04f29ea95a76",
+      "version": "3.8.1-1",
+      "file": "mingw-w64-ucrt-x86_64-libffi-3.8.1-1-any.pkg.tar.zst",
+      "sha256": "8eeb770c91b7e51ddbcb34a9a991e5b417066270363c3026882149638a70d03d",
       "license": "spdx:MIT"
     },
     {
       "name": "mingw-w64-ucrt-x86_64-libgcc",
       "base": "mingw-w64-gcc",
-      "version": "16.2.0-6",
-      "file": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
-      "sha256": "80b2497f019977dd9528b1abc8621b1328a0115ab1f724047ccbb56bf323f11d",
+      "version": "16.2.0-7",
+      "file": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-7-any.pkg.tar.zst",
+      "sha256": "bc0ae31c582e0847964b4c8c4b55bb2404a9b7ddce7ebf0b176b6693b76e0c62",
       "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
     },
     {
@@ -186,9 +186,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-libstdc++",
       "base": "mingw-w64-gcc",
-      "version": "16.2.0-6",
-      "file": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst",
-      "sha256": "33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f",
+      "version": "16.2.0-7",
+      "file": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-7-any.pkg.tar.zst",
+      "sha256": "4dd4b216b0e92ffa160127dd50620372609e98cb219ff1c5dcb9b3fbfe153253",
       "license": "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
     },
     {
@@ -242,9 +242,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-pkgconf",
       "base": "mingw-w64-pkgconf",
-      "version": "1~3.0.10-1",
-      "file": "mingw-w64-ucrt-x86_64-pkgconf-1~3.0.10-1-any.pkg.tar.zst",
-      "sha256": "c234b9f8280f1e931efe8e4350085f544e4a6081ffcbd2caa3e81834e72e4688",
+      "version": "1~3.0.11-1",
+      "file": "mingw-w64-ucrt-x86_64-pkgconf-1~3.0.11-1-any.pkg.tar.zst",
+      "sha256": "47f6e92054f7af76b7ea219a47406987fb64bb26c17dd50714fd996b11b56b5b",
       "license": "spdx:ISC"
     },
     {
@@ -282,22 +282,22 @@
     {
       "name": "mingw-w64-ucrt-x86_64-make",
       "base": "mingw-w64-make",
-      "version": "4.4.1-5",
-      "file": "mingw-w64-ucrt-x86_64-make-4.4.1-5-any.pkg.tar.zst",
-      "sha256": "871f760657a360279f29b945a7fd7d9655fe46a3e1e06dd783c9e74514aa0b27",
+      "version": "4.4.1-6",
+      "file": "mingw-w64-ucrt-x86_64-make-4.4.1-6-any.pkg.tar.zst",
+      "sha256": "15be75b9081ea2cf8f91bce1c0b9d2ab37c908ee22339e541355b0c76e282999",
       "license": "spdx:GPL-3.0-or-later"
     }
   ],
   "windowsSources": [
     {
-      "name": "mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
-      "sha256": "b1ae15944aac72df605c7a87650f65cf778acb595f0bb2ece80c3228979f1e56"
+      "name": "mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
+      "sha256": "360d495057cbe6b93bbc739d94b2e465454d618a9b1d2c3dca5296b487ffcfed"
     },
     {
-      "name": "mingw-w64-gcc-16.2.0-6.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
-      "sha256": "a901d8afb78438abcff9ed020cd9aa9431db76de1992171c2454c3c07ad289e8"
+      "name": "mingw-w64-gcc-16.2.0-7.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-7.src.tar.zst",
+      "sha256": "bdd1b2cd820cd67d38b42a174180bdd589b80b97af1a8b042d6c4da9176bac93"
     },
     {
       "name": "mingw-w64-gettext-1.0-1.src.tar.zst",
@@ -335,9 +335,9 @@
       "sha256": "d406876e95a88c85a6a8e20bd25bd987a28721a0d0979cc0e58c268c3e9e775a"
     },
     {
-      "name": "mingw-w64-libffi-3.8.0-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libffi-3.8.0-1.src.tar.zst",
-      "sha256": "641ea78ce0333839eab5262656f03fdcfd8496d7388bd7b27e4f0638aeed9adf"
+      "name": "mingw-w64-libffi-3.8.1-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libffi-3.8.1-1.src.tar.zst",
+      "sha256": "81d9655986c173c3bf4a37b87a85fb85c1d67a00550221b52f86ca5789585ee8"
     },
     {
       "name": "mingw-w64-libiconv-1.19.1-1.src.tar.zst",
@@ -377,7 +377,7 @@
   ],
   "codec": {
     "version": "9.0.2",
-    "sourceArchive": "mingw-w64-ffmpeg-9.0.2-3.src.tar.zst",
+    "sourceArchive": "mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
     "sourceDirectory": "mingw-w64-ffmpeg",
     "sourceTar": "ffmpeg-9.0.2.tar.xz",
     "configure": [

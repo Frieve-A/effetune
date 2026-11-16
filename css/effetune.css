@@ -213,6 +213,23 @@ input[type="checkbox"] + label::before {
     color: var(--et-accent);
 }
 
+.network-output-button.syncing svg {
+    animation: network-output-syncing 1.2s ease-in-out infinite;
+}
+
+@keyframes network-output-syncing {
+    50% {
+        opacity: 0.3;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .network-output-button.syncing svg {
+        animation: none;
+        opacity: 0.5;
+    }
+}
+
 body.layout-desktop .header-buttons:has(> .network-playback-target, > .network-output-button:not([hidden])) > .open-music-button {
     margin-inline-start: 10px;
 }
@@ -1650,8 +1667,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 }
 
 .plugin-parameter-ui .graph-axis-titled::before,
-.plugin-parameter-ui .graph-axis-titled::after,
-.plugin-parameter-ui .spectrum-overlay-axis-title {
+.plugin-parameter-ui .graph-axis-titled::after {
     position: absolute;
     z-index: 3;
     color: var(--et-text-primary);
@@ -1675,8 +1691,7 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
 }
 
 body.layout-mobile .plugin-parameter-ui .graph-axis-titled::before,
-body.layout-mobile .plugin-parameter-ui .graph-axis-titled::after,
-body.layout-mobile .plugin-parameter-ui .spectrum-overlay-axis-title {
+body.layout-mobile .plugin-parameter-ui .graph-axis-titled::after {
     font-size: 13px;
 }
 
@@ -4437,8 +4452,19 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
     --et-effect-tab-min-width: 4em;
 }
 
+/* 15 bands plus Master fill two even rows (four on mobile). */
 .fifteen-band-peq-band-tabs {
-    --et-effect-tab-min-width: 4.6em;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+body.layout-mobile .fifteen-band-peq-band-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Let the Master label fit its column in a narrow effect panel. */
+.fifteen-band-peq-band-tabs .fifteen-band-peq-band-tab {
+    min-width: 0;
+    padding: 0 4px;
 }
 
 :is(.fbdyn-band-tabs, .phase-select-eq-region-tabs) {

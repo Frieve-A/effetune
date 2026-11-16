@@ -20,22 +20,12 @@
         'NarrowRangePlugin', 'TiltEQPlugin', 'ToneControlPlugin', 'ChannelDividerPlugin',
         'FIRCrossoverPlugin', 'FiveBandDynamicEQ', 'FiveBandPEQPlugin',
         'FifteenBandPEQPlugin', 'FiveBandFIRPEQPlugin', 'RoomEqPlugin',
-        'EarphoneCableSimPlugin', 'SubSynthPlugin'
-    ].map(name => [name, {
-        ...window.FrequencyAxis.targets.get(name),
-        tickFontSize: window.FrequencyAxis.targets.get(name).inset ? 10 : 12,
-        axisFontSize: window.FrequencyAxis.targets.get(name).inset ? 10 : 14
-    }]));
-    targets.get('FiveBandDynamicEQ').axisFontSize = 13;
-    for (const name of ['ChannelDividerPlugin', 'FIRCrossoverPlugin', 'SubSynthPlugin']) {
-        targets.get(name).tickFontSize = 11;
-        targets.get(name).axisFontSize = 13;
-    }
+        'EarphoneCableSimPlugin', 'SpeakerDistortionCorrectionPlugin', 'SubSynthPlugin'
+    ].map(name => [name, { ...window.FrequencyAxis.targets.get(name) }]));
     // Keep controls inside the plot and clear of existing top-right controls.
-    for (const name of ['FifteenBandPEQPlugin', 'FiveBandFIRPEQPlugin', 'RoomEqPlugin']) {
-        targets.get(name).toggleAnchor = {
-            top: 'auto', bottom: 'calc(var(--spectrum-overlay-inset, 0px) + 6px)'
-        };
+    for (const name of ['FifteenBandPEQPlugin', 'FiveBandFIRPEQPlugin', 'RoomEqPlugin',
+        'SpeakerDistortionCorrectionPlugin']) {
+        targets.get(name).toggleAnchor = { top: 'auto', bottom: '6px' };
     }
 
     let fftWorkspace;
@@ -122,7 +112,6 @@
             this.plugin = plugin;
             this.mount = mount;
             this.target = target;
-            mount.style.setProperty('--spectrum-overlay-inset', `${target.inset}px`);
             this.mode = MODE_OFF;
             this.enabled = false;
             this.visible = true;
@@ -132,7 +121,6 @@
             this.animationId = null;
             this.retryTimer = null;
             this.canvas = null;
-            this.axisTitle = null;
             this._resetAnalysis();
             this.differenceX = null;
             this.differenceBeforeY = null;
@@ -194,6 +182,23 @@
             this.validCellCount = 0;
             this.captureGeneration = null;
             this.captureFrameIndex = -1;
+        }
+
+        // A rebuilt UI takes over the running capture and the displayed analysis, so a
+        // layout-only change neither restarts the worklet tap nor clears the spectrum.
+        _adopt(previous) {
+            this.mode = previous.mode;
+            this.enabled = true;
+            this.node = previous.node;
+            this.active = previous.active;
+            previous.active = false;
+            this.node?.port.addEventListener('message', this.onMessage);
+            for (const key of ['pending', 'pendingFrames', 'inputLevels', 'levels', 'inputPeaks', 'peaks',
+                'lastPeakTime', 'validCellCount', 'captureGeneration', 'captureFrameIndex',
+                'sampleRate', 'lastReceived', 'visualSyncEpoch']) this[key] = previous[key];
+            this._updateButton();
+            this._createCanvas();
+            this._sync();
         }
 
         _ensureNode() {
@@ -301,15 +306,8 @@
             const canvas = this.canvas = document.createElement('canvas');
             canvas.className = 'spectrum-overlay-canvas';
             canvas.setAttribute('aria-hidden', 'true');
-            canvas.style.inset = `${this.target.inset}px`;
+            canvas.style.inset = '0';
             this.mount.appendChild(canvas);
-            if (this.target.inset) {
-                const axisTitle = this.axisTitle = document.createElement('div');
-                axisTitle.className = 'spectrum-overlay-axis-title';
-                axisTitle.textContent = 'Level (dBFS)';
-                axisTitle.setAttribute('aria-hidden', 'true');
-                this.mount.appendChild(axisTitle);
-            }
             this.resizeObserver = new ResizeObserver(entries => {
                 if (this.disposed || !this.canvas) return;
                 const { width, height } = entries[0].contentRect;
@@ -432,7 +430,7 @@
             if (!levels) return null;
             if (!peaks || peaks.length !== levels.length) peaks = new Float32Array(levels.length).fill(NUMERIC_FLOOR_DB);
             for (let i = 0; i < levels.length; i++) {
-                const level = levels[i] > 0 ? 0 : levels[i];
+                const level = levels[i];
                 if (level > peaks[i]) peaks[i] = level;
             }
             return peaks;
@@ -465,13 +463,13 @@
                 if (frequency < minFreq) continue;
                 if (frequency > maxFreq) break;
                 const x = width * (Math.log10(frequency) - logMin) / logRange;
-                const level = levels[i] > 0 ? 0 : levels[i];
+                const level = levels[i];
                 const y = height * level / DYNAMIC_RANGE_DB;
                 if (!started) {
                     let startLevel = level;
                     if (i > first && frequency > minFreq) {
                         const previousFrequency = this._frequencyAt(i - 1);
-                        const previousLevel = levels[i - 1] > 0 ? 0 : levels[i - 1];
+                        const previousLevel = levels[i - 1];
                         const fraction = (logMin - Math.log10(previousFrequency)) /
                             (Math.log10(frequency) - Math.log10(previousFrequency));
                         startLevel = previousLevel + (level - previousLevel) * fraction;
@@ -511,8 +509,8 @@
                 const frequency = this._frequencyAt(i);
                 if (frequency < minFreq) continue;
                 if (frequency > maxFreq) break;
-                const beforeLevel = beforeLevels[i] > 0 ? 0 : beforeLevels[i];
-                const afterLevel = afterLevels[i] > 0 ? 0 : afterLevels[i];
+                const beforeLevel = beforeLevels[i];
+                const afterLevel = afterLevels[i];
                 if (count === 0) {
                     let startBefore = beforeLevel;
                     let startAfter = afterLevel;
@@ -520,8 +518,8 @@
                         const previousFrequency = this._frequencyAt(i - 1);
                         const fraction = (logMin - Math.log10(previousFrequency)) /
                             (Math.log10(frequency) - Math.log10(previousFrequency));
-                        const previousBefore = beforeLevels[i - 1] > 0 ? 0 : beforeLevels[i - 1];
-                        const previousAfter = afterLevels[i - 1] > 0 ? 0 : afterLevels[i - 1];
+                        const previousBefore = beforeLevels[i - 1];
+                        const previousAfter = afterLevels[i - 1];
                         startBefore = previousBefore + (beforeLevel - previousBefore) * fraction;
                         startAfter = previousAfter + (afterLevel - previousAfter) * fraction;
                     }
@@ -607,7 +605,9 @@
             const { width, height } = this.canvas;
             if (!width || !height) return;
             const dpr = window.devicePixelRatio || 1;
-            const { tickFontSize, axisFontSize } = this.target;
+            // The host graphs' sizes: 12 px tick values, 14 px axis title.
+            const tickFontSize = 12;
+            const axisFontSize = 14;
             ctx.font = `${tickFontSize * dpr}px Arial`;
             ctx.fillStyle = window.ThemePalette?.get('graph-overlay-label') ?? '';
             ctx.textAlign = 'right';
@@ -615,16 +615,14 @@
             for (let level = -24; level > DYNAMIC_RANGE_DB; level -= 24) {
                 ctx.fillText(String(level), width - (axisFontSize + 8) * dpr, height * level / DYNAMIC_RANGE_DB);
             }
-            if (!this.target.inset) {
-                ctx.font = `${axisFontSize * dpr}px Arial`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'alphabetic';
-                ctx.save();
-                ctx.translate(width - 4 * dpr, height / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Level (dBFS)', 0, 0);
-                ctx.restore();
-            }
+            ctx.font = `${axisFontSize * dpr}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            ctx.save();
+            ctx.translate(width - 4 * dpr, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Level (dBFS)', 0, 0);
+            ctx.restore();
         }
 
         _releaseDisplay() {
@@ -638,8 +636,6 @@
             this.node = null;
             this.canvas?.remove();
             this.canvas = null;
-            this.axisTitle?.remove();
-            this.axisTitle = null;
             this._resetAnalysis();
             this._releaseDifferenceWorkspace();
             this.visible = true;
@@ -654,7 +650,6 @@
             this.animationId = null;
             this._releaseDisplay();
             this.button.remove();
-            this.mount.style.removeProperty('--spectrum-overlay-inset');
             if (instances.get(this.plugin.id) === this) instances.delete(this.plugin.id);
         }
     }
@@ -681,20 +676,21 @@
                 peakHold: window.appConfig.spectrumOverlayPeakHold
             });
             window.FrequencyAxis.pruneDetached(instances);
-            instances.get(plugin.id)?.dispose();
-            if (plugin.hasLocalAudio === false) return null;
-            const target = targets.get(plugin.constructor.name);
-            if (!target) return null;
-            const plot = uiRoot.querySelector(target.plotSelector);
-            const mount = target.mountSelector ? uiRoot.querySelector(target.mountSelector) : plot?.parentElement;
+            const previous = instances.get(plugin.id);
+            const target = plugin.hasLocalAudio === false ? null : targets.get(plugin.constructor.name);
+            const plot = target ? uiRoot.querySelector(target.plotSelector) : null;
+            const mount = target?.mountSelector ? uiRoot.querySelector(target.mountSelector) : plot?.parentElement;
             if (!plot || !mount) {
-                console.warn(`Spectrum overlay graph not found for ${plugin.constructor.name}`);
+                previous?.dispose();
+                if (target) console.warn(`Spectrum overlay graph not found for ${plugin.constructor.name}`);
                 return null;
             }
             const instance = new SpectrumOverlayInstance(plugin, mount, target);
-            instances.set(plugin.id, instance);
             const sessionMode = sessionModes.get(plugin.id);
-            if (sessionMode) instance.setMode(sessionMode);
+            if (previous?.enabled) instance._adopt(previous);
+            previous?.dispose();
+            instances.set(plugin.id, instance);
+            if (!instance.enabled && sessionMode) instance.setMode(sessionMode);
             return instance;
         },
         detach(pluginId) {

@@ -558,18 +558,17 @@ class NarrowRangePlugin extends PluginBase {
         ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
       }
     });
-    const dBs = [-30, -24, -18, -12, -6, 0];
+    // Interior grid lines only; the -30 dB bound sits on the canvas edge.
+    const dBs = [-24, -18, -12, -6, 0];
     dBs.forEach(db => {
       const y = height * (1 - (db + 30) / 36);
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
-      if (db > -30 && db < 6) {
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        ctx.textAlign = "right";
-        ctx.fillText(`${db}`, 48, y + 4);
-      }
+      ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+      ctx.textAlign = "right";
+      ctx.fillText(`${db}`, 48, y + 4);
     });
     ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
     ctx.font = "14px Arial";

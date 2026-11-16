@@ -262,12 +262,13 @@ test('loadPlugins loads resources, tracks progress, registers classes, and toler
   assert.ok(harness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Failed to initialize plugin Throwing')));
   assert.deepEqual(
     harness.calls.filter(call => call[0] === 'progress').map(call => call[1]),
-    [0, 6, 13, 19, 25, 31, 38, 44, 50, 56, 63, 69, 75, 81, 88, 94, 100]
+    [0, 6, 12, 18, 24, 29, 35, 41, 47, 53, 59, 65, 71, 76, 82, 88, 94, 100]
   );
   assert.deepEqual(harness.appended.filter(element => element.tagName === 'SCRIPT')
-    .slice(0, 6).map(element => element.src),
+    .slice(0, 7).map(element => element.src),
   [
     'plugins/plugin-base.js',
+    'plugins/fir-asset-eq.js',
     'plugins/graph-point-interaction.js',
     'plugins/frequency-axis.js',
     'plugins/spectrum-overlay.js',

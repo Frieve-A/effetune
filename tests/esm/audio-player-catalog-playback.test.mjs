@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { getPlaybackRegion } from '../../js/ui/audio-player/playback-region.js';
 import { normalizePlaybackSourceDescriptor } from '../../js/ui/audio-player/playback-source-policy.js';
 import {
   CatalogSequence,
@@ -417,6 +418,23 @@ test('catalog track-ended handling re-resolves Repeat ONE and resets Repeat OFF 
   });
 });
 
+test('manual catalog Next and Previous move through the queue during Repeat ONE', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+    await manager.loadCatalogSequence(catalogDescriptor({ itemCount: 3 }), {
+      currentOrdinal: 1,
+      autoPlay: false
+    });
+    audioPlayer.stateManager.updateState({ repeatMode: 'ONE' }, 'repeat one');
+
+    assert.equal((await manager.transportNext(true)).accepted, true);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 2);
+
+    assert.equal((await manager.transportPrevious(true)).accepted, true);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 1);
+    assert.equal(audioPlayer.stateManager.state.repeatMode, 'ONE');
+  });
+});
+
 test('premature catalog load recovery ignores Repeat ONE and reuses candidate skip-or-stop', async () => {
   await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
     globalThis.window.uiManager = {
@@ -448,6 +466,61 @@ test('premature catalog load recovery ignores Repeat ONE and reuses candidate sk
       calls.filter(call => call[0] === 'transientMessage').map(call => call[4]?.count ?? call[3]?.count),
       [1, 1]
     );
+  });
+});
+
+test('a premature CUE end stops at the last catalog track with Repeat ALL enabled', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    const descriptor = catalogDescriptor({ itemCount: 2 });
+    const resolveSource = descriptor.resolveSource;
+    descriptor.resolveSource = async request => ({
+      ...await resolveSource(request),
+      ...(request.trackUid === 'track-1' && { startFrame: 0, endFrame: 750, durationSec: 10 })
+    });
+    await manager.loadCatalogSequence(descriptor, { currentOrdinal: 1, autoPlay: false });
+    const { stateManager } = audioPlayer;
+    stateManager.updateState({ repeatMode: 'ALL' }, 'repeat all');
+
+    // Manual movement still wraps in both directions.
+    assert.equal((await manager.transportNext(true)).accepted, true);
+    assert.equal(stateManager.state.currentTrackIndex, 0);
+    assert.equal((await manager.transportPrevious(true)).accepted, true);
+    assert.equal(stateManager.state.currentTrackIndex, 1);
+
+    const context = Object.assign(new AudioContextManager(audioPlayer, {}), audioPlayer.contextManager);
+    audioPlayer.contextManager = context;
+    const listeners = new Map();
+    audioPlayer.audioElement = {
+      currentTime: 6,
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    };
+    context.activeRegion = {
+      region: getPlaybackRegion(stateManager.state.currentTrack),
+      sourceGeneration: context.activeSourceGeneration,
+      boundaryCommitted: false
+    };
+    context.stop = () => calls.push(['stop']);
+    context.setupEventHandlers();
+    const region = context.activeRegion;
+    stateManager.updateState({
+      playbackMode: 'audioElement', isPlaying: true, isStopped: false, isPaused: false
+    }, 'playing the CUE entry');
+    calls.length = 0;
+    descriptor.sourceCalls.length = 0;
+
+    listeners.get('ended')({ target: audioPlayer.audioElement });
+    assert.ok(region.endedRecoveryPromise);
+    const result = await region.endedRecoveryPromise;
+
+    assert.equal(result.stoppedAtEnd, true);
+    assert.equal(stateManager.state.currentTrackIndex, 0);
+    assert.equal(stateManager.state.repeatMode, 'ALL');
+    assert.deepEqual(descriptor.sourceCalls.map(request => request.trackUid), ['track-0']);
+    assert.deepEqual(calls.filter(call =>
+      ['loadTrack', 'stop', 'play', 'transitionToNextTrack'].includes(call[0])), [
+      ['loadTrack', 'catalog-sequence:0', 0],
+      ['stop']
+    ]);
   });
 });
 

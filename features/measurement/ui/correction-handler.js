@@ -12,7 +12,7 @@ import { resolveDisplayedResponse, resolveResponseSweepBand } from '../measureme
 const CORRECTION_CONTROL_IDS = Object.freeze([
     'smoothing', 'smoothingValue', 'targetLowFreqSlider', 'targetLowFreqValue',
     'targetHighFreqSlider', 'targetHighFreqValue', 'eqBandCount', 'eqBandCountValue',
-    'copyPEQBtn', 'copyChannelPEQBtn', 'exportTxtBtn', 'exportCSVBtn'
+    'copyPEQBtn', 'copyChannelPEQBtn', 'copyRoomEqBtn', 'exportTxtBtn', 'exportCSVBtn'
 ]);
 
 export function smoothingToBinsPerOct(smoothing) {

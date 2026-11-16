@@ -139,15 +139,9 @@ export function analyzeImpulseResponse(record, settings = {}) {
     };
 }
 
-export function analyzeDistortion(payload, settings = {}) {
-    if (!validateHarmonicAnalysis(payload)) throw new TypeError('Distortion unavailable');
-    const harmonicLimit = settings.harmonicLimit ?? Math.min(3, payload.orders.length);
-    if (!Number.isSafeInteger(harmonicLimit) || harmonicLimit < 2 || harmonicLimit > payload.orders.length) {
-        throw new RangeError('Invalid harmonic limit');
-    }
-    const maxOrder = settings.maxOrder ?? Math.min(3, harmonicLimit);
-    if (!Number.isSafeInteger(maxOrder) || maxOrder < 2 || maxOrder > harmonicLimit) throw new RangeError('Invalid maximum order');
-    // The THD ceiling does not remove independently displayed harmonic orders.
+// Windowed spectra of the separated harmonic responses (order 1 the linear response, order n > 1 the
+// response minus its linear reference) and of their references, for the first `harmonicLimit` orders.
+function harmonicSpectra(payload, harmonicLimit, settings) {
     const entries = payload.orders.slice(0, harmonicLimit);
     const sampleRate = payload.sampleRate;
     const available = entries.filter(entry => entry.validMaxFrequency > entry.validMinFrequency);
@@ -170,18 +164,61 @@ export function analyzeDistortion(payload, settings = {}) {
             : Float32Array.from(entry.data, (value, i) => value - entry.referenceData[i])));
     const references = entries.map(entry => entry.validMaxFrequency <= entry.validMinFrequency ? null
         : analyze(entry, entry.order === 1 ? entry.referenceData : entry.harmonicReferenceData));
-    const resolutionHz = sampleRate / spectra[0].length;
+    return { entries, sampleRate, spectra, references, resolutionHz: sampleRate / spectra[0].length, availableBefore, availableAfter };
+}
+
+// A window cannot resolve a tone from an excitation edge closer than its frequency resolution, so the
+// margin applies at each observed fundamental frequency f of harmonic `entry`.
+const linearObservable = (entries, f, resolutionHz) =>
+    f >= entries[0].validMinFrequency + resolutionHz && f <= entries[0].validMaxFrequency - resolutionHz;
+const observable = (entries, entry, f, resolutionHz) => linearObservable(entries, f, resolutionHz) &&
+    f >= entry.validMinFrequency && f <= entry.validMaxFrequency - resolutionHz / entry.order;
+
+// Complex quotient of a measured spectrum and its reference at `frequency`, or null.
+function referencedComplex(measured, reference, frequency, sampleRate) {
+    const n = complexAt(measured, frequency, sampleRate);
+    const d = complexAt(reference, frequency, sampleRate);
+    const dd = d ? d[0] * d[0] + d[1] * d[1] : 0;
+    if (!n || !(dd > 1e-16)) return null;
+    return [(n[0] * d[0] + n[1] * d[1]) / dd, (n[1] * d[0] - n[0] * d[1]) / dd];
+}
+
+/**
+ * Complex unit-input transfers of a harmonic analysis at the fundamentals `frequencies`, with the
+ * window settings of analyzeDistortion over the orders up to `maxOrder` (2 or 3): per frequency
+ * { h1, h2, h3 }, h1 the linear response at f and hn the order-n response at n·f, each [re, im] or
+ * null where it is not observed (h3 always null for `maxOrder` 2).
+ */
+export function harmonicTransfers(payload, frequencies, settings = {}, maxOrder = 2) {
+    if (!validateHarmonicAnalysis(payload)) throw new TypeError('Distortion unavailable');
+    const { entries, sampleRate, spectra, references, resolutionHz } = harmonicSpectra(payload, maxOrder, settings);
+    const harmonic = (n, f) => (spectra[n - 1] && observable(entries, entries[n - 1], f, resolutionHz)
+        ? referencedComplex(spectra[n - 1], references[n - 1], n * f, sampleRate) : null);
+    return frequencies.map(f => ({
+        h1: linearObservable(entries, f, resolutionHz) ? referencedComplex(spectra[0], references[0], f, sampleRate) : null,
+        h2: harmonic(2, f),
+        h3: harmonic(3, f)
+    }));
+}
+
+export function analyzeDistortion(payload, settings = {}) {
+    if (!validateHarmonicAnalysis(payload)) throw new TypeError('Distortion unavailable');
+    const harmonicLimit = settings.harmonicLimit ?? Math.min(3, payload.orders.length);
+    if (!Number.isSafeInteger(harmonicLimit) || harmonicLimit < 2 || harmonicLimit > payload.orders.length) {
+        throw new RangeError('Invalid harmonic limit');
+    }
+    const maxOrder = settings.maxOrder ?? Math.min(3, harmonicLimit);
+    if (!Number.isSafeInteger(maxOrder) || maxOrder < 2 || maxOrder > harmonicLimit) throw new RangeError('Invalid maximum order');
+    // The THD ceiling does not remove independently displayed harmonic orders.
+    const { entries, sampleRate, spectra, references, resolutionHz, availableBefore, availableAfter } =
+        harmonicSpectra(payload, harmonicLimit, settings);
     const frequencies = frequencyGrid(sampleRate, settings, resolutionHz);
     const fundamentals = frequencies.map(f => referencedMagnitude(spectra[0], references[0], f, sampleRate));
     const peak = Math.max(...fundamentals.filter(Number.isFinite));
     const series = entries.slice(1).map((entry, offset) => ({
         order: entry.order,
         ratios: frequencies.map((f, i) => {
-            // A window cannot resolve a tone from an excitation edge closer than
-            // its frequency resolution. Apply the margin at each observed frequency.
-            if (f < entry.validMinFrequency || f > entry.validMaxFrequency - resolutionHz / entry.order ||
-                f < entries[0].validMinFrequency + resolutionHz || f > entries[0].validMaxFrequency - resolutionHz ||
-                !(fundamentals[i] > Math.max(1e-9, peak * 1e-4))) return null;
+            if (!observable(entries, entry, f, resolutionHz) || !(fundamentals[i] > Math.max(1e-9, peak * 1e-4))) return null;
             const amplitude = referencedMagnitude(spectra[offset + 1], references[offset + 1], f * entry.order, sampleRate);
             return Number.isFinite(amplitude) ? amplitude / fundamentals[i] : null;
         })
@@ -192,7 +229,7 @@ export function analyzeDistortion(payload, settings = {}) {
     const included = series.filter(entry => entry.order <= maxOrder);
     const thd = frequencies.map((_, i) => included.some(entry => entry.ratios[i] === null)
         ? null : Math.hypot(...included.map(entry => entry.ratios[i])));
-    return { frequencies, series, thd, maxOrder, harmonicLimit, resolutionHz,
+    return { frequencies, fundamentals, series, thd, maxOrder, harmonicLimit, resolutionHz,
         availableBeforeSeconds: availableBefore, availableAfterSeconds: availableAfter };
 }
 

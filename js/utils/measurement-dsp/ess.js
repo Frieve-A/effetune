@@ -67,6 +67,17 @@ export function convolveLinear(signal, filter) {
     return Float32Array.from(a.real.subarray(0, length));
 }
 
+// At least 100 ms between H3 and H2 leaves a useful, adjustable separation window.
+const essMinimumLength = (sampleRate, startFrequency, endFrequency) =>
+    Math.ceil(0.1 * Math.log(endFrequency / startFrequency) / Math.log(1.5) * sampleRate);
+const essTailSamples = sampleRate => Math.ceil(2.5 * sampleRate);
+
+/** Seconds one sweep of createEssSignal with these options plays, its decay tail included. */
+export function essPlaybackSeconds({ length, sampleRate, startFrequency, endFrequency }) {
+    const minimumLength = essMinimumLength(sampleRate, startFrequency, endFrequency);
+    return ((length > minimumLength ? length : minimumLength) + essTailSamples(sampleRate)) / sampleRate;
+}
+
 export function createEssSignal({ length = 131072, sampleRate = 48000, startFrequency = 20, endFrequency = 20000 } = {}) {
     if (!Number.isSafeInteger(length) || length < 1024 || length > 2 ** 20 ||
         !Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 384000 ||
@@ -74,9 +85,7 @@ export function createEssSignal({ length = 131072, sampleRate = 48000, startFreq
         startFrequency <= 0 || endFrequency <= startFrequency || endFrequency >= sampleRate / 2) {
         throw new RangeError('Invalid ESS excitation');
     }
-    // At least 100 ms between H3 and H2 leaves a useful, adjustable separation window.
-    const minimumLength = Math.ceil(0.1 * Math.log(endFrequency / startFrequency) / Math.log(1.5) * sampleRate);
-    length = Math.max(length, minimumLength);
+    length = Math.max(length, essMinimumLength(sampleRate, startFrequency, endFrequency));
     if (length > 2 ** 20) throw new RangeError('ESS duration exceeds supported length');
     const durationSeconds = length / sampleRate;
     const sweepConstant = durationSeconds / Math.log(endFrequency / startFrequency);
@@ -94,7 +103,7 @@ export function createEssSignal({ length = 131072, sampleRate = 48000, startFreq
     return {
         method: 'ess', signal, inverseFilter, length, sampleRate, sweepConstant,
         startFrequency, endFrequency, durationSeconds, fadeSamples,
-        tailSamples: Math.ceil(2.5 * sampleRate), maxOrder: 10
+        tailSamples: essTailSamples(sampleRate), maxOrder: 10
     };
 }
 
@@ -113,10 +122,13 @@ function peakIndex(data, start, end) {
 export function analyzeEssRecording(recording, sweep, {
     repetitions = 1, playbackOffsetSamples = Math.round(sweep.sampleRate * 0.55),
     outputTimeReference = 'unknown', levelDb = 0, overloaded = false, calibration = null,
-    detectClipping = true
+    detectClipping = true, fixedLatencySamples
 } = {}) {
     if (!(recording instanceof Float32Array) || !recording.every(Number.isFinite) || !Number.isFinite(levelDb) ||
-        !Number.isSafeInteger(playbackOffsetSamples) || playbackOffsetSamples < 0) throw new TypeError('Invalid ESS capture');
+        !Number.isSafeInteger(playbackOffsetSamples) || playbackOffsetSamples < 0 ||
+        (fixedLatencySamples !== undefined && (!Number.isSafeInteger(fixedLatencySamples) || fixedLatencySamples < 0))) {
+        throw new TypeError('Invalid ESS capture');
+    }
     const sampleRate = sweep.sampleRate;
     const plan = createEssCapturePlan(sweep, repetitions);
     const reasons = new Set();
@@ -156,8 +168,11 @@ export function analyzeEssRecording(recording, sweep, {
         const capture = recording.subarray(offset, Math.min(recording.length, offset + plan.intervalSamples));
         const response = convolveLinear(capture, sweep.inverseFilter);
         const referenceIndex = sweep.length - 1;
-        const peak = peakIndex(response, referenceIndex, referenceIndex + Math.round(sampleRate));
-        if (!(Math.abs(response[peak]) > 1e-8)) throw new RangeError('No usable ESS response');
+        // A known path latency replaces the peak search, so silent or noise-only captures stay aligned.
+        const fixed = fixedLatencySamples !== undefined;
+        const peak = fixed ? referenceIndex + fixedLatencySamples
+            : peakIndex(response, referenceIndex, referenceIndex + Math.round(sampleRate));
+        if (!fixed && !(Math.abs(response[peak]) > 1e-8)) throw new RangeError('No usable ESS response');
         // Compare repeated sweeps over the same band. Within one sweep, frequency-dependent
         // group delay cannot be distinguished from clock mismatch without a known path.
         if (firstPeak === null) {

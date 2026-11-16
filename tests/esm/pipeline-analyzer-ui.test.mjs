@@ -40,15 +40,15 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.doesNotMatch(analyzerCss, /body:not\(\.layout-mobile\) \.pipeline-analyzer-header\s*\{/);
   assert.match(analyzerCss, /\.pipeline-analyzer-title\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*normal;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-icon-button\s*\{[^}]*width:\s*24px;[^}]*height:\s*var\(--et-control-height-compact\);/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*var\(--et-graph-base\);/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-graph,\s*\.pipeline-analyzer-hover-overlay\s*\{[^}]*position:\s*absolute;[^}]*top:\s*20px;[^}]*left:\s*20px;[^}]*width:\s*calc\(100% - 40px\);[^}]*height:\s*calc\(100% - 40px\);/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-graph-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*1024px;[^}]*aspect-ratio:\s*1024\s*\/\s*480;[^}]*min-height:\s*0;[^}]*margin:\s*10px auto;[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*var\(--et-graph-bg-deep\);/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-graph,\s*\.pipeline-analyzer-hover-overlay\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*width:\s*100%;[^}]*height:\s*100%;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-hover-overlay\s*\{[^}]*pointer-events:\s*none;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-spinner-overlay\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*5;[^}]*inset:\s*20px;[^}]*display:\s*flex;[^}]*pointer-events:\s*none;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-spinner-overlay\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*5;[^}]*inset:\s*0;[^}]*display:\s*flex;[^}]*pointer-events:\s*none;/s);
   assert.match(uiSource, /'loading-spinner pipeline-analyzer-spinner'/);
   assert.match(analyzerCss, /\.pipeline-analyzer-spinner\s*\{[^}]*display:\s*block;[^}]*position:\s*static;[^}]*z-index:\s*auto;/s);
   assert.doesNotMatch(analyzerCss, /@keyframes pipeline-analyzer-spin|\.pipeline-analyzer-spinner\s*\{[^}]*(?:border|animation):/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-grid line\s*\{[^}]*stroke:\s*var\(--et-graph-grid-subtle\);[^}]*stroke-width:\s*1;/s);
-  assert.match(analyzerCss, /\.pipeline-analyzer-axes text\s*\{[^}]*fill:\s*var\(--et-graph-label\);[^}]*font-size:\s*10px;/s);
+  assert.match(analyzerCss, /\.pipeline-analyzer-axes text\s*\{[^}]*fill:\s*var\(--et-graph-label\);[^}]*font-family:\s*Arial, sans-serif;[^}]*font-size:\s*12px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\s*\{[^}]*stroke-width:\s*1;[^}]*pointer-events:\s*none;[^}]*vector-effect:\s*non-scaling-stroke;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-highlighted\s*\{[^}]*stroke-width:\s*3\.5;[^}]*opacity:\s*1;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-curve\.is-hidden\s*\{[^}]*display:\s*none;/s);
@@ -724,7 +724,7 @@ uiTest('draws the shared canvas and retains Waterfall gestures across response a
     if (name !== 'canvas') return element;
     const context = {
       setTransform() {}, fillRect() {}, clearRect() {}, setLineDash() {},
-      save() {}, restore() {}, rect() {}, clip() {}, beginPath() {}, moveTo() {}, lineTo() {},
+      save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {}, beginPath() {}, moveTo() {}, lineTo() {},
       stroke() { strokes.push(this.strokeStyle); }, fillText() {}, strokeText() {},
       drawImage() {}, createLinearGradient: () => ({ addColorStop() {} }),
       getImageData: () => ({ data: new Uint8ClampedArray(1024).fill(255) }),
@@ -796,8 +796,10 @@ uiTest('retains five two-curve graph views with synchronized hover and legend hi
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
   setFormat(ui);
   const view = {
-    xTicks: [{ position: 0, label: '20 Hz' }, { position: 1, label: '20 kHz' }],
-    yTicks: [{ position: 0, label: '6 dB' }, { position: 1, label: '-18 dB' }],
+    xLabel: 'Frequency (Hz)',
+    yLabel: 'Magnitude (dB)',
+    xTicks: [{ position: 0, label: '10' }, { position: 0.5, label: '1k' }, { position: 1, label: '40k' }],
+    yTicks: [{ position: 0, label: '20' }, { position: 0.25, label: '10' }, { position: 1, label: '-20' }],
     curves: [
       { id: 'before', label: 'Before', color: 'var(--et-graph-trace-secondary)', opacity: 0.7, points: [{ x: 0, y: 0.5, xValue: 20, yValue: 0 }, { x: 1, y: 0.25, xValue: 20000, yValue: 6 }] },
       { id: 'after', label: 'After', color: 'var(--et-graph-trace)', opacity: 1, points: [{ x: 0, y: 0.6, xValue: 20, yValue: -2 }, { x: 1, y: 0.4, xValue: 20000, yValue: 2 }] }
@@ -839,20 +841,25 @@ uiTest('retains five two-curve graph views with synchronized hover and legend hi
   assert.equal(ui.legend.children[1].style.opacity, '0.7');
   const grid = ui.graphSvg.children[0];
   assert.equal(grid.className, 'pipeline-analyzer-grid');
-  assert.equal(grid.children.length, 4);
+  // Ticks on the graph edge get neither a grid line nor a value.
   assert.deepEqual(
     grid.children.map(line => [line.getAttribute('x1'), line.getAttribute('y1'), line.getAttribute('x2'), line.getAttribute('y2')]),
     [
-      ['0', '0', '0', '480'],
-      ['1024', '0', '1024', '480'],
-      ['0', '0', '1024', '0'],
-      ['0', '480', '1024', '480']
+      ['512', '0', '512', '480'],
+      ['0', '120', '1024', '120']
     ]
   );
   const axes = ui.graphSvg.children[1];
-  assert.equal(axes.children[2].getAttribute('x'), '20.48');
-  assert.equal(axes.children[2].getAttribute('y'), '5');
-  assert.equal(axes.children[3].getAttribute('y'), '475');
+  assert.deepEqual(
+    axes.children.map(text => [text.textContent, text.getAttribute('x'), text.getAttribute('y'), text.getAttribute('text-anchor')]),
+    [
+      ['1k', '512', '456', 'middle'],
+      ['10', '48', '124', 'end'],
+      ['Frequency (Hz)', '512', '475', 'middle'],
+      ['Magnitude (dB)', undefined, undefined, 'middle']
+    ]
+  );
+  assert.equal(axes.children[3].getAttribute('transform'), 'translate(14 240) rotate(-90)');
   assert.equal(ui.graphSvg.children.some(child => child.tagName === 'PATH' && child.style.stroke === 'var(--et-graph-trace)'), true);
   ui.graphShell.dispatch('pointermove', { clientX: 512, clientY: 240 });
   assert.match(ui.cursorX.textContent, /kHz$/);
@@ -905,8 +912,9 @@ uiTest('retains five two-curve graph views with synchronized hover and legend hi
   ui.viewInputs.get('phase').input.dispatch('change');
   assert.equal(ui.getConfiguration().graphView, 'phase');
   const phaseAxes = ui.graphSvg.children[1];
-  assert.equal(phaseAxes.children[2].getAttribute('x'), '2');
-  assert.equal(phaseAxes.children[2].getAttribute('y'), '5');
+  assert.equal(phaseAxes.children[1].getAttribute('x'), '48');
+  assert.equal(phaseAxes.children[1].getAttribute('y'), '64');
+  assert.equal(phaseAxes.children[3].getAttribute('transform'), 'translate(14 120) rotate(-90)');
   ui.setConfiguration({
     ...ui.getConfiguration(),
     measurementSettings: {

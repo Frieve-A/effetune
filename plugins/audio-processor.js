@@ -12,6 +12,8 @@ const SFZ_STREAM_EXPORTS = ['et_instance_stream_configure', 'et_instance_stream_
     'et_instance_stream_publish', 'et_instance_stream_prefetch'];
 const SFZ_PREFETCH_FLAGS = new Set([0, 1, 2, 4, 5, 6, 13]);
 const NO_SFZ_REQUESTS = Object.freeze([]);
+const SPEAKER_DISTORTION_FIT_EXPORTS = ['create', 'destroy', 'buffer', 'fft', 'drive', 'columns', 'gram',
+    'system', 'solve', 'heldout', 'predict', 'correct', 'score'].map(name => `et_sdc_${name}`);
 const REQUIRED_FUNCTION_EXPORTS = [
     'malloc',
     'free',
@@ -452,6 +454,35 @@ class DspEngineBinding {
     runDesignFft(handle, inverse = false) {
         const transform = inverse ? this.exports.et_design_fft_inverse : this.exports.et_design_fft_forward;
         return transform(handle >>> 0);
+    }
+
+    hasSpeakerDistortionFit() {
+        return SPEAKER_DISTORTION_FIT_EXPORTS.every(name => typeof this.exports[name] === 'function');
+    }
+
+    createSpeakerDistortionFit() {
+        if (!this.hasSpeakerDistortionFit()) return 0;
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_sdc_create() >>> 0;
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    destroySpeakerDistortionFit(handle) {
+        if (handle && this.hasSpeakerDistortionFit()) this.exports.et_sdc_destroy(handle >>> 0);
+    }
+
+    getSpeakerDistortionFitBuffer(handle, id) {
+        return this.exports.et_sdc_buffer(handle >>> 0, id >>> 0) >>> 0;
+    }
+
+    // Runs et_sdc_<name>(handle, ...args) and returns its status.
+    callSpeakerDistortionFit(name, handle, ...args) {
+        return this.exports[`et_sdc_${name}`](handle >>> 0, ...args);
     }
 
     getCapabilities() {
@@ -2329,6 +2360,7 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'GroupDelayEqPlugin',
     'GroupDelayPEQPlugin',
     'CrosstalkCancellationPlugin',
+    'HeadphoneEQPlugin',
     'RoomEqPlugin'
 ]);
 const ET_DSP_MAX_CHANNELS = 16;
@@ -2700,6 +2732,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.spectrumTapRoute = new Set();
         this.spectrumTaps = new Set();
         this.spectrumTapState = new Map();
+        this.spectrumTapQuantum = 0;
         this.MESSAGE_INTERVAL = this.lowLatencyMode ? 8 : 16; // ms
 
         // Buffer management - blockSize will be updated in process
@@ -3011,7 +3044,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                                 generation: this.nextSpectrumTapGeneration(),
                                 frameIndex: 0,
                                 originFrame: globalThis.currentFrame,
-                                nextFrame: globalThis.currentFrame,
+                                nextQuantum: this.spectrumTapQuantum,
                                 mode,
                                 quality,
                                 inputBuffer: mode === 'compare' ? new Float32Array(4096) : null,
@@ -3025,7 +3058,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                                 outputAnalyzer: quality === 'hq'
                                     ? new globalThis.MultiresSpectrum(rate, 4) : null,
                                 analysisParameters: { pt: 12, hq: true, dr: -96, channelCount: 1, blockSize: 0 },
-                                position: 0
+                                position: 0,
+                                primed: false
                             });
                         }
                     } else {
@@ -3337,10 +3371,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         const receiveId = this.networkReceiveSession.active && receiveIndex >= 0
             ? this.plugins[receiveIndex].id : null;
-        const routing = this.plugins.map(plugin => [plugin.id, plugin.type, plugin.enabled,
-            plugin.inputBus, plugin.outputBus, plugin.channel]);
         const tapKey = JSON.stringify([sendId, receiveId, this.networkReceiveSession.active,
-            this.networkReceiveSession.generation, this.outputDelaySamples, routing]);
+            this.networkReceiveSession.generation, this.outputDelaySamples, this.networkRouting(this.plugins)]);
         if (tapKey !== this.networkTapKey) { this.networkTapKey = tapKey; this.networkTapRevision++; }
         const markerRoute = sendId !== null || receiveId !== null;
         const key = JSON.stringify([tapKey, markerRoute ? this.networkOutput.delaySamples : null,
@@ -3373,6 +3405,12 @@ class PluginProcessor extends AudioWorkletProcessor {
             this.postNetworkRoute();
         }
         this.executionPlugins = receiveId === null ? this.plugins : this.plugins.slice(receiveIndex);
+    }
+
+    // Order, enable state and buses of every node; parameters do not move the network route.
+    networkRouting(plugins) {
+        return plugins.map(plugin => [plugin.id, plugin.type, plugin.enabled,
+            plugin.inputBus, plugin.outputBus, plugin.channel]);
     }
 
     visualizerTapStage() {
@@ -3953,13 +3991,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         tap.generation = this.nextSpectrumTapGeneration();
         tap.frameIndex = 0;
         tap.originFrame = globalThis.currentFrame;
-        tap.nextFrame = globalThis.currentFrame;
+        tap.nextQuantum = this.spectrumTapQuantum;
         tap.inputBuffer?.fill(0);
         tap.outputBuffer.fill(0);
         tap.inputDelayLine?.reset();
         tap.inputAnalyzer?.configure(12, false);
         tap.outputAnalyzer?.configure(12, false);
         tap.position = 0;
+        tap.primed = false;
     }
 
     resetConfiguredProcessingState(requestId = null) {
@@ -7031,8 +7070,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (data.type === 'updatePlugins' && data.gate === true) return true;
         if (next.outputDelaySamples !== this.outputDelaySamples) return true;
         if (next.plugins === this.plugins) return false;
-        if (next.plugins.some(plugin => plugin.type === 'NetworkSendPlugin' || plugin.type === 'NetworkReceivePlugin') ||
-            this.plugins.some(plugin => plugin.type === 'NetworkSendPlugin' || plugin.type === 'NetworkReceivePlugin')) return true;
+        const isNetworkMarker = plugin => plugin.type === 'NetworkSendPlugin' || plugin.type === 'NetworkReceivePlugin';
+        if ((next.plugins.some(isNetworkMarker) || this.plugins.some(isNetworkMarker)) &&
+            JSON.stringify(this.networkRouting(next.plugins)) !== JSON.stringify(this.networkRouting(this.plugins))) return true;
         return this.candidatePlanDiscontinuity(next.plugins);
     }
 
@@ -7681,6 +7721,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize);
         if (inputBlockSize || outputBlockSize) this.processMidiTransport(blockStart, blockSize);
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
+        // Spectrum taps detect skipped quanta with this counter. The context frame is not
+        // usable for that: it can repeat and then jump while the rendered audio stays continuous.
+        this.spectrumTapQuantum++;
         const completedFrames = outputBlockSize || inputBlockSize || 0;
         if (completedFrames && this.commitMidiTransport(blockStart + completedFrames) !== false)
             this.currentFrame = blockStart + completedFrames;
@@ -8227,8 +8270,10 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     // Settling always starts from gain 0, also when a non-executing block
-    // committed a partly closed gate. The queued messages are already
-    // decided, so they are applied without evaluating the predicate again.
+    // committed a partly closed gate. The queued mutations are already
+    // decided, so they are applied without evaluating the predicate again;
+    // every other queued message takes its normal route, because requests
+    // such as sfzGetPreparationContext are answered only by handlePortMessage.
     commitTransitionQueue() {
         const transition = this.transition;
         transition.phase = 'settling';
@@ -8238,7 +8283,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         transition.queue = [];
         const previousPlugins = this.plugins;
         const previousReady = this.readyWasmInstanceIds();
-        for (const data of queue) this.applyPortMessage(data);
+        for (const data of queue) {
+            if (MUTATION_MESSAGE_TYPES.has(data.type)) this.applyPortMessage(data);
+            else this.handlePortMessage(data);
+        }
         this.refreshDspPipelineForLatencyChange();
         this.holdAssetInserts(previousPlugins, previousReady);
     }
@@ -8924,7 +8972,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             const spectrumTap = tapsActive && this.spectrumTaps.has(plugin.id)
                 ? this.spectrumTapState.get(plugin.id)
                 : null;
-            if (spectrumTap && spectrumTap.nextFrame !== globalThis.currentFrame) {
+            if (spectrumTap && spectrumTap.nextQuantum !== this.spectrumTapQuantum) {
                 this.resetSpectrumTapState(spectrumTap);
             }
             if (spectrumTap?.inputBuffer) {
@@ -8958,7 +9006,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
 
             // --- 9d. Execute Plugin Processor Function ---
-            if (spectrumTap) spectrumTap.nextFrame = globalThis.currentFrame + blockSize;
+            if (spectrumTap) spectrumTap.nextQuantum = this.spectrumTapQuantum + 1;
             if (!executionBypassed) processedPlugin = true;
             let result = processingBuffer;
             let processedInWasm = false;
@@ -9095,7 +9143,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                      }
                      spectrumTap.outputBuffer[spectrumTap.position] = sum * scale;
                      spectrumTap.position = (spectrumTap.position + 1) & 4095;
-                     if ((spectrumTap.position & 2047) === 0 &&
+                     if ((spectrumTap.position & 2047) !== 0) continue;
+                     // A restarted capture stays silent until the whole analysis window holds
+                     // fresh samples; a partly zeroed window would read as a broadband burst.
+                     if (spectrumTap.position === 0) spectrumTap.primed = true;
+                     if (spectrumTap.primed &&
                          !(this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled)) {
                          // Keep spectrum messages independent of plugin measurement throttling.
                          const outputBuffer = Float32Array.from(spectrumTap.outputBuffer);

@@ -69,6 +69,8 @@ for (const { name, width, height, dpr, mobile } of [
     assert.deepEqual(calls.filter(([method]) => ['save', 'translate', 'rotate', 'restore'].includes(method)), [
       ['save'], ['translate', 14, height / 2], ['rotate', -Math.PI / 2], ['restore']
     ]);
-    assert.equal(calls.filter(([method]) => method === 'stroke').length, 20);
+    // 8 interior frequency lines + 7 interior level lines + the response trace;
+    // the 20 Hz, 20 kHz and ±24 dB bounds sit on the canvas edges and are not drawn.
+    assert.equal(calls.filter(([method]) => method === 'stroke').length, 16);
   });
 }

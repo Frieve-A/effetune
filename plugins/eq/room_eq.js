@@ -334,7 +334,7 @@ class RoomEqAdditionalEqEditor {
             gridSvg.appendChild(line);
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', `${x}%`);
-            text.setAttribute('y', '95%');
+            text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
             text.setAttribute('text-anchor', 'middle');
             text.textContent = frequency >= 1000 ? `${frequency / 1000}k` : frequency;
             gridSvg.appendChild(text);
@@ -348,7 +348,7 @@ class RoomEqAdditionalEqEditor {
             line.setAttribute('y2', `${y}%`);
             gridSvg.appendChild(line);
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', '2%');
+            text.setAttribute('x', '20');
             text.setAttribute('y', `${y}%`);
             text.setAttribute('dominant-baseline', 'middle');
             text.textContent = `${gain}`;
@@ -573,8 +573,8 @@ class RoomEqAdditionalEqEditor {
 
     freqToX(frequency) {
         if (this.plot) return this.plot.freqToX(frequency);
-        const value = Math.max(10, Math.min(frequency, 40000));
-        return (Math.log10(value) - Math.log10(10)) /
+        // Never clamp: out-of-range frequencies map outside the plot area.
+        return (Math.log10(frequency) - Math.log10(10)) /
             (Math.log10(40000) - Math.log10(10)) * 100;
     }
 
@@ -634,14 +634,8 @@ class RoomEqAdditionalEqEditor {
         this.lastGraphSize = null;
     }
 
-    getGraphPlotArea(container = this.graphContainer) {
-        // A host plot maps over its whole element, so it has no inset margin.
-        return this.plot ? GraphPlotArea.from(container, 0) : GraphPlotArea.from(container);
-    }
-
     updateMarkers() {
         if (!this.markers || !this.graphContainer || !this.uiCreated) return;
-        const plotArea = this.getGraphPlotArea();
         const graphWidth = this.graphContainer.clientWidth;
         const graphHeight = this.graphContainer.clientHeight;
         if (!graphWidth || !graphHeight) return;
@@ -653,10 +647,8 @@ class RoomEqAdditionalEqEditor {
             const gain = this['g' + index];
             const x = this.freqToX(frequency);
             const y = this.gainToY(gain);
-            const xPos = plotArea.leftPercent + x / 100 * plotArea.widthPercent;
-            const yPos = plotArea.topPercent + y / 100 * plotArea.heightPercent;
-            marker.style.left = `${xPos}%`;
-            marker.style.top = `${yPos}%`;
+            marker.style.left = `${x}%`;
+            marker.style.top = `${y}%`;
             marker.classList.toggle('disabled', !this['e' + index]);
             const label = marker.querySelector('.room-eq-additional-eq-marker-text');
             if (!label) continue;
@@ -667,8 +659,8 @@ class RoomEqAdditionalEqEditor {
             label.innerHTML = `${displayFrequency}Hz<br>${gain.toFixed(1)}dB`;
             labelItems.push({
                 el: label,
-                cx: xPos / 100 * graphWidth,
-                cy: yPos / 100 * graphHeight
+                cx: x / 100 * graphWidth,
+                cy: y / 100 * graphHeight
             });
         }
         this.host?.layoutMarkerLabels?.({
@@ -873,7 +865,7 @@ class RoomEqAdditionalEqEditor {
                 Math.abs(clientY - this.initialDragY) < 3) return;
             this.hasMoved = true;
         }
-        const plotArea = this.getGraphPlotArea(targetContainer || this.graphContainer);
+        const plotArea = (targetContainer || this.graphContainer).getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (clientX - plotArea.left) / plotArea.width));
         const y = Math.max(0, Math.min(1, (clientY - plotArea.top) / plotArea.height));
         const band = targetBand ?? this.activeDragMarker;
@@ -2315,7 +2307,7 @@ class RoomEqPlugin extends PluginBase {
         if (this._disposed || !row) return;
         const store = await this._getMeasurementStore();
         if (this._disposed || row !== this._measurementRow) return;
-        const measurements = store?.listMeasurements?.() || [];
+        const measurements = this._listResponseMeasurements(store);
         const selected = this.measurementId;
         const selectedMeasurement = selected && typeof store?.getMeasurement === 'function'
             ? await store.getMeasurement(selected)
@@ -2352,6 +2344,11 @@ class RoomEqPlugin extends PluginBase {
         await this._renderChannelMeasurements(measurements);
     }
 
+    // Speaker distortion measurements carry no frequency response points.
+    _listResponseMeasurements(store) {
+        return (store?.listMeasurements?.() || []).filter(measurement => measurement.pointCount > 0);
+    }
+
     _measurementOptionLabel(measurement) {
         return `${measurement.name} · ${measurement.pointCount} pt${measurement.hasIr ? ' · IR' : ''}`;
     }
@@ -2368,7 +2365,7 @@ class RoomEqPlugin extends PluginBase {
         if (rowCount > 0 && !list) {
             const store = await this._getMeasurementStore();
             if (this._disposed || container !== this._channelMeasurementContainer) return;
-            list = store?.listMeasurements?.() || [];
+            list = this._listResponseMeasurements(store);
         }
         // The labels name host output channels, so a selection that keeps the row
         // count but moves the first channel ('34' to '78') still has to rebuild.
@@ -2808,13 +2805,14 @@ class RoomEqPlugin extends PluginBase {
             });
             this._appendResponseSvgElement(grid, 'text', {
                 x,
-                y: height - 4,
+                y: height - 22,
                 'text-anchor': 'middle'
             }, frequency >= 1000 ? `${frequency / 1000}k` : String(frequency));
         }
         return { ...overlay, width, height };
     }
 
+    // Only interior values are passed: the axis bounds (+-limit) get no line or label.
     _appendVerticalAxis(grid, width, height, limit, values, format) {
         for (const value of values) {
             const y = (limit - value) / (2 * limit) * height;
@@ -2825,8 +2823,8 @@ class RoomEqPlugin extends PluginBase {
                 y2: y
             });
             this._appendResponseSvgElement(grid, 'text', {
-                x: 2,
-                y: value === limit ? 5 : value === -limit ? height - 5 : y,
+                x: 20,
+                y,
                 'dominant-baseline': 'middle'
             }, format(value));
         }
@@ -2838,7 +2836,7 @@ class RoomEqPlugin extends PluginBase {
         if (!graph) return;
         const { grid, response, unavailable, width, height } = graph;
         this._appendVerticalAxis(grid, width, height, 180,
-            [180, 90, 0, -90, -180], value => `${value}°`);
+            [90, 0, -90], String);
 
         const preview = this._selectedPreview();
         const phasePreview = preview?.phaseResponse;
@@ -2910,8 +2908,8 @@ class RoomEqPlugin extends PluginBase {
                 : ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS;
         this._groupDelayAxisLimit = limit;
         this._appendVerticalAxis(grid, width, height, limit,
-            [limit, limit / 2, 0, -limit / 2, -limit],
-            value => `${Number(value.toFixed(1))} ms`);
+            [limit / 2, 0, -limit / 2],
+            value => `${Number(value.toFixed(1))}`);
         unavailable.hidden = hasPreview;
         if (!hasPreview) return;
         for (const [delays, className] of [
@@ -3029,9 +3027,9 @@ class RoomEqPlugin extends PluginBase {
             const digits = timeTickInterval < 1 ? 1 : 0;
             this._appendResponseSvgElement(impulseGrid, 'text', {
                 x,
-                y: height - 4,
+                y: height - 22,
                 'text-anchor': 'middle'
-            }, `${time.toFixed(digits)}${index === timeTicks.length - 1 ? ' ms' : ''}`);
+            }, time.toFixed(digits));
         }
         for (const [value, label] of [[0.25, '0.5'], [0.5, '0'], [0.75, '-0.5']]) {
             const y = value * height;
@@ -3042,7 +3040,7 @@ class RoomEqPlugin extends PluginBase {
                 y2: y
             });
             this._appendResponseSvgElement(impulseGrid, 'text', {
-                x: 2,
+                x: 20,
                 y,
                 'dominant-baseline': 'middle'
             }, label);

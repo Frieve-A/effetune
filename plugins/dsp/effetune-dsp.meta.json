@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:0e8e22c6867cf087d79734b006485e18f059ebc8292d8b15eb987fffc45b7ae2",
+  "sourceDigest": "sha256:0fd06b565da00a5088ca4f9d8e553a403d6ef7fc81c61797a0d1367098e22cd7",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:bc0202c456e8080f05dcc8aef1fce5cfe695429905f4cb06712a907ed13cf49b",
+    "digest": "sha256:7aedb5aba043f41611402e087a896d0025aabe1f24074acd00883f68dfcdb860",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,7 +35,7 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:9835f22eda42dee5d3c81cd759f8abf64adab68689fb22e68c5b6ee3ba7fd820"
+        "sha256": "sha256:7133410b25c694fd5b7b2b9c7ae3dc3a5d636a58475460970b8e7c512288da84"
       },
       {
         "id": "dsp/core/engine.h",
@@ -65,7 +65,7 @@
       {
         "id": "dsp/exports.txt",
         "kind": "file",
-        "sha256": "sha256:5c0d6c9cb6c101cbac8d7018ad444cb62da9c3dad15e070b2a3035fa148c1677"
+        "sha256": "sha256:1af39ad7239d22cf5d98fd8a5b7c2c10366e3fe5f3177b601ba4f25a5889c352"
       },
       {
         "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
@@ -75,7 +75,7 @@
       {
         "id": "dsp/include/effetune/abi.h",
         "kind": "file",
-        "sha256": "sha256:5e262616aaec072bab736ae12516a3942e282e3dcdb78b12f9fe07110be09a58"
+        "sha256": "sha256:3fcd77c4762b1ba8e1db2cb7700ee27a395204f535e6c9b8f95d0ae83a104a3f"
       },
       {
         "id": "dsp/include/effetune/dsp/halfband.h",
@@ -130,7 +130,7 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:2126f6b9219a47cfacb1bf6d80aa61a1fd91aa2a664b4a8da7a6ebc05d9c3f17"
+        "sha256": "sha256:e88ef453d2b3f1948e470b319207faad4d0d5cb688d131bec359be74d8df9807"
       },
       {
         "id": "production-build#g726-resolved-authority",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:055ecf6e45733c2f7db48bf53c3901b8461ace722705eb1d6a4311b2127e8e0e"
+        "sha256": "sha256:104ea5f552cbddf4960a5a6c9b4aa419085dbcca4fa91be10bfaa4012b29b38a"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -641,7 +641,7 @@
     },
     {
       "name": "FifteenBandPEQPlugin",
-      "hash": 1637338438,
+      "hash": 1529853575,
       "byteCapacity": 0,
       "assets": []
     },
@@ -685,6 +685,19 @@
     },
     {
       "name": "GroupDelayPEQPlugin",
+      "hash": 2941825417,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB convolution cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
+      "name": "HeadphoneEQPlugin",
       "hash": 2941825417,
       "byteCapacity": 0,
       "assets": [
@@ -964,6 +977,19 @@
       ]
     },
     {
+      "name": "SpeakerDistortionCorrectionPlugin",
+      "hash": 634837976,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "32 MiB asset admission cap",
+          "byteCapacity": 33554432
+        }
+      ]
+    },
+    {
       "name": "AdaptivePredictionEffectPlugin",
       "hash": 3956844272,
       "byteCapacity": 0,
@@ -1153,7 +1179,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4868274,
-    "simd": 5082165
+    "baseline": 4920091,
+    "simd": 5149149
   }
 }

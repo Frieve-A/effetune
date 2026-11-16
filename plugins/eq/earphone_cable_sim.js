@@ -690,8 +690,9 @@ class EarphoneCableSimPlugin extends PluginBase {
    * ============================================================ */
   // Frequency axis spans 10 Hz - 40 kHz exactly like 5Band PEQ, so the labelled
   // grid frequencies (20 Hz - 20 kHz) sit inset from the edges (no border frame).
+  // Never clamp: out-of-range frequencies map outside the plot area.
   freqToX(freq) {
-    return (Math.log10(Math.max(10, Math.min(freq, 40000))) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100;
+    return (Math.log10(freq) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100;
   }
 
   gainToY(gain) {
@@ -759,7 +760,7 @@ class EarphoneCableSimPlugin extends PluginBase {
       line.setAttribute('y1', '0'); line.setAttribute('y2', '100%');
       svg.appendChild(line);
       const text = document.createElementNS(NS, 'text');
-      text.setAttribute('x', `${x}%`); text.setAttribute('y', '95%');
+      text.setAttribute('x', `${x}%`); text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
       text.setAttribute('text-anchor', 'middle');
       text.textContent = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
       svg.appendChild(text);
@@ -773,7 +774,7 @@ class EarphoneCableSimPlugin extends PluginBase {
       line.setAttribute('y1', `${y}%`); line.setAttribute('y2', `${y}%`);
       svg.appendChild(line);
       const text = document.createElementNS(NS, 'text');
-      text.setAttribute('x', '1%'); text.setAttribute('y', `${y}%`);
+      text.setAttribute('x', '20'); text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
       text.textContent = `${gain > 0 ? '+' : ''}${Number.isInteger(gain) ? gain.toFixed(0) : gain.toFixed(1)}`;
       svg.appendChild(text);

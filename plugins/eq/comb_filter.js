@@ -349,18 +349,17 @@ class CombFilterPlugin extends PluginBase {
                 ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
             }
         });
-        const dBs = [-24, -18, -12, -6, 0, 6, 12, 18, 24];
+        // Interior grid lines only; the ±24 dB bounds sit on the canvas edges.
+        const dBs = [-18, -12, -6, 0, 6, 12, 18];
         dBs.forEach(db => {
             const y = height * (1 - (db + 24) / 48);
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            if (db > -24 && db < 24) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = "right";
-                ctx.fillText(`${db}`, 48, y + 4);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = "right";
+            ctx.fillText(`${db}`, 48, y + 4);
         });
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = "14px Arial";

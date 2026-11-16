@@ -448,33 +448,30 @@ class LoudnessEqualizerPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = isMobileLayout ? 1 : 0.5;
         ctx.font = '12px Arial';
-        const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        // Interior grid lines only; 20 Hz and 20 kHz sit on the canvas edges.
+        const freqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
         freqs.forEach(freq => {
             const x = width * (Math.log10(freq) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
-            if (freq > 20 && freq < 20000) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'center';
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'center';
+            ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, height - 24);
         });
 
-        // Adjusted vertical axis: from -6dB to +18dB
-        const dBs = [-6, 0, 6, 12, 18];
+        // Vertical axis spans -6 dB to +18 dB; the bound lines sit on the canvas edges.
+        const dBs = [0, 6, 12];
         dBs.forEach(db => {
-            const y = height * (1 - (db + 6) / 24); // denominator changed from 30 to 24
+            const y = height * (1 - (db + 6) / 24);
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            if (db > -6 && db < 18) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'right';
-                ctx.fillText(`${db}`, 48, y + 4);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'right';
+            ctx.fillText(`${db}`, 48, y + 4);
         });
 
         // Draw labels

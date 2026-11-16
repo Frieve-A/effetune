@@ -58,6 +58,8 @@
                 while (!predicate() && performance.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
                 check(predicate(), 'Measurement form stage did not complete: ' + JSON.stringify({ screen: app.uiManager.currentScreen, error: window.__integrationLastError, point: !!controller.currentPoint }));
             };
+            await wait(() => app.uiManager.currentScreen === 'newMeasurementScreen');
+            document.getElementById('measureFrequencyResponseBtn').click();
             await wait(() => document.getElementById('audioInput').options.length > 0 && app.uiManager.currentScreen === 'measurementConfigScreen');
             check(app.audioUtils.devices.outputs.length > 0, 'Output devices missing');
             document.getElementById('measurementName').value = 'Android integration fixture';

@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "यह कंप्यूटर",
   "dialog.config.networkOutput.delay": "विलंब (ms)",
   "dialog.config.networkOutput.resync": "फिर से सिंक करें",
-  "dialog.config.networkOutput.resyncHelp": "सभी स्पीकर को एक साथ फिर से शुरू करता है। यदि वे आपस में बेमेल हो जाएँ तो इसका उपयोग करें।",
+  "dialog.config.networkOutput.resyncHelp": "स्पीकरों की देरी फिर से मापकर उन्हें दोबारा मिलाता है। प्लेबैक चलता रहता है, और माप पूरा होने पर समय केवल एक बार बदलता है। जिन स्पीकरों की देरी मापी नहीं जा सकती, वे फिर से जुड़ते हैं, इसलिए उनकी आवाज़ थोड़ी देर के लिए रुकती है।",
+  "dialog.config.networkOutput.syncing": "स्पीकर सिंक हो रहे हैं…",
   "dialog.config.networkOutput.status.searching": "खोज रहा है",
   "dialog.config.networkOutput.status.connecting": "कनेक्ट हो रहा है",
   "dialog.config.networkOutput.status.playing": "चल रहा है",
@@ -950,12 +951,17 @@
   "bassManagement.error.design": "Bass Management फ़िल्टर तैयार नहीं किए जा सके। Taps कम करके फिर से कोशिश करें।",
   "firCrossover.error.design": "FIR Crossover फ़िल्टर डिज़ाइन नहीं किए जा सके। Taps कम करें या कम तीव्र सेटिंग आज़माएँ।",
   "fiveBandFirPeq.error.design": "5Band FIR PEQ फ़िल्टर डिज़ाइन नहीं किया जा सका। Taps कम करें या कम तीव्र सेटिंग आज़माएँ।",
+  "headphoneEq.error.design": "Headphone EQ का करेक्शन फ़िल्टर डिज़ाइन नहीं किया जा सका। Taps कम करें या मापन डेटा फिर से लोड करें।",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "Filter तैयार नहीं हो सका। Taps की सेटिंग बदलकर देखें।",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "Filter तैयार नहीं हो सका। Taps की सेटिंग बदलकर देखें।",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "इस एक्सपोर्ट के लिए स्पीकर करेक्शन तैयार नहीं हो सका, क्योंकि उसका माप इस डिवाइस पर नहीं है। इस डिवाइस पर स्पीकर का डिस्टॉर्शन मापें या कोई दूसरा माप चुनें, या एक्सपोर्ट के लिए इफ़ेक्ट बंद कर दें।",
+
   "midi.title": "कंट्रोलर मैपिंग सेटिंग्स", "midi.openSettings": "कंट्रोलर मैपिंग...",
   "midi.devices": "MIDI डिवाइस", "midi.gamepads": "गेमपैड", "midi.mappings": "मैपिंग",
   "midi.addLearn": "जोड़ें (Learn)", "midi.learnPrompt": "कोई कंट्रोल घुमाएँ, कुंजी दबाएँ या गेमपैड इस्तेमाल करें। रद्द करने के लिए Escape दबाएँ।",

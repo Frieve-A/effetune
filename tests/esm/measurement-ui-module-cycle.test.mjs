@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 import { createGraphGeometry } from '../../features/measurement/graph-geometry.js';
 import CorrectionHandler, {
@@ -9,11 +11,17 @@ import CorrectionHandler, {
 import {
   buildPerChannelPEQClipboardPayload,
   buildPEQClipboardPayload,
+  buildRoomEqClipboardPayload,
   copyPEQClipboardPayload
 } from '../../features/measurement/ui/peq-clipboard.js';
 import { UIManager } from '../../features/measurement/ui/ui-manager.js';
+import AnalysisController from '../../features/measurement/ui/analysis-controller.js';
+import { initializeSpeakerDistortionScreens, restoreBorrowedControls, speakerDistortionAudio }
+  from '../../features/measurement/ui/speaker-distortion-setup.js';
+import { clearRefitState, startRefit } from '../../features/measurement/ui/speaker-distortion-refit.js';
 import dataStorage from '../../features/measurement/dataStorage.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { createSpeakerModel } from '../helpers/speaker-model-fixture.mjs';
 
 const controllerModules = [
   '../../features/measurement/measurement-controller/index.js',
@@ -31,19 +39,12 @@ const internalModules = [
   '../../features/measurement/measurement-controller/audio-processing.js'
 ];
 
-test('measurement controller modules import the canonical UI module without compatibility shims', async () => {
+test('measurement controller modules import the canonical UI module without compatibility shims', () => {
   for (const modulePath of controllerModules) {
     const source = readFileSync(new URL(modulePath, import.meta.url), 'utf8');
     assert.match(source, /from ['"]\.\.\/ui\/ui-manager\.js['"]/);
     assert.doesNotMatch(source, /from ['"]\.\.\/uiManager\.js['"]/);
   }
-
-  const cacheBustedEntry = new URL(
-    '../../features/measurement/ui/ui-manager.js?dev=cycle-test',
-    import.meta.url
-  );
-  const { default: uiManager } = await import(cacheBustedEntry.href);
-  assert.equal(typeof uiManager.showScreen, 'function');
 
   for (const legacyName of [
     'audioUtils.js',
@@ -53,6 +54,20 @@ test('measurement controller modules import the canonical UI module without comp
   ]) {
     assert.equal(existsSync(new URL(`../../features/measurement/${legacyName}`, import.meta.url)), false);
   }
+});
+
+test('speaker distortion setup loads as the first measurement module', () => {
+  const setup = new URL('../../features/measurement/ui/speaker-distortion-setup.js', import.meta.url).href;
+  const manager = new URL('../../features/measurement/ui/ui-manager.js', import.meta.url).href;
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+    import assert from 'node:assert/strict';
+    const { confirmSpeakerDistortionLeave } = await import(${JSON.stringify(setup)});
+    const { default: uiManager } = await import(${JSON.stringify(manager)});
+    assert.equal(typeof confirmSpeakerDistortionLeave, 'function');
+    assert.equal(typeof uiManager.showScreen, 'function');
+  `], { encoding: 'utf8', timeout: 10000, windowsHide: true });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('measurement implementation modules bypass cache-busted compatibility entries', () => {
@@ -235,7 +250,7 @@ test('back-from-sweep transition has one single-flight owner with retryable clea
     "const backFromSweepButton = document.getElementById('backFromSweepBtn');"
   );
   const transitionEnd = appSource.indexOf(
-    '// Add window beforeunload event',
+    "window.addEventListener('pagehide'",
     transitionStart
   );
   const transitionSource = appSource.slice(transitionStart, transitionEnd);
@@ -339,6 +354,20 @@ test('channel PEQ clipboard payload creates one correctly routed effect per chan
     outputChannel: 'multi',
     peqParameters: parameters
   }, 3))[0].ch, undefined);
+});
+
+test('Room EQ copy selects the measurement, or the store channel ids of a multichannel one', () => {
+  assert.deepEqual(JSON.parse(buildRoomEqClipboardPayload({ id: 'm1', name: 'Desk', outputChannel: 'right' })),
+    [{ nm: 'Room EQ', en: true, ch: 'R', ms: 'm1', mn: 'Desk' }]);
+  assert.deepEqual(JSON.parse(buildRoomEqClipboardPayload({
+    id: 'm2', name: 'Room', outputChannel: 'multi', outputChannels: ['left', 'right', '2']
+  })), [{
+    nm: 'Room EQ', en: true,
+    ms0: 'm2::ch=left', mn0: 'Room [Ch 1]',
+    ms1: 'm2::ch=right', mn1: 'Room [Ch 2]',
+    ms2: 'm2::ch=2', mn2: 'Room [Ch 3]',
+    ch: 'A'
+  }]);
 });
 
 test('single PEQ copy follows the displayed measurement channel', async () => {
@@ -497,7 +526,7 @@ test('showScreen cleans up only when leaving an audio-active screen', () => {
   }
 });
 
-test('navigation callers leave transition cleanup to showScreen while unload remains independent', () => {
+test('navigation callers leave transition cleanup to showScreen while page departure cleans up independently', async () => {
   const appSource = readFileSync(
     new URL('../../features/measurement/app.js', import.meta.url), 'utf8'
   );
@@ -521,10 +550,187 @@ test('navigation callers leave transition cleanup to showScreen while unload rem
   assert.doesNotMatch(uiSource.slice(startNewStart, startNewEnd), /cleanupAudioBeforeNavigation/);
   assert.doesNotMatch(displaySource.slice(selectStart, selectEnd), /cleanupAudioBeforeNavigation/);
   assert.doesNotMatch(controllerSource, /backFromLevelBtn|returnToConfigScreen/);
-  assert.match(
-    appSource,
-    /beforeunload[\s\S]*?cleanupAudioBeforeNavigation\(\)/
-  );
+
+  const start = appSource.indexOf('function setupEventConnections()');
+  const end = appSource.indexOf('\n}', start) + 2;
+  const listeners = new Map();
+  const calls = [];
+  const node = { addEventListener() {}, replaceChildren() {} };
+  const document = { getElementById: () => node, createElement: () => ({}), querySelectorAll: () => [] };
+  const window = { addEventListener(type, listener) {
+    const callbacks = listeners.get(type) ?? [];
+    listeners.set(type, [...callbacks, listener]);
+  } };
+  const uiManager = {
+    unsavedSpeakerResult: {},
+    cleanupAudioBeforeNavigation() { calls.push('audio cleanup'); }
+  };
+  await withGlobals({ document, window }, async () => {
+    initializeSpeakerDistortionScreens(uiManager);
+    runInNewContext(`${appSource.slice(start, end)}\nsetupEventConnections()`, {
+      document, window, uiManager, cancelSpeakerDistortionAudio: () => calls.push('cancel speaker audio')
+    });
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    for (const listener of listeners.get('beforeunload')) listener(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.deepEqual(calls, []);
+    for (const listener of listeners.get('pagehide')) listener();
+    assert.deepEqual(calls, ['cancel speaker audio', 'audio cleanup']);
+  });
+});
+
+test('the chooser keeps edits on Cancel and restores the saved frequency response before a speaker run', async t => {
+  const original = { id: 'frequency-response', name: 'Original', points: [{ name: 'Keep' }, { name: 'Removed' }] };
+  const edited = { ...structuredClone(original), _editSnapshot: structuredClone(original), _deletedPointIds: [1] };
+  edited.name = 'Edited';
+  edited.points.pop();
+  t.mock.property(dataStorage, 'measurements', [edited]);
+  t.mock.method(dataStorage, 'loadUserSettings', () => ({ sweepLength: 65536 }));
+  const savedId = 'speaker-result';
+  const add = t.mock.method(dataStorage, 'addMeasurement', async record => {
+    dataStorage.measurements.unshift({ ...record, id: savedId });
+    return savedId;
+  });
+  t.mock.method(AnalysisController.prototype, 'initialize', () => {});
+  t.mock.method(AnalysisController.prototype, 'refresh', () => {});
+  t.mock.method(AnalysisController.prototype, 'selectTab', function (tab) { this.activeTab = tab; });
+  t.mock.method(globalThis, 'setTimeout', callback => { callback(); });
+
+  function createElement() {
+    const listeners = new Map();
+    const node = { style: {}, classList: { toggle() {} }, value: '', nextElementSibling: { before() {} },
+      addEventListener: (type, listener) => listeners.set(type, listener), click: () => listeners.get('click')(),
+      closest: () => node, replaceChildren() {}, before() {}, append() {}, remove() {}, focus() {}, setAttribute() {} };
+    return node;
+  }
+  const elements = new Map();
+  const byId = id => {
+    if (!elements.has(id)) elements.set(id, createElement());
+    return elements.get(id);
+  };
+  const document = { getElementById: byId, querySelectorAll: () => [], querySelector: createElement,
+    addEventListener() {}, createElement, createComment: () => ({ replaceWith() {} }),
+    documentElement: { lang: 'en' }, body: { append() {} } };
+  const window = { addEventListener() {}, app: { initializeAudio: async () => {}, populateAudioDevices: async () => {},
+    selectSavedAudioDevices() {}, syncSweepBandChannelChoices() {} } };
+  byId('sampleRate').value = '48000';
+  byId('outputChannelCount').value = '2';
+  byId('editActions').style.display = 'block';
+  byId('resultName').value = 'Edited';
+
+  const manager = new UIManager();
+  manager.selectedMeasurementId = original.id;
+  manager.hasUnsavedChanges = true;
+  manager.showScreen = screen => { manager.currentScreen = screen; };
+  manager.initializeCorrectionControls = () => {};
+  manager.correctionHandler.requestCorrectionUpdate = () => {};
+  manager.measurementDisplay.displayMeasurementDetails = id => { byId('resultName').value = dataStorage.getMeasurementById(id).name; };
+  await withGlobals({ document, window }, async () => {
+    manager.initializeEventListeners();
+    assert.equal(manager.speakerDistortionAudio, speakerDistortionAudio);
+    await byId('newMeasurementBtn').click();
+    assert.equal(byId('confirmationDialog').style.display, 'flex');
+    assert.equal(manager.currentScreen, 'resultsDisplayScreen');
+    byId('cancelBtn').click();
+    assert.equal(manager.selectedMeasurementId, original.id);
+    assert.equal(manager.hasUnsavedChanges, true);
+    assert.equal(byId('resultName').value, 'Edited');
+    assert.equal(edited.points.length, 1);
+
+    await byId('newMeasurementBtn').click();
+    byId('confirmBtn').click();
+    assert.equal(manager.currentScreen, 'newMeasurementScreen');
+    byId('newMeasurementBack').click();
+    assert.equal(manager.currentScreen, 'resultsDisplayScreen');
+    assert.equal(byId('resultName').value, 'Original');
+    assert.equal(byId('editActions').style.display, 'none');
+    assert.deepEqual(edited, original);
+
+    await byId('newMeasurementBtn').click();
+    await byId('measureSpeakerDistortionBtn').click();
+    assert.equal(manager.currentScreen, 'speakerDistortionSetupScreen');
+    restoreBorrowedControls();
+    manager.showSpeakerDistortionResult({ speakerModel: createSpeakerModel(1), points: [] });
+    byId('speakerDistortionResultName').value = 'New speakers';
+    await byId('speakerDistortionResultSave').click();
+    assert.equal(add.mock.callCount(), 1);
+    assert.equal(manager.selectedMeasurementId, savedId);
+    assert.equal(manager.hasUnsavedChanges, false);
+    assert.equal(byId('confirmationDialog').style.display, 'none');
+    assert.deepEqual(edited, original);
+  });
+});
+
+test('renaming a speaker result cannot overwrite a refit or start a competing write', { timeout: 5000 }, async t => {
+  t.after(clearRefitState);
+  const record = { id: 'saved-measurement', name: 'Original', savedAt: 1, speakerModel: createSpeakerModel(1) };
+  t.mock.property(dataStorage, 'measurements', [record]);
+  t.mock.method(dataStorage, 'dispatchEvent', () => {});
+  const refitStarted = Promise.withResolvers();
+  const refitFinished = Promise.withResolvers();
+  const renameStarted = Promise.withResolvers();
+  const renameFinished = Promise.withResolvers();
+  const writes = [];
+  t.mock.method(dataStorage, 'putMeasurement', async candidate => {
+    writes.push(candidate);
+    const pending = writes.length === 1 ? [refitStarted, refitFinished] : [renameStarted, renameFinished];
+    pending[0].resolve();
+    await pending[1].promise;
+    return true;
+  });
+
+  const elements = new Map();
+  const byId = id => {
+    if (!elements.has(id)) {
+      const listeners = new Map();
+      elements.set(id, { dataset: {}, classList: { toggle() {} },
+        addEventListener: (name, listener) => listeners.set(name, listener),
+        change: () => listeners.get('change')() });
+    }
+    return elements.get(id);
+  };
+  const manager = new UIManager();
+  manager.selectedMeasurementId = record.id;
+  manager.measurementDisplay.renderMeasurementDetailRows = () => {};
+  const messages = [];
+  manager.showNotification = text => messages.push(text);
+  manager.analysisController = { activeTab: 'details', uiManager: manager, refresh() {
+    AnalysisController.prototype.showSpeakerDistortionResult.call(this, dataStorage.getMeasurementById(record.id));
+  } };
+  const deps = { UPPER_LIMIT_RANGE_HZ: [500, 8000], recommendLength: () => 'short',
+    refitSpeakerModel: async model => model.channels };
+  await withGlobals({ document: { getElementById: byId, documentElement: { lang: 'en' } } }, async () => {
+    manager.initializeSpeakerDistortionResultBar();
+    manager.initializeResultNameInput();
+    const name = byId('speakerDistortionResultName');
+    const refit = startRefit(record, 4000, { deps });
+    await refitStarted.promise;
+    manager.analysisController.refresh();
+    assert.equal(name.disabled, true);
+    name.value = 'Blocked';
+    await name.change();
+    byId('resultName').value = 'Wrong input';
+    await byId('resultName').change();
+    assert.equal(name.value, 'Original');
+    assert.equal(writes.length, 1);
+    assert.equal(messages.length, 1);
+    refitFinished.resolve();
+    assert.equal((await refit).status, 'done');
+
+    name.value = 'Renamed';
+    const rename = name.change();
+    await renameStarted.promise;
+    assert.equal(name.disabled, true);
+    await startRefit(dataStorage.getMeasurementById(record.id), 5000, {
+      deps: { ...deps, refitSpeakerModel() { assert.fail('refit during rename'); } }
+    });
+    renameFinished.resolve();
+    await rename;
+    assert.equal(name.disabled, false);
+    assert.equal(writes.length, 2);
+    assert.equal(dataStorage.getMeasurementById(record.id).name, 'Renamed');
+    assert.equal(dataStorage.getMeasurementById(record.id).speakerModel.upperLimitHz, 4000);
+  });
 });
 
 test('measurement user-facing error keys exist in every locale', () => {

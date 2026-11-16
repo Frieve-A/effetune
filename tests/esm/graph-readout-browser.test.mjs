@@ -71,6 +71,29 @@ test('live values keep the sign slot, decimal point and box edge fixed until the
     assert.equal(heldAfterLeave, 0, 'pointerleave releases the held widths');
   });
 
+test('held widths do not grow on repeated moves when the mount width is fractional',
+  { timeout: 60_000 }, async () => {
+    const widths = await inPage(async () => {
+      const mount = document.getElementById('mount');
+      // offsetWidth rounds 400.6 up to 401, as at 125 % display scaling.
+      mount.style.width = '400.6px';
+      window.GraphReadout.attach({
+        mount,
+        surface: document.getElementById('surface'),
+        legend: [{ label: 'Gain', color: 'red' }],
+        read: () => ({ cursor: '1.00 kHz', rows: [{ label: 'Gain', color: 'red', value: '3.20 dB' }] })
+      });
+      const results = [];
+      for (let i = 0; i < 20; i++) {
+        mount.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', clientX: 50 + i, clientY: 150 }));
+        await window.nextFrame();
+        results.push(mount.querySelector('.graph-readout-legend').getBoundingClientRect().width);
+      }
+      return results;
+    });
+    assert.deepEqual(widths, widths.map(() => widths[0]));
+  });
+
 test('prefixed and compound values split into prefix, sign, last number and unit with a fixed number edge',
   { timeout: 60_000 }, async () => {
     const values = ['in −12.0 dB', '1.25 kHz · −135°', '120 V · 3.25 mA', '1 V · −3.25 mA', '—', '−∞ dB', 'A4 +39¢'];

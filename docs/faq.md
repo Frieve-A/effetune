@@ -174,7 +174,7 @@ EffeTune currently supports up to 16 output channels.
 ## 5. Frequency Response & Room Correction
 
 ### 5.1. Importing AutoEQ settings into 15Band PEQ
-Import AutoEQ equalizer settings directly from the button in the top right.
+Import AutoEQ equalizer settings directly from the button in the top right. To design the correction from the headphone measurement curve instead, search for your headphone model in [Headphone EQ](plugins/eq.md#headphone-eq).
 
 ### 5.2. Pasting measurement correction settings
 Copy the 5Band PEQ settings from the measurement page and paste into the **Effect Pipeline** view using **Ctrl+V** or the menu.

@@ -792,34 +792,16 @@ class MultibandTransientPlugin extends PluginBase {
             ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
             ctx.fillRect(0, 0, width, height);
 
-            // Draw grid lines and labels
+            // Draw horizontal grid lines (2dB steps from -4dB to +4dB)
             ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
             ctx.lineWidth = graphLineWidth;
-            ctx.textAlign = 'right';
-            ctx.font = `${tickFontSize}px Arial`;
-            ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
-
-            // Draw horizontal grid lines (6dB steps from -24dB to +24dB)
             for (let db = -4; db <= 4; db += 2) {
                 const y = height * (1 - (db + 6) / 12);
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
                 ctx.stroke();
-                ctx.fillText(`${db}`, labelX, y + tickOffset);
             }
-
-            // Draw axis labels
-            ctx.save();
-            ctx.font = `${axisFontSize}px Arial`;
-            ctx.translate(axisX, height / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.textAlign = 'center';
-            ctx.fillText('Gain (dB)', 0, 0);
-            ctx.restore();
-
-            ctx.textAlign = 'center';
-            ctx.fillText('Time', width / 2, height - bottomOffset);
 
             const pixelsPerSecond = width / MULTIBAND_TRANSIENT_HISTORY_SECONDS;
             ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
@@ -828,6 +810,8 @@ class MultibandTransientPlugin extends PluginBase {
             const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
             for (let second = firstSecond; second <= lastSecond; second++) {
                 const x = width + (second - displayTime) * pixelsPerSecond;
+                // A tick mark on the canvas edge is not drawn
+                if (x <= 0 || x >= width) continue;
                 ctx.beginPath();
                 ctx.moveTo(x, height - secondMarkerHeight);
                 ctx.lineTo(x, height);
@@ -863,6 +847,26 @@ class MultibandTransientPlugin extends PluginBase {
                 ctx.lineTo(width, height * (1 - (latest + 6) / 12));
                 ctx.stroke();
             }
+
+            // Tick values and axis titles are drawn last so the trace never covers them
+            ctx.font = `${tickFontSize}px Arial`;
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.textAlign = 'right';
+            for (let db = -4; db <= 4; db += 2) {
+                ctx.fillText(`${db}`, labelX, height * (1 - (db + 6) / 12) + tickOffset);
+            }
+
+            ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+            ctx.save();
+            ctx.font = `${axisFontSize}px Arial`;
+            ctx.translate(axisX, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillText('Gain (dB)', 0, 0);
+            ctx.restore();
+
+            ctx.textAlign = 'center';
+            ctx.fillText('Time (s)', width / 2, height - bottomOffset);
 
             const frame = ((this._readoutFrames ??= [])[bandIdx] ??= {});
             frame.width = width;

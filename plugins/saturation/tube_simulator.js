@@ -7077,30 +7077,18 @@ class TubeSimulatorPlugin extends PluginBase {
             this._graphReadout?.refresh();
             return;
         }
-        const gap = (narrow ? 12 : 20) * dpr;
-        // The right margin holds the half of the last x tick label that sits outside the panel:
-        // the labels are centred on their tick, and the rightmost one is on the panel edge. Three
-        // digits of the tick font are about 20 device pixels wide, so half of that plus a hair
-        // keeps the highest plate voltage off the edge of the canvas.
-        const margin = {
-            left: (narrow ? 48 : 58) * dpr,
-            right: (narrow ? 16 : 18) * dpr,
-            top: (narrow ? 44 : 46) * dpr,
-            bottom: (narrow ? 44 : 48) * dpr
-        };
-        const panelWidth =
-            (width - margin.left - margin.right - gap * (panels.length - 1)) / panels.length;
-        const panelHeight = height - margin.top - margin.bottom;
-        if (panelWidth <= 0 || panelHeight <= 0) {
-            this._graphReadout?.refresh();
-            return;
-        }
+        // The panels reach the canvas edges and every label is overlaid on the plot; only a gap
+        // between neighbouring panels keeps them readable as separate graphs. The y tick values
+        // end at this inset from a panel's left edge, clear of the rotated axis title, and the
+        // header and panel titles start just past it.
+        const yLabelRight = (narrow ? 48 : 58) * dpr;
+        const textLeft = yLabelRight + 6 * dpr;
+        const panelGap = (narrow ? 10 : 16) * dpr;
+        const panelWidth = (width - panelGap * (panels.length - 1)) / panels.length;
         frame.valid = true;
-        frame.left = margin.left;
-        frame.top = margin.top;
         frame.panelWidth = panelWidth;
-        frame.panelHeight = panelHeight;
-        frame.gap = gap;
+        frame.panelPitch = panelWidth + panelGap;
+        frame.panelHeight = height;
         frame.count = panels.length;
         frame.axes = this.hudAxes;
         frame.curves = this.hudCharacteristics?.plateCurves ?? [];
@@ -7110,46 +7098,39 @@ class TubeSimulatorPlugin extends PluginBase {
         panels.forEach((panel, index) => {
             this._drawOperatingPointPanel(context, {
                 ...panel,
-                x: margin.left + index * (panelWidth + gap),
-                y: margin.top,
+                x: index * (panelWidth + panelGap),
+                y: 0,
                 width: panelWidth,
-                height: panelHeight,
+                height,
+                yLabelRight,
+                textLeft,
                 dpr,
                 narrow,
-                now,
-                showYLabels: index === 0
+                now
             });
         });
         this._drawHudHeader(context, {
-            left: margin.left,
-            right: width - margin.right,
-            y: margin.top - 25 * dpr,
+            left: textLeft,
+            right: width - 8 * dpr,
+            y: 20 * dpr,
             dpr,
             narrow
         });
 
-        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
-        context.font = `${(narrow ? 13 : 14) * dpr}px Arial`;
-        context.textAlign = 'center';
-        context.textBaseline = 'bottom';
-        context.fillText('Vak (V)', width / 2, height - 6 * dpr);
-        context.save();
-        context.translate((narrow ? 14 : 18) * dpr, height / 2);
-        context.rotate(-Math.PI / 2);
-        context.fillText('Ia (mA)', 0, 0);
-        context.restore();
         this._graphReadout?.refresh();
     }
 
-    // The panel under the point, in canvas pixels; the gaps between panels read nothing.
+    // The panel under the point, in canvas pixels.
     _readoutPanel(point) {
         const frame = this._readoutFrame;
         if (!frame?.valid) return null;
-        const index = Math.floor((point.x - frame.left) / (frame.panelWidth + frame.gap));
+        const index = Math.floor(point.x / frame.panelPitch);
         if (index < 0 || index >= frame.count) return null;
+        const left = index * frame.panelPitch;
+        if (point.x - left > frame.panelWidth) return null;
         return {
-            left: frame.left + index * (frame.panelWidth + frame.gap),
-            top: frame.top,
+            left,
+            top: 0,
             width: frame.panelWidth,
             height: frame.panelHeight
         };
@@ -7191,7 +7172,8 @@ class TubeSimulatorPlugin extends PluginBase {
         };
     }
 
-    // The header names the displayed tube and both channel colours above the panel titles.
+    // The header names the displayed tube and both channel colours above the panel titles, overlaid
+    // on the top of the plot.
     _drawHudHeader(context, header) {
         context.font = `600 ${(header.narrow ? 12 : 13) * header.dpr}px Arial`;
         context.textAlign = 'left';
@@ -7217,44 +7199,29 @@ class TubeSimulatorPlugin extends PluginBase {
         const mapY = value => panel.y + panel.height -
             (value - axes.yMin) / (axes.yMax - axes.yMin) * panel.height;
 
+        const right = panel.x + panel.width;
+        const bottom = panel.y + panel.height;
+
         context.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         context.lineWidth = panel.dpr;
-        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-        context.font = `${tickFont}px Arial`;
-        context.textBaseline = 'top';
-        const xTicks = panel.narrow
-            ? axes.xTicks.filter((_, index) => index % 2 === 0)
-            : axes.xTicks;
+        // The outermost ticks sit on the panel edges (the axis bounds), so only the interior ticks
+        // get a grid line and a label.
+        const xTicks = axes.xTicks.slice(1, -1);
+        const yTicks = axes.yTicks.slice(1, -1);
         for (const tick of xTicks) {
             const x = mapX(tick);
             context.beginPath();
             context.moveTo(x, panel.y);
-            context.lineTo(x, panel.y + panel.height);
+            context.lineTo(x, bottom);
             context.stroke();
-            context.textAlign = 'center';
-            context.fillText(tick.toFixed(0), x, panel.y + panel.height + 4 * panel.dpr);
         }
-        context.textBaseline = 'middle';
-        for (const tick of axes.yTicks) {
+        for (const tick of yTicks) {
             const y = mapY(tick);
             context.beginPath();
             context.moveTo(panel.x, y);
-            context.lineTo(panel.x + panel.width, y);
+            context.lineTo(right, y);
             context.stroke();
-            if (panel.showYLabels) {
-                context.textAlign = 'right';
-                context.fillText(
-                    (tick * 1000).toFixed(1),
-                    panel.x - 5 * panel.dpr,
-                    y
-                );
-            }
         }
-        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
-        context.font = `600 ${titleFont}px Arial`;
-        context.textAlign = 'left';
-        context.textBaseline = 'bottom';
-        context.fillText(panel.title, panel.x, panel.y - 5 * panel.dpr);
         context.save();
         context.beginPath();
         context.rect?.(panel.x, panel.y, panel.width, panel.height);
@@ -7282,6 +7249,42 @@ class TubeSimulatorPlugin extends PluginBase {
             panel.narrow,
             panel.now
         );
+        context.restore();
+
+        // The labels are overlaid on the plot, so they are drawn after the traces to stay on top.
+        context.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        context.font = `${tickFont}px Arial`;
+        context.textBaseline = 'bottom';
+        context.textAlign = 'center';
+        const xLabelY = bottom - (panel.narrow ? 22 : 24) * panel.dpr;
+        // A value that would overlap the previous one on its axis is omitted.
+        let previousRight = -Infinity;
+        for (const tick of xTicks) {
+            const label = tick.toFixed(0);
+            const x = mapX(tick);
+            const halfWidth = (context.measureText?.(label)?.width ?? label.length * tickFont * 0.6) / 2;
+            if (x - halfWidth < previousRight + 4 * panel.dpr) continue;
+            context.fillText(label, x, xLabelY);
+            previousRight = x + halfWidth;
+        }
+        context.textAlign = 'right';
+        context.textBaseline = 'middle';
+        for (const tick of yTicks) {
+            context.fillText((tick * 1000).toFixed(1), panel.x + panel.yLabelRight, mapY(tick));
+        }
+        context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+        context.font = `600 ${titleFont}px Arial`;
+        context.textAlign = 'left';
+        context.textBaseline = 'bottom';
+        context.fillText(panel.title, panel.x + panel.textLeft, panel.y + 40 * panel.dpr);
+        // Each panel is a graph of its own, so each carries its own axis titles.
+        context.font = `${(panel.narrow ? 13 : 14) * panel.dpr}px Arial`;
+        context.textAlign = 'center';
+        context.fillText('Vak (V)', panel.x + panel.width / 2, bottom - 6 * panel.dpr);
+        context.save();
+        context.translate(panel.x + (panel.narrow ? 14 : 18) * panel.dpr, panel.y + panel.height / 2);
+        context.rotate(-Math.PI / 2);
+        context.fillText('Ia (mA)', 0, 0);
         context.restore();
     }
 

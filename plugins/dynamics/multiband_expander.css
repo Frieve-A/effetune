@@ -61,7 +61,6 @@
     flex: 1 1 150px;
     position: relative;
     background: color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%);
-    border-radius: 4px;
     padding: 10px;
 }
 

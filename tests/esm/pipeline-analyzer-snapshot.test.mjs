@@ -12,6 +12,9 @@ import {
     getPipelineAnalysisRequirements
 } from '../../js/pipeline-analyzer/analysis-requirements.js';
 import { buildAnalysisResult } from '../../js/pipeline-analyzer/analysis-core.js';
+import { packSfzAsset, packStreamedSfzAsset } from '../../js/sfz/asset.js';
+import { parseSfz } from '../../js/sfz/parser.js';
+import { createSf2RuntimeFixture } from '../helpers/sf2-runtime-fixture.mjs';
 
 function plugin(type, id, options = {}) {
     const entry = {
@@ -372,7 +375,8 @@ test('offline asset requirements are frozen and union slot zero only when requir
                 ready: true,
                 assets: new Map(slots.map(slot => [slot, {
                     payload: new ArrayBuffer(4),
-                    operationRevision: 7
+                    operationRevision: 7,
+                    materializeForContext: async () => null
                 }])),
                 revisions: new Map(slots.map(slot => [slot, { operationRevision: 7 }])),
                 rejectedCandidates: new Map()
@@ -392,6 +396,8 @@ test('offline asset requirements are frozen and union slot zero only when requir
         result.snapshot.assets.map(asset => [asset.pluginId, asset.slot]),
         types.flatMap((_, index) => [[index + 1, 0], [index + 11, 2]])
     );
+    // Runtime-only descriptor factories must not reach the worker message.
+    assert.doesNotThrow(() => structuredClone(result.snapshot.assets));
     assert.deepEqual(result.snapshot.requiredWasmPluginIds, [1, 2, 3, 4, 5, 6]);
     assert.deepEqual(result.snapshot.dsp.enabledTypes, types);
     for (let index = 0; index < types.length; index += 1) {
@@ -408,6 +414,92 @@ test('offline asset requirements are frozen and union slot zero only when requir
     }
     assert.equal(result.snapshot.plugins.at(-1).executionCapabilities.requiresWasm, false);
     assert.equal(result.snapshot.requiredWasmPluginIds.includes(99), false);
+});
+
+test('analyzer snapshots accept resident instruments and reject assets that need sample pages', async () => {
+    const type = 'SFZNotePlayerPlugin';
+    const { regions } = await parseSfz({
+        selectedPath: 'test.sfz',
+        readText: async () => '<region> sample=tone.wav'
+    });
+    const resident = packSfzAsset(regions, new Map([['tone.wav', {
+        sampleRate: 48000, channels: [new Float32Array(8)]
+    }]]));
+    const streamed = packStreamedSfzAsset(regions, new Map([['tone.wav', {
+        sampleRate: 48000, channels: 1, frames: 8, revision: 'a'.repeat(64)
+    }]]), { cacheSlots: 2 });
+    const snapshot = descriptor => {
+        const { audioManager, workletSync } = harness([
+            plugin(type, 40, { offlineDspAssetRequired: true })
+        ], {
+            enabledDspTypes: [type],
+            dspModuleInfo: { bytes: new ArrayBuffer(8) },
+            waitForAssets: async () => ({
+                ready: true,
+                assets: new Map([[0, descriptor]]),
+                revisions: new Map([[0, { operationRevision: 7 }]]),
+                rejectedCandidates: new Map()
+            })
+        });
+        return buildPipelineAnalyzerSnapshot({
+            audioManager,
+            workletSync,
+            configuration: identityConfiguration,
+            resolveRequirements: getPipelineAnalysisRequirements
+        });
+    };
+
+    const result = await snapshot(resident);
+    const [asset] = structuredClone(result.snapshot.assets);
+    assert.equal(asset.pluginId, 40);
+    assert.equal(asset.slot, 0);
+    assert.deepEqual(asset.payload, resident.payload);
+    await assert.rejects(
+        snapshot({ ...streamed, sampleProviderFactory: () => assert.fail('The analyzer cannot supply sample pages') }),
+        error => error instanceof PipelineSnapshotError &&
+            error.code === 'asset-unavailable' &&
+            error.details.name === type &&
+            error.details.timedOut === false &&
+            error.details.missingSlots[0] === 0
+    );
+});
+
+test('only untriggered SoundFont analysis can omit its sample asset, preserving revisions and render requirements', async t => {
+    const fixture = await createSf2RuntimeFixture();
+    t.after(() => fixture.close());
+    const type = 'SoundFontPlayerPlugin';
+    const entry = plugin(type, 40, { offlineDspAssetRequired: true });
+    const { audioManager, workletSync } = harness([entry], {
+        enabledDspTypes: [type],
+        dspModuleInfo: { bytes: new ArrayBuffer(8) },
+        waitForAssets: async () => ({
+            ready: true,
+            assets: new Map([[0, fixture.descriptor]]),
+            revisions: new Map([[0, { operationRevision: 7 }]]),
+            rejectedCandidates: new Map()
+        })
+    });
+    const prepare = workletSync.preparePluginData;
+    let preview = -1;
+    workletSync.preparePluginData = plugin => ({
+        ...prepare(plugin), parameters: { pm: preview }
+    });
+    const options = { audioManager, workletSync, configuration: identityConfiguration,
+        resolveRequirements: getPipelineAnalysisRequirements };
+    const result = await buildPipelineAnalyzerSnapshot(options);
+    assert.deepEqual(result.snapshot.assets, []);
+    assert.deepEqual(result.snapshot.requiredWasmPluginIds, [40]);
+    assert.equal(result.snapshot.plugins[0].enabled, true);
+    assert.deepEqual(result.provenance.assetRevisions, [{
+        pluginId: 40, slot: 0, operationRevision: 7, rejectedCandidate: null
+    }]);
+    await assert.rejects(buildPipelineProcessingSnapshot(options), { code: 'asset-unavailable' });
+    preview = 60;
+    await assert.rejects(buildPipelineAnalyzerSnapshot(options), { code: 'asset-unavailable' });
+    preview = -1;
+    const header = new DataView(fixture.descriptor.payload, 32);
+    header.setUint32(4, 8, true);
+    await assert.rejects(buildPipelineAnalyzerSnapshot(options), { code: 'asset-unavailable' });
 });
 
 test('missing required offline asset and unavailable required WASM remain hard failures', async () => {

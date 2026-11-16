@@ -837,7 +837,8 @@
   "dialog.config.networkOutput.local": "このPC",
   "dialog.config.networkOutput.delay": "遅延 (ms)",
   "dialog.config.networkOutput.resync": "再同期",
-  "dialog.config.networkOutput.resyncHelp": "すべてのスピーカーをそろえて再開します。再生がずれてきたときに使います。",
+  "dialog.config.networkOutput.resyncHelp": "スピーカーの遅れを測り直して、タイミングをそろえ直します。再生は止まらず、測定が終わった時点で一度だけタイミングが切り替わります。遅れを測れないスピーカーは再接続するため、短く途切れます。",
+  "dialog.config.networkOutput.syncing": "スピーカーを同期しています…",
   "dialog.config.networkOutput.status.searching": "検索中",
   "dialog.config.networkOutput.status.connecting": "接続中",
   "dialog.config.networkOutput.status.playing": "再生中",
@@ -955,12 +956,16 @@
   "bassManagement.error.design": "Bass Managementフィルターを準備できませんでした。Tapsを減らして、もう一度お試しください。",
   "firCrossover.error.design": "FIRクロスオーバーフィルターを設計できませんでした。Tapsを減らすか、設定を緩やかにしてください。",
   "fiveBandFirPeq.error.design": "5Band FIR PEQフィルターを設計できませんでした。Tapsを減らすか、設定を緩やかにしてください。",
+  "headphoneEq.error.design": "Headphone EQの補正フィルターを設計できませんでした。Tapsを減らすか、測定データを読み込み直してください。",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "フィルターを設計できませんでした。Tapsの設定を変えてお試しください。",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "フィルターを設計できませんでした。Tapsの設定を変えてお試しください。",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "このエフェクトの測定がこのデバイスにないため、書き出し用にスピーカーの補正を準備できませんでした。このデバイスでスピーカーの歪みを測定するか、別の測定を選ぶか、書き出しの間はエフェクトをオフにしてください。",
 
   // コントローラーマッピング
   "midi.title": "コントローラーマッピング設定",

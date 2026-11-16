@@ -10,6 +10,7 @@ import audioUtils from '../../features/measurement/audio-utils/index.js';
 import { replaceGlobal } from '../helpers/global-test-utils.mjs';
 import { analyzeBurstDecay, analyzeWaterfall, MAX_ANALYSIS_WINDOW_SAMPLES, BURST_TAU_CYCLES, BURST_MINIMUM_SLICES } from '../../js/utils/measurement-dsp/analysis.js';
 import { buildWaterfallMesh } from '../../features/measurement/ui/waterfall-surface.js';
+import { createSpeakerModel } from '../helpers/speaker-model-fixture.mjs';
 
 test('distortion quality warnings preserve usable data and reject malformed current records', () => {
     const record = { data: Float32Array.of(0, 1, 0), sampleRate: 8000, onsetIndex: 1,
@@ -431,7 +432,7 @@ test('WAV export follows only the current completed selection, including failed 
     t.mock.method(dataStorage, 'getImpulseResponse', () => new Promise((resolve, reject) => loads.push({ resolve, reject })));
     t.mock.method(audioUtils, 'exportWAV', (...args) => exports.push(args));
     t.mock.method(console, 'error', () => {});
-    const ui = { selectedMeasurementId: 'a', measurementDisplay: { selectedPointIndex: 0, selectedChannel: 'all' } };
+    const ui = { selectedMeasurementId: 'a', measurementDisplay: { selectedPointIndex: 0, selectedChannel: 'all', showResultTitle() {} } };
     ui.graphRenderer = new GraphRenderer(ui);
     const controller = new AnalysisController(ui);
     controller.activeTab = 'details';
@@ -476,4 +477,161 @@ test('WAV export follows only the current completed selection, including failed 
     ui.selectedMeasurementId = 'missing';
     await controller.refresh();
     assertUnavailable();
+});
+
+// Minimal DOM for the Distortion Diagnosis view: element trees, attributes and listeners only.
+class DiagnosisNode {
+    constructor(tag) {
+        this.tagName = tag.toUpperCase();
+        this.children = [];
+        this.attributes = {};
+        this.dataset = {};
+        this.listeners = {};
+        this.text = '';
+        this.value = '';
+        this.disabled = false;
+        const classes = new Set();
+        this.classList = { add: name => classes.add(name), contains: name => classes.has(name) };
+        Object.defineProperty(this, 'className', {
+            get: () => [...classes].join(' '),
+            set: value => {
+                classes.clear();
+                value.split(/\s+/).filter(Boolean).forEach(name => classes.add(name));
+            }
+        });
+    }
+    get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
+    set textContent(value) {
+        this.text = String(value);
+        this.children = [];
+    }
+    get firstChild() { return this.children[0] ?? null; }
+    append(...nodes) {
+        for (const node of nodes) {
+            this.children.push(typeof node === 'string' ? Object.assign(new DiagnosisNode('#text'), { text: node }) : node);
+        }
+    }
+    replaceChildren(...nodes) {
+        this.children = [];
+        this.append(...nodes);
+    }
+    setAttribute(name, value) {
+        this.attributes[name] = String(value);
+        if (name === 'class') this.className = String(value);
+    }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    fire(type) { return Promise.all((this.listeners[type] ?? []).map(listener => listener({ type }))); }
+    findAll(match) {
+        return this.children.flatMap(child => [...(match(child) ? [child] : []), ...child.findAll(match)]);
+    }
+}
+
+function diagnosisDom(t) {
+    const elements = new Map();
+    t.after(replaceGlobal('document', {
+        documentElement: { lang: 'en' },
+        createElement: tag => new DiagnosisNode(tag),
+        createElementNS: (namespace, tag) => new DiagnosisNode(tag),
+        getElementById(id) {
+            if (!elements.has(id)) elements.set(id, new DiagnosisNode('div'));
+            return elements.get(id);
+        },
+        querySelectorAll: () => []
+    }));
+    t.after(replaceGlobal('ResizeObserver', class { observe() {} disconnect() {} }));
+    // A browser window without GraphReadout: the charts draw without a cursor readout.
+    t.after(replaceGlobal('window', {}));
+}
+
+const diagnosisMeasurement = (id, savedAt) => ({ id, name: `Speaker ${id}`, savedAt, speakerModel: createSpeakerModel(2) });
+const byClass = (root, name) => root.findAll(node => node.classList.contains(name));
+const compareSelect = panel => panel.findAll(node => node.tagName === 'SELECT')
+    .find(select => select.children.some(option => option.textContent === 'analysis:diagCompareNone'));
+
+test('the diagnosis view is created once, renders only the shown tab and resets Compare when the measurement changes', async t => {
+    diagnosisDom(t);
+    const current = diagnosisMeasurement('current');
+    const older = diagnosisMeasurement('older', 1);
+    const newer = diagnosisMeasurement('newer', 2);
+    const unsaved = diagnosisMeasurement('unsaved');
+    const all = [current, older, newer, unsaved];
+    t.mock.method(dataStorage, 'getAllMeasurements', () => all);
+    const loads = t.mock.method(dataStorage, 'getMeasurementById', async id => all.find(item => item.id === id));
+    const controller = new AnalysisController({ measurementDisplay: { selectedPointIndex: 0, selectedChannel: 'all' } });
+    const panel = document.getElementById('diagnosisAnalysisPanel');
+
+    const shownCharts = node => node.findAll(child => child.dataset.chart).map(child => child.dataset.chart);
+    const view = controller.diagnosis();
+    view.show(current, 'diagnosisLevel');
+    assert.deepEqual(shownCharts(document.getElementById('diagnosisLevelAnalysisPanel')), ['A', 'D', 'B']);
+    assert.equal(panel.children.length, 0);
+    view.show(current, 'diagnosis');
+    assert.deepEqual(shownCharts(panel), ['E']);
+    assert.equal(document.getElementById('diagnosisLevelAnalysisPanel').children.length, 0);
+
+    // Saved measurements only, newest first; only channel 0 of the fixture has diagnosis data.
+    let select = compareSelect(panel);
+    const labels = select.children.map(option => option.textContent);
+    // Texts stay untranslated here; the loaded id below shows the order.
+    assert.deepEqual(labels, ['analysis:diagCompareNone', 'analysis:diagCompareOther', 'analysis:diagCompareOther']);
+
+    select.value = '0';
+    await select.fire('change');
+    assert.equal(loads.mock.calls.at(-1).arguments[0], 'newer');
+    assert.equal(byClass(panel, 'diagnosis-compare-header')[0].textContent, 'analysis:diagMatched');
+    assert.equal(compareSelect(panel).value, '0');
+    assert.ok(byClass(panel, 'diagnosis-compare').length > 0);
+
+    view.show(current, 'diagnosis');
+    assert.equal(controller.diagnosis(), view);
+    assert.equal(compareSelect(panel).value, '0');
+    view.show(older, 'diagnosis');
+    select = compareSelect(panel);
+    assert.equal(select.value, '');
+    assert.equal(byClass(panel, 'diagnosis-compare-header').length, 0);
+});
+
+test('the Diagnosis tab copies the summary and hands the rattle limit to the measurement screen', async t => {
+    diagnosisDom(t);
+    const measurement = diagnosisMeasurement('m', 1);
+    const diagnosis = measurement.speakerModel.channels[0].diagnosis;
+    // Rattle starting in the 1/3-octave band at 504 Hz (1/6-octave bands 26 and 27).
+    diagnosis.silence.fill(1e30);
+    for (const i of [26, 27]) {
+        diagnosis.silence[i] = 1;
+        diagnosis.sets.L.noise[i] = 10;
+        diagnosis.sets['L-6'].noise[i] = 1;
+    }
+    t.mock.method(dataStorage, 'getAllMeasurements', () => [measurement]);
+    const excluded = [];
+    const ui = {
+        measurementDisplay: { selectedPointIndex: 0, selectedChannel: 'all' },
+        excludeRattle: (...args) => excluded.push(args)
+    };
+    const controller = new AnalysisController(ui);
+    controller.measurement = measurement;
+    controller.diagnosis().show(measurement, 'diagnosis');
+    const panel = document.getElementById('diagnosisAnalysisPanel');
+
+    const rattle = panel.findAll(node => node.tagName === 'BUTTON' && node.textContent.startsWith('button:excludeRattle'));
+    assert.equal(rattle.length, 1);
+    await rattle[0].fire('click');
+    assert.deepEqual(excluded, [[measurement, 504]]);
+
+    const writes = [];
+    let writeResult = true;
+    t.after(replaceGlobal('window', {
+        electronAPI: { writeClipboardText: async text => { writes.push(text); return writeResult; } }
+    }));
+    t.mock.method(console, 'error', () => {});
+    const copy = byClass(panel, 'diagnosis-copy')[0];
+    const status = byClass(byClass(panel, 'diagnosis-summary')[0], 'analysis-image-status')[0];
+    await copy.fire('click');
+    assert.match(writes[0], /^analysis:diagnosis\tSpeaker m\t/);
+    assert.equal(status.textContent, 'analysis:diagCopied');
+    writeResult = false;
+    await copy.fire('click');
+    assert.equal(status.textContent, 'analysis:diagCopyFailed');
+    controller.diagnosis().show(null, 'diagnosis');
 });

@@ -314,6 +314,7 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
     const drawingContext = {
         clearRect() {}, fillRect() {}, strokeRect() {},
         beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {},
+        save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {},
         measureText: text => ({ width: text.length * 6 }),
         fillText(text) { drawnText.push(String(text)); }
     };
@@ -332,6 +333,10 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
     assert.match(statusLine, /Clicks/);
     // No standing WASM status while running normally.
     assert.doesNotMatch(statusLine, /WASM ACTIVE/);
+    // Both axes carry titles; the 0 dB bound on the top edge has no tick value.
+    assert.ok(drawnText.includes('Frequency (Hz)'));
+    assert.ok(drawnText.includes('Level (dB)'));
+    assert.equal(drawnText.includes('0'), false);
 
     plugin.cleanup();
     assert.equal(subscription, null);
@@ -364,6 +369,7 @@ test('FM Radio Simulator narrow HUD keeps every status string inside a 320px can
     const drawingContext = {
         clearRect() {}, fillRect() {}, strokeRect() {},
         beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {},
+        save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {},
         textAlign: 'left',
         measureText: measure,
         fillText(text, x, y) {

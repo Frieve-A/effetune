@@ -114,6 +114,9 @@ function showWindowInRestoredState(mainWindow) {
   } else {
     mainWindow.show();
   }
+  // Showing a window that was maximized while hidden leaves keyboard focus on
+  // the menu bar instead of the page, so give it to the page explicitly.
+  mainWindow.webContents.focus();
   markRestoreComplete();
 }
 

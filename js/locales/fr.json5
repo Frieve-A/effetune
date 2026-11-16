@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "Cet ordinateur",
   "dialog.config.networkOutput.delay": "Retard (ms)",
   "dialog.config.networkOutput.resync": "Resynchroniser",
-  "dialog.config.networkOutput.resyncHelp": "Redémarre toutes les enceintes en même temps. À utiliser si elles se désynchronisent.",
+  "dialog.config.networkOutput.resyncHelp": "Mesure à nouveau le retard des enceintes et les réaligne. La lecture continue, et la synchronisation ne change qu'une fois, lorsque la mesure est terminée. Les enceintes dont le retard ne peut pas être mesuré se reconnectent et s'interrompent donc brièvement.",
+  "dialog.config.networkOutput.syncing": "Synchronisation des enceintes…",
   "dialog.config.networkOutput.status.searching": "Recherche",
   "dialog.config.networkOutput.status.connecting": "Connexion",
   "dialog.config.networkOutput.status.playing": "Lecture",
@@ -950,12 +951,18 @@
   "bassManagement.error.design": "Les filtres Bass Management n'ont pas pu être préparés. Réduisez Taps, puis réessayez.",
   "firCrossover.error.design": "Les filtres FIR Crossover n'ont pas pu être conçus. Réduisez Taps ou utilisez des réglages moins extrêmes.",
   "fiveBandFirPeq.error.design": "Le filtre 5Band FIR PEQ n'a pas pu être conçu. Réduisez Taps ou utilisez des réglages moins extrêmes.",
+  "headphoneEq.error.design": "Le filtre de correction de Headphone EQ n'a pas pu être conçu. Réduisez Taps ou rechargez la mesure.",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "Le filtre n'a pas pu être conçu. Essayez un autre réglage de Taps.",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "Le filtre n'a pas pu être conçu. Essayez un autre réglage de Taps.",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "La correction des enceintes n'a pas pu être préparée pour cet export, car sa mesure ne se trouve pas sur cet appareil. Mesurez la distorsion des enceintes sur cet appareil ou choisissez une autre mesure, ou désactivez l'effet pour l'export.",
+
+  // Controller mapping
   "midi.title": "Réglages d'affectation des contrôleurs", "midi.openSettings": "Affectation des contrôleurs...",
   "midi.devices": "Périphériques MIDI", "midi.gamepads": "Manettes", "midi.mappings": "Affectations",
   "midi.addLearn": "Ajouter (Learn)", "midi.learnPrompt": "Actionnez une commande, appuyez sur une touche ou utilisez une manette. Appuyez sur Échap pour annuler.",

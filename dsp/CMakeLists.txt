@@ -70,6 +70,7 @@ set(
   core/abi.cpp
   core/arena.cpp
   core/design_fft.cpp
+  core/speaker_distortion_fit.cpp
   core/engine.cpp
   core/graph.cpp
   core/partitioned_convolver.cpp
@@ -100,6 +101,8 @@ if(NOT EMSCRIPTEN)
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/note_spectrogram/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/sfz_note_player/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/soundfont_player/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/speaker_distortion_correction/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/speaker_distortion_correction/native_test.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/eq/tonal_balance_eq/calibrate_tables.cpp"
@@ -251,6 +254,7 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_tests
     SOURCES test/test_main.cpp test/abi_test.cpp test/design_fft_test.cpp test/telemetry_test.cpp
+            test/speaker_distortion_fit_test.cpp
     INCLUDE_DIRS core test
     WRAP_MALLOC)
   et_add_dsp_test(
@@ -350,6 +354,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
   et_add_dsp_test(
     effetune_dsp_soundfont_player_tests
     SOURCES plugins/others/soundfont_player/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_speaker_distortion_correction_tests
+    SOURCES plugins/others/speaker_distortion_correction/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(

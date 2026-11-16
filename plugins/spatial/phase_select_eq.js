@@ -237,26 +237,21 @@ function phaseSelectEqBandConstraintLabel(region, visibleAxis) {
         `${format(constraint.coreHigh)}›${format(constraint.outerHigh)}`;
 }
 
+// Interior ticks only: the axis bounds (±180°, 100:0 / 0:100) sit on the canvas edges.
 function phaseSelectEqAxisGrid(mode, width) {
     if (mode === 'phase') {
-        if (width < 300) return [[-180, '-180°'], [0, '0°'], [180, '+180°']];
-        if (width < 560) {
-            return [[-180, '-180°'], [-90, '-90°'], [0, '0°'],
-                [90, '+90°'], [180, '+180°']];
-        }
-        return Array.from({ length: 9 }, (_, index) => {
-            const phase = -180 + index * 45;
-            return [phase, `${phase > 0 ? '+' : ''}${phase}°`];
+        if (width < 300) return [[0, '0']];
+        if (width < 560) return [[-90, '-90'], [0, '0'], [90, '+90']];
+        return Array.from({ length: 7 }, (_, index) => {
+            const phase = -135 + index * 45;
+            return [phase, `${phase > 0 ? '+' : ''}${phase}`];
         });
     }
-    if (width < 300) return [[-100, '100:0'], [0, '50:50'], [100, '0:100']];
-    if (width < 560) {
-        return [[-100, '100:0'], [-60, '80:20'], [0, '50:50'],
-            [60, '20:80'], [100, '0:100']];
-    }
+    if (width < 300) return [[0, '50:50']];
+    if (width < 560) return [[-60, '80:20'], [0, '50:50'], [60, '20:80']];
     return [
-        [-100, '100:0'], [-82, '91:9'], [-60, '80:20'], [-33, '67:33'],
-        [0, '50:50'], [33, '33:67'], [60, '20:80'], [82, '9:91'], [100, '0:100']
+        [-82, '91:9'], [-60, '80:20'], [-33, '67:33'],
+        [0, '50:50'], [33, '33:67'], [60, '20:80'], [82, '9:91']
     ];
 }
 
@@ -575,13 +570,16 @@ class PhaseSelectEqPlugin extends PluginBase {
         return true;
     }
 
-    _frequencyToY(frequency) {
+    // Region geometry stays inside the plot; analysis points pass clamp = false so
+    // out-of-range frequencies leave the plot instead of piling up on its edge.
+    _frequencyToY(frequency, clamp = true) {
         const plot = this._plotRect();
         const minimum = Math.log2(PHASE_SELECT_EQ_MIN_FREQUENCY);
         const maximum = Math.log2(this._maximumDisplayFrequency());
-        const normalized = (Math.log2(phaseSelectEqClamp(frequency,
-            PHASE_SELECT_EQ_MIN_FREQUENCY, this._maximumDisplayFrequency())) - minimum) /
-            (maximum - minimum);
+        const shown = clamp
+            ? phaseSelectEqClamp(frequency, PHASE_SELECT_EQ_MIN_FREQUENCY, this._maximumDisplayFrequency())
+            : frequency;
+        const normalized = (Math.log2(shown) - minimum) / (maximum - minimum);
         return plot.bottom - normalized * (plot.bottom - plot.top);
     }
 
@@ -1476,8 +1474,7 @@ class PhaseSelectEqPlugin extends PluginBase {
     // When given, labelRects collects each drawn label's CSS-pixel rectangle.
     _drawPhaseMapGrid(context, showLines, labelContext, labelRects = null) {
         const plot = this._plotRect();
-        // The Visualizer palette carries only its shared roles, so labels use its graph-label role there.
-        const labelColor = this._themeColor(this.displayOptions ? 'graph-label' : 'graph-tone-50');
+        const labelColor = this._themeColor('graph-label');
         context.font = '12px Arial';
         context.textBaseline = 'bottom';
         const axisGrid = phaseSelectEqAxisGrid(this.xAxisMode, this._graphCssWidth);
@@ -1494,14 +1491,11 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
             if (!labelContext) continue;
             context.fillStyle = labelColor;
-            context.textAlign = index === 0 ? 'left'
-                : (index === axisGrid.length - 1 ? 'right' : 'center');
+            context.textAlign = 'center';
             labelContext.fillText(label, x, plot.bottom - 25);
             if (labelRects) {
                 const labelWidth = context.measureText?.(label)?.width ?? 0;
-                const labelLeft = index === 0 ? x
-                    : (index === axisGrid.length - 1 ? x - labelWidth : x - labelWidth / 2);
-                labelRects.push({ left: labelLeft, top: plot.bottom - 39, width: labelWidth, height: 14 });
+                labelRects.push({ left: x - labelWidth / 2, top: plot.bottom - 39, width: labelWidth, height: 14 });
             }
         }
         const frequencies = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
@@ -1529,6 +1523,31 @@ class PhaseSelectEqPlugin extends PluginBase {
         }
     }
 
+    // Axis titles in CSS pixels, clear of the tick labels; text is drawn through textContext.
+    // When given, labelRects collects each title's rectangle.
+    _drawAxisTitles(context, plot, labelRects = null, textContext = context) {
+        const xTitle = this.xAxisMode === 'balance' ? 'Balance (L:R)' : 'Phase Difference (°)';
+        const yTitle = 'Frequency (Hz)';
+        const centerX = (plot.left + plot.right) / 2;
+        const centerY = (plot.top + plot.bottom) / 2;
+        context.fillStyle = this._themeColor('text-primary');
+        context.font = '14px Arial';
+        context.textAlign = 'center';
+        context.textBaseline = 'alphabetic';
+        textContext.fillText(xTitle, centerX, plot.bottom - 5);
+        context.save();
+        context.translate(plot.left + 14, centerY);
+        context.rotate(-Math.PI / 2);
+        textContext.fillText(yTitle, 0, 0);
+        context.restore();
+        if (!labelRects) return;
+        const xWidth = context.measureText?.(xTitle)?.width ?? 0;
+        const yWidth = context.measureText?.(yTitle)?.width ?? 0;
+        labelRects.push(
+            { left: centerX - xWidth / 2, top: plot.bottom - 18, width: xWidth, height: 16 },
+            { left: plot.left + 2, top: centerY - yWidth / 2, width: 16, height: yWidth });
+    }
+
     // paint(point, level, ageOpacity, y) sets the fill style and alpha of each point;
     // radiusScale multiplies the level-dependent point radius in CSS pixels.
     _drawPhaseMapPoints(context, now, paint, radiusScale = 1) {
@@ -1539,7 +1558,7 @@ class PhaseSelectEqPlugin extends PluginBase {
             for (const point of frame.points) {
                 if (point.relativeLevelDb < floorDb) continue;
                 const level = phaseSelectEqClamp((point.relativeLevelDb - floorDb) / -floorDb, 0, 1);
-                const y = this._frequencyToY(point.frequency);
+                const y = this._frequencyToY(point.frequency, false);
                 paint(point, level, ageOpacity, y);
                 context.beginPath();
                 context.arc(this._horizontalToX(this.xAxisMode === 'balance' ? point.balance : point.phase),
@@ -1578,6 +1597,8 @@ class PhaseSelectEqPlugin extends PluginBase {
         }, radiusScale);
         if (options.drawSignal) options.drawSignal(context, draw);
         else draw(context);
+        // Titles are drawn after the points so the cloud never covers them.
+        if (labelContext) this._drawAxisTitles(context, this._plotRect(), null, labelContext);
         context.restore();
     }
 
@@ -1597,6 +1618,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         const labels = (frame.labels ??= []);
         labels.length = 0;
         this._drawPhaseMapGrid(context, true, context, labels);
+        this._drawAxisTitles(context, plot, labels);
 
         const geometry = this.regions.map(region => this._regionGeometry(region));
         for (let index = 0; index < this.regions.length; index++) {

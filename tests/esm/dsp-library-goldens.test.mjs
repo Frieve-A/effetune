@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1054;
-const EFFECT_COUNT = 112;
-const WORKLET_GOLDEN_CASE_COUNT = 114;
-const NON_IDENTITY_EFFECT_COUNT = 103;
+const GOLDEN_CASE_COUNT = 1057;
+const EFFECT_COUNT = 113;
+const WORKLET_GOLDEN_CASE_COUNT = 115;
+const NON_IDENTITY_EFFECT_COUNT = 104;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
   const { cases } = await discoverFrozenGoldenCases(repoRoot);
@@ -450,7 +450,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   const inventory = summarizeInventory(cases);
   assert.equal(inventory.effects, EFFECT_COUNT);
   assert.equal(inventory.total, GOLDEN_CASE_COUNT);
-  assert.equal(inventory.assetCases, 33);
+  assert.equal(inventory.assetCases, 35);
   // Tube Simulator's power-6l6gc-pentode, power-kt88-distributed and minimum-drive-12ax7 used to
   // reach their configuration with a mid-stream event, but each of those events changes a
   // reset-class parameter, and the fade and warmup that follows outlasts the frames left in the
@@ -464,8 +464,9 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   // Spatial Mapper adds one event case with four routing and analysis changes.
   // Adaptive Prediction's expanded sample-rate cases add two event cases and two events.
   // Cassette Artifacts adds five Mode cases, including three event cases and nine events.
-  assert.equal(inventory.eventCases, 170);
-  assert.equal(inventory.eventCount, 580);
+  // Fifteen Band PEQ Master Gain adds one event case and two events.
+  assert.equal(inventory.eventCases, 171);
+  assert.equal(inventory.eventCount, 582);
   assert.deepEqual(inventory.sampleRates, [
     8000,
     32000,

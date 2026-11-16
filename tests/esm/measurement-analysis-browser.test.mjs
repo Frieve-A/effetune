@@ -900,7 +900,8 @@ test('measurement analysis tabs preserve selection, calculation and exports in t
             controller.draw();
             const disabledAfterDraw = button.disabled;
             await controller.copyImage('impulse');
-            const noPendingExport = captions.length === 1 && plot.state === null && plot.state !== oldState;
+            const noPendingExport = captions.length === 1;
+            const previousPlotRetained = plot.state === oldState;
             releaseCopy(); await priorCopy;
             const priorCompletion = { disabled: button.disabled, status: status.textContent };
             const record = { ...f.record, data: Float32Array.from({ length: 4096 }, () => 0.3) };
@@ -919,11 +920,13 @@ test('measurement analysis tabs preserve selection, calculation and exports in t
             const empty = { disabled: button.disabled, count: images.length,
                 conditions: document.getElementById('impulseAnalysisConditions').textContent,
                 busy: document.getElementById('impulseAnalysisPanel').getAttribute('aria-busy') };
-            return { disabledAtStart, disabledAfterDraw, noPendingExport, priorCompletion, enabledAfterRefresh, final, failed, empty };
+            return { disabledAtStart, disabledAfterDraw, noPendingExport, previousPlotRetained,
+                priorCompletion, enabledAfterRefresh, final, failed, empty };
         });
         assert.equal(copyRefresh.disabledAtStart, true);
         assert.equal(copyRefresh.disabledAfterDraw, true);
         assert.equal(copyRefresh.noPendingExport, true);
+        assert.equal(copyRefresh.previousPlotRetained, true);
         assert.deepEqual(copyRefresh.priorCompletion, { disabled: true, status: '' });
         assert.equal(copyRefresh.enabledAfterRefresh, true);
         assert.match(copyRefresh.final.caption.subtitle, /^Bedroom NEW measurement ·/);

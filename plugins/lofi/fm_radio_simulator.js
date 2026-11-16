@@ -1297,8 +1297,8 @@ class FMRadioSimulatorPlugin extends PluginBase {
             plot: () => {
                 const frame = this._readoutFrame;
                 return frame?.valid ? {
-                    left: frame.plotLeft,
-                    top: frame.plotTop,
+                    left: 0,
+                    top: 0,
                     width: frame.plotWidth,
                     height: frame.plotHeight
                 } : null;
@@ -1393,18 +1393,15 @@ class FMRadioSimulatorPlugin extends PluginBase {
 
         // Layout, fonts, and colors follow the shared plugin graph conventions
         // (spectrum_analyzer / auto_leveler): #1a1a1a background, #333 grid,
-        // #666 tick labels at 11-12 px Arial, #00ff00 curve.
+        // #666 tick labels at 12 px Arial, #00ff00 curve.
         const values = this.hudValues;
         const narrow = cssWidth < 560;
-        const tickFont = Math.round((narrow ? 11 : 12) * dpr);
+        const tickFont = Math.round(12 * dpr);
         const statusHeight = (narrow ? 32 : 20) * dpr;
-        const plotLeft = 40 * dpr;
-        const plotTop = 6 * dpr;
-        const plotRight = width - 8 * dpr;
-        const plotBottom = height - statusHeight - 16 * dpr;
-        const plotWidth = plotRight - plotLeft;
-        const plotHeight = plotBottom - plotTop;
-        if (plotWidth <= 0 || plotHeight <= 0) {
+        // The plot spans everything above the status area; tick labels are overlaid on it.
+        const plotWidth = width;
+        const plotHeight = height - statusHeight;
+        if (plotHeight <= 0) {
             this._graphReadout?.refresh();
             return;
         }
@@ -1412,60 +1409,79 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const floorDb = FM_RADIO_SIMULATOR_SPECTRUM_FLOOR_DB;
         const logSpan = Math.log(FM_RADIO_SIMULATOR_SPECTRUM_MAX_HZ /
             FM_RADIO_SIMULATOR_SPECTRUM_MIN_HZ);
-        const frequencyToX = frequency => plotLeft + plotWidth *
+        const frequencyToX = frequency => plotWidth *
             Math.log(frequency / FM_RADIO_SIMULATOR_SPECTRUM_MIN_HZ) / logSpan;
-        const dbToY = db => {
-            const clamped = db > 0 ? 0 : (db < floorDb ? floorDb : db);
-            return plotTop + plotHeight * (-clamped / -floorDb);
-        };
+        // Unclamped: the trace may leave the plot; the clip below keeps it off the status area.
+        const dbToY = db => plotHeight * (db / floorDb);
 
+        // Interior dB grid only; 0 dB and the floor sit on the plot bounds.
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = dpr;
         ctx.font = `${tickFont}px Arial`;
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        for (let db = 0; db >= floorDb; db -= 20) {
+        for (let db = -20; db > floorDb; db -= 20) {
             const y = dbToY(db);
             ctx.beginPath();
-            ctx.moveTo(plotLeft, y);
-            ctx.lineTo(plotRight, y);
+            ctx.moveTo(0, y);
+            ctx.lineTo(plotWidth, y);
             ctx.stroke();
-            if (db % 40 === 0) {
-                ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.textAlign = 'right';
-                ctx.fillText(`${db}`, plotLeft - 4 * dpr, y);
-            }
+            ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+            ctx.fillText(`${db}`, 24 * dpr, y);
         }
+        // Frequency tick values sit above the X axis title; a value that does not
+        // fit inside the plot when centred on its tick, or that would overlap the
+        // previous value, is omitted.
+        ctx.textBaseline = 'bottom';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const narrowLabels = ['1k', '10k', '19k', '53k'];
+        const tickValueY = plotHeight - 20 * dpr;
+        let previousRight = -Infinity;
         for (const [frequency, label] of [[1000, '1k'], [10000, '10k'],
             [15000, '15k'], [19000, '19k'], [38000, '38k'], [53000, '53k']]) {
             const x = frequencyToX(frequency);
             ctx.strokeStyle = frequency === 19000 ? (window.ThemePalette?.get('graph-grid-strong') ?? '') : (window.ThemePalette?.get('graph-grid-subtle') ?? '');
             ctx.beginPath();
-            ctx.moveTo(x, plotTop);
-            ctx.lineTo(x, plotBottom);
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, plotHeight);
             ctx.stroke();
-            if (!narrow || narrowLabels.includes(label)) {
+            const halfWidth = (ctx.measureText?.(label)?.width ?? label.length * 6 * dpr) / 2;
+            if (x - halfWidth >= 0 && x + halfWidth <= plotWidth && x - halfWidth >= previousRight + 4 * dpr) {
                 ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.fillText(label, x, plotBottom + 2 * dpr);
+                ctx.fillText(label, x, tickValueY);
+                previousRight = x + halfWidth;
             }
         }
 
+        // Axis titles
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+        ctx.font = `${Math.round(14 * dpr)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('Frequency (Hz)', plotWidth / 2, plotHeight - 5 * dpr);
+        ctx.save();
+        ctx.translate(14 * dpr, plotHeight / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Level (dB)', 0, 0);
+        ctx.restore();
+
         const spectrum = values.spectrumDb;
         const bins = FM_RADIO_SIMULATOR_SPECTRUM_BINS;
+        ctx.save();
         ctx.beginPath();
-        ctx.moveTo(plotLeft, plotBottom);
+        ctx.rect(0, 0, plotWidth, plotHeight);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.moveTo(0, plotHeight);
         for (let bin = 0; bin < bins; bin++) {
-            const x = plotLeft + plotWidth * (bins === 1 ? 0 : bin / (bins - 1));
+            const x = plotWidth * (bins === 1 ? 0 : bin / (bins - 1));
             ctx.lineTo(x, dbToY(spectrum[bin]));
         }
-        ctx.lineTo(plotRight, plotBottom);
+        ctx.lineTo(plotWidth, plotHeight);
         ctx.fillStyle = (window.ThemePalette?.get('graph-trace-soft') ?? '');
         ctx.fill();
         ctx.beginPath();
         for (let bin = 0; bin < bins; bin++) {
-            const x = plotLeft + plotWidth * (bins === 1 ? 0 : bin / (bins - 1));
+            const x = plotWidth * (bins === 1 ? 0 : bin / (bins - 1));
             const y = dbToY(spectrum[bin]);
             if (bin === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -1473,7 +1489,8 @@ class FMRadioSimulatorPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2 * dpr;
         ctx.stroke();
-        Object.assign(frame, { valid: true, plotLeft, plotTop, plotWidth, plotHeight, spectrum, dbToY });
+        ctx.restore();
+        Object.assign(frame, { valid: true, plotWidth, plotHeight, spectrum, dbToY });
 
         // Status area: signal meter, CNR, stereo lamp + blend, multipath,
         // clicks. Narrow layouts split the six items into two rows so every
@@ -1525,9 +1542,9 @@ class FMRadioSimulatorPlugin extends PluginBase {
         if (!frame?.valid) return null;
         const { format, columnValueAt } = window.GraphReadout;
         const db = columnValueAt(frame.spectrum,
-            (x - frame.plotLeft) / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
+            x / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
         return {
-            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x - frame.plotLeft,
+            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x,
                 frame.plotWidth, FM_RADIO_SIMULATOR_SPECTRUM_MIN_HZ, FM_RADIO_SIMULATOR_SPECTRUM_MAX_HZ)),
             rows: [{ label: 'MPX', color: 'var(--et-graph-trace)', value: format.db(db), y: frame.dbToY(db) }]
         };

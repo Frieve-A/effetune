@@ -244,8 +244,10 @@ class AudioUtils {
     }
 
     /**
-     * Get current input level in dB
-     * @returns {number} Input level in dB, range -Infinity to 0
+     * Get the current input sample peak in dBFS, the quantity the overload rules judge. The
+     * AudioWorklet meter holds it with a short fall (see LevelMeterProcessor); the Android engine
+     * reports the sample peak of its latest audio block.
+     * @returns {number} Input level in dBFS, range -Infinity to 0
      */
     getInputLevel() {
         if (isAndroidHost()) return this.currentInputLevel ?? -Infinity;
@@ -253,27 +255,22 @@ class AudioUtils {
         if (this.audioWorkletSupported && this.currentInputLevel !== undefined) {
             return this.currentInputLevel;
         }
-        
-        // Otherwise fall back to analyzer-based level detection
+
+        // Otherwise fall back to the peak of the analyzer's current frame
         if (!this.analyzer) return -Infinity;
-        
+
         const dataArray = new Uint8Array(this.analyzer.frequencyBinCount);
         this.analyzer.getByteTimeDomainData(dataArray);
-        
-        // Calculate RMS of the audio samples
-        let sum = 0;
+
+        let peak = 0;
         for (let i = 0; i < dataArray.length; i++) {
             const amplitude = (dataArray[i] - 128) / 128;
-            sum += amplitude * amplitude;
+            const magnitude = amplitude < 0 ? -amplitude : amplitude;
+            if (magnitude > peak) peak = magnitude;
         }
-        
-        const rms = Math.sqrt(sum / dataArray.length);
-        
-        // Convert to dB (full scale where 1.0 RMS = 0 dB)
-        if (rms < 0.0001) return -Infinity; // Avoid log(0)
-        const db = 20 * Math.log10(rms);
-        
-        return db;
+
+        if (peak < 0.0001) return -Infinity; // Avoid log(0)
+        return 20 * Math.log10(peak);
     }
 
     /**

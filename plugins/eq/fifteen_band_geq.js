@@ -482,23 +482,20 @@ return data; // Return the modified buffer
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
     
-        const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+        // Interior grid lines only; 20 Hz, 20 kHz and ±24 dB sit on the canvas edges.
+        const freqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
         freqs.forEach(f => {
             const x = width * (Math.log10(f) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-            if (f !== 20 && f !== 20000) {
-                ctx.fillText(f >= 1000 ? `${f / 1000}k` : f, x, height - 24);
-            }
+            ctx.fillText(f >= 1000 ? `${f / 1000}k` : f, x, height - 24);
         });
-    
+
         ctx.textAlign = 'right';
-        const dBs = [-24, -18, -12, -6, 0, 6, 12, 18, 24];
+        const dBs = [-18, -12, -6, 0, 6, 12, 18];
         dBs.forEach(db => {
             const y = height * (1 - (db + 24) / 48);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-            if (db !== -24 && db !== 24) {
-                ctx.fillText(`${db}`, 48, y + 4);
-            }
+            ctx.fillText(`${db}`, 48, y + 4);
         });
 
         // ---------- axis labels ----------

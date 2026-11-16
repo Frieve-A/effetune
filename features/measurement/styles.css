@@ -112,11 +112,16 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     margin-bottom: 5px;
 }
 
 .measurement-item-name {
+    min-width: 0;
+    overflow: hidden;
     font-weight: bold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .measurement-item-date {
@@ -126,6 +131,7 @@ body {
 
 .measurement-item-controls {
     display: flex;
+    flex-shrink: 0;
     gap: 5px;
 }
 
@@ -292,7 +298,6 @@ input[type="radio"] {
     background-color: var(--et-surface-17);
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    white-space: nowrap;
 }
 
 .setting-label {
@@ -499,7 +504,24 @@ canvas {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px 16px;
 }
+
+.result-header > h2 { min-width: 0; overflow-wrap: anywhere; }
+
+/* The name box takes the room the heading leaves, up to a width that fits long names. */
+.result-name {
+    display: flex;
+    flex: 1 0 220px;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-left: auto;
+}
+
+.result-name label { flex-shrink: 0; margin-bottom: 0; }
+.result-name input { flex: 1 1 160px; min-width: 0; max-width: 480px; }
 
 .result-metadata {
     margin-bottom: var(--content-padding);
@@ -1138,6 +1160,11 @@ button,
     box-shadow: var(--et-control-hover-shadow);
 }
 
+:is(.primary-btn, .secondary-btn):disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
 .back-btn {
     background: linear-gradient(180deg, color-mix(in srgb, var(--et-accent) 10%, transparent), color-mix(in srgb, var(--et-accent) 3.5%, transparent));
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--et-accent) 14%, transparent), 0 2px 7px rgba(0, 0, 0, 0.2);
@@ -1327,7 +1354,7 @@ input[type="range"]::-moz-range-thumb,
 .analysis-target, .analysis-conditions { color: var(--et-text-secondary); margin-bottom: 10px; overflow-wrap: anywhere; }
 .analysis-target { min-height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #measurementResults .graph-container, .analysis-graph-mount { position: relative; width: 100%; min-width: 0; }
-#measurementResults canvas:not(.measurement-item-preview canvas) {
+#measurementResults canvas:not(.measurement-item-preview canvas), #measurementResults .diagnosis-chart {
     display: block; width: 100%; height: clamp(280px, 48vh, 600px); max-width: 100%;
 }
 #measurementResults h3 { margin-bottom: 12px; }
@@ -1351,12 +1378,13 @@ input[type="range"]::-moz-range-thumb,
 .plugin-parameter-ui .parameter-row > input[type=checkbox] { margin: 0; }
 .plugin-parameter-ui .parameter-row > :is(select, input[type=text]) { flex: 1; min-width: 0; margin: 0; }
 .plugin-parameter-ui .parameter-row > input[type=range] { width: auto; margin: 0 2px; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
-#configForm .form-group { margin-top: 30px; }
-#configForm .parameter-row > :is(.explanation-text, #calibrationAssignmentControls) { flex-basis: 100%; }
-#configForm .parameter-row > :is(.channel-checkbox-group, .radio-choice-group),
+:is(#configForm, .speaker-distortion-screen) .form-group { margin-top: 30px; }
+:is(#configForm, .speaker-distortion-screen) .parameter-row > :is(div.explanation-text, #calibrationAssignmentControls) { flex-basis: 100%; }
+:is(#configForm, .speaker-distortion-screen) .parameter-row > :is(.channel-checkbox-group, .radio-choice-group),
 #noiseChannelControls .radio-choice-group { flex: 1 1 180px; min-width: min-content; }
-.plugin-parameter-ui :is(.channel-checkbox-group, .radio-choice-group) label { width: auto; min-width: 0; flex: 0 0 auto; }
-#configForm .parameter-row > :is(select, input[type=text]) { padding: 4px; }
+/* A choice keeps its own line when it fits and wraps its caption inside the screen when it does not. */
+.plugin-parameter-ui :is(.channel-checkbox-group, .radio-choice-group) label { width: auto; min-width: 0; flex: 0 1 auto; }
+:is(#configForm, .speaker-distortion-screen) .parameter-row > :is(select, input[type=text]) { padding: 4px; }
 #noiseChannelControls .parameter-row { margin-top: 12px; }
 #noiseLevelValue { flex: 0 0 80px; }
 .correction-controls .explanation-text2 { margin: 2px 0 8px; }
@@ -1402,7 +1430,7 @@ input[type="range"]::-moz-range-thumb,
 [data-analysis-panel]:not([hidden]) { display: flow-root; }
 
 .measurement-item-badge {
-    margin: 0 auto 0 8px;
+    margin-right: auto;
     padding: 0 6px;
     border: 1px solid var(--et-accent);
     border-radius: 4px;
@@ -1410,4 +1438,226 @@ input[type="range"]::-moz-range-thumb,
     font-size: 11px;
     line-height: 16px;
     white-space: nowrap;
+    flex-shrink: 0;
 }
+
+/* ---- Distortion Diagnosis tab ---- */
+:root {
+    --sdc-l0: var(--et-accent);
+    --sdc-l6: var(--et-warning);
+    --sdc-l12: var(--et-success);
+    --sdc-pk: var(--et-danger);
+    --sdc-would: var(--et-graph-tone-50);
+    --sdc-odd: var(--et-graph-tone-89);
+    --sdc-nf: var(--et-graph-tone-50);
+    --sdc-mains: var(--et-danger);
+    --sdc-h2: var(--et-warning);
+    --sdc-h3: var(--et-accent);
+    --sdc-h5: var(--et-success);
+    --sdc-lim: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 45%);
+    --sdc-range: color-mix(in srgb, var(--et-graph-base), var(--et-text-primary) 50%);
+    --sdc-grid: var(--et-graph-grid);
+    --sdc-text: var(--et-graph-label);
+    --sdc-bg: var(--et-graph-base);
+    /* Chart S's map: a blue-orange diverging pair, apart for colour-blind viewers in every theme, faded into --sdc-bg at 0 dB. */
+    --sdc-squash: #3b82f6; /* theme-allow: Blue identifies negative gain across themes. */
+    --sdc-stretch: #f08c1e; /* theme-allow: Orange identifies positive gain across themes. */
+}
+.diagnosis-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-bottom: 8px; }
+.diagnosis-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+/* Toolbar labels keep their natural width and are never clamped; a label too long for the row puts its select on the next line. */
+.diagnosis-control .parameter-label-text { display: block; flex: none; max-width: 100%; -webkit-line-clamp: none; }
+.diagnosis-chart-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.diagnosis-segment { display: inline-flex; border: 1px solid var(--et-border-strong); border-radius: 4px; overflow: hidden; }
+.diagnosis-segment button {
+    margin: 0; padding: 4px 10px; border: 0; border-radius: 0; background: transparent;
+    color: var(--et-text-primary); font-size: 12px; cursor: pointer;
+}
+.diagnosis-segment button + button { border-left: 1px solid var(--et-graph-grid); }
+.diagnosis-segment button[aria-pressed="true"] { background: var(--et-accent); color: var(--et-on-accent); }
+.diagnosis-segment button:disabled { opacity: .45; cursor: not-allowed; }
+/* One card per row at full width; charts keep the size of the acoustic graphs. */
+.diagnosis-cards { display: flex; flex-direction: column; gap: 16px; }
+.diagnosis-card { min-width: 0; }
+.diagnosis-card h3 { margin: 0; font-size: 14px; }
+.diagnosis-chart { background: var(--sdc-bg); }
+/* The readout legend starts at the plot's top right corner (the view sets the top), clear of the chart's note above the plot. */
+.diagnosis-chart-mount { --graph-readout-inset-right: 12px; }
+/* A hovered legend entry draws its lines thick and on top, as on the effect's graph. */
+.diagnosis-chart .sdc-highlighted { stroke-width: 3.5 !important; opacity: 1; }
+.diagnosis-note-warning { color: var(--et-warning); }
+.diagnosis-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.diagnosis-table :is(th, td) { padding: 4px 6px; border-bottom: 1px solid var(--et-graph-grid); text-align: left; vertical-align: top; }
+.diagnosis-table thead th { color: var(--et-text-secondary); font-weight: 600; }
+.diagnosis-compare { display: block; font-size: 11px; }
+.diagnosis-compare.same { color: var(--et-text-secondary); }
+.diagnosis-compare.better { color: var(--et-success); }
+.diagnosis-compare.worse { color: var(--et-warning); }
+.diagnosis-reading-list { margin: 0; padding: 0; list-style: none; }
+.diagnosis-reading-list li { padding: 8px 0; border-bottom: 1px solid var(--et-graph-grid); }
+.diagnosis-reading-list li > * { margin: 4px 0 0; }
+.diagnosis-reading-obs { margin: 0; }
+.diagnosis-reading-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.diagnosis-reading-actions .secondary-btn { margin: 0; }
+/* A trailing arrow marks a button that moves to another tab, like the leading arrow of the Back buttons. */
+.diagnosis-goto::after { content: "\2192" / ""; margin-left: 5px; }
+
+/* ---- Shared with the speaker distortion measurement ---- */
+.speaker-distortion-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.speaker-distortion-tag {
+    display: inline-block; padding: 0 8px; border: 1px solid currentColor; border-radius: 999px;
+    font-size: 11px; line-height: 18px; white-space: nowrap; vertical-align: middle;
+}
+.speaker-distortion-tag.on { color: var(--et-accent); }
+.speaker-distortion-tag.off { color: var(--et-text-secondary); }
+/* ---- End of the shared block ---- */
+
+/* ---- Speaker distortion measurement screens and result ---- */
+:is(.speaker-distortion-screen, .measurement-choices) [hidden] { display: none !important; }
+.measurement-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.measurement-choice-card {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0;
+    padding: 16px; border: 1px solid var(--et-border-strong); border-radius: 8px;
+}
+.measurement-choice-card h3 { margin: 0; }
+.measurement-choice-card p { margin: 0; flex: 1 1 auto; }
+.speaker-distortion-steps { display: flex; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; counter-reset: sd-step; }
+.speaker-distortion-steps li {
+    flex: 1 1 0; min-width: 0; padding: 6px 8px; border-bottom: 3px solid var(--et-graph-grid);
+    color: var(--et-text-secondary); counter-increment: sd-step;
+}
+.speaker-distortion-steps li::before { content: counter(sd-step) ". "; }
+.speaker-distortion-steps li.current { border-bottom-color: var(--et-accent); color: var(--et-text-primary); font-weight: 600; }
+.speaker-distortion-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+:is(.speaker-distortion-buttons, .speaker-distortion-card) > .secondary-btn { margin-left: 0; }
+.speaker-distortion-info { margin: 8px 0 16px; }
+/* Trailing text keeps its natural width and moves below the select when the row runs out of room. */
+.speaker-distortion-screen .parameter-row > span.explanation-text { flex: 0 0 auto; max-width: 100%; margin-top: 0; }
+.speaker-distortion-diagram { display: block; width: 100%; max-width: 320px; height: auto; color: var(--et-text-secondary); }
+.speaker-distortion-diagram text { fill: currentColor; font-size: 12px; }
+.speaker-distortion-place-steps { margin: 8px 0; padding-left: 20px; }
+.speaker-distortion-notice { margin: 0 0 16px; padding-left: 20px; }
+:is(.speaker-distortion-check-card, .speaker-distortion-pause, .speaker-distortion-card, .speaker-distortion-box) {
+    margin: 12px 0; padding: 12px 16px; border: 1px solid var(--et-border-strong); border-radius: 8px; min-width: 0;
+}
+.speaker-distortion-box { margin: 8px 0 0; }
+.speaker-distortion-check-result { margin-top: 12px; }
+.speaker-distortion-check-result.warning-message { visibility: visible; box-sizing: border-box; }
+.speaker-distortion-check-result + .explanation-text { margin: 8px 0 0; }
+.speaker-distortion-run-rows { margin: 0 0 12px; padding: 0; list-style: none; }
+.speaker-distortion-run-row {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px;
+    padding: 6px 0; border-bottom: 1px solid var(--et-graph-grid);
+}
+.speaker-distortion-run-label { font-weight: 600; }
+.speaker-distortion-run-row[data-status="done"] .speaker-distortion-run-status { color: var(--et-success); }
+.speaker-distortion-run-progress {
+    --bar-fill: var(--et-accent);
+    flex-basis: 100%; height: 4px; margin: 2px 0 0; border: 0; border-radius: 2px;
+    background: var(--et-surface-17); color: var(--bar-fill); appearance: none; overflow: hidden;
+}
+.speaker-distortion-run-progress::-webkit-progress-bar { background: var(--et-surface-17); }
+.speaker-distortion-run-progress::-webkit-progress-value { background: var(--bar-fill); transition: width 0.25s linear; }
+.speaker-distortion-run-progress::-moz-progress-bar { background: var(--bar-fill); }
+.speaker-distortion-run-row[data-status="done"] .speaker-distortion-run-progress { --bar-fill: var(--et-success); }
+.speaker-distortion-run-row:is([data-status="stopped"], [data-status="levelCheckFailed"]) .speaker-distortion-run-progress {
+    --bar-fill: var(--et-warning);
+}
+.speaker-distortion-run-line { min-height: 1.4em; }
+.speaker-distortion-pause.warning { border-color: var(--et-warning); }
+:is(.speaker-distortion-check-card, .speaker-distortion-pause) > p { margin: 0 0 12px; }
+
+/* The result header matches the frequency-response one, including its 27px gap to the next section. */
+.speaker-distortion-result-bar { flex-wrap: wrap; margin-bottom: 27px; }
+/* The name box and the save button share one height, and the name label sits centred beside them. */
+.speaker-distortion-save { display: flex; flex: 1 1 220px; flex-direction: column; min-width: 0; }
+.speaker-distortion-save > .result-name { flex: none; align-items: stretch; margin-left: 0; }
+.speaker-distortion-save.unsaved > .result-name { justify-content: flex-start; }
+.speaker-distortion-save label { align-self: center; }
+/* An unsaved result takes its own full-width row below the title so that saving is the obvious next step. */
+.speaker-distortion-save.unsaved {
+    order: 1; flex-basis: 100%; box-sizing: border-box; padding: 12px 16px;
+    border: 1px solid var(--et-accent); border-radius: 8px; background: color-mix(in srgb, var(--et-accent) 8%, transparent);
+}
+.speaker-distortion-save-prompt { margin: 0 0 10px; font-weight: 600; }
+.speaker-distortion-save:not(.unsaved) > .speaker-distortion-save-prompt { display: none; }
+.speaker-distortion-section { min-width: 0; }
+.speaker-distortion-heading { margin: 0 0 4px; }
+.speaker-distortion-summary { margin: 0 0 8px; font-weight: 600; }
+.speaker-distortion-recommended { margin: 8px 0 4px; }
+:is(.speaker-distortion-help, .speaker-distortion-why, .speaker-distortion-cell-note, .speaker-distortion-column-status) {
+    color: var(--et-text-secondary); font-size: 12px;
+}
+.speaker-distortion-help { margin: 4px 0; }
+:is(.speaker-distortion-warning, .speaker-distortion-error) { color: var(--et-warning); margin: 8px 0; }
+.speaker-distortion-section .speaker-distortion-grid { margin: 12px 0; }
+.speaker-distortion-block {
+    min-width: 0; padding: 12px; border: 1px solid var(--et-graph-grid); border-radius: 8px;
+}
+.speaker-distortion-block.updating { opacity: .6; }
+.speaker-distortion-block > :is(p, button) { margin: 6px 0 0; }
+.speaker-distortion-block-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.speaker-distortion-block-header h4 { margin: 0; }
+.speaker-distortion-badge { font-size: 11px; color: var(--et-accent); }
+.speaker-distortion-link {
+    padding: 0; border: 0; background: none; color: var(--et-accent); text-decoration: underline; cursor: pointer;
+}
+:is(.speaker-distortion-details, .speaker-distortion-settings) { margin-top: 8px; }
+:is(.speaker-distortion-details, .speaker-distortion-settings) > summary { cursor: pointer; }
+/* Bar charts: the headline levels on a percent axis and the Details changes on a dB axis, each axis shared by
+   the channels. The plot runs left to right in every language; its side margins hold the numbers printed beyond
+   the bar ends. */
+.speaker-distortion-bars {
+    --sdb-short: var(--et-accent);
+    --sdb-long: color-mix(in srgb, var(--et-accent) 50%, var(--et-graph-base));
+    --sdb-neutral: var(--et-graph-tone-50);
+    width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 12px;
+}
+.speaker-distortion-bars caption { margin-bottom: 6px; color: var(--et-text-secondary); text-align: start; }
+.speaker-distortion-legend { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 4px; color: var(--et-text-primary); }
+.speaker-distortion-bars .series-short { --sdb-color: var(--sdb-short); }
+.speaker-distortion-bars .series-long { --sdb-color: var(--sdb-long); }
+.speaker-distortion-bars .series-neutral { --sdb-color: var(--sdb-neutral); }
+.speaker-distortion-bars .series-before { --sdb-color: var(--sdb-neutral); }
+.speaker-distortion-bars .series-after { --sdb-color: var(--sdb-short); }
+/* Levels start at 0 % on the left, so their numbers all print on the right. */
+.speaker-distortion-levels .speaker-distortion-scale { margin: 0 10em 0 1em; }
+:is(.speaker-distortion-legend-item, .speaker-distortion-value.missing)::before {
+    content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; background: var(--sdb-color);
+}
+.speaker-distortion-bars th { padding: 2px 0; padding-inline-end: 8px; font-weight: normal; text-align: start; vertical-align: middle; }
+.speaker-distortion-bars tbody th[scope="row"] { width: 30%; }
+.speaker-distortion-bars .speaker-distortion-group th {
+    padding-top: 10px; border-bottom: 1px solid var(--et-graph-grid); color: var(--et-text-primary); font-weight: 600;
+}
+.speaker-distortion-plot { padding: 0; direction: ltr; }
+.speaker-distortion-scale { position: relative; margin: 0 4.5em; padding: 3px 0; }
+thead .speaker-distortion-scale { height: 16px; padding: 0; }
+.speaker-distortion-gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--et-graph-grid); }
+.speaker-distortion-gridline.zero { width: 2px; margin-left: -1px; background: var(--et-text-secondary); }
+thead .speaker-distortion-gridline { display: none; }
+.speaker-distortion-tick { position: absolute; top: 0; transform: translateX(-50%); color: var(--et-text-secondary); white-space: nowrap; }
+.speaker-distortion-bar-line { position: relative; height: 16px; }
+.speaker-distortion-bar { position: absolute; top: 3px; height: 10px; background: var(--sdb-color); }
+.speaker-distortion-bar.up { background: var(--et-warning); }
+.speaker-distortion-value { position: absolute; top: 0; padding: 0 4px; line-height: 16px; white-space: nowrap; }
+.speaker-distortion-value.missing { position: relative; padding: 0; color: var(--et-text-secondary); }
+.speaker-distortion-value.worse { color: var(--et-warning); font-weight: 700; }
+.speaker-distortion-cell-note { position: relative; margin-bottom: 2px; font-size: 11px; line-height: 1.3; }
+/* The best-possible marker is the edge of its note; the note may use the plot margin on its side. */
+.speaker-distortion-best.right { margin-right: -4.5em; padding-left: 4px; border-left: 2px solid var(--et-text-primary); }
+.speaker-distortion-best.left {
+    margin-left: -4.5em; padding-right: 4px; border-right: 2px solid var(--et-text-primary); text-align: right;
+}
+.speaker-distortion-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.speaker-distortion-progress { margin: 8px 0 0; }
+.speaker-distortion-check-results, .speaker-distortion-rows { margin: 8px 0 0; padding-left: 20px; }
+.speaker-distortion-limit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.speaker-distortion-limit input { width: 90px; }
+:is(.speaker-distortion-refit, .speaker-distortion-copy) { margin-top: 12px; }
+.speaker-distortion-toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 2000; transform: translateX(-50%);
+    max-width: calc(100vw - 32px); padding: 8px 16px; border-radius: 6px; box-sizing: border-box;
+    background: var(--et-text-primary); color: var(--et-graph-base); box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+.speaker-distortion-toast.error { background: var(--et-warning); color: var(--et-on-accent); }

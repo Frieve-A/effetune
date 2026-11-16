@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "type": "SpeakerDistortionCorrectionPlugin",
+  "id": "physical-routing-switches-with-fixed-bank",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 1536,
+  "blockSize": 37,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 0,
+  "seed": "0xeffe7a5e",
+  "params": {
+    "dv": 0,
+    "md": "Reduce",
+    "_scf": 0,
+    "_scc": 2
+  },
+  "events": [
+    {
+      "frame": 300,
+      "params": {
+        "_scf": 1,
+        "_scc": 1
+      }
+    },
+    {
+      "frame": 600,
+      "params": {
+        "_scf": 2,
+        "_scc": 2
+      }
+    },
+    {
+      "frame": 900,
+      "params": {
+        "_scf": 0,
+        "_scc": 1
+      }
+    },
+    {
+      "frame": 1200,
+      "params": {
+        "_scf": 4,
+        "_scc": 2
+      }
+    }
+  ],
+  "asset": {
+    "slot": 0,
+    "format": 1,
+    "channels": 16,
+    "frames": 1247,
+    "topology": 2,
+    "headBlock": 0,
+    "rateDivider": 1,
+    "ir": {
+      "kind": "speaker-distortion-v1",
+      "seed": 5310,
+      "scale": 0.002,
+      "correctedChannels": [
+        0,
+        2
+      ],
+      "oddChannels": [
+        3
+      ],
+      "oddScale": 0.02,
+      "step": 0
+    }
+  },
+  "tolerance": {
+    "abs": 0.0002,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:a01beb31faae457e2f005123d4076384a604032423c077ca2998589052a846ef",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SpeakerDistortionCorrectionPlugin --promote-production-native",
+  "outputFloats": 3072,
+  "byteLength": 12288,
+  "binary": "case-001.f32"
+}

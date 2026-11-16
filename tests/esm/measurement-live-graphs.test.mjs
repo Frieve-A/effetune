@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import GraphUtils from '../../features/measurement/measurement-controller/graph-utils.js';
 import '../../features/measurement/ui/ui-manager.js';
+import GraphRenderer from '../../features/measurement/ui/graph-renderer.js';
 import AudioProcessing, { SweepCancelledError } from '../../features/measurement/measurement-controller/audio-processing.js';
 import audioUtils from '../../features/measurement/audio-utils/index.js';
 import { generateESS } from '../../features/measurement/audio-utils/signal-generation.js';
@@ -10,18 +11,21 @@ import { withGlobals } from '../helpers/global-test-utils.mjs';
 const { default: SweepMeasurement } = await import('../../features/measurement/measurement-controller/sweep-measurement.js');
 
 function canvasRecorder() {
-  const strokes = [], labels = [];
-  let points = [];
+  const strokes = [], labels = [], clips = [];
+  let points = [], clip = null, depth = 0;
   const canvas = { width: 400, height: 240, getContext: () => ctx };
   const ctx = {
-    canvas, fillRect() {}, save() {}, restore() {}, translate() {}, rotate() {},
+    canvas, fillRect() {}, translate() {}, rotate() {},
+    save() { depth++; }, restore() { depth--; if (!depth) clip = null; },
     beginPath() { points = []; },
+    rect(x, y, width, height) { points.push(['rect', x, y, width, height]); },
+    clip() { clip = points[0].slice(1); clips.push(clip); },
     moveTo(x, y) { points.push(['move', x, y]); },
     lineTo(x, y) { points.push(['line', x, y]); },
-    stroke() { strokes.push({ color: this.strokeStyle, width: this.lineWidth, points }); },
+    stroke() { strokes.push({ color: this.strokeStyle, width: this.lineWidth, points, clip }); },
     fillText(text, x, y) { labels.push({ text, x, y }); }
   };
-  return { canvas, ctx, strokes, labels };
+  return { canvas, ctx, strokes, labels, clips };
 }
 
 function graphController(options = {}) {
@@ -39,7 +43,7 @@ function setAudioContext(t) {
   t.after(() => { audioUtils.audioContext = original; });
 }
 
-test('live level curves clamp silence and overload and include the capture endpoint', async t => {
+test('live level curves run silence and overload out through the clipped plot border', async t => {
   setAudioContext(t);
   const { ctx, strokes } = canvasRecorder();
   const controller = graphController({ levelGraphData: [
@@ -47,7 +51,12 @@ test('live level curves clamp silence and overload and include the capture endpo
     { time: 4, level: 3 }, { time: 5, level: -10 }
   ] });
   controller.drawLevelGraphData(ctx, 400, 240);
-  assert.deepEqual(strokes[0].points, [['move', 60, 210], ['line', 225, 110], ['line', 390, 10]]);
+  assert.deepEqual(strokes[0].clip, [60, 10, 330, 200]);
+  const [silence, middle, overload] = strokes[0].points;
+  assert.deepEqual(middle, ['line', 225, 110]);
+  assert.ok(silence[0] === 'move' && silence[1] === 60 && silence[2] > 240);
+  assert.ok(overload[0] === 'line' && overload[1] === 390 && overload[2] < 10);
+  assert.equal(strokes[0].points.length, 3);
   controller.levelGraphData = [{ time: 0, level: -30 }];
   controller.drawLevelGraphData(ctx, 400, 240);
   assert.equal(strokes.length, 1);
@@ -182,6 +191,7 @@ test('multichannel response graphs retain channel level differences using one sh
     graphController().updateFrequencyResponseGraph(curves);
     const data = strokes.filter(stroke => stroke.width === 2);
     assert.equal(data.length, 2);
+    for (const stroke of data) assert.deepEqual(stroke.clip, [50, 20, 330, 190]);
     assert.notEqual(data[0].color, data[1].color);
     for (let index = 0; index < 3; index++) {
       assert.equal(data[0].points[index][1], data[1].points[index][1]);
@@ -189,6 +199,34 @@ test('multichannel response graphs retain channel level differences using one sh
     }
     assert.deepEqual(curves, original);
   });
+});
+
+test('response curves keep out-of-range levels unclamped and leave silent bins as gaps', async () => {
+  const { canvas, strokes } = canvasRecorder();
+  await withGlobals({ window: {}, document: { getElementById: () => canvas } }, () => {
+    graphController().updateFrequencyResponseGraph([[100, 0], [1000, 0], [2000, -70], [3000, -Infinity], [5000, 0]]);
+    const curve = strokes.find(stroke => stroke.width === 2);
+    assert.deepEqual(curve.clip, [50, 20, 330, 190]);
+    assert.deepEqual(curve.points.map(point => point[0]), ['move', 'line', 'line', 'move']);
+    assert.ok(curve.points[2][2] > 210);
+  });
+});
+
+test('history previews clip unclamped curves to the plot and break at missing levels', async () => {
+  const { canvas, strokes } = canvasRecorder();
+  const container = { clientWidth: 104, clientHeight: 52, querySelector: () => canvas, appendChild() {} };
+  canvas.width = 104;
+  canvas.height = 52;
+  const renderer = new GraphRenderer({ graphColors: { original: '#000' } });
+  await withGlobals({ window: {} }, () => {
+    renderer.drawPreviewGraph(container, [[100, 0], [1000, -70], [2000, null], [3000, -Infinity], [5000, 10]],
+      { xMin: 20, xMax: 20000, yMin: -60, yMax: 0 });
+  });
+  assert.deepEqual(strokes[0].clip, [2, 2, 100, 48]);
+  const points = strokes[0].points;
+  assert.deepEqual(points.map(point => point[0]), ['move', 'line', 'move']);
+  assert.ok(points[1][2] > 50);
+  assert.ok(points[2][2] < 2);
 });
 
 test('live response warnings identify quiet and overloaded channels independently', async () => {

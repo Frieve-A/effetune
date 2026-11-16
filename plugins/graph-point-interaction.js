@@ -41,31 +41,6 @@ class GraphDragAxisLock {
     }
 }
 
-class GraphPlotArea {
-    static from(container, margin = 20) {
-        const rect = container?.getBoundingClientRect?.() ||
-            { left: 0, top: 0, width: 0, height: 0 };
-        const width = container?.clientWidth || rect.width;
-        const height = container?.clientHeight || rect.height;
-        const marginX = width > margin * 2 ? margin : 0;
-        const marginY = height > margin * 2 ? margin : 0;
-        const plotWidth = width - marginX * 2;
-        const plotHeight = height - marginY * 2;
-        const scaleX = width ? rect.width / width : 1;
-        const scaleY = height ? rect.height / height : 1;
-        return {
-            left: rect.left + marginX * scaleX,
-            top: rect.top + marginY * scaleY,
-            width: (plotWidth > 0 ? plotWidth : width) * scaleX,
-            height: (plotHeight > 0 ? plotHeight : height) * scaleY,
-            leftPercent: width > 0 ? marginX / width * 100 : 0,
-            topPercent: height > 0 ? marginY / height * 100 : 0,
-            widthPercent: width > 0 ? (plotWidth > 0 ? plotWidth : width) / width * 100 : 100,
-            heightPercent: height > 0 ? (plotHeight > 0 ? plotHeight : height) / height * 100 : 100
-        };
-    }
-}
-
 class PeqMarkerWheel {
     static nextQ(currentQ, deltaY, minimumQ, maximumQ) {
         const current = Number(currentQ);
@@ -134,7 +109,6 @@ class MobileBandSelector {
 
 if (typeof window !== 'undefined') {
     window.GraphDragAxisLock = GraphDragAxisLock;
-    window.GraphPlotArea = GraphPlotArea;
     window.PeqMarkerWheel = PeqMarkerWheel;
     window.MobileBandSelector = MobileBandSelector;
 }

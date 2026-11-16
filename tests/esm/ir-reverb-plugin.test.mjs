@@ -3174,13 +3174,12 @@ test('IR Reverb draws the impulse envelope on the graph dB scale', () => {
   plugin._drawEdcGraph();
 
   const envelopePath = filledPaths[0];
-  const plotTop = 51;
-  const plotBottom = 175;
-  const plotHeight = plotBottom - plotTop;
-  assert.equal(envelopePath[1].y, plotTop);
-  assert.ok(Math.abs(envelopePath[2].y - (plotTop + 20 / 90 * plotHeight)) < 1e-6);
-  assert.ok(Math.abs(envelopePath[3].y - (plotTop + 40 / 90 * plotHeight)) < 1e-6);
-  assert.equal(envelopePath[4].y, plotBottom);
+  // The dB scale spans the whole canvas height.
+  const plotHeight = 200;
+  assert.ok(Math.abs(envelopePath[1].y) < 1e-6);
+  assert.ok(Math.abs(envelopePath[2].y - 20 / 90 * plotHeight) < 1e-6);
+  assert.ok(Math.abs(envelopePath[3].y - 40 / 90 * plotHeight) < 1e-6);
+  assert.ok(envelopePath[4].y > plotHeight);
 });
 
 test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed one-second ticks', () => {
@@ -3225,8 +3224,8 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   assert.ok(strokes.includes('stub:graph-marker'));
   const trim = labels.find(label => label.text === 'trim');
   assert.ok(trim);
-  assert.ok(trim.x >= 42);
-  assert.ok(trim.x + 32 <= 320 - 12);
+  assert.ok(trim.x >= 30);
+  assert.ok(trim.x + 32 <= 320);
   const coLocatedLabels = ['onset', 'cut', 'pre-delay'].map(text =>
     labels.find(label => label.text === text));
   assert.ok(coLocatedLabels.every(Boolean));
@@ -3235,12 +3234,15 @@ test('IR Reverb EDC graph keeps marker labels in bounds and adds unobstructed on
   assert.equal(rt60Labels.length, 1);
   assert.equal(rt60Labels[0].text, 'RT60 0.50 s');
   assert.equal(rt60Labels[0].color, 'stub:text-primary');
-  const expectedRt60X = 42 + 0.5 / 3 * (320 - 42 - 12) + 4;
+  const expectedRt60X = 0.5 / 3 * 320 + 4;
   assert.ok(Math.abs(rt60Labels[0].x - expectedRt60X) < 1e-9);
-  assert.ok(labels.some(label => label.text === '1 s'));
-  assert.ok(labels.some(label => label.text === '2 s'));
-  assert.equal(labels.some(label => label.text === '3 s'), false);
-  assert.ok(labels.some(label => label.text === 'Time'));
+  assert.ok(labels.some(label => label.text === '1'));
+  assert.ok(labels.some(label => label.text === '2'));
+  assert.equal(labels.some(label => label.text === '3'), false);
+  const timeTitle = labels.find(label => label.text === 'Time (s)');
+  assert.equal(timeTitle.x, 160);
+  assert.equal(timeTitle.align, 'center');
+  assert.ok(labels.some(label => label.text === 'Level (dB)' && label.align === 'center'));
 });
 
 test('IR Reverb EDC graph retains the RT60 readout when its marker is unavailable', () => {
@@ -3317,5 +3319,5 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.doesNotMatch(pluginSource, /irReverb\.import\.(?:namePlaceholder|tagsPlaceholder|sourcePlaceholder)/);
   assert.doesNotMatch(pluginSource, /irReverb\.aria\.import(?:Name|Tags|Source)/);
   assert.match(pluginSource, /-db \/ 90/);
-  assert.match(pluginSource, /\[0, -30, -60, -90\]/);
+  assert.match(pluginSource, /\[-30, -60\]/);
 });

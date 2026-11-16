@@ -830,7 +830,8 @@
   "dialog.config.networkOutput.local": "本机",
   "dialog.config.networkOutput.delay": "延迟 (ms)",
   "dialog.config.networkOutput.resync": "重新同步",
-  "dialog.config.networkOutput.resyncHelp": "让所有音箱同时重新开始播放。播放出现错位时使用。",
+  "dialog.config.networkOutput.resyncHelp": "重新测量各音箱的延迟并重新对齐。播放不会中断，测量完成时只切换一次时间。无法测量延迟的音箱会重新连接，因此会短暂中断。",
+  "dialog.config.networkOutput.syncing": "正在同步音箱…",
   "dialog.config.networkOutput.status.searching": "搜索中",
   "dialog.config.networkOutput.status.connecting": "连接中",
   "dialog.config.networkOutput.status.playing": "播放中",
@@ -950,12 +951,17 @@
   "bassManagement.error.design": "无法准备Bass Management滤波器。请减少Taps后重试。",
   "firCrossover.error.design": "无法设计FIR Crossover滤波器。请减少Taps或使用较温和的设置。",
   "fiveBandFirPeq.error.design": "无法设计5Band FIR PEQ滤波器。请减少Taps或使用较温和的设置。",
+  "headphoneEq.error.design": "无法设计Headphone EQ校正滤波器。请减少Taps或重新加载测量数据。",
 
   // Group Delay EQ
   "groupDelayEq.error.design": "无法设计滤波器。请更改Taps设置后重试。",
 
   // Group Delay PEQ
   "groupDelayPeq.error.design": "无法设计滤波器。请更改Taps设置后重试。",
+
+  // Distortion Correction
+  "speakerDistortionCorrection.error.offline": "无法为此次导出准备扬声器校正，因为其测量不在这台设备上。请在这台设备上测量扬声器失真或选择其他测量，或在导出时关闭此效果。",
+
   "midi.title": "控制器映射设置", "midi.openSettings": "控制器映射...",
   "midi.devices": "MIDI设备", "midi.gamepads": "游戏手柄", "midi.mappings": "映射",
   "midi.addLearn": "添加（Learn）", "midi.learnPrompt": "移动控制器、按下按键或操作游戏手柄。按Escape取消。",

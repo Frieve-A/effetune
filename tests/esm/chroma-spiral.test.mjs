@@ -242,7 +242,7 @@ test('dot area follows normalized volume from zero to a radius of half the turn 
     plugin.drawGraph();
     const dots = calls.filter(call => call[0] === 'arc');
     assert.equal(dots.length, 3, 'zero normalized level has zero area and is not drawn');
-    const outer = size / 2 - 32 * dpr;
+    const outer = size / 2;
     const inner = Math.max(14 * dpr, outer * 0.1);
     const pitch = (outer - inner) / (hi - lo + 2);
     assert.equal(dots[0][3], pitch / 2);
@@ -281,8 +281,8 @@ test('Normal 2 fills cell endpoints back along the spiral baseline without a dat
   assert.equal(contour.filter(call => call[0] === 'moveTo').length, 1);
   assert.equal(fillPath.at(-1)[0], 'closePath');
   assert.equal(fillPath.length, 7);
-  const inner = (640 / 2 - 32) * 0.1;
-  const pitch = (640 / 2 - 32 - inner) / 2;
+  const inner = 640 / 2 * 0.1;
+  const pitch = (640 / 2 - inner) / 2;
   for (let i = 0; i < 3; i++) {
     const cell = plugin.display[i];
     const base = Plugin.spiralPoint(cell.midi, 60, inner, pitch);

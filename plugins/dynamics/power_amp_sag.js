@@ -496,7 +496,7 @@ class PowerAmpSagPlugin extends PluginBase {
         const bottomOffset = 5 * dpr;
         const secondMarkerHeight = 8 * dpr;
         const valueInset = 10 * dpr;
-        const labelEvery = cssWidth < 480 && unit === '%' ? step * 2 : step;
+        const tickGap = 4 * dpr;
         const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         const graphLineWidth = (isMobileLayout ? 2 : 1) * dpr;
 
@@ -504,41 +504,18 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
         
-        // Draw grid lines and labels - matching auto_leveler style
+        // Draw interior horizontal grid lines; the axis bounds sit on the canvas edges and are not drawn
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = graphLineWidth;
-        ctx.textAlign = 'right';
-        ctx.font = `${tickFontSize}px Arial`;
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
-        
-        // Draw horizontal grid lines
         const range = maxValue - minValue;
-        for (let value = minValue; value <= maxValue; value += step) {
+        for (let value = minValue + step; value < maxValue; value += step) {
             const y = height * (1 - (value - minValue) / range);
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            
-            // Only draw text if it won't be cut off (text height is about 24px)
-            if (y >= tickFontSize / 2 && y <= height - tickFontSize / 2 && (value - minValue) % labelEvery === 0) {
-                ctx.fillText(`${value}`, labelX, y + tickOffset);
-            }
         }
-        
-        // Draw axis labels
-        ctx.save();
-        ctx.font = `${axisFontSize}px Arial`;
-        ctx.translate(axisX, height / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textAlign = 'center';
-        ctx.fillText(`${title} (${unit})`, 0, 0);
-        ctx.restore();
-        
-        // Draw Time label at bottom
-        ctx.textAlign = 'center';
-        ctx.fillText('Time', width / 2, height - bottomOffset);
-        
+
         // Draw 1-second markers using the same time coordinate as the curves.
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
         ctx.lineWidth = graphLineWidth;
@@ -548,6 +525,8 @@ class PowerAmpSagPlugin extends PluginBase {
         const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
         for (let second = firstSecond; second <= lastSecond; second++) {
             const x = width + (second - displayTime) * pixelsPerSecond;
+            // A tick mark on the canvas edge is not drawn
+            if (x <= 0 || x >= width) continue;
             ctx.beginPath();
             ctx.moveTo(x, height - secondMarkerHeight);
             ctx.lineTo(x, height);
@@ -588,7 +567,33 @@ class PowerAmpSagPlugin extends PluginBase {
             ctx.lineTo(width, lastY);
             ctx.stroke();
         }
-        
+
+        // Tick values and axis titles are drawn after the trace so it never covers them
+        ctx.font = `${tickFontSize}px Arial`;
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        ctx.textAlign = 'right';
+        let previousY = Infinity;
+        for (let value = minValue + step; value < maxValue; value += step) {
+            const y = height * (1 - (value - minValue) / range);
+            // Skip a tick value whose text would be cut off at the canvas edge or overlap the previous value
+            if (y >= tickFontSize / 2 && y <= height - tickFontSize / 2 && previousY - y >= tickFontSize + tickGap) {
+                ctx.fillText(`${value}`, labelX, y + tickOffset);
+                previousY = y;
+            }
+        }
+
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+        ctx.save();
+        ctx.font = `${axisFontSize}px Arial`;
+        ctx.translate(axisX, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.fillText(`${title} (${unit})`, 0, 0);
+        ctx.restore();
+
+        ctx.textAlign = 'center';
+        ctx.fillText('Time (s)', width / 2, height - bottomOffset);
+
         // Display current value at top right - fixed position
         const currentValue = buffer[buffer.length - 1];
         const x = width - valueInset;

@@ -233,6 +233,25 @@ class FifteenBandPEQPlugin extends PluginBase {
       } 
       context.coeffs = coeffs; context.lastParams = currentParamsString;
   } else { coeffs = context.coeffs; }
+
+  // --- Master Gain (ramped like the band coefficients) ---
+  if (context.masterDb !== parameters.mg) {
+      const target = Math.pow(10, parameters.mg / 20);
+      if (context.masterDb === undefined) {
+          context.masterGain = target;
+          context.masterStep = 0;
+          context.masterRemaining = 0;
+      } else {
+          const frames = Math.max(1, Math.ceil(sampleRate * 0.005));
+          context.masterStep = (target - context.masterGain) / frames;
+          context.masterRemaining = frames;
+      }
+      context.masterTarget = target;
+      context.masterDb = parameters.mg;
+  }
+  const masterGain = context.masterGain, masterStep = context.masterStep;
+  const masterTarget = context.masterTarget, masterRemaining = context.masterRemaining;
+  const applyMaster = masterRemaining !== 0 || masterGain !== 1;
   
   // --- Audio Processing ---
   for (let ch = 0; ch < channelCount; ch++) {
@@ -257,7 +276,23 @@ class FifteenBandPEQPlugin extends PluginBase {
               data[dataIndex] = y_n;
           }
           state.x1[ch] = x1_ch; state.x2[ch] = x2_ch; state.y1[ch] = y1_ch; state.y2[ch] = y2_ch;
-      } 
+      }
+      if (applyMaster) {
+          for (let i = 0; i < blockSize; i++) {
+              const elapsed = i + 1;
+              data[offset + i] *= elapsed >= masterRemaining ? masterTarget : masterGain + masterStep * elapsed;
+          }
+      }
+  }
+  if (masterRemaining) {
+      if (blockSize >= masterRemaining) {
+          context.masterGain = masterTarget;
+          context.masterStep = 0;
+          context.masterRemaining = 0;
+      } else {
+          context.masterGain += masterStep * blockSize;
+          context.masterRemaining -= blockSize;
+      }
   }
   for (let bandIndex = 0; bandIndex < NUM_BANDS; bandIndex++) {
       const remaining = context.coeffRemaining[bandIndex];
@@ -281,6 +316,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     this._sampleRate = 96000;
     this.uiCreated = false;
     this.currentBandIndex = 0;
+    this.masterSelected = false;
     this.instanceId = `fifteen-band-peq-${Math.random().toString(36).substring(2, 9)}`;
     
     // Store event listener functions and bind references at instance level
@@ -303,6 +339,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       this['t' + i] = 'pk'; // Default to Peaking type
       this['e' + i] = true;
     }
+    this.mg = 0; // Master gain in dB
     this.registerProcessor(FifteenBandPEQPlugin.processorFunction);
   }
 
@@ -329,10 +366,23 @@ class FifteenBandPEQPlugin extends PluginBase {
 
     if (enabled !== undefined) this['e' + index] = enabled;
     this.updateParameters();
-    if (this.bandContentPanes.length > 0) { 
+    if (this.uiCreated) {
       this.setUIBandValues(index);
     }
   }
+
+  setMasterGain(gain) {
+    const value = parseFloat(gain);
+    if (!Number.isFinite(value)) return;
+    this.mg = value < -20 ? -20 : (value > 20 ? 20 : value);
+    this.updateParameters();
+  }
+
+  // The band pane holds one set of controls bound to the selected band.
+  get _bandType() { return this['t' + this.currentBandIndex]; }
+  get _bandFreq() { return this['f' + this.currentBandIndex]; }
+  get _bandGain() { return this['g' + this.currentBandIndex]; }
+  get _bandQ() { return this['q' + this.currentBandIndex]; }
 
   toggleBandEnabled(index) {
     this['e' + index] = !this['e' + index];
@@ -346,6 +396,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     for (let i = 0; i < 15; i++) {
       this['g' + i] = -this['g' + i];
     }
+    this.mg = -this.mg;
     this.updateParameters();
     if (this.uiCreated) {
       this.setUIValues();
@@ -363,6 +414,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       params['t' + i] = this['t' + i];
       params['e' + i] = this['e' + i];
     }
+    params.mg = this.mg;
     return params;
   }
 
@@ -375,6 +427,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       if (params['t' + i] !== undefined) this['t' + i] = params['t' + i];
       if (params['e' + i] !== undefined) this['e' + i] = params['e' + i];
     }
+    if (params.mg !== undefined) this.mg = params.mg;
     
     if (this.uiCreated) {
       this.setUIValues();
@@ -389,6 +442,7 @@ class FifteenBandPEQPlugin extends PluginBase {
   selectBand(index) {
     if (index >= 0 && index < 15) {
       this.currentBandIndex = index;
+      this.masterSelected = false;
       
       // Update UI to reflect the changed selection
       this.updateUI();
@@ -401,7 +455,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       return this.currentBandIndex;
     }
 
-    const plotArea = this.getGraphPlotArea(container);
+    const plotArea = container.getBoundingClientRect();
     if (!plotArea.width || !plotArea.height) return this.currentBandIndex;
 
     let nearestBand = 0;
@@ -427,28 +481,19 @@ class FifteenBandPEQPlugin extends PluginBase {
     return bandIndex;
   }
 
-  updateUI() {
-    // Update tab active states
-    if (this.bandTabs) {
-      this.bandTabs.forEach((tab, i) => {
-        if (i === this.currentBandIndex) {
-          tab.classList.add('active');
-        } else {
-          tab.classList.remove('active');
-        }
-      });
-    }
+  selectMaster() {
+    this.masterSelected = true;
+    this.updateUI();
+  }
 
-    // Update content pane visibility
-    if (this.bandContentPanes) {
-      this.bandContentPanes.forEach((pane, i) => {
-        if (i === this.currentBandIndex) {
-          pane.classList.add('active');
-        } else {
-          pane.classList.remove('active');
-        }
-      });
-    }
+  updateUI() {
+    if (!this.bandTabs || !this.bandPane) return;
+    this.bandTabs.forEach((tab, i) => {
+      tab.classList.toggle('active', !this.masterSelected && i === this.currentBandIndex);
+    });
+    this.masterTab.classList.toggle('active', this.masterSelected);
+    this.bandPane.classList.toggle('active', !this.masterSelected);
+    this.masterPane.classList.toggle('active', this.masterSelected);
 
     // Update current band controls with correct values
     this.setUIBandValues(this.currentBandIndex);
@@ -526,7 +571,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       gridSvg.appendChild(line);
       
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', '2%');
+      text.setAttribute('x', '20');
       text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
       text.textContent = `${gain}`;
@@ -547,7 +592,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', `${x}%`);
-      text.setAttribute('y', '95%');
+      text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
       text.setAttribute('text-anchor', 'middle');
       
       let freqText;
@@ -675,19 +720,18 @@ class FifteenBandPEQPlugin extends PluginBase {
     bandSettingsDiv.appendChild(bandContentsContainer);
 
     // Reset arrays before populating
-    this.bandContentPanes = [];
     this.bandCheckboxes = [];
     this.bandTabs = [];
 
     // Create tabs for each band
     for (let i = 0; i < 15; i++) {
       const button = document.createElement('button');
-      button.className = `fifteen-band-peq-band-tab ${i === this.currentBandIndex ? 'active' : ''}`;
+      button.className = 'fifteen-band-peq-band-tab';
       button.setAttribute('data-parameter-control', 'view');
       button.dataset.bandIndex = i;
       button.setAttribute('data-instance-id', this.instanceId);
       button.setAttribute('role', 'tab');
-      button.setAttribute('aria-controls', `${this.instanceId}-band-content-${i}`);
+      button.setAttribute('aria-controls', `${this.instanceId}-band-content`);
 
       const buttonContent = document.createElement('span');
       buttonContent.style.display = 'inline-flex';
@@ -737,198 +781,59 @@ class FifteenBandPEQPlugin extends PluginBase {
       this.bandTabs.push(button);
     }
 
-    // Create content pane for each band
-    for (let i = 0; i < 15; i++) {
-      const contentPane = document.createElement('div');
-      contentPane.className = `fifteen-band-peq-band-content ${i === this.currentBandIndex ? 'active' : ''}`;
-      contentPane.id = `${this.instanceId}-band-content-${i}`;
-      contentPane.setAttribute('data-instance-id', this.instanceId);
-      
-      // --- Create a single row for all controls ---
-      const controlRow = document.createElement('div');
-      controlRow.className = 'fifteen-band-peq-control-row';
-      
-      // --- Filter Type ---
-      const typeLabel = document.createElement('span');
-      typeLabel.className = 'fifteen-band-peq-type-label';
-      typeLabel.textContent = 'Type: ';
-      controlRow.appendChild(typeLabel);
-      
-      const typeSelect = document.createElement('select');
-      typeSelect.className = 'fifteen-band-peq-filter-type';
-      typeSelect.addEventListener('change', e => {
-        this['t' + i] = e.target.value;
-        
-        const currentType = this['t' + i];
-        const isShelf = currentType === 'ls' || currentType === 'hs';
-        const qInput = contentPane.querySelector('.fifteen-band-peq-q-text');
-        const qSlider = contentPane.querySelector('.fifteen-band-peq-q-slider');
-        
-        // Update Q limits based on filter type
-        if (isShelf) {
-          qInput.max = 2.0;
-          qSlider.max = 2.0;
-          this['q' + i] = Math.min(this['q' + i], 2.0);
-          qInput.value = this['q' + i].toFixed(2);
-          qSlider.value = this['q' + i];
-        } else {
-          qInput.max = 10.0;
-          qSlider.max = 10.0;
-        }
-        
-        this.updateParameters();
-        if (this.responseSvg) { this.updateResponse(); }
-        if (this.markers) { this.updateMarkers(); }
-      });
-      
-      FifteenBandPEQPlugin.FILTER_TYPES.forEach(type => {
-        const option = document.createElement('option');
-        option.value = type.id;
-        option.textContent = type.name;
-        typeSelect.appendChild(option);
-      });
-      
-      // Set initial value
-      typeSelect.value = this['t' + i];
-      
-      controlRow.appendChild(typeSelect);
-      
-      // --- Frequency ---
-      const freqLabel = document.createElement('span');
-      freqLabel.className = 'fifteen-band-peq-freq-label';
-      freqLabel.textContent = 'Freq (Hz):';
-      controlRow.appendChild(freqLabel);
-      
-      const freqText = document.createElement('input');
-      freqText.type = 'text';
-      freqText.className = 'fifteen-band-peq-freq-text';
-      freqText.addEventListener('change', e => {
-        let value = parseFloat(e.target.value);
-        
-        if (isNaN(value)) {
-          value = this['f' + i];
-          e.target.value = Math.round(value);
-          return;
-        }
-        
-        value = Math.max(20, Math.min(value, 20000));
-        this['f' + i] = value;
-        e.target.value = Math.round(value);
-        
-        this.updateParameters();
-        if (this.responseSvg) { this.updateResponse(); }
-        if (this.markers) { this.updateMarkers(); }
-      });
-      
-      // Set initial frequency value
-      freqText.value = Math.round(this['f' + i]);
-      
-      controlRow.appendChild(freqText);
-      
-      // --- Gain ---
-      const gainLabel = document.createElement('span');
-      gainLabel.className = 'fifteen-band-peq-gain-label';
-      gainLabel.textContent = 'Gain (dB):';
-      controlRow.appendChild(gainLabel);
-      
-      const gainText = document.createElement('input');
-      gainText.type = 'text';
-      gainText.className = 'fifteen-band-peq-gain-text';
-      gainText.addEventListener('change', e => {
-        let value = parseFloat(e.target.value);
-        
-        if (isNaN(value)) {
-          value = this['g' + i];
-          e.target.value = value.toFixed(1);
-          return;
-        }
-        
-        value = Math.max(-20, Math.min(value, 20));
-        this['g' + i] = value;
-        e.target.value = value.toFixed(1);
-        
-        this.updateParameters();
-        if (this.responseSvg) { this.updateResponse(); }
-        if (this.markers) { this.updateMarkers(); }
-      });
-      
-      // Set initial gain value
-      gainText.value = this['g' + i].toFixed(1);
-      
-      controlRow.appendChild(gainText);
-      
-      contentPane.appendChild(controlRow);
-      
-      // --- Q Factor (in a separate row) ---
-      const qRow = document.createElement('div');
-      qRow.className = 'fifteen-band-peq-q-row';
-      
-      const qLabel = document.createElement('span');
-      qLabel.className = 'fifteen-band-peq-q-label';
-      qLabel.textContent = 'Q: ';
-      qRow.appendChild(qLabel);
-      
-      const qSlider = document.createElement('input');
-      qSlider.type = 'range';
-      qSlider.className = 'fifteen-band-peq-q-slider';
-      qSlider.min = 0.1;
-      qSlider.max = 10.0;
-      qSlider.step = 0.01;
-      qSlider.addEventListener('input', e => {
-        const value = parseFloat(e.target.value);
-        this['q' + i] = value;
-        
-        const qTextInput = contentPane.querySelector('.fifteen-band-peq-q-text');
-        qTextInput.value = value.toFixed(2);
-        
-        this.updateParameters();
-        if (this.responseSvg) { this.updateResponse(); }
-      });
-      qRow.appendChild(qSlider);
-      
-      // Set initial Q slider value
-      qSlider.value = this['q' + i];
-      
-      const qText = document.createElement('input');
-      qText.type = 'text';
-      qText.className = 'fifteen-band-peq-q-text';
-      qText.addEventListener('change', e => {
-        let value = parseFloat(e.target.value);
-        const currentType = this['t' + i];
-        const isShelf = currentType === 'ls' || currentType === 'hs';
-        
-        if (isNaN(value)) {
-          value = this['q' + i];
-          e.target.value = value.toFixed(2);
-          return;
-        }
-        
-        if (isShelf) {
-          value = Math.max(0.1, Math.min(value, 2.0));
-        } else {
-          value = Math.max(0.1, Math.min(value, 10.0));
-        }
-        
-        this['q' + i] = value;
-        e.target.value = value.toFixed(2);
-        
-        const qSliderInput = contentPane.querySelector('.fifteen-band-peq-q-slider');
-        qSliderInput.value = value;
-        
-        this.updateParameters();
-        if (this.responseSvg) { this.updateResponse(); }
-      });
-      
-      // Set initial Q text value
-      qText.value = this['q' + i].toFixed(2);
-      
-      qRow.appendChild(qText);
-      
-      contentPane.appendChild(qRow);
-      
-      bandContentsContainer.appendChild(contentPane);
-      this.bandContentPanes.push(contentPane);
-    }
+    const masterTab = document.createElement('button');
+    masterTab.className = 'fifteen-band-peq-band-tab';
+    masterTab.setAttribute('data-parameter-control', 'view');
+    masterTab.setAttribute('data-instance-id', this.instanceId);
+    masterTab.setAttribute('role', 'tab');
+    masterTab.setAttribute('aria-controls', `${this.instanceId}-master-content`);
+    masterTab.textContent = 'Master';
+    masterTab.addEventListener('click', () => this.selectMaster());
+    bandTabsContainer.appendChild(masterTab);
+    this.masterTab = masterTab;
+
+    const redrawGraph = () => {
+      if (this.markers) { this.updateMarkers(); }
+      if (this.responseSvg) { this.updateResponse(); }
+    };
+
+    // One pane serves all 15 bands: its controls follow the selected band.
+    const bandPane = document.createElement('div');
+    bandPane.className = 'fifteen-band-peq-band-content';
+    bandPane.id = `${this.instanceId}-band-content`;
+    bandPane.setAttribute('data-instance-id', this.instanceId);
+    const setSelectedBand = (freq, gain, Q, type) => {
+      this.setBand(this.currentBandIndex, freq, gain, Q, type);
+      redrawGraph();
+    };
+    bandPane.appendChild(this.createSelectControl('Type',
+      FifteenBandPEQPlugin.FILTER_TYPES.map(type => ({ value: type.id, label: type.name })),
+      this._bandType, value => setSelectedBand(undefined, undefined, undefined, value), '_bandType'));
+    bandPane.appendChild(this.createParameterControl('Freq', 20, 20000, 1, Math.round(this._bandFreq),
+      value => setSelectedBand(value), 'Hz', '_bandFreq', Math.round, true));
+    bandPane.appendChild(this.createParameterControl('Gain', -20, 20, 0.1, Number(this._bandGain.toFixed(1)),
+      value => setSelectedBand(undefined, value), 'dB', '_bandGain', value => Number(value.toFixed(1))));
+    const qRow = this.createParameterControl('Q', 0.1, 10, 0.01, Number(this._bandQ.toFixed(2)),
+      value => setSelectedBand(undefined, undefined, value), '', '_bandQ', value => Number(value.toFixed(2)));
+    this.qSlider = qRow.querySelector('input[type="range"]');
+    this.qInput = qRow.querySelector('input[type="number"]');
+    // A typed Q above the shelf limit is clamped by setBand(); show the applied value on commit.
+    this.qInput.addEventListener('blur', () => this.syncUIControls());
+    bandPane.appendChild(qRow);
+    bandContentsContainer.appendChild(bandPane);
+    this.bandPane = bandPane;
+
+    const masterPane = document.createElement('div');
+    masterPane.className = 'fifteen-band-peq-band-content';
+    masterPane.id = `${this.instanceId}-master-content`;
+    masterPane.setAttribute('data-instance-id', this.instanceId);
+    // The label seeds the control ids, so it must differ from the band Gain row.
+    const masterGainRow = this.createParameterControl('Master Gain', -20, 20, 0.1, Number(this.mg.toFixed(1)),
+      value => { this.setMasterGain(value); redrawGraph(); }, 'dB', 'mg', value => Number(value.toFixed(1)));
+    masterGainRow.querySelector('label').textContent = 'Gain (dB):';
+    masterPane.appendChild(masterGainRow);
+    bandContentsContainer.appendChild(masterPane);
+    this.masterPane = masterPane;
 
     container.appendChild(graphContainer);
     container.appendChild(bandSettingsDiv);
@@ -963,43 +868,25 @@ class FifteenBandPEQPlugin extends PluginBase {
   }
 
   setUIBandValues(bandIndex) {
-    if (!this.uiCreated || !this.bandContentPanes[bandIndex]) return;
-    
-    const contentPane = this.bandContentPanes[bandIndex];
-    
-    // Set filter type
-    const typeSelect = contentPane.querySelector('.fifteen-band-peq-filter-type');
-    if (typeSelect) typeSelect.value = this['t' + bandIndex];
-    
-    // Set Q value
-    const qSlider = contentPane.querySelector('.fifteen-band-peq-q-slider');
-    const qText = contentPane.querySelector('.fifteen-band-peq-q-text');
-    if (qSlider) {
-      qSlider.value = this['q' + bandIndex];
-      window.uiManager?.refreshRangeFillStyling?.(qSlider);
-    }
-    if (qText) qText.value = this['q' + bandIndex].toFixed(2);
-    
-    // Set frequency (display integer part only)
-    const freqText = contentPane.querySelector('.fifteen-band-peq-freq-text');
-    if (freqText) freqText.value = Math.round(this['f' + bandIndex]);
-    
-    // Set gain (display with 1 decimal place)
-    const gainText = contentPane.querySelector('.fifteen-band-peq-gain-text');
-    if (gainText) gainText.value = this['g' + bandIndex].toFixed(1);
-    
-    // Update checkbox state
-    if (this.bandCheckboxes[bandIndex]) {
-      this.bandCheckboxes[bandIndex].checked = this['e' + bandIndex];
-    }
-    
-    // Update marker state
+    if (!this.uiCreated || !this.bandCheckboxes?.[bandIndex]) return;
+
+    this.bandCheckboxes[bandIndex].checked = this['e' + bandIndex];
+    this.bandTabs[bandIndex].classList.toggle('disabled', !this['e' + bandIndex]);
     if (this.markers && this.markers[bandIndex]) {
       this.markers[bandIndex].classList.toggle('disabled', !this['e' + bandIndex]);
     }
+
+    if (bandIndex !== this.currentBandIndex) return;
+    // Shelving filters limit Q to 2.0
+    const type = this._bandType;
+    const qMax = type === 'ls' || type === 'hs' ? 2 : 10;
+    this.qSlider.max = qMax;
+    this.qInput.max = qMax;
+    this.syncUIControls();
+    window.uiManager?.refreshRangeFillStyling?.(this.qSlider);
   }
 
-  freqToX(freq) { return (Math.log10(Math.max(10, Math.min(freq, 40000))) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100; }
+  freqToX(freq) { return (Math.log10(freq) - Math.log10(10)) / (Math.log10(40000) - Math.log10(10)) * 100; } // NEVER Clamp frequency
   xToFreq(xPercent) { return Math.pow(10, Math.log10(10) + (xPercent / 100) * (Math.log10(40000) - Math.log10(10))); }
   gainToY(gain) { return 50 - (gain / 20.0) * 50; } // NEVER Clamp gain
   yToGain(yPercent) { return -(yPercent - 50) / 50.0 * 20.0; }
@@ -1049,13 +936,9 @@ class FifteenBandPEQPlugin extends PluginBase {
     this.lastGraphSize = null;
   }
 
-  getGraphPlotArea(container = this.graphContainer) {
-    return GraphPlotArea.from(container);
-  }
 
   updateMarkers() {
     if (!this.markers || !this.graphContainer || !this.uiCreated) return; // Check if UI is created
-    const plotArea = this.getGraphPlotArea();
     const graphWidth = this.graphContainer.clientWidth;
     const graphHeight = this.graphContainer.clientHeight;
     if (graphWidth === 0 || graphHeight === 0) return;
@@ -1064,9 +947,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       const marker = this.markers[i]; if (!marker) continue;
       const freq = this['f' + i]; const gain = this['g' + i]; const enabled = this['e' + i];
       const x = this.freqToX(freq); const y = this.gainToY(gain);
-      const xPos = plotArea.leftPercent + (x / 100) * plotArea.widthPercent;
-      const yPos = plotArea.topPercent + (y / 100) * plotArea.heightPercent;
-      marker.style.left = `${xPos}%`; marker.style.top = `${yPos}%`;
+      marker.style.left = `${x}%`; marker.style.top = `${y}%`;
       marker.classList.toggle('disabled', !enabled);
       const markerTextEl = marker.querySelector('.fifteen-band-peq-marker-text'); if (!markerTextEl) continue;
       markerTextEl.className = 'fifteen-band-peq-marker-text';
@@ -1075,8 +956,8 @@ class FifteenBandPEQPlugin extends PluginBase {
       markerTextEl.innerHTML = `${freqDisplayText}Hz${type === 'lp' || type === 'hp' || type === 'bp' || type === 'ap' || type === 'no' ? '' : `<br>${gain.toFixed(1)}dB`}`;
       labelItems.push({
         el: markerTextEl,
-        cx: (xPos / 100) * graphWidth,
-        cy: (yPos / 100) * graphHeight
+        cx: (x / 100) * graphWidth,
+        cy: (y / 100) * graphHeight
       });
     }
     // Scatter the freq/gain labels so they don't overlap markers/each other or
@@ -1136,7 +1017,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     }
 
     const responseDataPoints = freqPoints.map(freq => {
-      let totalGainDb = 0;
+      let totalGainDb = this.mg;
       for (let band = 0; band < 15; band++) {
         if (!this['e' + band]) continue;
         const bf = this['f' + band], bg = this['g' + band], bq = this['q' + band], bt = this['t' + band];
@@ -1211,7 +1092,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     
     if (!container) return;
     
-    const plotArea = this.getGraphPlotArea(container);
+    const plotArea = container.getBoundingClientRect();
     let x = (clientX - plotArea.left) / plotArea.width;
     x = Math.max(0, Math.min(1, x));
     let y = (clientY - plotArea.top) / plotArea.height;
@@ -1313,6 +1194,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     for (let i = 0; i < 15; i++) {
       this.setBand(i, FifteenBandPEQPlugin.BANDS[i].freq, 0, 1.0, 'pk', false);
     }
+    this.setMasterGain(0);
     
     const lines = content.split('\n');
     let filterIndex = 0;
@@ -1325,8 +1207,10 @@ class FifteenBandPEQPlugin extends PluginBase {
         continue;
       }
       
-      // Skip Preamp settings
-      if (line.startsWith('Preamp:')) {
+      // Preamp maps to the master gain (Format: Preamp: X dB)
+      const preamp = line.match(/^Preamp:\s*([-+]?\d+(?:\.\d+)?)\s*dB/i);
+      if (preamp) {
+        this.setMasterGain(preamp[1]);
         continue;
       }
       

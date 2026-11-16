@@ -35,7 +35,12 @@ test('measurement first display waits for translations and UI initialization', a
       assert.equal(visibility, 'hidden');
       events.push('ui');
     } },
-    setupEventConnections() { events.push('events'); }
+    setupEventConnections() { events.push('events'); },
+    measurementController: {},
+    async openSpeakerDistortionRequest() {
+      assert.equal(visibility, 'hidden');
+      events.push('request');
+    }
   });
   const pending = initialize();
   await Promise.resolve();
@@ -45,7 +50,7 @@ test('measurement first display waits for translations and UI initialization', a
   finishTranslation();
   await pending;
   assert.equal(visibility, '');
-  assert.deepEqual(events, ['translate', 'storage', 'ui', 'events', 'reveal']);
+  assert.deepEqual(events, ['translate', 'storage', 'ui', 'events', 'request', 'reveal']);
 });
 
 test('measurement initialization failure reveals the error notification', async () => {

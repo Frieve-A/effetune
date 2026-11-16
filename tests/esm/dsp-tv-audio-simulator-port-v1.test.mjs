@@ -388,7 +388,8 @@ test('TV HUD fills and strokes the active spectrum like the FM receiver graph', 
     fillStyle: '',
     clearRect() {},
     fillRect() {},
-    fillText() {},
+    fillText(text) { operations.push({ type: 'text', text: String(text) }); },
+    save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {},
     beginPath() { operations.push({ type: 'begin' }); },
     moveTo(x, y) { operations.push({ type: 'move', x, y }); },
     lineTo(x, y) { operations.push({ type: 'line', x, y }); },
@@ -409,8 +410,13 @@ test('TV HUD fills and strokes the active spectrum like the FM receiver graph', 
   assert.notEqual(fillIndex, -1);
   assert.equal(operations[fillIndex].style, 'graph-trace-soft');
   assert.equal(operations[fillIndex - 1].type, 'line');
-  assert.equal(operations[fillIndex - 1].x, 592);
+  assert.equal(operations[fillIndex - 1].x, 600);
   assert.ok(operations.slice(fillIndex + 1).some(operation => operation.type === 'stroke'));
+  const texts = operations.filter(operation => operation.type === 'text').map(operation => operation.text);
+  assert.ok(texts.includes('Frequency (Hz)'));
+  assert.ok(texts.includes('Level (dB)'));
+  // The 0 dB bound sits on the top edge, so it has no tick value.
+  assert.equal(texts.includes('0'), false);
 });
 
 test('TV telemetry v1 validates its independent 216-byte payload', async () => {

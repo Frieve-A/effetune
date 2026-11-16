@@ -534,34 +534,16 @@ class AutoLevelerPlugin extends PluginBase {
         ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
 
-        // Draw grid lines and labels
+        // Draw horizontal grid lines (6dB steps from -42dB to -6dB)
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-subtle') ?? '');
         ctx.lineWidth = graphLineWidth;
-        ctx.textAlign = 'right';
-        ctx.font = `${tickFontSize}px Arial`;
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label-strong') ?? '');
-
-        // Draw horizontal grid lines (6dB steps from -42dB to -6dB)
         for (let db = -42; db <= -6; db += 6) {
             const y = height * (1 - (db + 48) / 48);
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
-            ctx.fillText(`${db}`, labelX, y + tickOffset);
         }
-
-        // Draw axis labels
-        ctx.save();
-        ctx.font = `${axisFontSize}px Arial`;
-        ctx.translate(axisX, height / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textAlign = 'center';
-        ctx.fillText('LUFS (dB)', 0, 0);
-        ctx.restore();
-
-        ctx.textAlign = 'center';
-        ctx.fillText('Time', width / 2, height - bottomOffset);
 
         // Draw 1-second markers
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid-strong') ?? '');
@@ -572,6 +554,8 @@ class AutoLevelerPlugin extends PluginBase {
         const lastSecond = displayTime === null ? 0 : Math.floor(displayTime);
         for (let second = firstSecond; second <= lastSecond; second++) {
             const x = width + (second - displayTime) * pixelsPerSecond;
+            // A tick mark on the canvas edge is not drawn
+            if (x <= 0 || x >= width) continue;
             ctx.beginPath();
             ctx.moveTo(x, height - (8 * dpr));
             ctx.lineTo(x, height);
@@ -627,6 +611,26 @@ class AutoLevelerPlugin extends PluginBase {
         frame.pixelsPerSecond = pixelsPerSecond;
         frame.valid = !Number.isNaN(frame.inputEdge) || !Number.isNaN(frame.outputEdge);
         frame.valueLabel = null;
+
+        // Tick values and axis titles are drawn after the traces so they never cover them
+        ctx.font = `${tickFontSize}px Arial`;
+        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
+        ctx.textAlign = 'right';
+        for (let db = -42; db <= -6; db += 6) {
+            ctx.fillText(`${db}`, labelX, height * (1 - (db + 48) / 48) + tickOffset);
+        }
+
+        ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+        ctx.save();
+        ctx.font = `${axisFontSize}px Arial`;
+        ctx.translate(axisX, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.fillText('LUFS (dB)', 0, 0);
+        ctx.restore();
+
+        ctx.textAlign = 'center';
+        ctx.fillText('Time (s)', width / 2, height - bottomOffset);
 
         // Display current LUFS level as white text
         const currentOutputLufs = this.outputLufsBuffer[this.outputLufsBuffer.length - 1];

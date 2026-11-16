@@ -46,8 +46,15 @@ async function runTransaction(indexedDB, operate) {
     }
 }
 
-export async function putPipelineHandoff({ snapshot, pluginNames }, { indexedDB = globalThis.indexedDB } = {}) {
-    await runTransaction(indexedDB, store => store.put({ id: ENTRY_ID, snapshot, pluginNames }));
+// `speakerDistortion` is the optional request of the Distortion Correction effect
+// for the measurement page ({view: 'speakerDistortionSetup'} or {view: 'checkAgain', ...}).
+export async function putPipelineHandoff(
+    { snapshot, pluginNames, speakerDistortion },
+    { indexedDB = globalThis.indexedDB } = {}
+) {
+    const entry = { id: ENTRY_ID, snapshot, pluginNames };
+    if (speakerDistortion !== undefined) entry.speakerDistortion = speakerDistortion;
+    await runTransaction(indexedDB, store => store.put(entry));
 }
 
 // Reads and deletes the entry atomically; resolves with null when there is none.
@@ -57,7 +64,13 @@ export async function takePipelineHandoffOnce({ indexedDB = globalThis.indexedDB
         store.delete(ENTRY_ID);
         return request;
     });
-    return entry ? { snapshot: entry.snapshot, pluginNames: entry.pluginNames } : null;
+    return entry
+        ? {
+            snapshot: entry.snapshot,
+            pluginNames: entry.pluginNames,
+            speakerDistortion: entry.speakerDistortion ?? null
+        }
+        : null;
 }
 
 export async function clearPipelineHandoff({ indexedDB = globalThis.indexedDB } = {}) {

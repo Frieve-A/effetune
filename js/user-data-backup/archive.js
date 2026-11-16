@@ -176,6 +176,8 @@ export async function createArchive(items, { appVersion = '', embedIr = true, em
                     }
                 }
             } else if (item.kind === 'measurement') {
+                const measurement = metadata.data.measurement;
+                if (measurement.speakerModel !== undefined) measurement.speakerModel = await blob(jsonBytes(measurement.speakerModel));
                 for (const response of metadata.data.impulseResponses) response.data = await blob(encodeFloat32(response.data));
             }
         }
@@ -290,8 +292,11 @@ export async function openArchive(file, { loadZip = loadZipClass, signal } = {})
             }
             return result;
         }
-        return item.kind === 'measurement' ? item.data.impulseResponses.map(response =>
-            ({ reference: response.data, maxBytes: MAX_BACKUP_BYTES })) : [];
+        if (item.kind !== 'measurement') return [];
+        const result = item.data.impulseResponses.map(response => ({ reference: response.data, maxBytes: MAX_BACKUP_BYTES }));
+        const model = item.data.measurement.speakerModel;
+        if (model !== undefined) result.push({ reference: model, maxBytes: MAX_BACKUP_BYTES });
+        return result;
     };
     return { items, async hydrate(selected, selectedSignal) {
         let total = 0;
@@ -318,6 +323,10 @@ export async function openArchive(file, { loadZip = loadZipClass, signal } = {})
                         IR_LIBRARY_MAX_ANALYSIS_BYTES, 'IR analysis');
                 }
             } else if (item.embedded && item.kind === 'measurement') {
+                const measurement = result.data.measurement;
+                if (measurement.speakerModel !== undefined) {
+                    measurement.speakerModel = JSON.parse(decoder.decode(await readBlob(measurement.speakerModel, MAX_BACKUP_BYTES, selectedSignal)));
+                }
                 for (const response of result.data.impulseResponses) response.data = decodeFloat32(await readBlob(response.data, MAX_BACKUP_BYTES, selectedSignal));
             }
             hydrated.push(result);

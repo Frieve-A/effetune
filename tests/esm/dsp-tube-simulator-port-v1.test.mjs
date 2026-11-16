@@ -1685,11 +1685,13 @@ test('Tube Simulator HUD plots recent Ia-Vak trajectories over plate curves and 
     findByClass(container, 'tube-simulator-hud').children[0].attributes['aria-label'],
     /plate curves, load lines, and operating-point trajectories/
   );
-  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.fillStyle, 'stub:text-primary');
+  // The header legend is drawn last, on top of the panels: its Left entry leaves the fill colour
+  // and font behind.
+  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.fillStyle, 'stub:accent');
   // The trajectories are filled rather than stroked now, so the last stroked element is the load
   // line: its colour and its one-pixel dashed width are what the context is left holding.
   assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.strokeStyle, 'stub:graph-tone-50');
-  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.font, '14px Arial');
+  assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.font, '600 13px Arial');
   assert.equal(findByClass(container, 'tube-simulator-hud').children[0].context.lineWidth, 1);
   plugin.cleanup();
 });
@@ -1719,8 +1721,8 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     assert.deepEqual(titles(), ['Push', 'Pull']);
     assert.equal(plugin.hudAxes.xMax, plugin.pb);
 
-    // Tick labels are centred on their tick and the rightmost tick sits on the panel edge, so the
-    // canvas has to keep room for the half that hangs outside it.
+    // The panels tile the whole canvas and the outermost ticks sit on the panel edges (the axis
+    // bounds), so only the interior ticks are labelled, each centred on its tick.
     const drawn = [];
     canvas.context.fillText = (text, x, y) => {
       drawn.push({ text, x, y, color: canvas.context.fillStyle,
@@ -1740,13 +1742,19 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
         'the tube name must not overlap the channel legend');
     };
     plugin._drawHud();
-    const rightmostTick = Math.max(...drawn
-      .filter(entry => /^\d+$/.test(entry.text))
-      .map(entry => entry.x));
-    assert.ok(
-      canvas.width - rightmostTick >= 16,
-      'the highest plate voltage must not be clipped by the edge of the canvas'
-    );
+    const ticks = drawn.filter(entry => /^\d+$/.test(entry.text));
+    assert.ok(ticks.length > 0);
+    assert.ok(!ticks.some(entry => entry.text === plugin.hudAxes.xMax.toFixed(0)),
+      'the tick on the right axis bound is not labelled');
+    assert.ok(!ticks.some(entry => entry.text === '0'), 'the tick on the left axis bound is not labelled');
+    for (const tick of ticks) {
+      assert.equal(tick.align, 'center');
+      const left = tick.x - tick.width / 2;
+      assert.ok(
+        left >= 0 && left + tick.width <= canvas.width,
+        `the ${tick.text} V tick label must not be clipped by the edge of the canvas`
+      );
+    }
 
     // Both channels are overlaid in every panel, so the trace colours are named once, top right.
     const legend = drawn.filter(entry => entry.text === 'Left' || entry.text === 'Right');
@@ -1756,8 +1764,8 @@ test('Tube Simulator graph selector offers the circuit\'s own stages and falls b
     );
     assert.ok(legend[1].x < legend[0].x, 'Left is drawn to the left of Right');
     assert.ok(
-      canvas.width - legend[0].x >= 16,
-      'the legend must clear the edge of the canvas'
+      legend[0].align === 'right' && legend[0].x < canvas.width,
+      'the legend must stay inside the canvas'
     );
     assertTubeName('EL84');
     plugin.setParameters({ pt: '6L6GC' });

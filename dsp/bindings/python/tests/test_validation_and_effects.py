@@ -49,6 +49,7 @@ class ValidationAndEffectsTests(unittest.TestCase):
             "FiveBandFIRPEQ",
             "GroupDelayEQ",
             "GroupDelayPEQ",
+            "HeadphoneEQ",
             "IRReverb",
             "RoomEQ",
         }

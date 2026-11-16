@@ -15,7 +15,7 @@ function harness(name = 'BandPassFilterPlugin') {
     }
     getBoundingClientRect() { return this.rect; }
     removeEventListener(type) { this.listeners.delete(type); }
-    closest() { return this.excluded ? this : null; }
+    closest(selector) { return this.excluded && selector.split(', ').includes(this.excluded) ? this : null; }
     hasPointerCapture(id) { return this.capture === id; }
     setPointerCapture(id) { this.capture = id; }
     releasePointerCapture() { this.capture = null; }
@@ -121,9 +121,11 @@ test('remote graphs retain editing without attaching an unavailable frequency au
 test('preview excludes existing controls and consumed pointer gestures', () => {
   const h = harness();
   h.event('pointerdown', { defaultPrevented: true });
-  h.plot.excluded = true;
-  h.event('pointerdown');
-  h.plot.excluded = false;
+  for (const excluded of ['button', '.graph-readout-legend']) {
+    h.plot.excluded = excluded;
+    h.event('pointerdown');
+  }
+  h.plot.excluded = null;
   h.event('pointerdown', { button: 2 });
   assert.deepEqual(h.posts, []);
   h.event('pointerdown');
@@ -239,7 +241,7 @@ test('preview trace and hit testing stay on the graph at CSS zoom levels', () =>
   }
 });
 
-test('inset PEQ preview and polar preview keep their displayed margins at CSS zoom', () => {
+test('PEQ and polar previews align with graph coordinates at CSS zoom', () => {
   for (const name of ['FiveBandPEQPlugin', 'ChromaSpiralPlugin']) {
     const h = harness(name);
     const zoom = 1.5;
@@ -249,10 +251,9 @@ test('inset PEQ preview and polar preview keep their displayed margins at CSS zo
     if (name === 'ChromaSpiralPlugin') h.plot.rect = mount.rect;
     h.plugin.freqToX = frequency => Math.log10(frequency / 10) / Math.log10(4000) * 100;
     h.instance.resize();
-    const inset = name === 'FiveBandPEQPlugin' ? 20 : 0;
-    assert.equal(h.instance.canvas.style.left, `${inset}px`);
-    assert.equal(h.instance.canvas.style.top, `${inset}px`);
-    assert.equal(h.instance.canvas.style.width, `${400 - inset * 2}px`);
+    assert.equal(h.instance.canvas.style.left, '0px');
+    assert.equal(h.instance.canvas.style.top, '0px');
+    assert.equal(h.instance.canvas.style.width, '400px');
     const frequency = name === 'ChromaSpiralPlugin' ? 440 : 200;
     const point = name === 'ChromaSpiralPlugin'
       ? h.instance.axis.toPoint(frequency)

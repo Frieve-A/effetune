@@ -15,6 +15,7 @@ const ASSET_NAMES_BY_EFFECT = new Map([
   ['FiveBandFIRPEQ', ['impulseResponse']],
   ['GroupDelayEQ', ['impulseResponse']],
   ['GroupDelayPEQ', ['impulseResponse']],
+  ['HeadphoneEQ', ['impulseResponse']],
   ['IRReverb', ['impulseResponse']],
   ['RoomEQ', ['impulseResponse']],
   ['SoundFontPlayer', ['soundFont']]

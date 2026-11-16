@@ -65,11 +65,7 @@
             const layoutHeight = parseFloat(style.height) || this.mount.offsetHeight || this.mount.clientHeight || rect.height;
             const scaleX = rect.width / layoutWidth || 1;
             const scaleY = rect.height / layoutHeight || 1;
-            const inset = this.target.inset;
-            this.box = inset ? { left: rect.left + inset * scaleX, top: rect.top + inset * scaleY,
-                width: Math.max(0, rect.width - 2 * inset * scaleX),
-                height: Math.max(0, rect.height - 2 * inset * scaleY) }
-                : this.plot.getBoundingClientRect();
+            this.box = this.plot.getBoundingClientRect();
             this.axis = axes.getAxis(this.plugin, this.target, this.box);
             const { left, top, width, height } = this.box;
             // Pointer and graph drawing use viewport pixels; CSS positioning uses layout pixels.
@@ -86,7 +82,7 @@
         start(event) {
             if (event.defaultPrevented ||
                 (event.button !== 0 && event.pointerType !== 'touch' && event.pointerType !== 'pen') ||
-                event.target.closest('button, input, select, textarea, a, [class*="-marker"]') ||
+                event.target.closest('button, input, select, textarea, a, [class*="-marker"], .graph-readout-legend') ||
                 (this.target.isActive && !this.target.isActive(this.plugin))) return;
             this.resize();
             if (this.axis.length <= 0 || this.axis.crossLength <= this.axis.gutter) return;

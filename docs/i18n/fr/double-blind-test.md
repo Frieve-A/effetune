@@ -19,10 +19,10 @@ Dans les deux cas, EffeTune enregistre vos réponses et affiche une valeur p afi
 
 Le test compare les deux pipelines décrits dans [Utilisation des fonctions Pipeline AB](README.md#utilisation-des-fonctions-pipeline-ab) :
 
-- **Pipeline A** et **Pipeline B** doivent contenir chacun au moins un effet.
+- **Pipeline B** doit exister. L’un ou l’autre pipeline peut être vide, ce qui permet aussi de comparer un effet au son sans aucun traitement.
 - Placez l’un des réglages dans Pipeline A et l’autre dans Pipeline B, en gardant tout le reste identique (par exemple *Avec EQ* et *Sans EQ*), afin de ne tester que la différence visée.
 - Retenez quel réglage vous avez placé dans Pipeline A et lequel dans Pipeline B. Dans un test de préférence A/B, le résultat indique si Pipeline A ou Pipeline B a été préféré de façon significative.
-- L’option « Test en double aveugle » du menu et les boutons de démarrage restent désactivés tant que Pipeline A et Pipeline B ne contiennent pas chacun au moins un effet.
+- L’option « Test en double aveugle » du menu et les boutons de démarrage restent désactivés tant que Pipeline B n’a pas été créé.
 
 ## Ouvrir le test
 

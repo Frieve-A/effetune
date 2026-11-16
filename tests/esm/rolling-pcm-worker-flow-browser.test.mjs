@@ -2257,7 +2257,6 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
         current.connect(context.destination);
         await context.resume();
         const activated = current.activate({ when: context.currentTime + 0.05 });
-        await new Promise(resolve => setTimeout(resolve, 250));
         window.__rollingLifecycleFixture = {
           context,
           current,
@@ -2271,15 +2270,17 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
           activated,
           visibilityState: document.visibilityState,
           contextState: context.state,
-          positionFrame: current.getPositionFrame(),
           nextPrepared: next.prepared
         };
       });
       assert.equal(setup.activated, true);
       assert.equal(setup.visibilityState, 'visible');
       assert.equal(setup.contextState, 'running');
-      assert.ok(setup.positionFrame > 0);
       assert.equal(setup.nextPrepared, true);
+      const firstProgress = await runtime.page.waitForFunction(
+        () => window.__rollingLifecycleFixture.current.getPositionFrame(), undefined, { timeout: 10_000 }
+      );
+      const positionBeforeMinimize = await firstProgress.jsonValue();
 
       await runtime.application.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].minimize();
@@ -2344,7 +2345,7 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
 
       // A minimized window's native visibility is platform-dependent.
       assert.equal(nativeDeactivation.minimized, true);
-      assert.ok(result.hiddenPosition >= setup.positionFrame);
+      assert.ok(result.hiddenPosition >= positionBeforeMinimize);
       assert.equal(result.playingWhileHidden, true);
       assert.equal(result.paused, true);
       assert.equal(result.explicitlySuspendedState, 'suspended');

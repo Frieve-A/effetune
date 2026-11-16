@@ -4,7 +4,9 @@
  */
 
 import audioUtils from './audio-utils/index.js';
+import { isAndroidHost } from '../../js/android/bridge.js';
 import { installAndroidFileDownloads } from '../../js/android/file-downloads.js';
+import { ANDROID_MEASUREMENT_OUTPUT_CHANNELS } from '../../js/android/measurement.js';
 import dataStorage from './dataStorage.js';
 installAndroidFileDownloads();
 import uiManager from './ui/ui-manager.js';
@@ -16,7 +18,7 @@ import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 import { installRangePrecisionControl } from '../../js/ui/range-precision-controller.js';
 import { updateRangeFill } from '../../js/ui/range-fill.js';
-import { copyPEQClipboardPayload } from './ui/peq-clipboard.js';
+import { buildRoomEqClipboardPayload, copyPEQClipboardPayload } from './ui/peq-clipboard.js';
 import {
     channelDisplayLabel,
     INDIVIDUAL_CHANNELS,
@@ -26,6 +28,7 @@ import {
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
 import { essFrequencyLimit } from './measurement-model.js';
 import { takePipelineHandoffOnce } from '../../js/pipeline-analyzer/pipeline-handoff-store.js';
+import { cancelSpeakerDistortionAudio, openSpeakerDistortionSetup } from './ui/speaker-distortion-setup.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -38,8 +41,13 @@ function getOutputChannelCount() {
     return SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(count) ? count : 2;
 }
 
+// The speaker distortion setup screen borrows the editor and measures any channel up to the
+// count, so it lists them all there regardless of the frequency response selection.
 function getSweepBandEditorChannels(selection = getOutputChannelSelection()) {
-    return selection.includes('all') ? INDIVIDUAL_CHANNELS.slice(0, getOutputChannelCount()) : selection;
+    const speakerSetup = document.getElementById('sweepBandChannel').closest('#speakerDistortionSetupScreen');
+    if (!speakerSetup && !selection.includes('all')) return selection;
+    const count = speakerSetup && isAndroidHost() ? ANDROID_MEASUREMENT_OUTPUT_CHANNELS : getOutputChannelCount();
+    return INDIVIDUAL_CHANNELS.slice(0, count);
 }
 
 function getOutputChannelSelection() {
@@ -234,6 +242,27 @@ function parseCalibrationValue(value) {
 
 startRendererWatchdogHeartbeat('measurement-page');
 
+/** Acts on the request the Distortion Correction effect handed over with the pipeline. */
+async function openSpeakerDistortionRequest(request) {
+    if (!request) return;
+    if (request.view === 'speakerDistortionSetup') {
+        await openSpeakerDistortionSetup({ openedBySetupRequest: true });
+    } else if (request.view === 'checkAgain') {
+        const measurement = dataStorage.getMeasurementById(request.measurementId);
+        if (!measurement?.speakerModel) {
+            uiManager.showNotification(i18n.t('message:speakerDistortionMeasurementMissing'), 'error');
+            return;
+        }
+        if (!await uiManager.selectMeasurement(measurement.id)) return;
+        uiManager.analysisController.selectTab('distortion');
+        uiManager.analysisController.speakerPanel.openCheckAgain(measurement,
+            { channels: request.channels, oddChannels: request.oddChannels, configurations: request.configurations,
+                length: request.length, currentDv: request.dv });
+    } else {
+        console.warn('Unknown speaker distortion request:', request.view);
+    }
+}
+
 /**
  * Initialize all application components
  */
@@ -260,6 +289,8 @@ async function initializeApp() {
         
         // Connect UI events to measurement controller
         setupEventConnections();
+
+        await openSpeakerDistortionRequest(measurementController.pipelineHandoff?.speakerDistortion);
     } catch (error) {
         console.error('Error initializing application:', error);
         uiManager.showNotification(
@@ -545,8 +576,9 @@ function setupEventConnections() {
         backFromSweepTransitionPromise = operation;
     });
     
-    // Add window beforeunload event to clean up audio
-    window.addEventListener('beforeunload', () => {
+    // Stop audio once the page is leaving, after any confirmation.
+    window.addEventListener('pagehide', () => {
+        cancelSpeakerDistortionAudio();
         uiManager.cleanupAudioBeforeNavigation();
     });
     
@@ -582,6 +614,22 @@ function setupEventConnections() {
             await uiManager.copyChannelPEQToClipboard();
         } finally {
             button.disabled = false;
+        }
+    });
+
+    document.getElementById('copyRoomEqBtn').addEventListener('click', async () => {
+        const measurement = window.app.dataStorage.getMeasurementById(window.app.uiManager.selectedMeasurementId);
+        if (!measurement) return;
+        try {
+            if (!await copyTextToClipboard(buildRoomEqClipboardPayload(measurement))) {
+                throw new Error('Clipboard write was rejected');
+            }
+            uiManager.showNotification(i18n.t('message:roomEqCopied') ||
+                'Room EQ settings copied to the clipboard. Paste them into EffeTune\'s Effect Pipeline with Ctrl+V.');
+        } catch (error) {
+            console.error('Could not copy Room EQ settings:', error);
+            uiManager.showNotification(i18n.t('error:roomEqCopyFailed') ||
+                'The Room EQ settings could not be copied. Check clipboard access and try again.', 'error');
         }
     });
 
@@ -662,6 +710,9 @@ function saveUserSettings(event) {
     const outputChannels = getOutputChannelSelection();
     // Get current settings
     const settings = {
+        // The speaker distortion setup choices are stored by their own screen.
+        ...Object.fromEntries(Object.entries(window.app.dataStorage.loadUserSettings())
+            .filter(([key]) => key.startsWith('speakerDistortion'))),
         // Measurement config settings
         sampleRate: document.getElementById('sampleRate').value,
         inputChannel: document.getElementById('inputChannel').value,
@@ -850,7 +901,8 @@ window.app = {
     loadPEQSettings,
     savePEQSettings,
     selectSavedAudioDevices,
-    syncMultichannelControls
+    syncMultichannelControls,
+    syncSweepBandChannelChoices
 };
 
 /**

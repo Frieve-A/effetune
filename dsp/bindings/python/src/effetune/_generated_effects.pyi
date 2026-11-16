@@ -563,6 +563,7 @@ class FifteenBandPEQ(Effect):
         q_values: tuple[float, float, float, float, float, float, float, float, float, float, float, float, float, float, float] = ...,
         filter_types: tuple[Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"], Literal["peaking", "lowPass", "highPass", "lowShelf", "highShelf", "bandPass", "notch", "allPass"]] = ...,
         enabled_bands: tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool] = ...,
+        master_gain: float = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,
@@ -633,6 +634,19 @@ class GroupDelayEQ(Effect):
 
 class GroupDelayPEQ(Effect):
     effect_type: Literal["GroupDelayPEQ"]
+    def __init__(
+        self,
+        *,
+        latency_mode: Literal["0", "128", "256", "512", "1024"] = ...,
+        filter_delay_samples: int = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+        assets: IRReverbAssets,
+    ) -> None: ...
+
+class HeadphoneEQ(Effect):
+    effect_type: Literal["HeadphoneEQ"]
     def __init__(
         self,
         *,

@@ -68,7 +68,6 @@
     max-width: none !important;
     margin-top: 8px;
     border: 1px solid var(--et-surface-21);
-    border-radius: 4px;
     overflow: hidden;
     background: var(--et-graph-bg-deep);
 }

@@ -219,7 +219,7 @@ class SsdpAdvertisement {
 }
 
 class Discovery extends EventEmitter {
-  constructor({ fetchXml = requestXml } = {}) { super(); this.fetchXml = fetchXml; this.devices = new Map(); this.remoteControls = new Map(); this.loading = new Set(); this.manualLocations = new Set(); this.manualRequests = new Map(); this.socket = null; this.timer = null; this.startPromise = null; this.multicastSending = Promise.resolve(); }
+  constructor({ fetchXml = requestXml } = {}) { super(); this.fetchXml = fetchXml; this.devices = new Map(); this.remoteControls = new Map(); this.loading = new Set(); this.manualLocations = new Set(); this.manualRequests = new Map(); this.socket = null; this.searchSocket = null; this.timer = null; this.startPromise = null; this.multicastSending = Promise.resolve(); }
   start() {
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.open().catch(error => { this.close(); throw error; });
@@ -227,16 +227,21 @@ class Discovery extends EventEmitter {
   }
   async open() {
     const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true }); this.socket = socket;
-    socket.on('error', error => this.emit('diagnostic', error));
-    socket.on('message', (message, remote) => { void this.receive(message, remote).catch(error => this.emit('diagnostic', error)); });
-    await new Promise((resolve, reject) => { socket.once('error', reject); socket.bind(1900, () => { socket.removeListener('error', reject); resolve(); }); });
+    // Search replies are unicast to the sending port. Port 1900 is shared with other SSDP listeners such as the
+    // Windows SSDP Discovery service, which can receive those replies instead, so searches use their own port.
+    const searchSocket = dgram.createSocket('udp4'); this.searchSocket = searchSocket;
+    for (const [opened, port] of [[socket, 1900], [searchSocket, 0]]) {
+      opened.on('error', error => this.emit('diagnostic', error));
+      opened.on('message', (message, remote) => { void this.receive(message, remote).catch(error => this.emit('diagnostic', error)); });
+      await new Promise((resolve, reject) => { opened.once('error', reject); opened.bind(port, () => { opened.removeListener('error', reject); resolve(); }); });
+      opened.setMulticastTTL(2); opened.unref();
+    }
     for (const address of interfaces()) { try { socket.addMembership(MULTICAST, address); } catch (error) { this.emit('diagnostic', error); } }
-    socket.setMulticastTTL(2); socket.unref();
     this.timer = setInterval(() => this.search(), 30000); this.timer.unref(); this.search();
   }
   search({ refresh = false } = {}) {
     const message = Buffer.from(`M-SEARCH * HTTP/1.1\r\nHOST: ${MULTICAST}:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n`);
-    for (const address of interfaces()) this.sendMulticast(message, address);
+    for (const address of interfaces()) this.sendMulticast(message, address, 'searchSocket');
     let changed = false;
     for (const device of this.devices.values()) if (device.available && device.expires < Date.now() && !this.manualLocations.has(device.location)) { device.available = false; changed = true; }
     for (const endpoint of this.remoteControls.values()) if (endpoint.available && endpoint.expires < Date.now() && !this.manualLocations.has(endpoint.location)) { endpoint.available = false; changed = true; }
@@ -257,11 +262,11 @@ class Discovery extends EventEmitter {
     this.emit('search');
     return Promise.all(requests);
   }
-  sendMulticast(message, address) {
-    const socket = this.socket;
+  sendMulticast(message, address, role = 'socket') {
+    const socket = this[role];
     if (!socket) return this.multicastSending;
     this.multicastSending = this.multicastSending.then(async () => {
-      if (this.socket !== socket) return;
+      if (this[role] !== socket) return;
       try {
         // Node resolves even numeric destinations asynchronously. Keep the
         // interface selected until this socket has finished sending the packet.
@@ -325,11 +330,16 @@ class Discovery extends EventEmitter {
     if (!id || !headers.location || this.loading.has(id)) return;
     const location = networkUrl(headers.location);
     if (!manual && net.isIP(location.hostname) && location.hostname !== remote.address) return;
-    const expires = Date.now() + Math.min(1800, Number(/max-age=(\d+)/i.exec(headers['cache-control'])?.[1]) || 180) * 1000;
+    const expires = Date.now() + Math.min(1800, Number(/max-age\s*=\s*(\d+)/i.exec(headers['cache-control'])?.[1]) || 180) * 1000;
     const existing = this.devices.get(id) || (manual && [...this.devices.values()].find(device => device.location === location.href)) || [...this.remoteControls.values()].find(endpoint => endpoint.id === id);
-    if (!manual && !refresh && existing?.location === location.href && existing.available) {
-      if (existing.address === remote.address) existing.expires = expires;
-      return;
+    if (!manual && !refresh) {
+      // A root device without music services, such as a Sonos player, advertises a UDN that is never stored. Its
+      // advertisement renews the embedded devices loaded from the same description instead of reloading it.
+      const described = (existing ? [existing] : [...this.devices.values()]).filter(device => device.location === location.href && device.available);
+      if (described.length) {
+        for (const device of described) if (device.address === remote.address) device.expires = expires;
+        return;
+      }
     }
     if (!existing && this.devices.size + this.remoteControls.size >= 256) return;
     this.loading.add(id);
@@ -378,7 +388,11 @@ class Discovery extends EventEmitter {
     if (!device?.available || !service(device, 'Playlist') || !endpoint?.available || endpoint.expires < Date.now() || endpoint.address !== device.address) return null;
     return endpoint.origin;
   }
-  close() { clearInterval(this.timer); try { this.socket?.close(); } catch { /* A failed bind has no open socket. */ } this.socket = null; this.startPromise = null; }
+  close() {
+    clearInterval(this.timer);
+    for (const role of ['socket', 'searchSocket']) { try { this[role]?.close(); } catch { /* A failed bind has no open socket. */ } this[role] = null; }
+    this.startPromise = null;
+  }
 }
 const service = (device, name) => device?.services.get(`urn:${['ContentDirectory', 'ConnectionManager', 'AVTransport', 'RenderingControl'].includes(name) ? 'schemas-upnp-org' : 'av-openhome-org'}:service:${name}`);
 

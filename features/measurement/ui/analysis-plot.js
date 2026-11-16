@@ -1,6 +1,7 @@
 import { WaterfallSurface } from './waterfall-surface.js';
 import { sampleImpulseEnvelope, findImpulsePeak } from './impulse-response-plot.js';
 import { createLinearTicks, createFrequencyTicks } from './analysis-axis-ticks.js';
+import { composeGraphImage, exportScale } from './graph-image-copy.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const palette = name => window.ThemePalette?.get(name) || '#888'; // theme-allow: Neutral fallback only when ThemePalette is unavailable; the theme palette remains authoritative.
@@ -33,7 +34,10 @@ export function distortionValue(ratio, unit) {
 }
 
 export class AnalysisPlot {
-    constructor(canvas, output, onViewChange) {
+    // effectStyle draws by the Effect Pipeline graph rules instead of the measurement window layout.
+    // The 3D waterfall keeps its own layout and only takes the effect graph background.
+    constructor(canvas, output, onViewChange, { effectStyle = false } = {}) {
+        this.effectStyle = effectStyle;
         this.canvas = canvas;
         this.output = output;
         this.mount = canvas.parentElement;
@@ -41,7 +45,7 @@ export class AnalysisPlot {
         this.hoveredSeries = null;
         this.legendKey = null;
         this.keyboardPosition = 0.5;
-        this.surface = new WaterfallSurface(canvas, { onViewChange: view => {
+        this.surface = new WaterfallSurface(canvas, { background: effectStyle ? 'graph-bg-deep' : 'graph-base', onViewChange: view => {
             this.readout?.clear(); this.output.textContent = ''; onViewChange?.(view);
         } });
         this.surface.setEnabled(false);
@@ -105,14 +109,17 @@ export class AnalysisPlot {
         this.height = rect.height;
         const ctx = this.canvas.getContext('2d');
         ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-        ctx.fillStyle = palette('graph-base');
+        ctx.fillStyle = palette(this.effectStyle ? 'graph-bg-deep' : 'graph-base');
         ctx.fillRect(0, 0, this.width, this.height);
-        this.plot = { left: 60, top: 28, width: Math.max(1, this.width - 82), height: Math.max(1, this.height - 76) };
+        const overlay = this.effectStyle && state.type !== 'waterfall';
+        this.plot = overlay ? { left: 0, top: 0, width: this.width, height: this.height } :
+            { left: 60, top: 28, width: Math.max(1, this.width - 82), height: Math.max(1, this.height - 76) };
         ctx.font = '12px Arial';
         if (state.type !== 'waterfall') {
             this.levelTicks = createLinearTicks(state.yMin, state.yMax,
                 Math.max(1, Math.min(6, Math.floor(this.plot.height / 35))),
                 state.type !== 'distortion' && state.unit === 'dB' ? 'decibels' : 'decimal').ticks;
+            if (overlay) return ctx;
             ctx.textAlign = 'right';
             const widest = Math.max(...this.levelTicks.map(({ label }) => {
                 const metrics = ctx.measureText(label);
@@ -142,7 +149,7 @@ export class AnalysisPlot {
             const drawn = this.surface.draw(ctx, state, this.plot, { width: this.width, height: this.height, dpr: this.dpr, exporting: dimensions?.exporting });
             if (!drawn) { this.clear(); return false; }
         } else {
-            this.grid(ctx, state);
+            if (this.effectStyle) this.overlayGrid(ctx, state); else this.grid(ctx, state);
             ctx.save();
             ctx.beginPath();
             ctx.rect(p.left, p.top, p.width, p.height);
@@ -191,49 +198,21 @@ export class AnalysisPlot {
 
     renderImage({ title, subtitle = '' }) {
         if (!this.state || !this.width || !this.height) throw new Error('No plotted data to copy');
-        const dpr = Math.min(4096 / Math.max(this.width, this.height), Math.max(2, 1600 / this.width));
+        const dpr = exportScale(this.width, this.height);
         const graph = document.createElement('canvas');
-        const renderer = new AnalysisPlot(graph, null);
+        const renderer = new AnalysisPlot(graph, null, null, { effectStyle: this.effectStyle });
         try {
             if (renderer.draw(this.state, { width: this.width, height: this.height, dpr, exporting: true }) === false) {
                 throw new Error('No plotted data to copy');
             }
         }
         finally { renderer.surface.destroy(); }
-        const image = document.createElement('canvas');
-        const measure = graph.getContext('2d'); measure.font = '12px Arial';
-        const subtitleLines = [''];
-        for (const character of subtitle) {
-            const index = subtitleLines.length - 1;
-            if (measure.measureText(subtitleLines[index] + character).width > this.width - 40) subtitleLines.push(character);
-            else subtitleLines[index] += character;
-        }
-        const legend = this.state.type === 'waterfall' ? [] : this.state.series;
-        let x = 20; let line = 0;
-        const entries = legend.map((series, index) => {
-            const text = seriesLabel(series, this.state.unit);
-            const width = 42 + measure.measureText(text).width;
-            if (x > 20 && x + width > this.width - 20) { x = 20; line++; }
-            const entry = { series, index, text, x, line }; x += width; return entry;
+        const series = this.state.type === 'waterfall' ? [] : this.state.series;
+        return composeGraphImage(graph, {
+            width: this.width, height: this.height, dpr, title, subtitle,
+            legend: series.map((item, index) => ({ text: seriesLabel(item, this.state.unit), color: item.color,
+                dash: index % 3 === 0 ? [] : index % 3 === 1 ? [6, 3] : [2, 3] }))
         });
-        const legendTop = 48 + subtitleLines.length * 16;
-        const headerHeight = legendTop + (entries.length ? (line + 1) * 22 : 0);
-        image.width = graph.width; image.height = graph.height + Math.round(headerHeight * dpr);
-        const ctx = image.getContext('2d'); ctx.scale(dpr, dpr);
-        ctx.fillStyle = palette('graph-base'); ctx.fillRect(0, 0, this.width, this.height + headerHeight);
-        ctx.fillStyle = palette('graph-label-strong'); ctx.font = 'bold 19px Arial';
-        ctx.fillText(title, 20, 26, this.width - 40);
-        ctx.fillStyle = palette('graph-label'); ctx.font = '12px Arial';
-        subtitleLines.forEach((text, index) => ctx.fillText(text, 20, 47 + index * 16));
-        for (const { series, index, text, x, line } of entries) {
-            const y = legendTop + line * 22;
-            ctx.strokeStyle = series.color; ctx.lineWidth = 2;
-            ctx.setLineDash(index % 3 === 0 ? [] : index % 3 === 1 ? [6, 3] : [2, 3]);
-            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke();
-            ctx.fillStyle = palette('graph-label'); ctx.fillText(text, x + 24, y + 4);
-        }
-        ctx.drawImage(graph, 0, headerHeight, this.width, this.height);
-        return image;
     }
 
     grid(ctx, state) {
@@ -263,6 +242,51 @@ export class AnalysisPlot {
         ctx.fillText(state.unit, p.left, 17);
         ctx.textAlign = 'center';
         ctx.fillText(state.logX === false ? 'ms' : 'Hz', p.left + p.width / 2, this.height - 8);
+    }
+
+    // Effect Pipeline graph rules: the plot spans the canvas, so only interior grid lines are drawn,
+    // with bare tick values and the axis titles overlaid at the bottom and left.
+    overlayGrid(ctx, state) {
+        const { width, height } = this;
+        const interior = (ticks, min, max) => ticks.filter(({ value }) => value > min && value < max);
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = palette('graph-grid');
+        ctx.fillStyle = palette('graph-label');
+        const xTicks = state.logX === false ?
+            createLinearTicks(state.xMin, state.xMax, Math.max(1, Math.floor(width / 65))).ticks :
+            createFrequencyTicks(state.xMin, state.xMax, width);
+        // A tick value is omitted only where it would leave the canvas or overlap the previous value on its axis.
+        ctx.textAlign = 'center';
+        let previousRight = -4;
+        for (const { value, label } of interior(xTicks, state.xMin, state.xMax)) {
+            const x = this.scaleX(value);
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+            const halfWidth = ctx.measureText(label).width / 2;
+            if (x - halfWidth < previousRight + 4 || x + halfWidth > width) continue;
+            ctx.fillText(label, x, height - 24);
+            previousRight = x + halfWidth;
+        }
+        ctx.textAlign = 'right';
+        let previousY = Infinity;
+        for (const { value, label } of interior(this.levelTicks, state.yMin, state.yMax)) {
+            const y = this.scaleY(value);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            if (previousY - y < 16 || y < 8 || y > height - 4) continue;
+            ctx.fillText(label, 48, y + 4);
+            previousY = y;
+        }
+        ctx.font = '14px Arial';
+        ctx.fillStyle = palette('text-primary');
+        ctx.textAlign = 'center';
+        ctx.fillText(state.logX === false ? 'Time (ms)' : 'Frequency (Hz)', width / 2, height - 5);
+        const yName = { distortion: 'Distortion', impulse: 'Amplitude' }[state.type] || 'Magnitude';
+        ctx.save();
+        ctx.translate(14, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(`${yName} (${state.unit})`, 0, 0);
+        ctx.restore();
+        ctx.font = '12px Arial';
     }
 
     drawImpulse(ctx, state) {

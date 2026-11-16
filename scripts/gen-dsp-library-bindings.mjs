@@ -35,7 +35,9 @@ export const GRAPH_V1_CAPACITY = Object.freeze({
   maxWorkspaceBytes: 64 * 1024 * 1024
 });
 const maximumAssetBytes = 32 * 1024 * 1024;
-export const APP_ONLY_EFFECT_TYPES = Object.freeze(['SFZNotePlayerPlugin', 'NetworkReceivePlugin', 'NetworkSendPlugin']);
+export const APP_ONLY_EFFECT_TYPES = Object.freeze([
+  'SFZNotePlayerPlugin', 'NetworkReceivePlugin', 'NetworkSendPlugin', 'SpeakerDistortionCorrectionPlugin'
+]);
 const maximumUint32 = 0xffffffff;
 const digestPattern = /^[0-9a-f]{64}$/;
 
@@ -143,6 +145,7 @@ export const PUBLIC_EFFECT_TYPES = Object.freeze([
   'FiveBandPEQ',
   'GroupDelayEQ',
   'GroupDelayPEQ',
+  'HeadphoneEQ',
   'HiPassFilter',
   'LoPassFilter',
   'LoudnessEqualizer',
@@ -257,6 +260,7 @@ export const FROZEN_PARAM_DIRECTORIES = Object.freeze({
   FiveBandPEQPlugin: 'dsp/plugins/eq/five_band_peq',
   GroupDelayEqPlugin: 'dsp/plugins/eq/group_delay_eq',
   GroupDelayPEQPlugin: 'dsp/plugins/eq/group_delay_peq',
+  HeadphoneEQPlugin: 'dsp/plugins/eq/headphone_eq',
   HiPassFilterPlugin: 'dsp/plugins/eq/hi_pass_filter',
   LoPassFilterPlugin: 'dsp/plugins/eq/lo_pass_filter',
   LoudnessEqualizerPlugin: 'dsp/plugins/eq/loudness_equalizer',

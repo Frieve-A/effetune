@@ -1,6 +1,6 @@
 const GROUP_DELAY_PEQ_SAMPLE_RATES = Object.freeze([44100, 48000, 88200, 96000, 176400, 192000]);
 
-class GroupDelayPEQPlugin extends PluginBase {
+class GroupDelayPEQPlugin extends FirAssetEqPlugin {
     static executionCapabilities = Object.freeze({
         requiresWasm: true,
         supportedSampleRates: GROUP_DELAY_PEQ_SAMPLE_RATES
@@ -26,14 +26,22 @@ class GroupDelayPEQPlugin extends PluginBase {
         { id: 'fl', key: 'groupDelayPeq.type.fl', name: 'FilterGD' }
     ];
 
-    static TAPS_CHOICES = [4096, 8192, 16384, 32768];
-    static LATENCY_CHOICES = ['0', '128', '256', '512', '1024'];
+    static TAP_OPTIONS = [4096, 8192, 16384, 32768];
     static GRID_STEPS_MS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
     static MINIMUM_GRAPH_RANGE_MS = 5;
     static EDGE_EXPAND_STEP_PX = 16;
     static RIPPLE_WARNING_DB = 0.3;
     static Q_RANGE = { minimum: 0.1, maximum: 100 };
     static GRAPH_FREQUENCY_RANGE = { minimum: 10, maximum: 40000 };
+    static FIR_MESSAGES = {
+        name: 'Group Delay PEQ',
+        designing: 'Designing filter…',
+        ready: 'The filter is ready.',
+        designFailed: 'The filter could not be designed. Try a different Taps setting.',
+        stageFailed: 'The filter could not be designed. Try a different Taps setting.',
+        prepareFailed: 'The filter could not be prepared. Try fewer taps or a higher latency.',
+        flat: 'All bands are at 0 ms, so audio passes through unchanged.'
+    };
 
     static _logSliderPosition(value, minimum, maximum) {
         if (value <= minimum) return 0;
@@ -60,29 +68,15 @@ class GroupDelayPEQPlugin extends PluginBase {
             this['e' + index] = true;
         }
         this.tp = 16384;
-        this.lt = '128';
         this.offlineDspAssetErrorMessageKey = 'groupDelayPeq.error.design';
         this._sampleRate = this._getEngineSampleRate();
         this._outputChannelCount = this._getEngineChannelCount();
         this._runtime = null;
-        this._runtimePromise = null;
-        this._designer = null;
-        this._designTimer = null;
-        this._designGeneration = 0;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._lastDesign = null;
-        this._assetState = 0;
-        this._disposed = false;
-        this._statusMessage = '';
         this._statusState = '';
-        this._statusElement = null;
         this._detailsElement = null;
         this._scale = { range: GroupDelayPEQPlugin.MINIMUM_GRAPH_RANGE_MS, gridStep: 1 };
         this._dragScaleExpansions = 0;
         this._drawGrid = null;
-        this.uiCreated = false;
         this.uiContainer = null;
         this.graphContainer = null;
         this.gridSvg = null;
@@ -91,7 +85,6 @@ class GroupDelayPEQPlugin extends PluginBase {
         this.activeDragMarker = null;
         this.boundMouseMoveHandler = null;
         this.boundMouseUpHandler = null;
-        this.executionState = { state: 'pending', reason: null };
         this.registerProcessor('return data;');
     }
 
@@ -102,19 +95,14 @@ class GroupDelayPEQPlugin extends PluginBase {
         );
     }
 
-    process(context, data) {
-        return data;
-    }
-
     _getEngineSampleRate() {
-        const value = this._sampleRate || window.workletNode?.context?.sampleRate ||
+        const value = window.workletNode?.context?.sampleRate ||
             window.audioContext?.sampleRate || window.uiManager?.audioManager?.audioContext?.sampleRate;
         return Number.isFinite(value) && value > 0 ? value : 48000;
     }
 
     _getEngineChannelCount() {
         const candidates = [
-            this._outputChannelCount,
             window.workletNode?.channelCount,
             window.audioManager?.outputChannelCount,
             window.uiManager?.audioManager?.outputChannelCount
@@ -158,33 +146,14 @@ class GroupDelayPEQPlugin extends PluginBase {
         return this._bands().some(band => band.enabled && band.delayMs !== 0);
     }
 
-    _packedParameters() {
-        return {
-            ...super.getParameters(),
-            lt: this.lt,
-            fd: this.tp / 2
-        };
+    // The all-pass filter is always linear phase, so the bulk delay is half the taps.
+    _filterDelay(_phase, taps = this.tp) {
+        return taps / 2;
     }
 
     getParameters(options = {}) {
-        const sampleRate = Number.isFinite(options.sampleRate) && options.sampleRate > 0
-            ? options.sampleRate
-            : this._sampleRate;
-        const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-            options.outputChannelCount >= 1 && options.outputChannelCount <= 16
-            ? options.outputChannelCount
-            : this._outputChannelCount;
-        if (options.commitSampleRate &&
-            (sampleRate !== this._sampleRate || outputChannelCount !== this._outputChannelCount)) {
-            this._sampleRate = sampleRate;
-            this._outputChannelCount = outputChannelCount;
-            this._clampDelaysToLimit();
-            this._scheduleDesign(0);
-            this.setUIValues();
-            this.updateResponse();
-            this.updateMarkers();
-        }
-        const parameters = { ...this._packedParameters(), tp: this.tp };
+        const parameters = super.getParameters(options);
+        delete parameters.pm;
         for (let index = 0; index < GroupDelayPEQPlugin.BANDS.length; index += 1) {
             parameters['t' + index] = this['t' + index];
             parameters['f' + index] = this['f' + index];
@@ -201,13 +170,7 @@ class GroupDelayPEQPlugin extends PluginBase {
         return serialized;
     }
 
-    setParameters(params = {}, syncUi = true) {
-        const previous = this._designSignature();
-        const previousLatency = this.lt;
-        super._setValidatedParameters(params);
-        const taps = Number(params.tp);
-        if (GroupDelayPEQPlugin.TAPS_CHOICES.includes(taps)) this.tp = taps;
-        if (GroupDelayPEQPlugin.LATENCY_CHOICES.includes(String(params.lt))) this.lt = String(params.lt);
+    _setDesignParameters(params) {
         const limit = this._delayLimitMs();
         for (let index = 0; index < GroupDelayPEQPlugin.BANDS.length; index += 1) {
             const type = params['t' + index];
@@ -234,14 +197,12 @@ class GroupDelayPEQPlugin extends PluginBase {
         }
         // A smaller tap count shortens the filter, so stored delays may no longer fit.
         this._clampDelaysToLimit();
-        this.updateParameters();
-        const next = this._designSignature();
-        if (previous !== next) this._scheduleDesign(150);
-        else if (previousLatency !== this.lt && this._lastDesign) this._stageDesign(this._lastDesign);
+    }
+
+    _syncParameterUI(syncUi) {
         if (syncUi) this.setUIValues();
         this.updateResponse();
         this.updateMarkers();
-        this._renderDetails();
     }
 
     /**
@@ -259,108 +220,51 @@ class GroupDelayPEQPlugin extends PluginBase {
         this.setParameters(parameters, false);
     }
 
-    _designSignature() {
-        return JSON.stringify([
-            this._bands(), this.tp, this._sampleRate, this._outputChannelCount, this.channel
-        ]);
+    _filterRequired() {
+        return this._hasDelay();
+    }
+
+    _engineFormatChanged() {
+        this._clampDelaysToLimit();
+        super._engineFormatChanged();
+        this.setUIValues();
+        this.updateResponse();
+        this.updateMarkers();
+    }
+
+    _renderDesign() {
+        this._renderDetails();
+        this.setUIValues();
+        this.updateResponse();
+        this.updateMarkers();
+    }
+
+    _loadDesignerModule() {
+        return Promise.all([
+            import('../../js/group-delay-peq/designer.js'),
+            import('../../js/group-delay-peq/design-core.js')
+        ]).then(([designer, design]) => ({ ...designer, ...design }));
+    }
+
+    // The response graph reads the target curve from the loaded runtime.
+    async _getRuntime() {
+        this._runtime = await super._getRuntime();
+        return this._runtime;
+    }
+
+    _createDesigner(runtime) {
+        return runtime.createGroupDelayPeqDesigner();
     }
 
     _designConfig(sampleRate = this._sampleRate) {
         return { bands: this._bands(), taps: this.tp, sampleRate };
     }
 
-    onChannelSelectionChanged() {
-        this._scheduleDesign(0);
-    }
-
-    async _getRuntime() {
-        if (!this._runtimePromise) {
-            this._runtimePromise = Promise.all([
-                import('../../js/group-delay-peq/designer.js'),
-                import('../../js/group-delay-peq/design-core.js'),
-                import('../../js/ir-library/ir-asset-payload.js'),
-                import('../../js/ir-library/ir-plugin-contract.js')
-            ]).then(([designer, design, payload, contract]) => {
-                this._runtime = { ...designer, ...design, ...payload, ...contract };
-                return this._runtime;
-            });
-        }
-        return this._runtimePromise;
-    }
-
-    _scheduleDesign(delay = 150) {
-        if (this._disposed) return;
-        if (this._designTimer !== null) clearTimeout(this._designTimer);
-        const generation = ++this._designGeneration;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this.updateParameters();
-        if (this._hasDelay()) {
-            this._setStatus(this._t('groupDelayPeq.status.designing', 'Designing filter…'), 'preparing');
-        }
-        this._designTimer = setTimeout(() => {
-            if (this._disposed || generation !== this._designGeneration) return;
-            this._designTimer = null;
-            this._designAndStage(generation);
-        }, delay);
-    }
-
-    _settleFlat(generation) {
-        if (this._disposed || generation !== this._designGeneration) return false;
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._lastDesign = null;
-        this._assetState = 0;
-        this.clearWasmAsset(0);
-        this._updatePowerGainBound(null);
-        this.updateParameters();
-        this._setStatus(this._t('groupDelayPeq.status.flat',
-            'All bands are at 0 ms, so audio passes through unchanged.'), '');
-        this._renderDetails();
-        this.setUIValues();
-        this.updateResponse();
-        this.updateMarkers();
-        return true;
-    }
-
-    async _designAndStage(generation) {
-        try {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            if (!this._hasDelay()) return this._settleFlat(generation);
-            const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration) return false;
-            if (!this._designer) {
-                const designer = runtime.createGroupDelayPeqDesigner();
-                if (this._disposed || generation !== this._designGeneration) {
-                    designer?.close?.();
-                    return false;
-                }
-                this._designer = designer;
-            }
-            const designer = this._designer;
-            const result = await designer.design(this._designConfig());
-            if (this._disposed || generation !== this._designGeneration || designer !== this._designer) {
-                return false;
-            }
-            this._lastDesign = result;
-            this._candidateWarning = this._qualityWarning(result);
-            // Show what was designed before handing it to the engine, so the graph does
-            // not wait for the asset to be admitted.
-            this._renderDetails();
-            this.setUIValues();
-            this.updateResponse();
-            this.updateMarkers();
-            return await this._stageDesign(result, generation);
-        } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            console.error('Group Delay PEQ design failed:', error);
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayPeq.error.design',
-                'The filter could not be designed. Try a different Taps setting.'), 'error');
-            return false;
-        }
+    _readyStatus() {
+        const warning = this._lastDesign && this._qualityWarning(this._lastDesign);
+        return warning
+            ? [warning, 'warning']
+            : [GroupDelayPEQPlugin.FIR_MESSAGES.ready, 'ready'];
     }
 
     _qualityWarning(result) {
@@ -374,213 +278,6 @@ class GroupDelayPEQPlugin extends PluginBase {
                 'The filter cannot follow these settings closely. Increase Taps or reduce Q.');
         }
         return null;
-    }
-
-    async _stageDesign(result, generation = this._designGeneration) {
-        try {
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            this._candidateAssetRevision = null;
-            this._effectiveAssetRevision = null;
-            this._assetState = 1;
-            this.updateParameters();
-            const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            const channels = runtime.selectedIrChannelCount(this.channel, this._outputChannelCount);
-            const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-                frames: this.tp,
-                assetChannels: 1,
-                topology: runtime.IR_ASSET_TOPOLOGY.mono,
-                processingChannels: channels,
-                headBlock: Number(this.lt)
-            });
-            const operationRevision = this.setWasmAsset(0, {
-                payload: result.payload,
-                formatTag: 1,
-                headBlock: Number(this.lt),
-                rateDivider: 1,
-                pathCount: 0,
-                inputCount: 0,
-                processingChannels: channels,
-                footprintBytes,
-                externalAssetSignature: this._externalAssetSignature()
-            });
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            this._candidateAssetRevision = operationRevision;
-            this._updatePowerGainBound(result.payload);
-            this._renderDetails();
-            return true;
-        } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
-            console.error('Group Delay PEQ asset staging failed:', error);
-            this._candidateAssetRevision = null;
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayPeq.error.design',
-                'The filter could not be designed. Try a different Taps setting.'), 'error');
-            return false;
-        }
-    }
-
-    _externalAssetSignature({
-        sampleRate = this._sampleRate,
-        outputChannelCount = this._outputChannelCount
-    } = {}) {
-        return JSON.stringify([
-            1, this._designConfig(sampleRate), this.lt, this.channel, outputChannelCount
-        ]);
-    }
-
-    _updatePowerGainBound(payload = this._lastDesign?.payload) {
-        if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32 + this.tp * 4) {
-            this.powerGainUpperBoundDb = 0;
-            return;
-        }
-        const samples = new Float32Array(payload, 32);
-        let sum = 0;
-        for (let index = 0; index < this.tp; index += 1) {
-            const value = samples[index];
-            sum += value < 0 ? -value : value;
-        }
-        this.powerGainUpperBoundDb = 20 * Math.log10(sum > 1 ? sum : 1);
-    }
-
-    get offlineDspAssetRequired() {
-        return this.isOfflineDspAssetRequired();
-    }
-
-    isOfflineDspAssetRequired() {
-        return this._hasDelay();
-    }
-
-    _offlineStaleError() {
-        const error = new Error('Group Delay PEQ settings changed during offline filter preparation.');
-        error.userMessageKey = this.offlineDspAssetErrorMessageKey;
-        return error;
-    }
-
-    async createOfflineDspState({
-        sampleRate,
-        outputChannelCount,
-        isCurrent = () => true
-    } = {}) {
-        const snapshot = {
-            generation: this._designGeneration,
-            config: this._designConfig(sampleRate),
-            latency: this.lt,
-            channel: this.channel,
-            baseParameters: { ...super.getParameters() }
-        };
-        const operationCurrent = () => !this._disposed && isCurrent() &&
-            snapshot.generation === this._designGeneration;
-        const parameters = {
-            ...snapshot.baseParameters,
-            lt: snapshot.latency,
-            fd: snapshot.config.taps / 2
-        };
-        if (!operationCurrent()) throw this._offlineStaleError();
-        if (!snapshot.config.bands.some(band => band.enabled && band.delayMs !== 0)) {
-            return { parameters, assets: new Map(), offlineDspAssetRequired: false };
-        }
-        const runtime = await this._getRuntime();
-        if (!operationCurrent()) throw this._offlineStaleError();
-        const designer = runtime.createGroupDelayPeqDesigner();
-        let designed;
-        try {
-            designed = await designer.design(snapshot.config);
-        } finally {
-            designer.close();
-        }
-        if (!operationCurrent()) throw this._offlineStaleError();
-        const processingChannels = runtime.selectedIrChannelCount(snapshot.channel, outputChannelCount);
-        const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-            frames: snapshot.config.taps,
-            assetChannels: 1,
-            topology: runtime.IR_ASSET_TOPOLOGY.mono,
-            processingChannels,
-            headBlock: Number(snapshot.latency)
-        });
-        return {
-            parameters,
-            assets: new Map([[0, {
-                payload: designed.payload,
-                formatTag: 1,
-                headBlock: Number(snapshot.latency),
-                rateDivider: 1,
-                pathCount: 0,
-                inputCount: 0,
-                processingChannels,
-                footprintBytes,
-                warmupSamples: Number(snapshot.latency) + snapshot.config.taps / 2,
-                externalAssetSignature: this._externalAssetSignature({
-                    sampleRate,
-                    outputChannelCount
-                })
-            }]]),
-            offlineDspAssetRequired: true
-        };
-    }
-
-    onWasmAssetState(slot, state, operationRevision) {
-        if (this._disposed || slot !== 0 || !this._isCurrentWasmAssetOperation(slot, operationRevision)) {
-            return;
-        }
-        const status = state & 0xff;
-        const isCandidate = operationRevision === this._candidateAssetRevision;
-        const isEffective = operationRevision === this._effectiveAssetRevision;
-        if ((!isCandidate && status !== 4) || (!isCandidate && !isEffective)) return;
-        this._assetState = status;
-        if (status === 3) {
-            this._effectiveAssetRevision = operationRevision;
-            this._candidateAssetRevision = null;
-            this.updateParameters();
-            this._setStatus(this._candidateWarning ||
-                this._t('groupDelayPeq.status.ready', 'The filter is ready.'),
-            this._candidateWarning ? 'warning' : 'ready');
-        } else if (status === 4) {
-            this._candidateAssetRevision = null;
-            this._effectiveAssetRevision = null;
-            this._candidateWarning = null;
-            this.updateParameters();
-            this._setStatus(this._t('groupDelayPeq.error.prepare',
-                'The filter could not be prepared. Try fewer taps or a higher latency.'), 'error');
-        }
-        this._renderDetails();
-    }
-
-    onWasmAssetRejected(slot, reason, operationRevision) {
-        if (this._disposed || slot !== 0 || operationRevision !== this._candidateAssetRevision) return;
-        console.warn('Group Delay PEQ asset admission rejected:', reason);
-        this._candidateAssetRevision = null;
-        this._effectiveAssetRevision = null;
-        this._candidateWarning = null;
-        this._assetState = 4;
-        this.updateParameters();
-        this._setStatus(this._t('groupDelayPeq.error.prepare',
-            'The filter could not be prepared. Try fewer taps or a higher latency.'), 'error');
-        this._renderDetails();
-    }
-
-    onMessage(message) {
-        if (this._disposed) return;
-        if (Number.isFinite(message.sampleRate) && message.sampleRate > 0 &&
-            message.sampleRate !== this._sampleRate) {
-            this._sampleRate = message.sampleRate;
-            this._clampDelaysToLimit();
-            this._scheduleDesign(0);
-            this.setUIValues();
-            this.updateResponse();
-            this.updateMarkers();
-        }
-        if (message.type === 'dspExecutionState' && message.pluginId === this.id &&
-            message.validated === true) {
-            this.executionState = { state: message.state, reason: message.reason || null };
-            this._renderStatusMessage();
-        }
     }
 
     _executionStatusText() {
@@ -613,6 +310,11 @@ class GroupDelayPEQPlugin extends PluginBase {
         this._statusElement.dataset.state = executionMessage ? 'error' : this._statusState || '';
     }
 
+    _renderStatus() {
+        this._renderStatusMessage();
+        this._renderDetails();
+    }
+
     _renderDetails() {
         if (this._disposed || !this._detailsElement) return;
         const active = Boolean(this._lastDesign) && this._hasDelay();
@@ -638,14 +340,14 @@ class GroupDelayPEQPlugin extends PluginBase {
         settings.className = 'group-delay-peq-settings';
         settings.appendChild(this.createSelectControl(
             this._t('groupDelayPeq.parameter.taps', 'Taps'),
-            GroupDelayPEQPlugin.TAPS_CHOICES.map(value => ({ value: String(value), label: String(value) })),
+            GroupDelayPEQPlugin.TAP_OPTIONS.map(value => ({ value: String(value), label: String(value) })),
             String(this.tp),
             value => this.setParameters({ tp: Number(value) }),
             'tp'
         ));
         settings.appendChild(this.createSelectControl(
             this._t('groupDelayPeq.parameter.latency', 'Latency'),
-            GroupDelayPEQPlugin.LATENCY_CHOICES.map(value => ({ value, label: `${value} samples` })),
+            FirAssetEqPlugin.LATENCY_OPTIONS.map(value => ({ value, label: `${value} samples` })),
             this.lt,
             value => this.setParameters({ lt: value }),
             'lt'
@@ -653,7 +355,9 @@ class GroupDelayPEQPlugin extends PluginBase {
         container.appendChild(settings);
 
         const graphContainer = document.createElement('div');
-        graphContainer.className = 'group-delay-peq-graph';
+        graphContainer.className = 'group-delay-peq-graph graph-axis-titled';
+        graphContainer.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+        graphContainer.setAttribute('data-y-axis-title', 'Delay (ms)');
         const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         gridSvg.setAttribute('class', 'group-delay-peq-grid');
         gridSvg.setAttribute('width', '100%');
@@ -708,8 +412,7 @@ class GroupDelayPEQPlugin extends PluginBase {
         });
         this.setUIValues();
         if (!this._statusMessage) {
-            this._setStatus(this._t('groupDelayPeq.status.flat',
-                'All bands are at 0 ms, so audio passes through unchanged.'), '');
+            this._setStatus(GroupDelayPEQPlugin.FIR_MESSAGES.flat, '');
         } else {
             this._renderStatusMessage();
         }
@@ -933,10 +636,10 @@ class GroupDelayPEQPlugin extends PluginBase {
         if (q && !this.isHeldByUser(q)) q.value = this['q' + index].toFixed(2);
     }
 
+    // Never clamp: out-of-range frequencies map outside the plot area.
     freqToX(frequency) {
         const { minimum, maximum } = GroupDelayPEQPlugin.GRAPH_FREQUENCY_RANGE;
-        const clamped = Math.max(minimum, Math.min(frequency, maximum));
-        return (Math.log10(clamped) - Math.log10(minimum)) /
+        return (Math.log10(frequency) - Math.log10(minimum)) /
             (Math.log10(maximum) - Math.log10(minimum)) * 100;
     }
 
@@ -1049,7 +752,7 @@ class GroupDelayPEQPlugin extends PluginBase {
             this.gridSvg.appendChild(line);
             const text = document.createElementNS(namespace, 'text');
             text.setAttribute('x', `${x}%`);
-            text.setAttribute('y', '95%');
+            text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
             text.setAttribute('text-anchor', 'middle');
             text.textContent = frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
             this.gridSvg.appendChild(text);
@@ -1058,6 +761,9 @@ class GroupDelayPEQPlugin extends PluginBase {
         const lines = Math.floor(range / gridStep);
         for (let line = -lines; line <= lines; line += 1) {
             const milliseconds = line * gridStep;
+            // The outermost values sit on the top and bottom edges of the plot, so
+            // neither their grid line nor their label is drawn.
+            if (Math.abs(milliseconds) >= range * 0.98) continue;
             const y = this.delayToY(milliseconds);
             const element = document.createElementNS(namespace, 'line');
             element.setAttribute('x1', '0');
@@ -1065,26 +771,18 @@ class GroupDelayPEQPlugin extends PluginBase {
             element.setAttribute('y1', `${y}%`);
             element.setAttribute('y2', `${y}%`);
             this.gridSvg.appendChild(element);
-            // The outermost lines sit on the top and bottom edges of the plot, where a
-            // centred label would be cut in half by the SVG viewport, so they are drawn
-            // without one.
-            if (Math.abs(milliseconds) >= range * 0.98) continue;
             const text = document.createElementNS(namespace, 'text');
-            text.setAttribute('x', '2%');
+            text.setAttribute('x', '20');
             text.setAttribute('y', `${y}%`);
             text.setAttribute('dominant-baseline', 'middle');
-            text.textContent = `${Number(milliseconds.toFixed(1))}ms`;
+            text.textContent = `${Number(milliseconds.toFixed(1))}`;
             this.gridSvg.appendChild(text);
         }
     }
 
-    getGraphPlotArea(container = this.graphContainer) {
-        return GraphPlotArea.from(container);
-    }
 
     updateMarkers() {
         if (!this.uiCreated || !this.markers || !this.graphContainer) return;
-        const plot = this.getGraphPlotArea();
         const width = this.graphContainer.clientWidth;
         const height = this.graphContainer.clientHeight;
         if (!width || !height) return;
@@ -1094,8 +792,8 @@ class GroupDelayPEQPlugin extends PluginBase {
             if (!marker) continue;
             const frequency = this['f' + index];
             const delay = this['d' + index];
-            const x = plot.leftPercent + this.freqToX(frequency) / 100 * plot.widthPercent;
-            const y = plot.topPercent + this.delayToY(delay) / 100 * plot.heightPercent;
+            const x = this.freqToX(frequency);
+            const y = this.delayToY(delay);
             marker.style.left = `${x}%`;
             marker.style.top = `${y}%`;
             marker.classList.toggle('disabled', !this['e' + index]);
@@ -1226,7 +924,7 @@ class GroupDelayPEQPlugin extends PluginBase {
             if (xDifference < 3 && yDifference < 3) return;
             this.hasMoved = true;
         }
-        const plot = this.getGraphPlotArea();
+        const plot = this.graphContainer.getBoundingClientRect();
         let x = (event.clientX - plot.left) / plot.width;
         let y = (event.clientY - plot.top) / plot.height;
         const dragAxis = GraphDragAxisLock.resolve(this, event);
@@ -1303,12 +1001,6 @@ class GroupDelayPEQPlugin extends PluginBase {
 
     cleanup() {
         if (this._disposed) return;
-        this._disposed = true;
-        ++this._designGeneration;
-        if (this._designTimer !== null) clearTimeout(this._designTimer);
-        this._designTimer = null;
-        this._designer?.close();
-        this._designer = null;
         this.disconnectGraphResizeObserver();
         if (this.boundMouseMoveHandler) {
             document.removeEventListener('mousemove', this.boundMouseMoveHandler);
@@ -1317,13 +1009,11 @@ class GroupDelayPEQPlugin extends PluginBase {
         this.boundMouseMoveHandler = null;
         this.boundMouseUpHandler = null;
         this.activeDragMarker = null;
-        this.uiCreated = false;
         this.uiContainer = null;
         this.graphContainer = null;
         this.gridSvg = null;
         this.responseSvg = null;
         this.markers = null;
-        this._statusElement = null;
         this._detailsElement = null;
         super.cleanup();
     }

@@ -6,6 +6,8 @@ const SFZ_STREAM_EXPORTS = ['et_instance_stream_configure', 'et_instance_stream_
     'et_instance_stream_publish', 'et_instance_stream_prefetch'];
 const SFZ_PREFETCH_FLAGS = new Set([0, 1, 2, 4, 5, 6, 13]);
 const NO_SFZ_REQUESTS = Object.freeze([]);
+const SPEAKER_DISTORTION_FIT_EXPORTS = ['create', 'destroy', 'buffer', 'fft', 'drive', 'columns', 'gram',
+    'system', 'solve', 'heldout', 'predict', 'correct', 'score'].map(name => `et_sdc_${name}`);
 const REQUIRED_FUNCTION_EXPORTS = [
     'malloc',
     'free',
@@ -446,6 +448,35 @@ export class DspEngineBinding {
     runDesignFft(handle, inverse = false) {
         const transform = inverse ? this.exports.et_design_fft_inverse : this.exports.et_design_fft_forward;
         return transform(handle >>> 0);
+    }
+
+    hasSpeakerDistortionFit() {
+        return SPEAKER_DISTORTION_FIT_EXPORTS.every(name => typeof this.exports[name] === 'function');
+    }
+
+    createSpeakerDistortionFit() {
+        if (!this.hasSpeakerDistortionFit()) return 0;
+        const preparing = this._preparing;
+        this._preparing = true;
+        try {
+            return this.exports.et_sdc_create() >>> 0;
+        } finally {
+            this._refreshViews();
+            this._preparing = preparing;
+        }
+    }
+
+    destroySpeakerDistortionFit(handle) {
+        if (handle && this.hasSpeakerDistortionFit()) this.exports.et_sdc_destroy(handle >>> 0);
+    }
+
+    getSpeakerDistortionFitBuffer(handle, id) {
+        return this.exports.et_sdc_buffer(handle >>> 0, id >>> 0) >>> 0;
+    }
+
+    // Runs et_sdc_<name>(handle, ...args) and returns its status.
+    callSpeakerDistortionFit(name, handle, ...args) {
+        return this.exports[`et_sdc_${name}`](handle >>> 0, ...args);
     }
 
     getCapabilities() {

@@ -1,6 +1,4 @@
-/** Both pipelines must contain an effect before a blind test can start. */
+/** Both pipelines must exist before a blind test can start; either may be empty. */
 export function hasDoubleBlindTestPipelines(audioManager) {
-    const a = audioManager?.pipelineA;
-    const b = audioManager?.pipelineB;
-    return Array.isArray(a) && a.length > 0 && Array.isArray(b) && b.length > 0;
+    return Array.isArray(audioManager?.pipelineA) && Array.isArray(audioManager?.pipelineB);
 }

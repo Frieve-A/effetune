@@ -14,7 +14,7 @@ lang: hi
 
 ## मोबाइल पर बैंड चुनना
 
-मोबाइल पर 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ का Additional EQ और Tonal Balance EQ का Target Adjust एक समय में केवल चुने हुए बैंड की सेटिंग दिखाते हैं। जिस बैंड को बदलना है, उसके नंबर वाले बटन पर टैप करें। बैंड बदलने पर सभी बैंड की सेटिंग बनी रहती हैं।
+मोबाइल पर 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Headphone EQ का Target Adjust, Room EQ का Additional EQ और Tonal Balance EQ का Target Adjust एक समय में केवल चुने हुए बैंड की सेटिंग दिखाते हैं। जिस बैंड को बदलना है, उसके नंबर वाले बटन पर टैप करें। बैंड बदलने पर सभी बैंड की सेटिंग बनी रहती हैं।
 
 ## प्लगइन सूची
 
@@ -28,6 +28,7 @@ lang: hi
 - [Earphone Cable Sim](#earphone-cable-sim) - सामान्य ईयरफोन केबल से होने वाले frequency response बदलाव आम तौर पर कितने छोटे होते हैं, यह जांचें
 - [Group Delay EQ](#group-delay-eq) - Tone बदले बिना हर frequency band की delay समायोजित करता है
 - [Group Delay PEQ](#group-delay-peq) - Tone बदले बिना हर frequency की delay को पाँच parametric bands से नियंत्रित करता है
+- [Headphone EQ](#headphone-eq) - Headphone की measurement के आधार पर उसकी response को target curve के करीब लाने वाला FIR correction
 - [Hi Pass Filter](#hi-pass-filter) - अनचाही निम्न आवृत्तियों को सटीकता से हटाएं
 - [Lo Pass Filter](#lo-pass-filter) - अनचाही उच्च आवृत्तियों को सटीकता से हटाएं
 - [Loudness Equalizer](#loudness-equalizer) - कम वॉल्यूम पर सुनने के लिए आवृत्ति संतुलन सुधार
@@ -120,6 +121,7 @@ listening के दौरान bass, vocals, presence और treble को fin
     - 1kHz, 1.6kHz, 2.5kHz (मिडिल साउंड)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (हाई साउंड)
 - **प्रत्येक बैंड के नियंत्रण**
+  - हर बैंड टैब में Type, Freq, Gain और Q अलग-अलग पंक्तियों में होते हैं; Freq, Gain और Q को स्लाइडर से या मान टाइप करके सेट किया जा सकता है
   - Center Frequency: 20Hz से 20kHz तक adjustable
   - Gain Range: Peaking और Low/High Shelf filters के लिए ±20dB
   - Q Factor: अधिकतर filter types के लिए 0.1-10.0; Low/High Shelf 0.1-2.0 तक limited
@@ -132,11 +134,14 @@ listening के दौरान bass, vocals, presence और treble को fin
     - Band Pass: केन्द्रीकृत आवृत्ति पृथक्करण
     - Notch: सटीक आवृत्ति हटाना
     - AllPass: phase-focused frequency alignment
+- **Master टैब**
+  - Gain: सभी बैंड के बाद कुल स्तर को -20dB से +20dB तक समायोजित करता है। जब बैंड सिग्नल को बढ़ाते हैं तो हेडरूम बनाए रखने के लिए इसे कम करें; रिस्पॉन्स ग्राफ़ में यह गेन भी शामिल होता है
 - **प्रीसेट प्रबंधन**
   - Import: Equalizer APO-style TXT filter lines load करें
-  - अधिकतम 15 `ON` PK/LS/LSC/HS/HSC filters import होते हैं; `Preamp` lines और unsupported filter types ignore होते हैं
+  - अधिकतम 15 `ON` PK/LS/LSC/HS/HSC filters import होते हैं, और `Preamp` line Master टैब का Gain सेट करती है (फ़ाइल में न हो तो 0dB); unsupported filter types ignore होते हैं
     - उदाहरण प्रारूप:
       ```
+      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
@@ -500,6 +505,54 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - Status पंक्ति कुल latency को samples और milliseconds में तथा filter की magnitude ripple दिखाती है। Ripple बताती है कि साकार हुई magnitude response सपाट design लक्ष्य से कितनी अलग है: मान जितना छोटा होगा, response लक्ष्य के उतना ही करीब होगा, और 0.3 dB सटीकता की चेतावनी का threshold है।
 - Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
+## Headphone EQ
+
+Headphone EQ आपके headphones की frequency response को target curve के करीब लाने के लिए सुधारता है। अपना headphone मॉडल खोजें, तो plugin AutoEQ प्रोजेक्ट से उसकी measurement और उससे मेल खाती target curve डाउनलोड करता है, फिर एक FIR correction filter बनाता है जो दोनों के बीच का अंतर घटाता है। आप अपनी measurement और target फ़ाइलें भी लोड कर सकते हैं। एक ही correction सभी channels पर लागू होता है। 15Band PEQ में बनी-बनाई settings आयात करने के विपरीत, Headphone EQ correction को खुद design करता है, इसलिए आप उसकी मात्रा, frequency range, boost की सीमा और target को कभी भी बदल सकते हैं। इसके लिए WASM DSP engine आवश्यक है; उसके बिना signal बिना बदलाव के गुजरता है।
+
+### ध्वनि सुधार गाइड
+
+- **अपने headphones खोजकर शुरू करें**: खोज बॉक्स में मॉडल का नाम लिखें और सूची से उसे चुनें। measurement और उसका target साथ-साथ लोड होते हैं, इसलिए correction तुरंत शुरू हो जाता है। यदि किसी मॉडल के लिए कई measurement स्रोत दिखें, तो उनमें से कोई भी चुनना ठीक है; हर एक के साथ उसी स्रोत और उसी measurement rig का target आता है। किसी दूसरे target की ओर सुधारने के लिए **Load Target** पर क्लिक करें और target curve की फ़ाइल चुनें।
+- **शुरुआती settings**: डिफ़ॉल्ट मान (**Minimum Phase**, **Correction Amount: 100%**, **Upper Limit: 10000 Hz**, **Max Boost: 6 dB**, **Smoothing: 0.17 oct**, **Auto Headroom** चालू) अच्छा आधार हैं। तुलना के लिए effect को चालू और बंद करके देखें।
+- **उच्च frequency का क्षेत्र**: लगभग 10 kHz से ऊपर की measurement इस पर निर्भर करती है कि headphones कैसे पहने गए हैं और measurement कैसे ली गई है, इसलिए डिफ़ॉल्ट **Upper Limit** उस क्षेत्र को सुधारता नहीं। इसे तभी बढ़ाएं जब आप वहाँ की measurement पर भरोसा करते हों, और ऊपरी क्षेत्र सुधारने से treble बिगड़ता हो तो इसे घटाएं (उदाहरण: 6000 Hz)।
+- **बड़े boost से बचें**: यदि correction संकरे dips को बड़े boost से भरने की कोशिश करे, तो **Max Boost** घटाएं या **Smoothing** बढ़ाएं। 0 dB पर peaks अब भी घटाए जाते हैं, पर कुछ भी boost नहीं होता।
+- **हल्का correction**: target तक का केवल कुछ हिस्सा तय करने के लिए **Correction Amount** घटाएं (उदाहरण: 50%)।
+- **किसी दूसरे headphone की आवाज़ दोहराना**: पहले Headphone EQ से अपना headphone correct करें, फिर दूसरा Headphone EQ जोड़ें जिसमें दूसरे model की measurement हो और **Correction Amount** -100% पर हो। दूसरा EQ उस model का उसके target से विचलन जोड़ता है, जिससे आपके headphone में उसका चरित्र आ जाता है। सबसे करीबी नतीजे के लिए दोनों में एक ही target रखें।
+- **पसंद के अनुसार अधिक bass**: **Target Adjust** में किसी band का type **LowShelv** चुनकर उसे लगभग 100 Hz पर रखें और उसका gain 2 से 4 dB बढ़ाएं। Room EQ के Additional EQ की तरह Target Adjust पूरी range पर लागू होता है और **Correction Amount**, **Upper Limit** या **Max Boost** से सीमित नहीं होता।
+- **हर headphone के लिए एक preset**: लोड की गई curves presets और URLs में सहेजी जाती हैं, इसलिए हर headphone के लिए अलग preset सहेज सकते हैं।
+
+### पैरामीटर
+
+- **खोज बॉक्स** (`Search headphones (AutoEQ) or paste a URL`) - headphone मॉडल का नाम लिखें और सूची से चुनें, तो उसकी measurement और target लोड हो जाते हैं। आप किसी measurement फ़ाइल का link paste करके Enter भी दबा सकते हैं; GitHub पर AutoEQ के result page या folder के links भी काम करते हैं। headphones की सूची और measurements Jaakko Pasanen के [AutoEQ प्रोजेक्ट](https://github.com/jaakkopasanen/AutoEq) से आती हैं, और GitHub से केवल तभी डाउनलोड होती हैं जब आप यह खोज बॉक्स उपयोग करते हैं। लोड की गई measurement का नाम मॉडल और उसके measurement स्रोत (उदाहरण: oratory1990) को मिलाकर रखा जाता है, और status line में भी यही नाम दिखता है। यदि download विफल हो, तो status line में error दिखता है और पहले लोड की गई curves ही उपयोग में रहती हैं।
+- **ड्रैग एंड ड्रॉप** - `.csv` या `.txt` फ़ाइल को plugin पर drop करें, तो वह **Load Measurement** की तरह measurement के रूप में लोड होती है।
+- **Load Measurement** - अपनी `.csv` या `.txt` फ़ाइल से measurement लोड करता है। AutoEQ की CSV में `raw` column उपयोग होता है, और `target` column हो तो वह target को भी बदल देता है।
+- **Load Target** - target curve लोड करता है। AutoEQ की CSV में `target` column हो तो वही उपयोग होता है, नहीं तो `raw` column।
+- **स्वीकार्य फ़ाइलें** - AutoEQ शैली की CSV, जिसकी पहली पंक्ति में `frequency` सहित column नाम हों, या frequency और level (dB) के दो columns वाली text फ़ाइल, जिनमें अलग करने के लिए comma, tab, semicolon या space हो। संख्या न होने वाली पंक्तियाँ छोड़ दी जाती हैं और केवल पहले दो columns उपयोग होते हैं। यदि फ़ाइल पढ़ी न जा सके, तो status line में error दिखता है और पहले लोड की गई curves ही उपयोग में रहती हैं। measurement और target के levels का मेल होना आवश्यक नहीं; तुलना से पहले उनके कुल levels को बराबर कर लिया जाता है।
+- correction तब शुरू होता है जब measurement और target दोनों लोड हो जाएँ। तब तक signal बिना बदलाव के गुजरता है, और correction की settings तथा Target Adjust निष्क्रिय रहते हैं।
+- **Phase**
+  - **Minimum Phase** - चुने गए Latency के अलावा कोई FIR delay नहीं जोड़ता।
+  - **Linear Phase** - सभी frequencies को समान delay देता है, जिसमें चुने गए Latency के साथ `Taps / 2` samples और जुड़ते हैं।
+- **Taps** - FIR की लंबाई: 8192, 16384, 32768, 65536 या 131072। अधिक taps से bass और बारीक ब्योरे अधिक सटीकता से दोहराए जाते हैं, पर memory का उपयोग, design का समय और Linear Phase की delay बढ़ती है।
+- **Latency** - Convolution engine की आरंभिक latency: 0, 128, 256, 512 या 1024 samples। कम मान delay घटाते हैं पर processing बढ़ाते हैं।
+- **Correction Amount** (-100% से 100%; डिफ़ॉल्ट 100%) - स्वचालित correction को dB में अनुपात से घटाता-बढ़ाता है। 50% पर हर boost और cut आधा हो जाता है; 0% पर केवल Target Adjust रह जाता है। ऋणात्मक मान correction को उलट देते हैं: headphone का target से विचलन हटाने के बजाय उसे जोड़ते हैं; -100% पर पूरा विचलन दोहराया जाता है। तब **Max Boost** उन boosts को सीमित करता है जो उसके peaks को दोहराते हैं।
+- **Upper Limit** (1000 से 20000 Hz; डिफ़ॉल्ट 10000 Hz) - जिस सबसे ऊँची frequency तक correction किया जाए। इससे ऊपर स्वचालित correction 0 dB रहता है, और सीमा पर संक्रमण सहज होता है। निचला सिरा हमेशा 20 Hz है।
+- **Max Boost** (0 से 18 dB; डिफ़ॉल्ट 6 dB) - स्वचालित correction के boost की सीमा तय करता है। cuts और Target Adjust सीमित नहीं होते।
+- **Smoothing** (0.02 से 1 oct; डिफ़ॉल्ट 0.17 oct) - correction curve को smooth करता है। बड़े मान चौड़ा और संयमित correction देते हैं; छोटे मान संकरे peaks और dips का भी अनुसरण करते हैं, जो अक्सर headphones पहनने के ढंग के साथ बदलते हैं।
+- **Auto Headroom** (डिफ़ॉल्ट चालू) - Target Adjust सहित filter के सबसे बड़े boost जितना पूरा output घटाता है, ताकि filter का अधिकतम gain 0 dB हो और boost किए गए क्षेत्र input से ऊँचा level न बनाएँ। लागू की गई मात्रा status line में दिखती है। बंद करने पर output level बना रहता है, पर boost के बाद तेज़ अंश clip हो सकते हैं; ऐसे में बाद के चरण में level घटाएं या limiter जोड़ें।
+- **Target Adjust** - पाँच parametric bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए अधिकतम 2; डिफ़ॉल्ट Q 1), जो target का आकार बदलते हैं। धनात्मक gain उस क्षेत्र को अधिक माँगता है, ऋणात्मक gain कम। **Peaking** में Q बढ़ाने पर असर संकरी band पर पड़ता है और घटाने पर चौड़ी band पर; shelves में Q transition के आसपास का आकार बदलता है।
+
+### प्रदर्शन
+
+- क्षैतिज अक्ष 20 Hz से 20 kHz तक frequency है, और ऊर्ध्वाधर अक्ष -20 से +20 dB तक level है। इस range से बाहर जाने वाले curve के हिस्से किनारे पर कट जाते हैं।
+- **Measurement** measurement है, जिसे target के level से मिलाकर दिखाया जाता है; target लोड न हो तो इसे 0 dB के आसपास केंद्रित दिखाया जाता है। correction design हो जाने के बाद यह smooth की गई curve बन जाती है।
+- **Target** Target Adjust सहित target curve है।
+- **Correction** correction filter के boost और cut को 0 dB के आसपास दिखाता है, जिसमें Target Adjust शामिल है। **Auto Headroom** द्वारा पूरे level में की गई कमी इसमें शामिल नहीं है; उसकी मात्रा status line में दिखती है।
+- **Corrected** correction के बाद का गणना किया हुआ परिणाम है, नई measurement नहीं। जहाँ यह **Target** पर बैठता है, वहाँ correction पूरा है; यह **Upper Limit** से ऊपर, जहाँ **Max Boost** boost को सीमित करता है वहाँ, और **Correction Amount** के 100% न होने पर Target से अलग रहता है।
+- जब तक measurement और target दोनों लोड नहीं हो जाते, केवल लोड की गई curves दिखाई जाती हैं।
+- एक ऊर्ध्वाधर रेखा **Upper Limit** को दर्शाती है।
+- Numbered handles Target Adjust की bands दिखाते हैं। frequency और gain बदलने के लिए handle को drag करें, Q बदलने के लिए उस पर माउस व्हील घुमाएं, और band को चालू या बंद करने के लिए उस पर right-click करें।
+- Status line बताती है कि filter अभी design हो रहा है या तैयार है, कितना headroom लागू हुआ, और filter के गलत हो सकने पर चेतावनी (**Taps** या **Smoothing** बढ़ाएं)। उसके नीचे की पंक्ति कुल processing latency को samples और milliseconds में दिखाती है।
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
+
 ## Hi Pass Filter
 
 एक सटीक high-pass filter जो अनचाही निम्न आवृत्तियों को हटाते हुए उच्च आवृत्तियों की स्पष्टता को बनाए रखता है। यह optimal phase response और पारदर्शी ध्वनि गुणवत्ता के लिए Linkwitz-Riley filter design पर आधारित है।
@@ -693,7 +746,7 @@ Room EQ, EffeTune में सेव की गई frequency-response measureme
 
 ### पैरामीटर
 
-- **Measurement** - साझा सेव की गई measurement चुनता है (नाम, points की संख्या, और impulse data होने पर `IR` दिखता है)। Measurements जोड़ने या edit करने के बाद **Refresh measurements** पर click करें।
+- **Measurement** - साझा सेव की गई measurement चुनता है (नाम, points की संख्या, और impulse data होने पर `IR` दिखता है)। Measurements जोड़ने या edit करने के बाद **Refresh measurements** पर click करें। Measurement पहले से चुने हुए Room EQ को जोड़ने के लिए फ्रीक्वेंसी रिस्पॉन्स मापन tool में result के नीचे **Room EQ सेटिंग कॉपी करें** पर click करें, फिर इफेक्ट पाइपलाइन की खाली जगह पर click करके Ctrl+V से paste करें। Multichannel measurement में हर मापे गए channel का **Measurement ChN** भर जाता है।
 - **Measurement ChN** - हर routed bus channel के लिए वैकल्पिक per-channel measurement override। साझा **Measurement** उपयोग करने के लिए इसे **(Shared)** पर छोड़ें।
 - **Delay** (0 से 20 ms) - सभी routed channels पर लागू manual delay; यह दिखाई गई processing latency में शामिल नहीं होता।
 - **Phase** - FIR का phase व्यवहार चुनता है:
@@ -716,7 +769,7 @@ Room EQ, EffeTune में सेव की गई frequency-response measureme
 - **Reverb Max Freq** (20 से 20000 Hz; default 250 Hz) - **Reverb Correction** की ऊपरी frequency limit, जो **Correction High** से ऊपर नहीं जाती (इसे लगभग 250 Hz पर रखने से correction उस low-frequency room decay पर केंद्रित रहता है जो पास-पास की seats पर एक जैसा व्यवहार करता है)।
 - **Reverb Smoothing** (0.02 से 1.00 oct) - Reverb की excess-phase delay पर लागू Gaussian smoothing।
 - **Reference Point** - Excess-phase analysis के लिए **Consensus (all points)** (सभी measurement points का reliability-weighted average) या कोई एक measurement point चुनता है। चुना गया point हटा दिया जाए तो यह Consensus पर लौट आता है।
-- **Additional EQ (FIR में शामिल)** - Target को आकार देने वाले पाँच parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक), जो सीधे FIR filter में बनते हैं। Linear mode में इनकी phase zero होती है, और Minimum तथा Correction modes में minimum-phase।
+- **Additional EQ (FIR में शामिल)** - Target को आकार देने वाले पाँच parametric bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक), जो सीधे FIR filter में बनते हैं। **Peaking** में Q बढ़ाने पर असर संकरी band पर पड़ता है और घटाने पर चौड़ी band पर; shelves में Q transition के आसपास का आकार बदलता है। Linear mode में इनकी phase zero होती है, और Minimum तथा Correction modes में minimum-phase।
 - **Gain** (-12 से +12 dB) - Output level trim।
 
 ### दृश्य प्रदर्शन
@@ -757,7 +810,7 @@ Plugin overall loudness को align करने के बाद मापे 
 - **पूरे album के लिए एक स्थिर correction**: Album की शुरुआत में **Reset** पर click करें और **Averaging Time** को **∞** पर सेट करें, ताकि correction पूरे playback session का औसत ले और एक fixed curve पर स्थिर हो जाए।
 - **Genre के अनुसार targets**: किसी खास style से मिलाने के लिए **Classical**, **Electronic**, **Pop** या **Rock** चुनें, या मिली-जुली listening के लिए **All**।
 - **हल्की shaping**: व्यापक, सूक्ष्म tilts के लिए **Amount** घटाएँ (जैसे 50%), **Range** कम करें (जैसे 3 dB), या **Smoothing** बढ़ाएँ (जैसे 1 oct)।
-- **अपना house curve**: Graph के नीचे के पाँच **Target Adjust** bands से target को अपनी पसंद के अनुसार झुकाएँ या आकार दें (जैसे 8 kHz पर +1.5 dB High shelf)। तब हर recording को आपके custom target की ओर उतना ही correct किया जाता है जितनी ज़रूरत है।
+- **अपना house curve**: Graph के नीचे के पाँच **Target Adjust** bands से target को अपनी पसंद के अनुसार झुकाएँ या आकार दें (जैसे 8 kHz पर +1.5 dB का **HighShel** band)। तब हर recording को आपके custom target की ओर उतना ही correct किया जाता है जितनी ज़रूरत है।
 - **Fixed slope reference**: **Target: Tilt** चुनें; इसमें **Corner** से नीचे response flat रहता है और उसके बाद एक स्थिर **Slope** से गिरता है (−5 dB/oct typical commercial masters के करीब है; −3 dB/oct pink noise के बराबर है)।
 
 Make-up gain loudness को बनाए रखता है, peak level को नहीं, इसलिए peaks बढ़ सकती हैं; अगर बाद के किसी stage में clipping हो, तो इस plugin के बाद level घटाएँ या limiter जोड़ें।
@@ -772,7 +825,7 @@ Make-up gain loudness को बनाए रखता है, peak level को
 - **Averaging Time** (0.1 s से ∞; default 30 s) - Measurement integration window। छोटे values (जैसे 0.5 से 1 s) गाने के भीतर के बदलावों को follow करते हैं, जैसे dark verse और bright chorus; लंबे values स्थिर correction देते हैं (**∞** पिछले **Reset** के बाद से लगातार औसत लेता है)।
 - **Low** (20 से 200 Hz; default 20 Hz) / **High** (2000 से 20000 Hz; default 16000 Hz) - Active reshaping की निचली और ऊपरी frequency सीमाएँ (इनके बाहर correction स्थिर रहता है)। Deep bass को न छेड़ने के लिए **Low** बढ़ाएँ, या सबसे ऊपरी octave को न छेड़ने के लिए **High** घटाएँ।
 - **Average SPL** (60 से 96 dB; default 83 dB) - अनुमानित listening level, जिससे तय होता है कि कौन-से धीमे frequency bands इतने सुनाई देते हैं कि उन्हें ऊपर उठाया जा सके; यह output level नहीं बदलता। कम values अधिक धीमे bands को inaudible मानती हैं, इसलिए वे ऊपर नहीं उठाए जाते; अधिक values उनमें से अधिक को audible मानती हैं।
-- **Target Adjust** - Target curve को नया आकार देने वाले पाँच parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक; default Q 0.7)। Positive gain उस region को अधिक माँगता है, negative gain कम।
+- **Target Adjust** - Target curve को नया आकार देने वाले पाँच parametric bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक; default Q 0.7)। Positive gain उस region को अधिक माँगता है, negative gain कम। **Peaking** में Q बढ़ाने पर असर संकरी band पर पड़ता है और घटाने पर चौड़ी band पर; shelves में Q transition के आसपास का आकार बदलता है।
 
 **Target Adjust** केवल target बदलता है; हर recording अब भी **Amount** और **Range** के भीतर उसकी ओर correct की जाती है, इसलिए बड़े adjustment के लिए बड़ा **Range** चाहिए हो सकता है। पूरे target को एक ही मात्रा से ऊपर उठाने पर कुछ नहीं बदलता, क्योंकि तुलना से पहले overall levels align किए जाते हैं। संकरे peaks और dips smooth हो जाते हैं; संकरे सुधारों के लिए 5Band PEQ का उपयोग करें।
 

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import {
+  DISPLAY_DSP_PLUGIN_TYPES,
   analyzeTemporalCapabilities,
   computeGraphAmplitudeBound,
   computeLinearPipelineWakeBound,
@@ -227,6 +229,38 @@ test('post-dominating mute proof rejects bypass, parallel, downstream, and bus p
       constructor: { name: 'MutePlugin' }
     }]
   })).proven, false);
+});
+
+test('a trailing mute keeps the pipeline processing while an analyzer feeds on it', () => {
+  const make = plugins => getZeroOutputProof(createPowerTopologySnapshot({
+    topologyRevision: 8,
+    workletGraphGeneration: 3,
+    physicalOutputCount: 1,
+    finalOutputGain: 1,
+    finalOutputGainPostDominatesAllOutputs: true,
+    hasPostGainInjection: false,
+    plugins
+  }));
+  const analyzer = { id: 1, enabled: true, constructor: { name: 'SpectrogramPlugin' } };
+  const mute = { id: 2, enabled: true, constructor: { name: 'MutePlugin' } };
+
+  const proof = make([analyzer, mute]);
+  assert.equal(proof.proven, false);
+  assert.equal(proof.reason, 'display-dsp-before-mute');
+  // A disabled analyzer draws nothing, so the power saving still applies.
+  assert.equal(make([{ ...analyzer, enabled: false }, mute]).proofKind, 'post-dominating-mute');
+  assert.equal(make([
+    { id: 3, enabled: true, constructor: { name: 'VolumePlugin' } },
+    mute
+  ]).proofKind, 'post-dominating-mute');
+
+  const workletSource = fs.readFileSync(
+    new URL('../../plugins/audio-processor.js', import.meta.url),
+    'utf8'
+  );
+  const workletTypes = /const DISPLAY_ONLY_DSP_TYPES = new Set\(\[([^\]]*)\]\)/.exec(workletSource)[1]
+    .match(/\w+Plugin/g);
+  assert.deepEqual([...DISPLAY_DSP_PLUGIN_TYPES].sort(), workletTypes.sort());
 });
 
 

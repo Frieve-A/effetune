@@ -83,7 +83,8 @@ class ChromaSpiralPlugin extends PluginBase {
     }
 
     getSpiralGeometry(width, height, dpr = 1) {
-        const outer = Math.min(width, height) / 2 - 32 * dpr;
+        // The spiral reaches the canvas edge; note names are drawn over its outermost turn.
+        const outer = Math.min(width, height) / 2;
         const inner = Math.max(14 * dpr, outer * 0.1);
         return { outer, inner, pitch: (outer - inner) / (this.hi - this.lo + 2),
             midiLow: (this.lo + 1) * 12, midiEnd: (this.hi + 2) * 12 - 0.5 };
@@ -412,8 +413,8 @@ class ChromaSpiralPlugin extends PluginBase {
             const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
             for (let pc = 0; pc < 12; pc++) {
                 const angle = pc * Math.PI / 6;
-                const x = Math.sin(angle) * (outer + 16 * dpr);
-                const y = -Math.cos(angle) * (outer + 16 * dpr);
+                const x = Math.sin(angle) * (outer - 16 * dpr);
+                const y = -Math.cos(angle) * (outer - 16 * dpr);
                 if (Math.abs(x) + ctx.measureText(names[pc]).width / 2 <= width / 2 &&
                     Math.abs(y) + fontSize / 2 <= height / 2) textContext.fillText(names[pc], x, y);
             }

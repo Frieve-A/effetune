@@ -5,6 +5,7 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'FiveBandFIRPEQ',
   'GroupDelayEQ',
   'GroupDelayPEQ',
+  'HeadphoneEQ',
   'RoomEQ',
   'IRReverb',
   'CrosstalkCancellation'

@@ -24,27 +24,32 @@ int main(int argc, char **argv) {
     return 2;
   std::vector<std::uint8_t> bytes(size);
   input.seekg(0);
-  input.read(reinterpret_cast<char *>(bytes.data()),
-             static_cast<std::streamsize>(size));
-  const auto footprint = SFZBank::readU32(bytes.data());
-  const auto payloadSize = static_cast<std::uint32_t>(size - 4);
-  const AssetBeginInfo info{
-      1, (payloadSize - 32) / 4, 0, 128, 1, 0, 0, 1, footprint, payloadSize};
-  SFZBank bank;
-  if (!require(bank.allocate(info) == ET_OK, "allocate"))
+  if (!input.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(size)))
+    return 2;
+  const auto payloadSize = static_cast<std::uint32_t>(size);
+  const PrepareInfo preparation{48000, 2, 128};
+  AssetBeginInfo info{
+      1, (payloadSize - 32) / 4, 0, 128, 1, 0, 0, preparation.maxChannels, payloadSize, payloadSize};
+  std::uint64_t additional = 0;
+  if (!require(SFZBank::estimateSfzEffects(preparation, info, bytes.data(),
+                                          ET_ASSET_F32_MULTICH, additional) == ET_OK &&
+                   additional <= UINT32_MAX - payloadSize,
+               "native bank footprint"))
     return 1;
-  std::memcpy(bank.payload_.data(), bytes.data() + 4, payloadSize);
-  const auto committed = bank.commit(payloadSize, ET_ASSET_F32_MULTICH);
+  info.footprintBytes += static_cast<std::uint32_t>(additional);
+  std::unique_ptr<PreparedAsset> prepared;
+  if (!require(SFZBank::prepare(preparation, info, bytes.data(),
+                               ET_ASSET_F32_MULTICH, prepared) == ET_OK,
+               "native bank preparation"))
+    return 1;
+  auto &bank = static_cast<SFZBank &>(*prepared);
+  const std::uint64_t generation = (UINT64_C(1) << 32) + 7;
   if (argc == 3 && std::strcmp(argv[2], "sf2-collection") == 0) {
-    const auto *header = bytes.data() + 4u + 32u;
-    const auto regions = SFZBank::readU32(header + 8u);
-    if (!require(committed == (kSf2RenderingSupported ? ET_OK : ET_ERR_ARGS) &&
-                     bank.sf2_ && bank.validPresets(regions) &&
+    const auto regions = bank.region_count_;
+    if (!require(bank.sf2_ && bank.validPresets(regions) &&
                      bank.validSf2Modulation(regions),
                  "SF2 collection validation"))
       return 1;
-    bank.region_count_ = regions;
-    bank.group_count_ = SFZBank::readU32(header + 24u);
     for (auto index = 0u; index < regions; ++index)
       if (!require(bank.validRegion(bank.region(index)) &&
                        bank.presetForRegion(index) != UINT32_MAX,
@@ -59,15 +64,16 @@ int main(int argc, char **argv) {
     return 0;
   }
   if (argc == 3 && std::strcmp(argv[2], "sf2") == 0) {
-    bank.region_count_ = 1u;
-    bank.group_count_ = 1u;
-    if (!require(committed == (kSf2RenderingSupported ? ET_OK : ET_ERR_ARGS),
-                 "SF2 rendering capability gate") ||
-        !require(bank.sf2_scratch_.size() == 10u && bank.sf2_ &&
+    if (!require(bank.sf2_scratch_.size() == 10u && bank.sf2_ &&
                      bank.streamed_ && bank.header_words_ == 18u &&
-                     bank.preset_count_ == 2u && bank.validPresets(1u) &&
+                     bank.region_count_ == 1u && bank.preset_count_ == 2u &&
+                     bank.validPresets(1u) &&
                      bank.validSf2Modulation(1u),
                  "SF2 collection structure") ||
+        !require(bank.sf2_effects_ && !prepared->sampleStreamReady() &&
+                     prepared->configureSampleStream(generation) == ET_OK &&
+                     prepared->sampleStreamReady(),
+                 "SF2 collection activation without sample pages") ||
         !require(bank.validRegion(bank.region(0)) &&
                      bank.region(0)[LowVelocity] == 0.0F &&
                      bank.findPreset(0, 0) == 1u &&
@@ -97,21 +103,25 @@ int main(int argc, char **argv) {
     if (!require(!bank.validSf2Modulation(1u),
                  "SF2 nonfinite generator rejection"))
       return 1;
-    std::puts("SF2 bank: preserved preset directory, raw generators, route "
-              "validation and capability gate passed");
+    std::puts("SF2 bank: preset directory, raw generators, activation and route validation passed");
     return 0;
   }
-  if (argc == 3 && std::strcmp(argv[2], "reject") == 0)
-    return require(committed == ET_ERR_ARGS, "reject unsupported routes") ? 0
-                                                                          : 1;
-  if (!require(committed == ET_OK, "commit"))
-    return 1;
-  bank.prepareSlice(UINT64_MAX);
-  if (!require(bank.state_ == ET_ASSET_STATE_PREPARING &&
-                   bank.preparation_ == 3,
+  if (argc == 3 && std::strcmp(argv[2], "routes") == 0) {
+    if (!require(bank.modulation_ && bank.modulation_prepared_, "typed modulation preparation"))
+      return 1;
+    const auto view = bank.modulation_->region(0);
+    constexpr auto volumeController = static_cast<std::uint32_t>(schema::Source::Controller) | 1u;
+    if (!require(std::any_of(view.routes.begin(), view.routes.end(), [&](const auto &route) {
+                   return route.sourceA == volumeController && route.depth == 3.0F &&
+                          view.parameters[route.target].property ==
+                              static_cast<std::uint32_t>(schema::Property::Volume);
+                 }),
+                 "CC1 volume route"))
+      return 1;
+  }
+  if (!require(!prepared->sampleStreamReady() && bank.preparation_ == 3,
                "head wait"))
     return 1;
-  const std::uint64_t generation = (UINT64_C(1) << 32) + 7;
   if (!require(bank.configureSampleStream(generation) == ET_OK &&
                    bank.configureSampleStream(generation) == ET_OK &&
                    bank.configureSampleStream(generation + 1) == ET_ERR_STATE,
@@ -165,7 +175,6 @@ int main(int argc, char **argv) {
                    bank.fingerprint_ == fingerprint,
                "tail publication"))
     return 1;
-  std::unique_ptr<PreparedAsset> prepared;
   if (!require(!bank.cache_.sample(1, 0, 0, sample),
                "terminal pending request"))
     return 1;
@@ -180,11 +189,6 @@ int main(int argc, char **argv) {
   if (!require(bank.takeSampleRequests(requests.data(), 4, count) == ET_OK &&
                    count == 1,
                "preparing source may drain requests"))
-    return 1;
-  if (!require(SFZBank::prepare({48000, 2, 128}, info, bytes.data() + 4,
-                                ET_ASSET_F32_MULTICH, prepared) == ET_OK &&
-                   prepared->configureSampleStream(generation) == ET_OK,
-               "prepared update waits for heads"))
     return 1;
   std::puts("streamed bank: v8 metadata, resident onsets, exact positions, "
             "generation and tail page passed");

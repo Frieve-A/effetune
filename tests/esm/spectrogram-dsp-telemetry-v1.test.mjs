@@ -396,7 +396,7 @@ test('Spectrogram scrolls by elapsed render time between deliveries and aligns f
     drawCalls.length = 0;
     markerCalls.length = 0;
     plugin.drawGraph(timestamp);
-    return { x: drawCalls[0][5], marker: markerCalls.at(-1) };
+    return { x: drawCalls[0][5], marker: markerCalls[0] };
   };
   emit(1);
   const first = draw(now);
@@ -743,7 +743,7 @@ test('Spectrogram plot uses one fixed black-background palette before history is
     const frequencyLabels = operations.filter(operation =>
       operation.type === 'fillText' && operation.fillStyle === '#ccc');
     assert.equal(operations.find(operation =>
-      operation.type === 'fillText' && operation.text === 'Time').fillStyle, '#fff');
+      operation.type === 'fillText' && operation.text === 'Time (s)').fillStyle, '#fff');
     if (whiteKey) {
       assert.equal(frequencyLabels.length, 0);
       assert.equal(operations.some(operation =>
@@ -759,7 +759,7 @@ test('Spectrogram plot uses one fixed black-background palette before history is
     }
     const graphLabels = operations.filter(operation =>
       operation.type === 'fillText' &&
-      (operation.text === 'Time' || operation.text === 'Frequency (Hz)' ||
+      (operation.text === 'Time (s)' || operation.text === 'Frequency (Hz)' ||
         operation.fillStyle === '#ccc'));
     const outlinedGraphLabels = operations.filter(operation =>
       operation.type === 'strokeText' && graphLabels.some(label =>
@@ -845,7 +845,9 @@ test('Spectrogram Keyboard replaces the frequency axis with B-C boundary lines',
         for (let midi = Math.ceil(minMidi); midi <= Math.floor(maxMidi); midi++) {
           if ((midi % 12 + 12) % 12 !== pitchClass) continue;
           const boundaryFrequency = 440 * 2 ** ((midi - 0.5 - 69) / 12);
-          positions.push(plugin.freqToY(boundaryFrequency) / 255 * plugin.canvas.height);
+          const y = plugin.freqToY(boundaryFrequency) / 255 * plugin.canvas.height;
+          // Boundaries on the canvas edges are axis bounds and get no line.
+          if (y > 0 && y < plugin.canvas.height) positions.push(y);
         }
         return positions;
       };
@@ -862,7 +864,7 @@ test('Spectrogram Keyboard replaces the frequency axis with B-C boundary lines',
       assert.equal(boundaryLines.length, bCBoundaries.length);
       assert.ok(boundaryLines.every(call => call.lineWidth === dpr));
       assert.ok(operations.some(operation =>
-        operation.type === 'fillText' && operation.text === 'Time'));
+        operation.type === 'fillText' && operation.text === 'Time (s)'));
     }
   }
 });
@@ -908,7 +910,7 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       assert.deepEqual(base, { type: 'fillRect', x: 0, y: 0, width: plotWidth, height });
       assert.ok(operations.some(operation => operation.type === 'fillRect' &&
         operation.x === plotWidth && operation.y === 0 && operation.width === gutter && operation.height === height));
-      const timeLabel = operations.find(operation => operation.type === 'fillText' && operation.text === 'Time');
+      const timeLabel = operations.find(operation => operation.type === 'fillText' && operation.text === 'Time (s)');
       assert.equal(timeLabel.x, plotWidth / 2);
       assert.equal(operations.some(operation =>
         operation.type === 'fillText' && operation.text === 'Frequency (Hz)'), false);
@@ -966,7 +968,7 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       plugin.canvas.width = 28 * dpr;
       plugin.drawGraph(0);
       // A narrow graph caps the keyboard at half its width instead of dropping it.
-      assert.equal(operations.find(operation => operation.type === 'fillText' && operation.text === 'Time').x, 7 * dpr);
+      assert.equal(operations.find(operation => operation.type === 'fillText' && operation.text === 'Time (s)').x, 7 * dpr);
     }
   }
 });

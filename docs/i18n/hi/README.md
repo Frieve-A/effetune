@@ -454,6 +454,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | EQ        | Earphone Cable Sim | सामान्य ईयरफोन केबल से होने वाले आवृत्ति-प्रतिक्रिया बदलाव आम तौर पर कितने छोटे रहते हैं, यह जांचने में मदद करता है | [विवरण](plugins/eq.md#earphone-cable-sim) |
 | EQ        | Group Delay EQ | Tone बदले बिना हर frequency band की delay समायोजित करता है | [विवरण](plugins/eq.md#group-delay-eq) |
 | EQ        | Group Delay PEQ | Tone बदले बिना हर frequency की delay को पाँच parametric bands से नियंत्रित करता है | [विवरण](plugins/eq.md#group-delay-peq) |
+| EQ        | Headphone EQ | Headphone की measurement के आधार पर उसकी response को target curve के करीब लाने वाला FIR correction | [विवरण](plugins/eq.md#headphone-eq) |
 | EQ        | Hi Pass Filter | unwanted low frequencies को precision से हटाता है | [विवरण](plugins/eq.md#hi-pass-filter) |
 | EQ        | Lo Pass Filter | unwanted high frequencies को precision से हटाता है | [विवरण](plugins/eq.md#lo-pass-filter) |
 | EQ        | Loudness Equalizer | low-volume listening के लिए frequency balance correction | [विवरण](plugins/eq.md#loudness-equalizer) |
@@ -521,6 +522,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Spatial   | Phase Select EQ | L/R phase difference और Balance से चुने गए frequency components को boost या cut करता है | [विवरण](plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | Direct, Diffuse और Residual ध्वनि को अलग करके flexible multichannel routing करता है | [विवरण](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | polarity-swapped stereo से mono होते हुए enhanced stereo तक stereo width control करता है | [विवरण](plugins/spatial.md#stereo-blend) |
+| Others    | Distortion Correction | EffeTune में किए गए माप से आपके अपने स्पीकरों की विकृति घटाता है | [विवरण](plugins/others.md#distortion-correction) |
 | Others    | Oscillator | speakers/headphones जांचने के लिए test tone और noise generator | [विवरण](plugins/others.md#oscillator) |
 | Others    | SoundFont Note Player | पहचाने गए नोटों को SF2/SF3 SoundFont और SFZ वाद्य से बजाता है | [विवरण](plugins/others.md#sfz-note-player) |
 | Others    | SoundFont Player | SF2/SF3 SoundFont या SFZ वाद्य से MIDI बजाता है; SF2/SF3 के 16 चैनलों पर स्वतंत्र ध्वनियाँ | [विवरण](plugins/others.md#soundfont-player) |

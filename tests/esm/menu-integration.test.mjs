@@ -222,11 +222,11 @@ test('updateApplicationMenu disables gated items while double blind test is acti
   assert.equal(menuState['view.visualizer'].enabled, false);
 });
 
-test('updateApplicationMenu enables blind tests only with two populated pipelines', async () => {
+test('updateApplicationMenu enables blind tests whenever both pipelines exist', async () => {
   for (const [pipelineA, pipelineB, active, enabled] of [
     [[{}], null, false, false],
-    [[{}], [], false, false],
-    [[], [{}], false, false],
+    [[{}], [], false, true],
+    [[], [{}], false, true],
     [[{}], [{}], false, true],
     [[{}], [{}], true, false]
   ]) {

@@ -14,38 +14,28 @@
 }
 
 .plugin-parameter-ui canvas.spectrum-overlay-canvas {
-    width: calc(100% - 2 * var(--spectrum-overlay-inset, 0px));
-    height: calc(100% - 2 * var(--spectrum-overlay-inset, 0px));
+    width: 100%;
+    height: 100%;
     opacity: 0.85;
 }
 
 body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
-    width: calc(100% - 2 * var(--spectrum-overlay-inset, 0px)) !important;
-    height: calc(100% - 2 * var(--spectrum-overlay-inset, 0px)) !important;
-}
-
-.plugin-parameter-ui .spectrum-overlay-axis-title {
-    right: 10px;
-    top: 50%;
-    color: var(--et-graph-overlay-label);
-    transform: translate(50%, -50%) rotate(-90deg);
+    width: 100% !important;
+    height: 100% !important;
 }
 
 .room-eq-phase-view > canvas.spectrum-overlay-canvas,
 .room-eq-phase-view > .spectrum-overlay-toggle,
-.room-eq-phase-view > .spectrum-overlay-axis-title,
 .room-eq-group-delay-view > canvas.spectrum-overlay-canvas,
 .room-eq-group-delay-view > .spectrum-overlay-toggle,
-.room-eq-group-delay-view > .spectrum-overlay-axis-title,
 .room-eq-impulse-view > canvas.spectrum-overlay-canvas,
-.room-eq-impulse-view > .spectrum-overlay-toggle,
-.room-eq-impulse-view > .spectrum-overlay-axis-title {
+.room-eq-impulse-view > .spectrum-overlay-toggle {
     display: none;
 }
 
 :has(> canvas.spectrum-overlay-canvas) {
     /* Keep the cursor readout clear of the toggle and the 10px spectrum axis labels. */
-    --graph-readout-inset-right: calc(var(--spectrum-overlay-inset, 0px) + 40px);
+    --graph-readout-inset-right: 40px;
 }
 
 .room-eq-additional-eq-graph.room-eq-phase-view,
@@ -56,8 +46,8 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
 
 .spectrum-overlay-toggle {
     position: absolute;
-    top: calc(var(--spectrum-overlay-inset, 0px) + 6px);
-    right: calc(var(--spectrum-overlay-inset, 0px) + 6px);
+    top: 6px;
+    right: 6px;
     width: 22px;
     height: 22px;
     box-sizing: border-box;

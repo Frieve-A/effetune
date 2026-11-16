@@ -138,4 +138,10 @@ test('SoundFont slot selection reuses the packed payload across capacities and c
   assert.equal(Buffer.from(first.payload).toString('hex'), firstBytes);
   assert.equal(readerCalls, initialReaderCalls, 'Context changes reuse the prepared sample metadata');
   assert.deepEqual(queriedSlots.map(query => query.slots), [1, 1, 1, 1]);
+  // A plugin-owned copy keeps its transport identity across a context change.
+  const owned = { ...first, operationRevision: 7, externalAssetSignature: 'bank' };
+  const rematerialized = await owned.materializeForContext(secondContext, lowBudget, estimateEffectBytes);
+  assert.equal(rematerialized.operationRevision, 7);
+  assert.equal(rematerialized.externalAssetSignature, 'bank');
+  compareCanonical(rematerialized, secondContext);
 });

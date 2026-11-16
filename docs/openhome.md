@@ -50,7 +50,7 @@ The desktop app can play the final output of your effect chain, or the sound at 
 
 For quick changes, open **Network Output** beside **Player** in the desktop toolbar. Check the speakers you want to hear and see their connection status in the same list. To listen only on your network speakers, uncheck **This computer**. Check it again to restore sound on the computer. Delay controls are in **Config... > Network > Network Output**.
 
-Network speakers start a little later than this computer, so EffeTune delays the sound on this computer by about two seconds while sending is on, or by as much as the slowest Chromecast device needs. EffeTune measures how far behind each Chromecast device is playing and lines up the other speakers and this computer with it automatically. Use **Delay (ms)** to fine-tune the timing of each speaker and of **This computer** until they play together. If the speakers drift apart over a long listening session, choose **Resync** to restart them together.
+Network speakers start a little later than this computer, so EffeTune delays the sound on this computer by about two seconds while sending is on, or by as much as the slowest Chromecast device needs. EffeTune measures how far behind each Chromecast device is playing and lines up the other speakers and this computer with it automatically. Use **Delay (ms)** to fine-tune the timing of each speaker and of **This computer** until they play together. If the speakers drift apart over a long listening session, choose **Resync** to measure and realign them.
 
 With **Sync Visuals to Audio** on, graphs and meters follow the shared playback timing before individual **Delay (ms)** adjustments. This also works when **This computer** is unchecked.
 
@@ -129,8 +129,8 @@ Automatic server discovery and music-folder sharing require the desktop app. Pla
 When sending audio to network speakers, keep these points in mind:
 
 - Speakers of different types, such as a UPnP AV / DLNA speaker and a Chromecast device, are not aligned automatically; adjust **Delay (ms)** by ear.
-- Speakers can drift apart slowly over a long listening session. Choose **Resync** to restart them together.
-- Chromecast devices start playing within a few seconds after sending begins or after a resync. EffeTune measures how far behind each device is playing and holds back this computer and the other speakers to match. A device that falls more than six seconds behind is restarted automatically.
+- Speakers can drift apart slowly over a long listening session. Choose **Resync** to realign them. Chromecast devices keep playing while EffeTune measures them again, and the timing changes only once, when the measurement is done; UPnP AV / DLNA speakers may pause briefly. While speakers are being synced, including when EffeTune corrects the timing automatically during playback, the **Network Output** button in the toolbar blinks and **Config... > Network > Network Output** shows that syncing is in progress.
+- Chromecast devices start playing within a few seconds after sending begins. EffeTune measures how far behind each device is playing and holds back this computer and the other speakers to match. A device that falls more than six seconds behind is restarted automatically.
 - If one Chromecast device keeps switching between connecting and unreachable while your other speakers play, that device itself is refusing the stream. In the Google Home app, make sure its Digital Wellbeing filters allow all music, then restart the device.
 - EffeTune sends network speakers a 44.1 kHz, 16-bit stereo stream, so receivers that accept sample rates up to 48 kHz only can also play it. Higher sample rates on this computer are converted for the network; the sound on this computer is not affected.
 

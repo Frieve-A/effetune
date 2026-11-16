@@ -1,4 +1,4 @@
-class FiveBandFIRPEQPlugin extends PluginBase {
+class FiveBandFIRPEQPlugin extends FirAssetEqPlugin {
   static BANDS = [
     { frequency: 100, name: '100 Hz' },
     { frequency: 316, name: '316 Hz' },
@@ -38,37 +38,25 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     );
   }
 
+  static FIR_MESSAGES = {
+    name: '5Band FIR PEQ',
+    designing: 'Designing FIR filter…',
+    designFailed: 'The FIR filter could not be designed. Try fewer taps or less extreme settings.',
+    prepareFailed: 'The FIR filter could not be prepared. Try fewer taps or a higher latency.',
+    ready: 'FIR filter is ready.',
+    warning: 'The FIR response may be inaccurate. Increase Taps or reduce Q or Slope.'
+  };
+
+  static PACKED_EXTRAS = { dy: 0, gn: 0 };
+
   constructor() {
     super('5Band FIR PEQ', '5-band FIR parametric equalizer');
-    this.pm = 'min';
-    this.tp = 32768;
-    this.lt = '128';
-    this._sampleRate = 48000;
-    this._outputChannelCount = 2;
-    this._runtimePromise = null;
-    this._designer = null;
-    this._designTimer = null;
-    this._designGeneration = 0;
-    this._designPending = false;
-    this._designStaged = false;
-    this._candidateAssetRevision = null;
-    this._effectiveAssetRevision = null;
-    this._lastDesign = null;
-    this._lastDesignSignature = null;
-    this._assetState = 0;
-    this._disposed = false;
     this._statusMessage = 'Preparing FIR filter…';
-    this._statusState = 'preparing';
-    this._statusElement = null;
-    this._latencyElement = null;
-    this.uiCreated = false;
     this.activeDragMarker = null;
     this.boundMouseMoveHandler = null;
     this.boundMouseUpHandler = null;
     this.bandCheckboxes = [];
-    this.temporalCapability = 'reset-on-resume';
     this.offlineDspAssetErrorMessageKey = 'fiveBandFirPeq.error.design';
-    this.executionState = { state: 'pending', reason: null };
 
     for (let index = 0; index < 5; index += 1) {
       const band = FiveBandFIRPEQPlugin.BANDS[index];
@@ -82,10 +70,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     this.registerProcessor('return data;');
   }
 
-  process(context, data) {
-    return data;
-  }
-
   _t(_key, fallback, params = {}) {
     return Object.entries(params).reduce(
       (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
@@ -93,35 +77,8 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     );
   }
 
-  _packedParameters() {
-    return {
-      ...super.getParameters(),
-      lt: this.lt,
-      fd: this.pm === 'min' ? 0 : this.tp / 2,
-      dy: 0,
-      gn: 0
-    };
-  }
-
   getParameters(options = {}) {
-    const sampleRate = Number.isFinite(options.sampleRate) && options.sampleRate > 0
-      ? options.sampleRate
-      : this._sampleRate;
-    const outputChannelCount = Number.isInteger(options.outputChannelCount) &&
-      options.outputChannelCount >= 1 && options.outputChannelCount <= 16
-      ? options.outputChannelCount
-      : this._outputChannelCount;
-    if (options.commitSampleRate &&
-      (sampleRate !== this._sampleRate || outputChannelCount !== this._outputChannelCount)) {
-      this._sampleRate = sampleRate;
-      this._outputChannelCount = outputChannelCount;
-      this._scheduleDesign(0);
-    }
-    const parameters = {
-      ...this._packedParameters(),
-      pm: this.pm,
-      tp: this.tp
-    };
+    const parameters = super.getParameters(options);
     for (let index = 0; index < 5; index += 1) {
       parameters[`f${index}`] = this[`f${index}`];
       parameters[`g${index}`] = this[`g${index}`];
@@ -133,16 +90,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     return parameters;
   }
 
-  setParameters(params = {}, syncUi = true) {
-    const previousDesign = this._designSignature();
-    const previousLatency = this.lt;
-    super._setValidatedParameters(params);
-    if (['min', 'lin'].includes(params.pm)) this.pm = params.pm;
-    const taps = Number(params.tp);
-    if ([8192, 16384, 32768, 65536, 131072].includes(taps)) this.tp = taps;
-    if (['0', '128', '256', '512', '1024'].includes(String(params.lt))) {
-      this.lt = String(params.lt);
-    }
+  _setDesignParameters(params) {
     for (let index = 0; index < 5; index += 1) {
       const type = params[`t${index}`];
       if (FiveBandFIRPEQPlugin.FILTER_TYPES.some(candidate => candidate.id === type)) {
@@ -172,11 +120,9 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         this[`e${index}`] = Boolean(params[`e${index}`]);
       }
     }
-    this._updatePowerGainBound();
-    this.updateParameters();
-    const nextDesign = this._designSignature();
-    if (previousDesign !== nextDesign) this._scheduleDesign(150);
-    else if (previousLatency !== this.lt && this._lastDesign) this._stageDesign(this._lastDesign);
+  }
+
+  _syncParameterUI(syncUi) {
     if (syncUi) this.setUIValues();
     // Repositioning the markers would yank one out from under the pointer if an
     // inbound update lands mid-drag. The response curve and the number boxes
@@ -188,7 +134,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       this.updateMarkers();
     }
     this.updateResponse();
-    this._renderStatus();
   }
 
   setBand(index, frequency, gain, q, type, enabled, slope) {
@@ -214,10 +159,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     }));
   }
 
-  _designSignature(sampleRate = this._sampleRate) {
-    return JSON.stringify([this.pm, this.tp, this._bands(), sampleRate, this.channel]);
-  }
-
   _designConfig(sampleRate = this._sampleRate) {
     return {
       sampleRate,
@@ -227,330 +168,12 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     };
   }
 
-  async _getRuntime() {
-    if (!this._runtimePromise) {
-      this._runtimePromise = Promise.all([
-        import('../../js/five-band-fir-peq/designer.js'),
-        import('../../js/ir-library/ir-asset-payload.js'),
-        import('../../js/ir-library/ir-plugin-contract.js')
-      ]).then(([designer, payload, contract]) => ({
-        ...designer,
-        ...payload,
-        ...contract
-      }));
-    }
-    return this._runtimePromise;
+  _loadDesignerModule() {
+    return import('../../js/five-band-fir-peq/designer.js');
   }
 
-  _scheduleDesign(delay = 150) {
-    if (this._disposed) return;
-    if (this._designTimer !== null) clearTimeout(this._designTimer);
-    const generation = ++this._designGeneration;
-    this._designPending = true;
-    this._designStaged = false;
-    this._candidateAssetRevision = null;
-    this.updateParameters();
-    this._setStatus('Designing FIR filter…', 'preparing');
-    this._designTimer = setTimeout(() => {
-      if (this._disposed || generation !== this._designGeneration) return;
-      this._designTimer = null;
-      this._designAndStage(generation);
-    }, delay);
-  }
-
-  async _designAndStage(generation) {
-    try {
-      if (this._disposed || generation !== this._designGeneration) return false;
-      const runtime = await this._getRuntime();
-      if (this._disposed || generation !== this._designGeneration) return false;
-      if (!this._designer) {
-        const designer = runtime.createFiveBandFirPeqDesigner();
-        if (this._disposed || generation !== this._designGeneration) {
-          designer.close();
-          return false;
-        }
-        this._designer = designer;
-      }
-      const designer = this._designer;
-      const result = await designer.design(this._designConfig());
-      if (this._disposed || generation !== this._designGeneration ||
-        designer !== this._designer) return false;
-      this._lastDesign = result;
-      this._lastDesignSignature = this._designSignature();
-      this.updateResponse();
-      return this._stageDesign(result, generation);
-    } catch (error) {
-      if (this._disposed || generation !== this._designGeneration) return false;
-      console.error('5Band FIR PEQ design failed:', error);
-      this._designPending = false;
-      this._designStaged = false;
-      this._candidateAssetRevision = null;
-      this.updateParameters();
-      this._setStatus(
-        'The FIR filter could not be designed. Try fewer taps or less extreme settings.',
-        'error'
-      );
-      return false;
-    }
-  }
-
-  async _stageDesign(result, generation = this._designGeneration) {
-    try {
-      if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-        return false;
-      }
-      this._designPending = true;
-      this._designStaged = false;
-      this._candidateAssetRevision = null;
-      this._assetState = 1;
-      this.updateParameters();
-      const runtime = await this._getRuntime();
-      if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-        return false;
-      }
-      const processingChannels = runtime.selectedIrChannelCount(
-        this.channel,
-        this._outputChannelCount
-      );
-      const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-        frames: this.tp,
-        assetChannels: 1,
-        topology: runtime.IR_ASSET_TOPOLOGY.mono,
-        processingChannels,
-        headBlock: Number(this.lt)
-      });
-      const operationRevision = this.setWasmAsset(0, {
-        payload: result.payload,
-        formatTag: 1,
-        headBlock: Number(this.lt),
-        rateDivider: 1,
-        pathCount: 0,
-        inputCount: 0,
-        processingChannels,
-        footprintBytes,
-        externalAssetSignature: this._externalAssetSignature()
-      });
-      if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-        return false;
-      }
-      this._candidateAssetRevision = operationRevision;
-      this._updatePowerGainBound(result.payload);
-      this._renderStatus();
-      return true;
-    } catch (error) {
-      if (this._disposed || generation !== this._designGeneration) return false;
-      console.error('5Band FIR PEQ asset staging failed:', error);
-      this._designPending = false;
-      this._designStaged = false;
-      this._candidateAssetRevision = null;
-      this.updateParameters();
-      this._setStatus(
-        'The FIR filter could not be prepared. Try fewer taps or a higher latency.',
-        'error'
-      );
-      return false;
-    }
-  }
-
-  _externalAssetSignature({
-    sampleRate = this._sampleRate,
-    outputChannelCount = this._outputChannelCount
-  } = {}) {
-    return JSON.stringify([
-      1,
-      this._designConfig(sampleRate),
-      this.lt,
-      this.channel,
-      outputChannelCount
-    ]);
-  }
-
-  _updatePowerGainBound(payload = this._lastDesign?.payload) {
-    if (!(payload instanceof ArrayBuffer) || payload.byteLength < 32 + this.tp * 4) {
-      this.powerGainUpperBoundDb = 0;
-      return;
-    }
-    const samples = new Float32Array(payload, 32);
-    let sum = 0;
-    for (let index = 0; index < this.tp; index += 1) {
-      const value = samples[index];
-      sum += value < 0 ? -value : value;
-    }
-    this.powerGainUpperBoundDb = 20 * Math.log10(sum > 1 ? sum : 1);
-  }
-
-  get offlineDspAssetRequired() {
-    return true;
-  }
-
-  async createOfflineDspState({
-    sampleRate,
-    outputChannelCount,
-    isCurrent = () => true
-  } = {}) {
-    const snapshot = {
-      generation: this._designGeneration,
-      config: this._designConfig(sampleRate),
-      latency: this.lt,
-      channel: this.channel,
-      baseParameters: { ...super.getParameters() }
-    };
-    const operationCurrent = () => !this._disposed && isCurrent() &&
-      snapshot.generation === this._designGeneration;
-    const staleError = () => {
-      const error = new Error('5Band FIR PEQ settings changed during offline filter preparation.');
-      error.userMessageKey = this.offlineDspAssetErrorMessageKey;
-      return error;
-    };
-    if (!operationCurrent()) throw staleError();
-    const runtime = await this._getRuntime();
-    if (!operationCurrent()) throw staleError();
-    const designer = runtime.createFiveBandFirPeqDesigner();
-    let designed;
-    try {
-      designed = await designer.design(snapshot.config);
-    } finally {
-      designer.close();
-    }
-    if (!operationCurrent()) throw staleError();
-    const processingChannels = runtime.selectedIrChannelCount(
-      snapshot.channel,
-      outputChannelCount
-    );
-    const footprintBytes = runtime.estimateIrKernelCommitFootprint({
-      frames: snapshot.config.taps,
-      assetChannels: 1,
-      topology: runtime.IR_ASSET_TOPOLOGY.mono,
-      processingChannels,
-      headBlock: Number(snapshot.latency)
-    });
-    return {
-      parameters: {
-        ...snapshot.baseParameters,
-        lt: snapshot.latency,
-        fd: snapshot.config.phase === 'min' ? 0 : snapshot.config.taps / 2,
-        dy: 0,
-        gn: 0
-      },
-      assets: new Map([[0, {
-        payload: designed.payload,
-        formatTag: 1,
-        headBlock: Number(snapshot.latency),
-        rateDivider: 1,
-        pathCount: 0,
-        inputCount: 0,
-        processingChannels,
-        footprintBytes,
-        warmupSamples: Number(snapshot.latency) +
-          (snapshot.config.phase === 'min' ? 0 : snapshot.config.taps / 2),
-        externalAssetSignature: JSON.stringify([
-          1,
-          snapshot.config,
-          snapshot.latency,
-          snapshot.channel,
-          outputChannelCount
-        ])
-      }]]),
-      offlineDspAssetRequired: true
-    };
-  }
-
-  onWasmAssetState(slot, state, operationRevision) {
-    if (this._disposed || slot !== 0 || !this._isCurrentWasmAssetOperation(
-      slot,
-      operationRevision
-    )) return;
-    const status = state & 0xff;
-    const isCandidate = operationRevision === this._candidateAssetRevision;
-    const isEffective = operationRevision === this._effectiveAssetRevision;
-    if ((!isCandidate && status !== 4) || (!isCandidate && !isEffective)) return;
-    this._assetState = status;
-    if (status === 3) {
-      this._designPending = false;
-      this._designStaged = true;
-      this._effectiveAssetRevision = operationRevision;
-      this._candidateAssetRevision = null;
-      this.updateParameters();
-      const warning = this._lastDesign?.qualityWarnings?.includes('filterAccuracy');
-      this._setStatus(
-        warning
-          ? 'The FIR response may be inaccurate. Increase Taps or reduce Q or Slope.'
-          : 'FIR filter is ready.',
-        warning ? 'warning' : 'ready'
-      );
-    } else if (status === 4) {
-      this._designPending = false;
-      this._designStaged = false;
-      this._candidateAssetRevision = null;
-      this._effectiveAssetRevision = null;
-      this.updateParameters();
-      this._setStatus(
-        'The FIR filter could not be prepared. Try fewer taps or a higher latency.',
-        'error'
-      );
-    }
-    this._renderStatus();
-  }
-
-  onWasmAssetRejected(slot, reason, operationRevision) {
-    if (this._disposed || slot !== 0 || operationRevision !== this._candidateAssetRevision) return;
-    console.warn('5Band FIR PEQ asset admission rejected:', reason);
-    this._designPending = false;
-    this._designStaged = false;
-    this._candidateAssetRevision = null;
-    this._effectiveAssetRevision = null;
-    this._assetState = 4;
-    this.updateParameters();
-    this._setStatus(
-      'The FIR filter could not be prepared. Try fewer taps or a higher latency.',
-      'error'
-    );
-  }
-
-  onMessage(message) {
-    if (this._disposed) return;
-    if (Number.isFinite(message.sampleRate) && message.sampleRate > 0 &&
-      message.sampleRate !== this._sampleRate) {
-      this._sampleRate = message.sampleRate;
-      this._scheduleDesign(0);
-      this.updateResponse();
-    }
-    if (message.type === 'dspExecutionState' && message.pluginId === this.id &&
-      message.validated === true) {
-      this.executionState = { state: message.state, reason: message.reason || null };
-      this._renderStatus();
-    }
-  }
-
-  onChannelSelectionChanged() {
-    this._scheduleDesign(0);
-  }
-
-  _setStatus(message, state = '') {
-    this._statusMessage = message;
-    this._statusState = state;
-    if (!this._statusElement) return;
-    this._statusElement.textContent = message;
-    this._statusElement.dataset.state = state;
-  }
-
-  _renderStatus() {
-    if (this._statusElement) {
-      let message = this._statusMessage;
-      let state = this._statusState;
-      if (this.executionState.state === 'bypassed') {
-        message = 'FIR processing is unavailable, so this effect is bypassed.';
-        state = 'error';
-      }
-      this._statusElement.textContent = message;
-      this._statusElement.dataset.state = state;
-    }
-    if (!this._latencyElement) return;
-    const filterDelay = this.pm === 'min' ? 0 : this.tp / 2;
-    const totalSamples = Number(this.lt) + filterDelay;
-    const milliseconds = totalSamples * 1000 / this._sampleRate;
-    this._latencyElement.textContent =
-      `Latency: ${totalSamples} samples (${milliseconds.toFixed(1)} ms)`;
+  _createDesigner(runtime) {
+    return runtime.createFiveBandFirPeqDesigner();
   }
 
   createUI() {
@@ -603,7 +226,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       gridSvg.appendChild(line);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', `${x}%`);
-      text.setAttribute('y', '95%');
+      text.setAttribute('y', '100%'); text.setAttribute('dy', '-22');
       text.setAttribute('text-anchor', 'middle');
       text.textContent = frequency >= 1000 ? `${frequency / 1000}k` : frequency;
       gridSvg.appendChild(text);
@@ -617,7 +240,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       line.setAttribute('y2', `${y}%`);
       gridSvg.appendChild(line);
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', '2%');
+      text.setAttribute('x', '20');
       text.setAttribute('y', `${y}%`);
       text.setAttribute('dominant-baseline', 'middle');
       text.textContent = `${gain}`;
@@ -977,9 +600,9 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     if (gain) gain.value = this[`g${index}`].toFixed(1);
   }
 
+  // Never clamp: out-of-range frequencies map outside the plot area.
   freqToX(frequency) {
-    const clamped = Math.max(10, Math.min(frequency, 40000));
-    return (Math.log10(clamped) - Math.log10(10)) /
+    return (Math.log10(frequency) - Math.log10(10)) /
       (Math.log10(40000) - Math.log10(10)) * 100;
   }
 
@@ -996,13 +619,9 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     return -(percent - 50) / 50 * 20;
   }
 
-  getGraphPlotArea(container = this.graphContainer) {
-    return GraphPlotArea.from(container);
-  }
 
   updateMarkers() {
     if (!this.uiCreated || !this.markers || !this.graphContainer) return;
-    const plot = this.getGraphPlotArea();
     const width = this.graphContainer.clientWidth;
     const height = this.graphContainer.clientHeight;
     if (!width || !height) return;
@@ -1011,8 +630,8 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       const marker = this.markers[index];
       const frequency = this[`f${index}`];
       const gain = this[`g${index}`];
-      const x = plot.leftPercent + this.freqToX(frequency) / 100 * plot.widthPercent;
-      const y = plot.topPercent + this.gainToY(gain) / 100 * plot.heightPercent;
+      const x = this.freqToX(frequency);
+      const y = this.gainToY(gain);
       marker.style.left = `${x}%`;
       marker.style.top = `${y}%`;
       marker.classList.toggle('disabled', !this[`e${index}`]);
@@ -1238,7 +857,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
       if (xDifference < 3 && yDifference < 3) return;
       this.hasMoved = true;
     }
-    const plot = this.getGraphPlotArea();
+    const plot = this.graphContainer.getBoundingClientRect();
     let x = (event.clientX - plot.left) / plot.width;
     let y = (event.clientY - plot.top) / plot.height;
     x = Math.max(0, Math.min(1, x));
@@ -1307,12 +926,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
 
   cleanup() {
     if (this._disposed) return;
-    this._disposed = true;
-    ++this._designGeneration;
-    if (this._designTimer !== null) clearTimeout(this._designTimer);
-    this._designTimer = null;
-    this._designer?.close();
-    this._designer = null;
     this.disconnectGraphResizeObserver();
     if (this.boundMouseMoveHandler) {
       document.removeEventListener('mousemove', this.boundMouseMoveHandler);
@@ -1321,10 +934,6 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     this.boundMouseMoveHandler = null;
     this.boundMouseUpHandler = null;
     this.activeDragMarker = null;
-    this._lastDesignSignature = null;
-    this.uiCreated = false;
-    this._statusElement = null;
-    this._latencyElement = null;
     super.cleanup();
   }
 }

@@ -44,6 +44,7 @@
     {"type":"FiveBandPEQ","class":"FiveBandPEQ","factory":"createFiveBandPEQ"},
     {"type":"GroupDelayEQ","class":"GroupDelayEQ","factory":"createGroupDelayEQ"},
     {"type":"GroupDelayPEQ","class":"GroupDelayPEQ","factory":"createGroupDelayPEQ"},
+    {"type":"HeadphoneEQ","class":"HeadphoneEQ","factory":"createHeadphoneEQ"},
     {"type":"HiPassFilter","class":"HiPassFilter","factory":"createHiPassFilter"},
     {"type":"LoPassFilter","class":"LoPassFilter","factory":"createLoPassFilter"},
     {"type":"LoudnessEqualizer","class":"LoudnessEqualizer","factory":"createLoudnessEqualizer"},

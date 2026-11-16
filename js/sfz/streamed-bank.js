@@ -143,11 +143,13 @@ export async function prepareStreamedSfzBank({ id, parsed, maxBytes, createSampl
         return provider;
       } catch (error) { provider.close(); throw error; }
     };
-    descriptor.materializeForContext = async (context, nextBudget, nextEstimate) => {
+    // Like materializeSfzAsset, derive the result from the receiver: callers
+    // pass the plugin-owned copy, whose operationRevision and external asset
+    // identity must survive a context change for transport acknowledgement.
+    descriptor.materializeForContext = async function(context, nextBudget, nextEstimate) {
       const next = (await build(context, nextBudget, nextEstimate, descriptor)).descriptor;
-      next.unsupportedOpcodes = descriptor.unsupportedOpcodes;
-      next.incomplete = descriptor.incomplete;
-      return next;
+      if (next === descriptor) return this;
+      return { ...this, ...next, unsupportedOpcodes: descriptor.unsupportedOpcodes, incomplete: descriptor.incomplete };
     };
     return { descriptor, warnings };
   };

@@ -1316,21 +1316,21 @@ test('Stereo correlation and balance controls hide each meter without hiding the
         const both = draw();
         assert.equal(both.correlationBar, true);
         assert.equal(both.balanceBar, true);
-        assert.ok(both.labels.includes('LR Correlation') && both.labels.includes('LR Balance'));
-        assert.ok(both.outlined.includes('LR Correlation') && both.outlined.includes('LR Balance'), 'Titles over the bars are outlined');
+        assert.ok(both.labels.includes('LR Correlation') && both.labels.includes('LR Balance (dB)'));
+        assert.ok(both.outlined.includes('LR Correlation') && both.outlined.includes('LR Balance (dB)'), 'Titles over the bars are outlined');
         item.params.showCorrelation = false;
         const balanceOnly = draw();
         assert.equal(balanceOnly.correlationBar, false);
         assert.equal(balanceOnly.balanceBar, true);
-        assert.ok(!balanceOnly.labels.includes('LR Correlation') && balanceOnly.labels.includes('LR Balance'));
-        assert.ok(!balanceOnly.labels.includes('0.5') && balanceOnly.labels.includes('6dB'));
+        assert.ok(!balanceOnly.labels.includes('LR Correlation') && balanceOnly.labels.includes('LR Balance (dB)'));
+        assert.ok(!balanceOnly.labels.includes('0.5') && balanceOnly.labels.includes('6'));
         item.params.showCorrelation = true;
         item.params.showBalance = false;
         const correlationOnly = draw();
         assert.equal(correlationOnly.correlationBar, true);
         assert.equal(correlationOnly.balanceBar, false);
-        assert.ok(correlationOnly.labels.includes('LR Correlation') && !correlationOnly.labels.includes('LR Balance'));
-        assert.ok(correlationOnly.labels.includes('0.5') && !correlationOnly.labels.includes('6dB'));
+        assert.ok(correlationOnly.labels.includes('LR Correlation') && !correlationOnly.labels.includes('LR Balance (dB)'));
+        assert.ok(correlationOnly.labels.includes('0.5') && !correlationOnly.labels.includes('6'));
         item.params.showCorrelation = false;
         const neither = draw();
         assert.equal(neither.correlationBar, false);
@@ -1690,14 +1690,15 @@ test('Notes use the keyboard space for history and hide its meters until the key
             env.subscribers.get('notes')(noteFrame(), {});
             const plugin = display.plugin, history = plugin.history, column = plugin.writeColumn;
             plugin.meterCurrent.fill(-24);
-            const textAlignments = [];
+            const texts = [];
             target.context.fillText = function(...args) {
-                textAlignments.push(this.textAlign);
+                texts.push({ text: args[0], align: this.textAlign, fillStyle: this.fillStyle });
                 this.calls.push(['fillText', ...args]);
             };
+            const pitchLabels = () => texts.filter(entry => entry.text !== 'Time (s)');
             const draw = themeColors => {
                 target.context.calls.length = 0;
-                textAlignments.length = 0;
+                texts.length = 0;
                 display.draw(item, 1, 800, themeColors);
                 return target.context.calls.slice();
             };
@@ -1723,19 +1724,21 @@ test('Notes use the keyboard space for history and hide its meters until the key
             assert.equal(target.context.fillStyle, '#111');
             item.params.kb = false;
             item.params.showAxisNumbers = true;
-            const labels = draw(), labelAlignments = textAlignments.slice();
+            const labels = draw(), labelTexts = pitchLabels();
             assert.equal(labels.some(call => call[0] === 'fillRect'), false);
-            assert.ok(labels.some(call => call[0] === 'fillText'), 'Pitch labels are independent');
-            assert.equal(target.context.fillStyle, 'rgb(102,102,102)');
+            assert.ok(labelTexts.length > 0, 'Pitch labels are independent');
+            assert.ok(texts.some(entry => entry.text === 'Time (s)'), 'Axis numbers include the time axis title');
+            assert.ok(labelTexts.every(entry => entry.fillStyle === 'rgb(102,102,102)'));
             draw({ 'graph-label': '#eeeeee' });
-            assert.equal(target.context.fillStyle, 'rgb(238,238,238)');
+            assert.ok(pitchLabels().every(entry => entry.fillStyle === 'rgb(238,238,238)'));
             item.params.showAxisNumbers = false;
             assert.equal(draw().some(call => call[0] === 'fillText'), false);
             item.params.showAxisNumbers = true;
             assert.equal(extent(labels), fullExtent);
             if (ly === 'Vertical') {
-                assert.ok(labelAlignments.length > 0 && labelAlignments.every(align => align === 'right'));
-                assert.ok(labels.filter(call => call[0] === 'fillText').every(call => call[2] === target.width - 2));
+                assert.ok(labelTexts.length > 0 && labelTexts.every(entry => entry.align === 'right'));
+                assert.ok(labels.filter(call => call[0] === 'fillText' && call[1] !== 'Time (s)')
+                    .every(call => call[2] === target.width - 2));
             }
             item.params.showAxisNumbers = false;
             delete item.params.kb;

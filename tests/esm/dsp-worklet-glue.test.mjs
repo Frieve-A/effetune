@@ -5231,6 +5231,12 @@ test('background display DSP bypass pauses Spectrum Overlay acquisition and rest
   });
   assert.equal(harness.processor.dspPipelineReady, false);
   processBlock(harness.processor);
+  // The paused capture restarts and stays silent until its window is refilled.
+  assert.equal(tapState.position, 128);
+  assert.equal(messagesOf(harness.posts, 'spectrumOverlay').length, 0);
+  tapState.position = 2040;
+  tapState.primed = true;
+  processBlock(harness.processor);
   assert.equal(tapState.position, 2168);
   assert.equal(messagesOf(harness.posts, 'spectrumOverlay').length, 1);
 
@@ -7865,6 +7871,18 @@ test('gate: an output delay change while open answers outputDelaySet when the qu
     type: 'outputDelaySet', requestId: 2, samples: 40
   });
   assert.equal(harness.processor.outputDelaySamples, 40);
+});
+
+test('gate: a request queued behind a closing gate is answered when the queue commits', async () => {
+  const harness = await createGatedWasmHarness([latencyPlugin()]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  await harness.send({ type: 'setOutputDelay', requestId: 2, samples: 40 });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  await harness.send({ type: 'sfzGetPreparationContext', requestId: 3, pluginId: 7 });
+  assert.equal(messagesOf(harness.posts, 'sfzPreparationContext').length, 0);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(messagesOf(harness.posts, 'sfzPreparationContext').at(-1)?.message.requestId, 3);
 });
 
 test('gate: in-process latency drift is adopted immediately in series and gated across compensation lines', async () => {

@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 112 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 113 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -70,6 +70,7 @@ Browse all 112 semantic types registered in the v1 binding catalog. The list rem
 - [5Band PEQ](/dsp/effects/five-band-peq/) (`FiveBandPEQ`) — Provides five configurable parametric equalizer bands. <span data-effect-tags="eq  "></span>
 - [Group Delay EQ](/dsp/effects/group-delay-eq/) (`GroupDelayEQ`) — Applies an externally prepared FIR response to adjust group delay. <span data-effect-tags="eq seeded asset"></span>
 - [Group Delay PEQ](/dsp/effects/group-delay-peq/) (`GroupDelayPEQ`) — Applies an externally prepared FIR response for five-band parametric group-delay adjustment. <span data-effect-tags="eq seeded asset"></span>
+- [Headphone EQ](/dsp/effects/headphone-eq/) (`HeadphoneEQ`) — Applies an externally prepared FIR response that corrects a headphone toward a target curve. <span data-effect-tags="eq seeded asset"></span>
 - [Hi Pass Filter](/dsp/effects/hi-pass-filter/) (`HiPassFilter`) — Attenuates frequencies below a configurable cutoff. <span data-effect-tags="eq  "></span>
 - [Lo Pass Filter](/dsp/effects/lo-pass-filter/) (`LoPassFilter`) — Attenuates frequencies above a configurable cutoff. <span data-effect-tags="eq  "></span>
 - [Loudness Equalizer](/dsp/effects/loudness-equalizer/) (`LoudnessEqualizer`) — Applies level-dependent frequency compensation based on equal-loudness behavior. <span data-effect-tags="eq  "></span>

@@ -70,6 +70,16 @@
         { "frame": 319, "params": { "t0": "ls", "g0": -8, "q0": 2, "e7": true, "t14": "hs", "g14": 9 } },
         { "frame": 640, "params": { "g0": 0, "g7": 0, "g14": 0, "t0": "pk", "t14": "pk" } }
       ]
+    },
+    {
+      "id": "master-gain-transitions",
+      "stimulus": "noise",
+      "frames": 901,
+      "params": { "mg": -6.5, "g3": 4 },
+      "events": [
+        { "frame": 200, "params": { "mg": 3 } },
+        { "frame": 600, "params": { "mg": 0 } }
+      ]
     }
   ]
 }

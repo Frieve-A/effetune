@@ -81,10 +81,11 @@ function finiteExtent(curves, valueForCurve) {
     return Number.isFinite(minimum) ? { minimum, maximum } : { minimum: -1, maximum: 1 };
 }
 
+// Interior quarter ticks only; the axis bounds sit on the graph edge and get no tick.
 function linearTicks(minimum, maximum, formatter) {
     const span = maximum - minimum || 1;
-    return Array.from({ length: 5 }, (_, index) => {
-        const fraction = index / 4;
+    return Array.from({ length: 3 }, (_, index) => {
+        const fraction = (index + 1) / 4;
         const value = maximum - fraction * span;
         return { position: fraction, label: formatter(value) };
     });
@@ -100,7 +101,6 @@ function impulseTimeTicks(startMs, endMs) {
         const time = index * interval;
         ticks.push({ position: (time - startMs) / spanMs, label: time.toFixed(digits) });
     }
-    if (ticks.length) ticks[ticks.length - 1].label += ' ms';
     return ticks;
 }
 
@@ -212,14 +212,9 @@ function symmetricRange(curves, valueForCurve, minimumLimit) {
     return { minimum: -limit, maximum: limit };
 }
 
-function yPosition(value, range, clampToRange = true) {
+function yPosition(value, range) {
     if (!Number.isFinite(value)) return Number.NaN;
-    const displayValue = clampToRange
-        ? value < range.minimum
-            ? range.minimum
-            : value > range.maximum ? range.maximum : value
-        : value;
-    return (range.maximum - displayValue) / (range.maximum - range.minimum || 1);
+    return (range.maximum - value) / (range.maximum - range.minimum || 1);
 }
 
 function spectrumPoints(
@@ -230,8 +225,7 @@ function spectrumPoints(
     unit,
     digits,
     validOnly,
-    displayValue = value => value,
-    clampToRange = true
+    displayValue = value => value
 ) {
     const frequencies = curve.spectrum?.frequencies;
     const validity = curve.spectrum?.valid;
@@ -256,7 +250,7 @@ function spectrumPoints(
         }
         result.push({
             x: xAxis.position(frequency),
-            y: yPosition(value, range, clampToRange),
+            y: yPosition(value, range),
             xValue: frequency,
             yValue: value,
             xLabel: formatFrequency(frequency),
@@ -361,11 +355,9 @@ export function createPipelineImpulseView(result, timeRange, divisors) {
         yLabel: 'Amplitude',
         xTicks: impulseTimeTicks(timeRange.minimum, timeRange.maximum),
         yTicks: [
-            { position: 0, label: '' },
             { position: 0.25, label: '0.5' },
             { position: 0.5, label: '0' },
-            { position: 0.75, label: '-0.5' },
-            { position: 1, label: '' }
+            { position: 0.75, label: '-0.5' }
         ],
         curves
     };
@@ -519,11 +511,11 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         after: impulseDivisor(result.after.impulse)
     };
 
-    const groupDelayView = (label, curves, range, clampToRange = true) => ({
+    const groupDelayView = (label, curves, range) => ({
         xLabel: 'Frequency (Hz)',
         yLabel: label,
         xTicks: xAxis.ticks,
-        yTicks: linearTicks(range.minimum, range.maximum, value => `${formatNumber(value, 2)} ms`),
+        yTicks: linearTicks(range.minimum, range.maximum, value => String(Number(value.toPrecision(3)))),
         curves: viewCurves(curves, curve => spectrumPoints(
             curve,
             curve.displayGroupDelayMs,
@@ -531,9 +523,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             range,
             'ms',
             2,
-            true,
-            value => value,
-            clampToRange
+            true
         ))
     });
 
@@ -544,7 +534,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             xTicks: xAxis.ticks,
             yTicks: FREQUENCY_MAGNITUDE_TICKS_DB.map(value => ({
                 position: yPosition(value, frequencyRange),
-                label: `${value}dB`
+                label: String(value)
             })),
             curves: viewCurves(frequencySources, curve => spectrumPoints(
                 curve,
@@ -561,7 +551,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
             xLabel: 'Frequency (Hz)',
             yLabel: 'Phase (°)',
             xTicks: xAxis.ticks,
-            yTicks: linearTicks(-180, 180, value => `${formatNumber(value, 0)}°`),
+            yTicks: linearTicks(-180, 180, value => formatNumber(value, 0)),
             curves: viewCurves(phaseSources, curve => spectrumPoints(
                 curve,
                 curve.displayPhaseDegrees,
@@ -580,8 +570,7 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
         excessGroupDelay: groupDelayView(
             'Excess group delay (ms)',
             excessDelaySources,
-            excessDelayRange,
-            false
+            excessDelayRange
         ),
         impulse: createPipelineImpulseView(result, timeRange, impulseDivisors),
         ...measurementAnalysisViews(result)

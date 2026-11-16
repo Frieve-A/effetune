@@ -9,8 +9,8 @@ permalink: /dsp/concepts/assets-and-bundles/
 
 ## Asset-required effects
 
-`CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`, and
-`RoomEQ` require `assets.impulseResponse`. The resolver returns Python `AssetData` or
+`CrosstalkCancellation`, `FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `HeadphoneEQ`,
+`IRReverb`, and `RoomEQ` require `assets.impulseResponse`. The resolver returns Python `AssetData` or
 deterministic ETA1 bytes/`{bytes, format}` in JavaScript. It never relies on
 repository fixtures. `SoundFontPlayer` requires `assets.soundFont` instead; see
 [SoundFont banks](#soundfont-banks).
@@ -22,6 +22,7 @@ repository fixtures. `SoundFontPlayer` requires `assets.soundFont` instead; see
 | [`FiveBandFIRPEQ`](/dsp/effects/five-band-firpeq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
 | [`GroupDelayEQ`](/dsp/effects/group-delay-eq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
 | [`GroupDelayPEQ`](/dsp/effects/group-delay-peq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
+| [`HeadphoneEQ`](/dsp/effects/headphone-eq/#asset-requirements) | One coefficient channel in `mono` topology. The same filter runs on every selected channel. |
 | [`IRReverb`](/dsp/effects/ir-reverb/#asset-requirements) | `channelMode` sets the topology. `mono` uses one IR channel for every selected channel. `independent` uses one IR channel per selected channel. `trueStereo` uses four IR channels (LL, LR, RL, RR) and exactly two selected channels. `matrix` uses explicit convolution paths. `automatic` chooses `mono` for a one-channel IR, `trueStereo` for a four-channel IR on two selected channels, and `independent` when the IR has one channel per selected channel; give other layouts explicitly as `matrix`. |
 | [`RoomEQ`](/dsp/effects/room-eq/#asset-requirements) | One shared coefficient channel (`mono`) or one coefficient channel per selected channel (`independent`). |
 
@@ -171,6 +172,7 @@ for effect_type in (
     "FiveBandFIRPEQ",
     "GroupDelayEQ",
     "GroupDelayPEQ",
+    "HeadphoneEQ",
     "IRReverb",
     "RoomEQ",
 ):
@@ -258,6 +260,7 @@ export const ASSET_EFFECT_TYPES = Object.freeze([
   'FiveBandFIRPEQ',
   'GroupDelayEQ',
   'GroupDelayPEQ',
+  'HeadphoneEQ',
   'RoomEQ',
   'IRReverb',
   'CrosstalkCancellation'

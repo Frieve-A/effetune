@@ -45,7 +45,8 @@ other than `bassGain`, `lfeGain`, and `headroom` (including `phase`, `taps`, `ro
 `lfeFrequency`, and `lfeSlope`), or after changing `IRReverb.channelMode`,
 `latency`, or `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
-`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `CrosstalkCancellation`, or `RoomEQ`. Live updates to those
+`FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `HeadphoneEQ`, `CrosstalkCancellation`, or
+`RoomEQ`. Live updates to those
 asset-configuration parameters raise `ValidationError` before processing or posting
 a Worklet command.
 

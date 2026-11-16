@@ -19,10 +19,10 @@ En ambos casos, EffeTune registra tus respuestas y calcula un valor p para que v
 
 La prueba compara los dos pipelines descritos en [Usando Funciones de Pipeline AB](README.md#usando-funciones-de-pipeline-ab):
 
-- **Pipeline A** y **Pipeline B** deben contener al menos un efecto cada uno.
+- **Pipeline B** debe existir. Cualquiera de los dos pipelines puede estar vacío, así que también puedes comparar un efecto con el sonido sin ningún procesamiento.
 - Coloca una configuración en Pipeline A y la otra en Pipeline B, manteniendo idéntico todo lo demás (por ejemplo, *Con EQ* frente a *Sin EQ*) para evaluar únicamente esa diferencia.
 - Recuerda qué configuración pusiste en Pipeline A y cuál en Pipeline B. En una prueba de preferencia A/B, el resultado indica si se prefirió de forma significativa Pipeline A o Pipeline B.
-- La opción «Prueba de doble ciego» del menú y los botones de inicio permanecen desactivados hasta que Pipeline A y Pipeline B contengan al menos un efecto cada uno.
+- La opción «Prueba de doble ciego» del menú y los botones de inicio permanecen desactivados hasta que se haya creado Pipeline B.
 
 ## Abrir la prueba
 

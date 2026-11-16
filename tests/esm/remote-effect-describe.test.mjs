@@ -133,8 +133,8 @@ test('recording stays on the throwaway instance', () => {
 });
 
 test('group delay hints follow the temporary plugin sample rate', async () => {
-    const sources = (await Promise.all(['group_delay_eq.js', 'group_delay_peq.js'].map(file =>
-        fs.readFile(new URL(`../../plugins/eq/${file}`, import.meta.url), 'utf8')
+    const sources = (await Promise.all(['fir-asset-eq.js', 'eq/group_delay_eq.js', 'eq/group_delay_peq.js'].map(file =>
+        fs.readFile(new URL(`../../plugins/${file}`, import.meta.url), 'utf8')
     ))).join('\n');
     for (const [sampleRate, expectedLimit] of [[44100, 162.5], [48000, 149.3], [96000, 74.6]]) {
         const window = loadClasses({ window: { audioContext: { sampleRate } }, sources });

@@ -186,7 +186,14 @@ export async function prepareItems(sourceItems) {
                     item.bytes += original.bytes.byteLength;
                 }
             } else if (item.kind === 'measurement') {
-                item.bytes = jsonBytes(item.data.measurement).byteLength;
+                const measurement = item.data.measurement;
+                // The archive stores the model as its own payload, so the fingerprint uses its digest.
+                if (measurement.speakerModel !== undefined) {
+                    const bytes = jsonBytes(measurement.speakerModel);
+                    measurement.speakerModel = { sha256: await sha256IrBytes(bytes), bytes: bytes.byteLength };
+                    item.bytes += bytes.byteLength;
+                }
+                item.bytes += jsonBytes(measurement).byteLength;
                 for (const response of item.data.impulseResponses) {
                     const bytes = encodeFloat32(response.data);
                     response.data = { sha256: await sha256IrBytes(bytes), bytes: bytes.byteLength };

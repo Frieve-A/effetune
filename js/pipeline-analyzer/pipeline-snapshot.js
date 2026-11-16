@@ -1,6 +1,7 @@
 import { getPipelineAnalyzerOutputCapacity } from './slot-policy.js';
 import { normalizeMeasurementSettings } from './mls.js';
 import { getPipelineAnalysisRequirements } from './analysis-requirements.js';
+import { SF2_TABLE_VERSION, SF2_TABLE_HEADER_WORDS } from '../sfz/asset.js';
 import {
     getPluginExecutionChannelMode,
     getPluginExecutionUnsupportedReason
@@ -256,9 +257,20 @@ export function getActiveWasmPluginIds(audioManager) {
         .map(entry => entry.pluginId));
 }
 
+function isUntriggeredSoundFontAsset(entry, slot, descriptor) {
+    if (slot !== 0 || entry.type !== 'SoundFontPlayerPlugin' ||
+        entry.data?.parameters?.pm !== -1 ||
+        !(descriptor.payload instanceof ArrayBuffer) ||
+        descriptor.payload.byteLength < 32 + SF2_TABLE_HEADER_WORDS * 4) return false;
+    const header = new DataView(descriptor.payload, 32);
+    return header.getUint32(0, true) === 0x53465a &&
+        header.getUint32(4, true) === SF2_TABLE_VERSION &&
+        header.getUint32(36, true) === 0;
+}
+
 // Builds the offline-processing part of a snapshot (plugins, processors, DSP and assets),
 // shared by the Pipeline Analyzer and the measurement hand-off.
-async function collectProcessingSnapshot(options, format) {
+async function collectProcessingSnapshot(options, format, isAnalysis = false) {
     const {
         audioManager,
         workletSync,
@@ -392,14 +404,31 @@ async function collectProcessingSnapshot(options, format) {
         for (const slot of requiredSlots) {
             const descriptor = effective.assets.get(slot);
             const revision = effective.revisions.get(slot);
-            assets.push({ pluginId: entry.data.id, slot, ...descriptor });
-            assetSupportSamples += irAssetSupportSamples(descriptor);
             assetRevisions.push({
                 pluginId: entry.data.id,
                 slot,
                 operationRevision: revision.operationRevision,
                 rejectedCandidate: effective.rejectedCandidates.get(slot) || null
             });
+            // Analysis starts reset and sends no MIDI. An SF2/SF3 bank without
+            // preview cannot generate audio, so its samples are unnecessary.
+            // Keep the native processor and routing; SFZ effects can generate
+            // audio independently and must not take this path.
+            if (isAnalysis && isUntriggeredSoundFontAsset(entry, slot, descriptor)) continue;
+            // The isolated worker cannot supply sample pages requested by this asset.
+            if (typeof descriptor.sampleProviderFactory === 'function') {
+                throw new PipelineSnapshotError('asset-unavailable', {
+                    name: entry.type,
+                    missingSlots: [slot],
+                    timedOut: false
+                });
+            }
+            // Runtime-only helpers such as context materializers cannot be cloned.
+            const transportable = Object.fromEntries(
+                Object.entries(descriptor).filter(([, value]) => typeof value !== 'function')
+            );
+            assets.push({ pluginId: entry.data.id, slot, ...transportable });
+            assetSupportSamples += irAssetSupportSamples(descriptor);
         }
     }
 
@@ -453,7 +482,7 @@ export async function buildPipelineAnalyzerSnapshot(options) {
     const selected = normalizeAnalyzerSlots(configuration, format.channelCount);
     const pipelineIdentity = audioManager?.currentPipeline === 'B' ? 'B' : 'A';
     const { processing, executionEntries, assetRevisions } =
-        await collectProcessingSnapshot(options, format);
+        await collectProcessingSnapshot(options, format, true);
     const measurementSettings = normalizeMeasurementSettings(configuration?.measurementSettings);
     let warmupSamples = 0;
     if (measurementSettings.signalType === 'impulse') {

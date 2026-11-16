@@ -2346,9 +2346,17 @@ test('discard-and-continue navigation restores the full snapshot before continui
             } else {
                 await manager.startNewMeasurement();
                 const pending = manager.pendingAction;
+                const elements = new Map(['loading-spinner-results', 'editActions']
+                    .map(id => [id, { style: { display: 'block' } }]));
+                globalThis.document = { getElementById: id => elements.get(id) };
+                manager.measurementDisplay.displayMeasurementDetails = id => {
+                    assert.equal(id, measurement.id);
+                    assert.deepEqual(dataStorage.getMeasurementById(id), original);
+                };
                 manager.startNewMeasurement = () => { continuedWith = 'start'; };
                 pending();
                 assert.equal(continuedWith, 'start');
+                assert.equal(elements.get('editActions').style.display, 'none');
             }
 
             assert.deepEqual(measurement, original);

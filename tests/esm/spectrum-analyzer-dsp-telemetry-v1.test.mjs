@@ -836,7 +836,8 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         const standardFrequencyLines = collectStrokedLines(operations).filter(line =>
           line.start.x === line.end.x && line.start.y === 0 && line.end.y === height &&
           line.style === 'stub:graph-grid-subtle');
-        assert.equal(standardFrequencyLines.length, sc === 'log' ? 11 : 9);
+        // The 20 Hz and 40 kHz axis bounds sit on the canvas edges and get no line.
+        assert.equal(standardFrequencyLines.length, sc === 'log' ? 9 : 7);
         assert.ok(operations.some(operation =>
           operation.type === 'fillText' && operation.text === 'Frequency (Hz)'));
         assert.ok(operations.some(operation =>
@@ -864,7 +865,7 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         assert.ok(operations.some(operation =>
           operation.type === 'fillText' && operation.text === 'Level (dB)'));
         assert.ok(operations.some(operation =>
-          operation.type === 'fillText' && /^-\d+dB$/.test(operation.text)));
+          operation.type === 'fillText' && /^-\d+$/.test(operation.text)));
         const expectedBoundaryKeys = plugin.getKeyboardGeometry(width)
           .filter(key => {
             const pitchClass = (key.midi % 12 + 12) % 12;

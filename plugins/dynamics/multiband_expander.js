@@ -1033,9 +1033,10 @@ class MultibandExpanderPlugin extends PluginBase {
       const band = this.bands[bandIndex];
       const cssWidth = canvas.clientWidth || width;
       const scale = cssWidth > 0 ? width / cssWidth : 2;
-      const gridLabelFontSize = 11 * scale;
+      const gridLabelFontSize = 12 * scale;
       const axisFontSize = 14 * scale;
-      const gridLabelX = 40 * scale;
+      // Leaves room for the descenders of the rotated Y-axis title
+      const gridLabelX = 44 * scale;
       const gridLabelYOffset = 3 * scale;
       const bottomLabelOffset = 20 * scale;
       const axisBottomOffset = 3 * scale;
@@ -1062,28 +1063,7 @@ class MultibandExpanderPlugin extends PluginBase {
       });
       ctx.stroke();
 
-      ctx.fillStyle = LABEL_COLOR;
-      ctx.font = `${gridLabelFontSize}px Arial`;
-      DB_POINTS.forEach(db => {
-        const x = ((db + 60) / 60) * width;
-        const y = height - ((db + 60) / 60) * height;
-        ctx.textAlign = 'right';
-        ctx.fillText(`${db}dB`, gridLabelX, y + gridLabelYOffset);
-        ctx.textAlign = 'center';
-        ctx.fillText(`${db}dB`, x, height - bottomLabelOffset);
-      });
-
-      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
-      ctx.font = `${axisFontSize}px Arial`;
-      ctx.textAlign = 'center';
-      ctx.fillText('in', width / 2, height - axisBottomOffset);
-      ctx.save();
-      ctx.translate(axisX, height / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText('out', 0, 0);
-      ctx.restore();
-
-      // Draw transfer curve for expander
+      // Draw transfer curve for expander before the text so it never covers tick values or axis titles
       ctx.strokeStyle = CURVE_COLOR;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -1103,6 +1083,27 @@ class MultibandExpanderPlugin extends PluginBase {
         }
       }
       ctx.stroke();
+
+      ctx.fillStyle = LABEL_COLOR;
+      ctx.font = `${gridLabelFontSize}px Arial`;
+      DB_POINTS.forEach(db => {
+        const x = ((db + 60) / 60) * width;
+        const y = height - ((db + 60) / 60) * height;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${db}`, gridLabelX, y + gridLabelYOffset);
+        ctx.textAlign = 'center';
+        ctx.fillText(`${db}`, x, height - bottomLabelOffset);
+      });
+
+      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+      ctx.font = `${axisFontSize}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Input (dB)', width / 2, height - axisBottomOffset);
+      ctx.save();
+      ctx.translate(axisX, height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Output (dB)', 0, 0);
+      ctx.restore();
 
       // Draw gain boost meter (from top down, similar to expander)
       if (this.hasLocalAudio !== false && band.gb > 0) {

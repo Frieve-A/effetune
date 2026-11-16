@@ -238,9 +238,8 @@ class ExciterPlugin extends PluginBase {
         const ctx = canvas.getContext("2d");
         const width = canvas.width, height = canvas.height;
         const dpr = this._getCanvasDpr(canvas);
-        const cssWidth = width / dpr;
-        const tickFont = Math.round(11 * dpr);
-        const axisFont = Math.round(13 * dpr);
+        const tickFont = Math.round(12 * dpr);
+        const axisFont = Math.round(14 * dpr);
         const bottomTickY = height - 26 * dpr;
         const axisBottomY = height - 4 * dpr;
         const leftLabelX = 40 * dpr;
@@ -253,25 +252,28 @@ class ExciterPlugin extends PluginBase {
         // Draw grid
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = gridLineWidth;
-        const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-        const labeledFreqs = cssWidth < 420
-            ? [50, 200, 1000, 5000, 10000]
-            : [50, 100, 200, 500, 1000, 2000, 5000, 10000];
-        freqs.forEach(freq => {
+        // Interior grid values only: 20 Hz / 20 kHz and -60 / +12 dB are the axis bounds.
+        // A value that would overlap the previous value on its axis is omitted.
+        const tickGap = 4 * dpr;
+        ctx.font = `${tickFont}px Arial`;
+        let previousRight = -Infinity;
+        [50, 100, 200, 500, 1000, 2000, 5000, 10000].forEach(freq => {
             const x = width * (Math.log10(freq) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20));
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
             ctx.stroke();
-            if (labeledFreqs.includes(freq)) {
+            const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+            const halfWidth = ctx.measureText(label).width / 2;
+            if (x - halfWidth >= previousRight + tickGap) {
                 ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "center";
-                ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
+                ctx.fillText(label, x, bottomTickY);
+                previousRight = x + halfWidth;
             }
         });
-        const dBs = cssWidth < 420 ? [-60, -36, -12, 0, 12] : [-60, -48, -36, -24, -12, 0, 12];
-        dBs.forEach(db => {
+        let previousY = Infinity;
+        [-48, -36, -24, -12, 0].forEach(db => {
             const y = height * (1 - (db + 60) / 72);
             ctx.beginPath();
             ctx.moveTo(0, y);
@@ -285,11 +287,11 @@ class ExciterPlugin extends PluginBase {
                 ctx.lineWidth = gridLineWidth;
             }
             ctx.stroke();
-            if (db > -60 && db < 12) {
+            if (previousY - y >= tickFont + tickGap) {
                 ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
-                ctx.font = `${tickFont}px Arial`;
                 ctx.textAlign = "right";
-                ctx.fillText(`${db}dB`, leftLabelX, y + 3 * dpr);
+                ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
+                previousY = y;
             }
         });
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
@@ -362,22 +364,24 @@ class ExciterPlugin extends PluginBase {
         const width = canvas.width;
         const height = canvas.height;
         const dpr = this._getCanvasDpr(canvas);
-        const tickFont = Math.round(11 * dpr);
-        const axisFont = Math.round(13 * dpr);
+        const tickFont = Math.round(12 * dpr);
+        const axisFont = Math.round(14 * dpr);
         const axisInset = 12 * dpr;
         const bottomInset = 4 * dpr;
+        // Tick values sit one row above the Input title and one column right of the Output title.
+        const bottomTickY = height - 22 * dpr;
+        const leftLabelX = 40 * dpr;
         const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
         ctx.clearRect(0, 0, width, height);
         ctx.strokeStyle = (window.ThemePalette?.get('graph-grid') ?? '');
         ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
-        for (let x = 0; x <= width; x += width / 4) {
+        // Interior quarter lines only; the axis bounds get no grid line
+        for (let i = 1; i < 4; i++) {
+            const x = width * i / 4;
+            const y = height * i / 4;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
-            ctx.stroke();
-        }
-        for (let y = 0; y <= height; y += height / 4) {
-            ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(width, y);
             ctx.stroke();
@@ -385,26 +389,21 @@ class ExciterPlugin extends PluginBase {
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         ctx.font = `${axisFont}px Arial`;
         ctx.textAlign = 'center';
-        ctx.fillText('in', width / 2, height - bottomInset);
+        ctx.fillText('Input (FS)', width / 2, height - bottomInset);
         ctx.save();
         ctx.translate(axisInset, height / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('out', 0, 0);
+        ctx.fillText('Output (FS)', 0, 0);
         ctx.restore();
         ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? '');
         ctx.font = `${tickFont}px Arial`;
-        ctx.fillText('-6dB', width * 0.25, height - bottomInset);
-        ctx.fillText('-6dB', width * 0.75, height - bottomInset);
-        ctx.save();
-        ctx.translate(axisInset, height * 0.25);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('-6dB', 0, 0);
-        ctx.restore();
-        ctx.save();
-        ctx.translate(axisInset, height * 0.75);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText('-6dB', 0, 0);
-        ctx.restore();
+        ctx.fillText('-0.5', width * 0.25, bottomTickY);
+        ctx.fillText('0', width / 2, bottomTickY);
+        ctx.fillText('0.5', width * 0.75, bottomTickY);
+        ctx.textAlign = 'right';
+        ctx.fillText('0.5', leftLabelX, height * 0.25 + 4 * dpr);
+        ctx.fillText('0', leftLabelX, height / 2 + 4 * dpr);
+        ctx.fillText('-0.5', leftLabelX, height * 0.75 + 4 * dpr);
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();

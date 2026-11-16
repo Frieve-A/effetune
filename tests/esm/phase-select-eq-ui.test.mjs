@@ -865,26 +865,26 @@ test('canvas follows the existing analyzer background, grid, label, and DPR cont
   assert.ok(hasSet('fillStyle', 'stub:graph-bg-deep'));
   assert.ok(hasSet('strokeStyle', 'stub:graph-grid-soft'));
   assert.equal(hasSet('strokeStyle', 'rgba(255, 255, 255, 0.45)'), false);
-  assert.ok(hasSet('fillStyle', 'stub:graph-tone-50'));
+  assert.ok(hasSet('fillStyle', 'stub:graph-label'));
   assert.ok(hasSet('strokeStyle', 'stub:graph-handle-active'));
   assert.ok(hasSet('lineWidth', 1));
   assert.ok(hasSet('lineWidth', 1.5));
   assert.equal(hasSet('lineWidth', 0.5), false);
   assert.ok(hasSet('font', '12px Arial'));
   const zeroPhaseLabel = events.find(event => event.type === 'call' &&
-    event.key === 'fillText' && event.args[0] === '0°');
-  const negativePhaseEnd = events.find(event => event.type === 'call' &&
-    event.key === 'fillText' && event.args[0] === '-180°');
-  const positivePhaseEnd = events.find(event => event.type === 'call' &&
-    event.key === 'fillText' && event.args[0] === '+180°');
+    event.key === 'fillText' && event.args[0] === '0');
+  const drawnText = () => events.filter(event => event.type === 'call' &&
+    event.key === 'fillText').map(event => event.args[0]);
   const oneKilohertzLabel = events.find(event => event.type === 'call' &&
     event.key === 'fillText' && event.args[0] === '1k');
   assert.equal(zeroPhaseLabel.args[2], plugin._plotRect().bottom - 25);
-  assert.equal(negativePhaseEnd.args[1], plugin._plotRect().left);
-  assert.equal(positivePhaseEnd.args[1], plugin._plotRect().right);
-  assert.equal(negativePhaseEnd.textAlign, 'left');
-  assert.equal(positivePhaseEnd.textAlign, 'right');
+  assert.equal(zeroPhaseLabel.textAlign, 'center');
+  // Axis bounds sit on the canvas edges, so their tick values are not drawn.
+  assert.equal(drawnText().includes('-180'), false);
+  assert.equal(drawnText().includes('+180'), false);
   assert.equal(oneKilohertzLabel.args[1], plugin._plotRect().left + 40);
+  assert.ok(drawnText().includes('Phase Difference (°)'));
+  assert.ok(drawnText().includes('Frequency (Hz)'));
   const pointRadii = events.filter(event => event.type === 'call' && event.key === 'arc')
     .map(event => event.args[2]);
   assert.ok(pointRadii.some(radius => Math.abs(radius - 0.6) < 1e-12));
@@ -893,36 +893,31 @@ test('canvas follows the existing analyzer background, grid, label, and DPR cont
     JSON.stringify(event.args) === JSON.stringify([1, 0, 0, 1, 0, 0])));
 
   plugin._setXAxisMode('balance');
-  const leftBalanceEnd = events.find(event => event.type === 'call' &&
-    event.key === 'fillText' && event.args[0] === '100:0');
-  const rightBalanceEnd = events.find(event => event.type === 'call' &&
-    event.key === 'fillText' && event.args[0] === '0:100');
-  assert.equal(leftBalanceEnd.args[1], plugin._plotRect().left);
-  assert.equal(rightBalanceEnd.args[1], plugin._plotRect().right);
-  assert.equal(leftBalanceEnd.textAlign, 'left');
-  assert.equal(rightBalanceEnd.textAlign, 'right');
+  assert.equal(drawnText().includes('100:0'), false);
+  assert.equal(drawnText().includes('0:100'), false);
+  assert.ok(drawnText().includes('Balance (L:R)'));
 });
 
-test('axis ticks thin at narrow widths and keep endpoint labels inside the canvas', async () => {
+test('axis ticks thin at narrow widths and omit the canvas-edge bounds', async () => {
   const { Plugin } = await loadPlugin();
   const plugin = new Plugin();
   plugin.createUI();
   const cases = [
-    { width: 240, phase: ['-180°', '0°', '+180°'], balance: ['100:0', '50:50', '0:100'] },
+    { width: 240, phase: ['0'], balance: ['50:50'] },
     {
       width: 320,
-      phase: ['-180°', '-90°', '0°', '+90°', '+180°'],
-      balance: ['100:0', '80:20', '50:50', '20:80', '0:100']
+      phase: ['-90', '0', '+90'],
+      balance: ['80:20', '50:50', '20:80']
     },
     {
       width: 375,
-      phase: ['-180°', '-90°', '0°', '+90°', '+180°'],
-      balance: ['100:0', '80:20', '50:50', '20:80', '0:100']
+      phase: ['-90', '0', '+90'],
+      balance: ['80:20', '50:50', '20:80']
     },
     {
       width: 720,
-      phase: ['-180°', '-135°', '-90°', '-45°', '0°', '+45°', '+90°', '+135°', '+180°'],
-      balance: ['100:0', '91:9', '80:20', '67:33', '50:50', '33:67', '20:80', '9:91', '0:100']
+      phase: ['-135', '-90', '-45', '0', '+45', '+90', '+135'],
+      balance: ['91:9', '80:20', '67:33', '50:50', '33:67', '20:80', '9:91']
     }
   ];
 
@@ -936,11 +931,10 @@ test('axis ticks thin at narrow widths and keep endpoint labels inside the canva
       const y = plugin._plotRect().bottom - 25;
       const ticks = plugin.canvas.contextEvents.filter(event =>
         event.type === 'call' && event.key === 'fillText' && event.args[2] === y &&
-        (mode === 'phase' ? String(event.args[0]).endsWith('°')
+        (mode === 'phase' ? /^[+-]?\d+$/.test(String(event.args[0]))
           : /^\d+(?:\.\d+)?:\d+(?:\.\d+)?$/.test(String(event.args[0]))));
       assert.deepEqual(ticks.map(event => event.args[0]), testCase[mode], `${width}px ${mode}`);
-      assert.equal(ticks[0].textAlign, 'left');
-      assert.equal(ticks.at(-1).textAlign, 'right');
+      assert.ok(ticks.every(event => event.textAlign === 'center'), `${width}px ${mode}`);
     }
   }
 });

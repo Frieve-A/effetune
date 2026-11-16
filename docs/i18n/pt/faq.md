@@ -186,7 +186,7 @@ Atualmente, o EffeTune suporta até 16 canais de saída.
 
 ### 5.1. Importando configurações do AutoEQ para o 15Band PEQ
 
-Você pode importar configurações do equalizador AutoEQ diretamente do botão no canto superior direito.
+Você pode importar configurações do equalizador AutoEQ diretamente do botão no canto superior direito. Se preferir projetar a correção a partir da curva de medição dos seus fones, pesquise o modelo deles no [Headphone EQ](plugins/eq.md#headphone-eq).
 
 ### 5.2. Colando configurações de correção de medição
 

@@ -97,7 +97,12 @@ test('synchronized video seeks large drift and corrects small drift at the reque
     assert.equal(display.frame(5, 1, true), video);
     assert.equal(video.currentTime, 5);
     assert.equal(video.paused, false);
-    assert.equal(video.playbackRate, 1.05);
+    assert.equal(video.playbackRate, 1);
+
+    // Drift within the sync tolerance keeps the exact speed instead of rewriting the rate.
+    video.currentTime = 5.02;
+    display.frame(5, 1, true);
+    assert.equal(video.playbackRate, 1);
 
     video.currentTime = 5.1;
     display.frame(5, 2, true);

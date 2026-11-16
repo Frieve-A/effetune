@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 
@@ -36,6 +37,7 @@ public:
     previous_q_.fill(std::numeric_limits<float>::quiet_NaN());
     previous_type_.fill(std::numeric_limits<float>::quiet_NaN());
     previous_enabled_.fill(std::numeric_limits<float>::quiet_NaN());
+    previous_master_gain_ = std::numeric_limits<float>::quiet_NaN();
     last_channel_count_ = 0u;
     coefficients_initialized_ = false;
   }
@@ -55,6 +57,20 @@ public:
     if (!coefficients_initialized_ || paramsDirty()) {
       updateCoefficients();
     }
+    if (params_.masterGain != previous_master_gain_) {
+      const double target = std::pow(10.0, static_cast<double>(params_.masterGain) / 20.0);
+      if (std::isnan(previous_master_gain_)) {
+        master_current_ = target;
+        master_step_ = 0.0;
+        master_remaining_ = 0u;
+      } else {
+        master_step_ = (target - master_current_) / static_cast<double>(transition_frames_);
+        master_remaining_ = transition_frames_;
+      }
+      master_target_ = target;
+      previous_master_gain_ = params_.masterGain;
+    }
+    const bool apply_master = master_remaining_ != 0u || master_current_ != 1.0;
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       float *channel_audio = audio + channel * frame_count;
@@ -69,9 +85,27 @@ public:
               static_cast<double>(channel_audio[frame]), coefficients, state));
         }
       }
+      if (apply_master) {
+        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+          const std::uint32_t elapsed = frame + 1u;
+          const double gain = elapsed >= master_remaining_
+                                  ? master_target_
+                                  : master_current_ + master_step_ * static_cast<double>(elapsed);
+          channel_audio[frame] =
+              static_cast<float>(static_cast<double>(channel_audio[frame]) * gain);
+        }
+      }
     }
     for (CoefficientRamp &ramp : ramps_)
       ramp.advance(frame_count);
+    if (frame_count >= master_remaining_) {
+      master_current_ = master_target_;
+      master_step_ = 0.0;
+      master_remaining_ = 0u;
+    } else {
+      master_current_ += master_step_ * static_cast<double>(frame_count);
+      master_remaining_ -= frame_count;
+    }
   }
 
 private:
@@ -167,6 +201,11 @@ private:
   std::array<float, kBands> previous_q_{};
   std::array<float, kBands> previous_type_{};
   std::array<float, kBands> previous_enabled_{};
+  double master_current_ = 1.0;
+  double master_target_ = 1.0;
+  double master_step_ = 0.0;
+  std::uint32_t master_remaining_ = 0u;
+  float previous_master_gain_ = std::numeric_limits<float>::quiet_NaN();
   float sample_rate_ = 0.0F;
   std::uint32_t last_channel_count_ = 0u;
   bool coefficients_initialized_ = false;

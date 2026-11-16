@@ -19,10 +19,10 @@ lang: zh
 
 测试会对比[使用 AB Pipeline 功能](README.md#使用-ab-pipeline-功能)中介绍的两条效果链：
 
-- **Pipeline A** 和 **Pipeline B** 必须各自至少包含一个效果器。
+- 必须先创建 **Pipeline B**。任一效果链都可以为空，因此也可以将某个效果器与完全不经处理的声音进行对比。
 - 将一种设置放入 Pipeline A，另一种放入 Pipeline B，并让其余部分保持完全一致（例如 *开启 EQ* 与 *关闭 EQ*），以便仅针对目标差异进行测试。
 - 记住你在 Pipeline A 和 Pipeline B 中分别放置了哪种设置。A/B 偏好测试的结果会报告是 Pipeline A 还是 Pipeline B 获得了显著偏好。
-- 只有 Pipeline A 和 Pipeline B 各包含至少一个效果器时，双盲测试菜单项和开始按钮才会启用。
+- 创建 Pipeline B 之后，双盲测试菜单项和开始按钮才会启用。
 
 ## 打开测试
 

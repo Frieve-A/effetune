@@ -14,7 +14,7 @@ En los gráficos de puntos arrastrables de 5Band PEQ, 15Band PEQ, 5Band FIR PEQ,
 
 ## Selección de bandas en móviles
 
-En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Additional EQ de Room EQ y Target Adjust de Tonal Balance EQ muestran los ajustes de una sola banda a la vez. Toca un botón numerado para cambiar de banda. Los ajustes de todas las bandas se conservan.
+En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Target Adjust de Headphone EQ, Additional EQ de Room EQ y Target Adjust de Tonal Balance EQ muestran los ajustes de una sola banda a la vez. Toca un botón numerado para cambiar de banda. Los ajustes de todas las bandas se conservan.
 
 ## Lista de Plugins
 
@@ -28,6 +28,7 @@ En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Additional EQ de Room EQ y
 - [Earphone Cable Sim](#earphone-cable-sim) - Ayuda a comprobar lo pequeñas que suelen ser las variaciones de respuesta en frecuencia causadas por cables de auriculares normales
 - [Group Delay EQ](#group-delay-eq) - Ajusta el retardo de cada banda de frecuencia sin cambiar el tono
 - [Group Delay PEQ](#group-delay-peq) - Control paramétrico de cinco bandas del retardo por frecuencia sin cambiar el tono
+- [Headphone EQ](#headphone-eq) - Corrección FIR que acerca la respuesta de tus auriculares a una curva objetivo a partir de su medición
 - [Hi Pass Filter](#hi-pass-filter) - Elimina frecuencias bajas no deseadas con precisión
 - [Lo Pass Filter](#lo-pass-filter) - Elimina frecuencias altas no deseadas con precisión
 - [Loudness Equalizer](#loudness-equalizer) - Corrección del balance de frecuencias para escuchar a bajo volumen
@@ -120,6 +121,7 @@ Un ecualizador paramétrico de 15 bandas para ajustar con detalle graves, voces,
     - 1kHz, 1.6kHz, 2.5kHz (Sonidos medios)
     - 4kHz, 6.3kHz, 10kHz, 16kHz (Sonidos altos)
 - **Controles por Banda**
+  - Cada pestaña de banda muestra Type, Freq, Gain y Q en filas separadas; Freq, Gain y Q se ajustan con el deslizador o escribiendo un valor
   - Center Frequency: Ajustable de 20Hz a 20kHz
   - Gain Range: ±20dB para filtros Peaking y Low/High Shelf
   - Q Factor: 0.1-10.0 para la mayoría de tipos de filtro; Low/High Shelf está limitado a 0.1-2.0
@@ -132,11 +134,14 @@ Un ecualizador paramétrico de 15 bandas para ajustar con detalle graves, voces,
     - Band Pass: Aislamiento enfocado de frecuencias
     - Notch: Eliminación precisa de frecuencia
     - AllPass: Alineación de frecuencia centrada en fase
+- **Pestaña Master**
+  - Gain: Ajusta el nivel general de -20dB a +20dB después de todas las bandas. Bájalo para dejar margen cuando las bandas realzan la señal; el gráfico de respuesta incluye esta ganancia
 - **Gestión de Presets**
   - Import: Carga líneas de filtro TXT de estilo Equalizer APO
-  - Se importan hasta 15 filtros `ON` PK/LS/LSC/HS/HSC; se ignoran líneas `Preamp` y tipos de filtro no compatibles
+  - Se importan hasta 15 filtros `ON` PK/LS/LSC/HS/HSC, y la línea `Preamp` ajusta Gain en la pestaña Master (0dB si el archivo no la incluye); se ignoran los tipos de filtro no compatibles
     - Formato de ejemplo:
       ```
+      Preamp: -6.0 dB
       Filter 1: ON PK Fc 50 Hz Gain -3.0 dB Q 2.00
       Filter 2: ON HS Fc 12000 Hz Gain 4.0 dB Q 0.70
       ...
@@ -500,6 +505,54 @@ La latencia total es el valor de Latency más la mitad de Taps. No cambia al mov
 - La línea de estado muestra la latencia total en muestras y milisegundos, y el Ripple de magnitud del filtro. Ripple mide cuánto se aparta la respuesta de magnitud realizada del objetivo de diseño plano: cuanto menor sea el valor, más cerca estará del objetivo, y 0,3 dB es el umbral del aviso de precisión.
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
+## Headphone EQ
+
+Headphone EQ corrige la respuesta en frecuencia de tus auriculares hacia una curva objetivo. Busca tu modelo de auriculares y el plugin descargará del proyecto AutoEQ su medición y una curva objetivo acorde, y diseñará un filtro de corrección FIR que reduce la diferencia entre ambas. También puedes cargar tus propios archivos de medición y de objetivo. La misma corrección se aplica a todos los canales. A diferencia de importar ajustes ya preparados en 15Band PEQ, Headphone EQ diseña la propia corrección, por lo que puedes cambiar en cualquier momento su intensidad, su rango de frecuencias, el límite de refuerzo y el objetivo. El plugin requiere el motor WASM DSP; sin él, la señal pasa sin cambios.
+
+### Guía de mejora del sonido
+
+- **Empieza buscando tus auriculares**: Escribe el nombre del modelo en el cuadro de búsqueda y elígelo de la lista. La medición y su objetivo se cargan juntos, así que la corrección empieza de inmediato. Si el modelo aparece con varias fuentes de medición, cualquiera de ellas es una opción razonable; cada una trae el objetivo de la misma fuente y del mismo equipo de medida. Para corregir hacia otro objetivo, haz clic en **Load Target** y elige un archivo con la curva objetivo.
+- **Ajustes iniciales**: Los valores por defecto (**Minimum Phase**, **Correction Amount: 100%**, **Upper Limit: 10000 Hz**, **Max Boost: 6 dB**, **Smoothing: 0.17 oct**, **Auto Headroom** activado) son un buen punto de partida. Activa y desactiva el efecto para comparar.
+- **Rango de agudos**: Por encima de unos 10 kHz, las mediciones cambian según cómo se asienten los auriculares y según el montaje de medida, por lo que el **Upper Limit** por defecto deja sin corregir esa zona. Súbelo solo si confías en la medición en esa zona, y bájalo (por ejemplo, a 6000 Hz) si corregir el rango superior empeora los agudos.
+- **Evita refuerzos grandes**: Si la corrección intenta rellenar valles estrechos con refuerzos grandes, baja **Max Boost** o sube **Smoothing**. Con 0 dB, los picos se siguen reduciendo, pero no se refuerza nada.
+- **Corrección más suave**: Baja **Correction Amount** (por ejemplo, a 50%) para acercarte solo parte del camino hacia el objetivo.
+- **Simular otros auriculares**: Corrige tus auriculares con un Headphone EQ y añade un segundo Headphone EQ con la medición del otro modelo y **Correction Amount** en -100%. El segundo añade la desviación de ese modelo respecto a su objetivo, así que tus auriculares adoptan su carácter. Usa el mismo objetivo en ambos para acercarte más.
+- **Más graves a tu gusto**: En **Target Adjust**, ajusta el tipo de una banda a **LowShelv** en torno a 100 Hz y sube su ganancia de 2 a 4 dB. Igual que Additional EQ de Room EQ, Target Adjust actúa en todo el rango y no está limitado por **Correction Amount**, **Upper Limit** ni **Max Boost**.
+- **Un preset por cada par de auriculares**: Las curvas cargadas se guardan en los presets y en las URL, así que puedes guardar un preset para cada par de auriculares.
+
+### Parámetros
+
+- **Cuadro de búsqueda** (`Search headphones (AutoEQ) or paste a URL`) - Escribe un modelo de auriculares y elígelo de la lista para cargar su medición y su objetivo. También puedes pegar un enlace a un archivo de medición y pulsar Enter; los enlaces a una página o carpeta de resultados de AutoEQ en GitHub también funcionan. La lista de auriculares y las mediciones proceden del [proyecto AutoEQ](https://github.com/jaakkopasanen/AutoEq) de Jaakko Pasanen y solo se descargan de GitHub cuando usas este cuadro. La medición cargada recibe el nombre del modelo junto con su fuente de medición (por ejemplo, oratory1990), y la línea de estado muestra ese nombre. Si una descarga falla, la línea de estado muestra un error y se siguen usando las curvas cargadas anteriormente.
+- **Arrastrar y soltar** - Suelta un archivo `.csv` o `.txt` sobre el plugin para cargarlo como medición, igual que con **Load Measurement**.
+- **Load Measurement** - Carga una medición desde tu propio archivo `.csv` o `.txt`. En un CSV de AutoEQ se usa la columna `raw`, y si hay una columna `target`, esta también sustituye al objetivo.
+- **Load Target** - Carga la curva objetivo. En un CSV de AutoEQ se usa la columna `target` si existe; si no, la columna `raw`.
+- **Archivos admitidos** - Un CSV al estilo de AutoEQ cuya primera fila nombra las columnas, incluida `frequency`, o un archivo de texto con columnas de frecuencia y nivel (dB) separadas por comas, tabuladores, punto y coma o espacios. Las líneas que no son números se omiten y solo se usan las dos primeras columnas. Si no se puede leer un archivo, la línea de estado muestra un error y se siguen usando las curvas cargadas anteriormente. Los niveles de la medición y del objetivo no tienen que coincidir: sus niveles globales se alinean antes de compararlos.
+- La corrección empieza cuando se han cargado tanto una medición como un objetivo. Hasta entonces la señal pasa sin cambios, y los ajustes de corrección y Target Adjust están desactivados.
+- **Phase**
+  - **Minimum Phase** - No añade retardo FIR aparte del Latency seleccionado.
+  - **Linear Phase** - Da el mismo retardo a todas las frecuencias, con `Taps / 2` muestras añadidas al Latency seleccionado.
+- **Taps** - Longitud del FIR: 8192, 16384, 32768, 65536 o 131072. Con más taps se reproducen con mayor precisión los graves y los detalles finos, pero aumentan el uso de memoria, el tiempo de diseño y el retardo de Linear Phase.
+- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Valores menores reducen el retardo pero exigen más proceso.
+- **Correction Amount** (-100% a 100%; por defecto 100%) - Escala la corrección automática en dB. Con 50% todos los refuerzos y recortes se reducen a la mitad; con 0% solo queda Target Adjust. Los valores negativos invierten la corrección y, en lugar de eliminar la desviación de los auriculares respecto al objetivo, la añaden; con -100% se reproduce la desviación completa. En ese caso, **Max Boost** limita los refuerzos que reproducen sus picos.
+- **Upper Limit** (1000 a 20000 Hz; por defecto 10000 Hz) - Frecuencia más alta que se corrige. Por encima, la corrección automática es de 0 dB, con una transición suave en el límite. El extremo inferior siempre es 20 Hz.
+- **Max Boost** (0 a 18 dB; por defecto 6 dB) - Limita los refuerzos de la corrección automática. Los recortes y Target Adjust no tienen límite.
+- **Smoothing** (0.02 a 1 oct; por defecto 0.17 oct) - Suaviza la curva de corrección. Con valores altos la corrección es más amplia y conservadora; con valores bajos sigue también picos y valles estrechos, que a menudo varían según el ajuste de los auriculares.
+- **Auto Headroom** (por defecto activado) - Baja toda la salida en la cantidad del mayor refuerzo del filtro, incluido Target Adjust, de modo que la ganancia máxima del filtro sea 0 dB y las zonas reforzadas no superen el nivel de entrada. La cantidad aplicada aparece en la línea de estado. Si se desactiva, se mantiene el nivel de salida, pero los pasajes fuertes pueden saturar tras un refuerzo; baja el nivel en una etapa posterior o añade un limitador.
+- **Target Adjust** - Cinco bandas paramétricas (tipos **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, hasta 2 para los shelves; Q por defecto 1) que remodelan el objetivo. Una ganancia positiva pide más de esa zona; una negativa, menos. En **Peaking**, una Q más alta actúa sobre una banda más estrecha y una Q más baja sobre una más ancha; en los shelves, Q cambia la forma cerca de la transición.
+
+### Visualización
+
+- El eje horizontal es la frecuencia, de 20 Hz a 20 kHz, y el eje vertical es el nivel, de -20 a +20 dB. Las partes de una curva que quedan fuera de este rango se cortan en el borde.
+- **Measurement** es la medición, alineada con el nivel del objetivo o, si no hay objetivo cargado, centrada en torno a 0 dB. Se muestra suavizada una vez diseñada la corrección.
+- **Target** es la curva objetivo, incluido Target Adjust.
+- **Correction** es el refuerzo y el recorte del filtro de corrección en torno a 0 dB, incluido Target Adjust. No incluye la reducción global de nivel de **Auto Headroom**; esa cantidad aparece en la línea de estado.
+- **Corrected** es el resultado calculado tras la corrección, no una nueva medición. Donde coincide con **Target**, la corrección es completa; se separa por encima de **Upper Limit**, donde **Max Boost** limita un refuerzo, y cuando **Correction Amount** no es 100%.
+- Hasta que se cargan una medición y un objetivo, solo se muestran las curvas cargadas.
+- Una línea vertical marca **Upper Limit**.
+- Los puntos numerados representan las bandas de Target Adjust. Arrastra un punto para cambiar la frecuencia y la ganancia, gira la rueda del ratón sobre él para cambiar Q y haz clic derecho para activar o desactivar la banda.
+- La línea de estado muestra si el filtro se está diseñando o está listo, el margen aplicado (headroom) y un aviso cuando el filtro puede ser inexacto (aumenta **Taps** o **Smoothing**). La línea inferior muestra la latencia total de proceso en muestras y milisegundos.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
+
 ## Hi Pass Filter
 
 Un filtro pasa-altos de precisión que elimina las frecuencias bajas no deseadas mientras preserva la claridad de las frecuencias altas. Basado en el diseño de filtro Linkwitz-Riley para una respuesta de fase óptima y una calidad de sonido transparente.
@@ -693,7 +746,7 @@ Room EQ crea filtros de corrección FIR a partir de mediciones de respuesta en f
 
 ### Parámetros
 
-- **Measurement**: Selecciona la medición guardada compartida (muestra el nombre, el número de puntos e `IR` cuando hay datos de respuesta al impulso). Haz clic en **Refresh measurements** después de añadir o editar mediciones.
+- **Measurement**: Selecciona la medición guardada compartida (muestra el nombre, el número de puntos e `IR` cuando hay datos de respuesta al impulso). Haz clic en **Refresh measurements** después de añadir o editar mediciones. Para añadir Room EQ con una medición ya seleccionada, haz clic en **Copiar ajustes de Room EQ** debajo del resultado en la herramienta de medición, haz clic en una zona vacía del Pipeline de Efectos y pega con Ctrl+V; con una medición multicanal se rellena **Measurement ChN** para cada canal medido.
 - **Measurement ChN**: Asignación opcional de una medición propia para cada canal de bus enrutado. Déjala en **(Shared)** para usar la **Measurement** compartida.
 - **Delay** (0 a 20 ms): Retardo manual aplicado a todos los canales enrutados; no se incluye en la latencia de procesamiento indicada.
 - **Phase**: Selecciona el comportamiento de fase del FIR:
@@ -716,7 +769,7 @@ Room EQ crea filtros de corrección FIR a partir de mediciones de respuesta en f
 - **Reverb Max Freq** (20 a 20000 Hz; predeterminado 250 Hz): Límite superior de frecuencia de **Reverb Correction**, limitado por **Correction High** (mantenerlo alrededor de 250 Hz centra la corrección en el decaimiento de baja frecuencia de la sala, que se comporta de forma parecida en asientos cercanos).
 - **Reverb Smoothing** (0,02 a 1,00 oct): Suavizado gaussiano aplicado al retardo de exceso de fase de la reverberación.
 - **Reference Point**: Selecciona **Consensus (all points)** (promedio de los puntos de medición ponderado por su fiabilidad) o un único punto de medición para el análisis del exceso de fase. Si el punto seleccionado se elimina, vuelve a Consensus.
-- **Additional EQ (integrado en el FIR)**: Cinco bandas paramétricas para ajustar la curva objetivo (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves), integradas directamente en el filtro FIR. Su fase es cero en el modo Linear y de fase mínima en los modos Minimum y Correction.
+- **Additional EQ (integrado en el FIR)**: Cinco bandas paramétricas para ajustar la curva objetivo (tipos **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves), integradas directamente en el filtro FIR. En **Peaking**, una Q más alta actúa sobre una banda más estrecha y una Q más baja sobre una más ancha; en los shelves, Q cambia la forma cerca de la transición. Su fase es cero en el modo Linear y de fase mínima en los modos Minimum y Correction.
 - **Gain** (-12 a +12 dB): Ajuste del nivel de salida.
 
 ### Visualización
@@ -757,7 +810,7 @@ El plugin compara el espectro medido con el objetivo después de igualar la sono
 - **Una corrección estable para un álbum**: Haz clic en **Reset** al empezar el álbum y pon **Averaging Time** en **∞**, para que la corrección promedie toda la sesión de reproducción y se asiente en una curva fija.
 - **Objetivos por género**: Elige **Classical**, **Electronic**, **Pop** o **Rock** para ajustarte a un estilo concreto, o **All** si escuchas estilos variados.
 - **Un ajuste más suave**: Baja **Amount** (por ejemplo, al 50%), reduce **Range** (por ejemplo, a 3 dB) o sube **Smoothing** (por ejemplo, a 1 oct) para inclinaciones amplias y sutiles.
-- **Tu propia curva de la casa**: Usa las cinco bandas de **Target Adjust** bajo el gráfico para inclinar o dar forma al objetivo a tu gusto (por ejemplo, un High shelf de +1,5 dB a 8 kHz). Cada grabación se corrige entonces hacia tu objetivo personalizado solo en la medida necesaria.
+- **Tu propia curva de la casa**: Usa las cinco bandas de **Target Adjust** bajo el gráfico para inclinar o dar forma al objetivo a tu gusto (por ejemplo, una banda **HighShel** de +1,5 dB a 8 kHz). Cada grabación se corrige entonces hacia tu objetivo personalizado solo en la medida necesaria.
 - **Referencia de pendiente fija**: Selecciona **Target: Tilt** para una respuesta plana por debajo de **Corner** seguida de una caída constante según **Slope** (−5 dB/oct se aproxima a los masters comerciales típicos; −3 dB/oct corresponde al ruido rosa).
 
 La ganancia de compensación mantiene la sonoridad, no el nivel de pico, por lo que los picos pueden subir; si se produce recorte en una etapa posterior, baja el nivel después de este plugin o añade un limitador.
@@ -772,7 +825,7 @@ La ganancia de compensación mantiene la sonoridad, no el nivel de pico, por lo 
 - **Averaging Time** (0,1 s a ∞; predeterminado: 30 s): Ventana de integración de la medición. Los valores cortos (por ejemplo, de 0,5 a 1 s) siguen los cambios dentro de una canción, como una estrofa oscura y un estribillo brillante; los largos dan una corrección estable (**∞** promedia de forma continua desde el último **Reset**).
 - **Low** (20 a 200 Hz; predeterminado: 20 Hz) / **High** (2000 a 20000 Hz; predeterminado: 16000 Hz): Límites inferior y superior de frecuencia del remodelado activo (fuera de ellos, la corrección se mantiene constante). Sube **Low** para no tocar los graves más profundos, o baja **High** para no tocar la octava más aguda.
 - **Average SPL** (60 a 96 dB; predeterminado: 83 dB): Nivel de escucha estimado que se usa para decidir qué bandas débiles son lo bastante audibles para realzarse; no cambia el nivel de salida. Con valores bajos, más bandas débiles se consideran inaudibles y no se realzan; con valores altos, se cuentan más como audibles.
-- **Target Adjust**: Cinco bandas paramétricas (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves; Q predeterminado 0,7) que remodelan la curva objetivo. Una ganancia positiva pide más de esa zona; una negativa, menos.
+- **Target Adjust**: Cinco bandas paramétricas (tipos **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves; Q predeterminado 0,7) que remodelan la curva objetivo. Una ganancia positiva pide más de esa zona; una negativa, menos. En **Peaking**, una Q más alta actúa sobre una banda más estrecha y una Q más baja sobre una más ancha; en los shelves, Q cambia la forma cerca de la transición.
 
 **Target Adjust** solo cambia el objetivo; cada grabación se sigue corrigiendo hacia él dentro de **Amount** y **Range**, por lo que un ajuste grande puede requerir un **Range** mayor. Subir todo el objetivo en la misma cantidad no cambia nada, porque los niveles globales se igualan antes de la comparación. Los picos y valles estrechos se suavizan; para correcciones estrechas usa 5Band PEQ.
 

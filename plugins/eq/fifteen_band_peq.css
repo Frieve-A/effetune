@@ -2,10 +2,6 @@
     position: relative;
 }
 
-.fifteen-band-peq-plugin-ui .parameter-row {
-    margin-bottom: 20px;
-}
-
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-graph {
     position: relative;
     width: 100%;
@@ -53,10 +49,10 @@
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-response {
     position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 
@@ -144,107 +140,16 @@
     flex-direction: column;
 }
 
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: var(--et-parameter-row-margin) 0;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: var(--et-parameter-row-margin) 0;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-label,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-label {
-    color: var(--et-surface-81);
-    font-size: 12px;
-    white-space: nowrap;
-    min-width: 80px;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-label {
-    margin-left: 5px;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-slider {
-    flex: 1;
-    margin: 0;
-    height: 20px;
-    min-width: 0;
-    width: 100%;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-text,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-text,
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
-    width: 80px;
-    padding: 4px;
-    background-color: var(--et-surface-17);
-    border: 1px solid var(--et-surface-24);
-    color: var(--et-text-primary);
-    border-radius: 4px;
-}
-
-.fifteen-band-peq-plugin-ui .fifteen-band-peq-filter-type {
-    width: 90px;
-    padding: 4px;
-    background-color: var(--et-surface-5);
-    color: var(--et-surface-81);
-    border: 1px solid var(--et-surface-20);
-    border-radius: 3px;
-    font-size: 12px;
-}
-
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 10px;
-    row-gap: calc(2 * var(--et-parameter-row-margin));
-}
-
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-label,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-label {
-    justify-self: start;
-    min-width: 0;
-    margin-left: 0;
-}
-
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-filter-type,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-text,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
-    justify-self: end;
-}
-
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-q-text,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-freq-text,
-body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-gain-text {
-    /* 16px prevents iOS Safari from zooming the page when the input gains focus */
-    font-size: 16px;
-}
-
-body.layout-mobile .fifteen-band-peq-band-tab {
-    flex: 1 1 56px;
-}
-
 body.layout-mobile .fifteen-band-peq-graph {
     aspect-ratio: 4 / 3;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid {
     position: absolute;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
     pointer-events: none;
 }
 
@@ -255,7 +160,7 @@ body.layout-mobile .fifteen-band-peq-graph {
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-grid text {
     fill: var(--et-graph-label);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-response path {

@@ -27,10 +27,10 @@
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-grid,
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-response {
   position: absolute;
-  width: calc(100% - 40px);
-  height: calc(100% - 40px);
-  left: 20px;
-  top: 20px;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
   pointer-events: none;
 }
 
@@ -41,7 +41,7 @@
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-grid text {
   fill: var(--et-graph-tone-50);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker {

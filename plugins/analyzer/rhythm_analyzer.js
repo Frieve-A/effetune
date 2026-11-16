@@ -17,8 +17,9 @@ const RHYTHM_ANALYZER_MX_RANGE = [50, 240];
 // Tempogram grid: 48 bins per octave over 30-480 BPM (contract section 4).
 const RHYTHM_ANALYZER_MIN_BPM = 30;
 const RHYTHM_ANALYZER_OCTAVES = 4;
-// Octave ticks first so they keep their labels when a short strip has room for only some.
-const RHYTHM_ANALYZER_BPM_TICKS = [30, 60, 120, 240, 480, 90, 180];
+// Octave ticks first so they keep their labels when a short strip has room for only some. The axis bounds
+// (30 and 480) are the strip edges and get no tick.
+const RHYTHM_ANALYZER_BPM_TICKS = [60, 120, 240, 90, 180];
 // Tempogram history: 160 columns of 0.125 s (20 s).
 const RHYTHM_ANALYZER_TEMPOGRAM_COLUMNS = 160;
 const RHYTHM_ANALYZER_COLUMN_SECONDS = 0.125;
@@ -86,9 +87,14 @@ function rhythmAnalyzerRgb(color) {
     return channels?.length === 3 && channels.every(Number.isFinite) ? channels : [128, 128, 128];
 }
 
-// Position of a tempo on the 30-480 BPM axis, 0 (bottom) to 1 (top).
+// Position of a tempo on the 30-480 BPM axis, 0 (bottom) to 1 (top); tempos outside the axis fall outside 0-1.
+function rhythmAnalyzerBpmAxis(bpm) {
+    return Math.log2(bpm / RHYTHM_ANALYZER_MIN_BPM) / RHYTHM_ANALYZER_OCTAVES;
+}
+
+// The axis position limited to 0-1, for colouring by tempo.
 function rhythmAnalyzerBpmPosition(bpm) {
-    const position = Math.log2(bpm / RHYTHM_ANALYZER_MIN_BPM) / RHYTHM_ANALYZER_OCTAVES;
+    const position = rhythmAnalyzerBpmAxis(bpm);
     return position < 0 ? 0 : position > 1 ? 1 : position;
 }
 
@@ -1782,9 +1788,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
             const lane = view.height / this.laneCount;
             const deviation = displayed.deviation;
             const limit = RHYTHM_ANALYZER_DEVIATION_MS;
-            const clipped = deviation < -limit ? -limit : deviation > limit ? limit : deviation;
+            // Beyond the lane's ±limit range the dot leaves its lane; the lane draw clips it there.
             y = view.top + (this.lanes.rows[band] + 0.5) * lane -
-                (this.eventLocated[index] ? clipped / limit * 0.45 * lane : 0);
+                (this.eventLocated[index] ? deviation / limit * 0.45 * lane : 0);
             radius = (0.025 + 0.04 * strength) * lane;
         }
         const minimum = 1.5 * view.dpr;
@@ -1834,6 +1840,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
             if (high < low) continue;
             if (showAxes) {
                 for (let q = Math.ceil((low - segment.offset) / step); q * step + segment.offset <= high; q++) {
+                    // A grid line on the window's left or right edge is not drawn.
+                    if (q * step + segment.offset <= from || q * step + segment.offset >= to) continue;
                     const beat = q * step === Math.floor(q * step);
                     const x = xOf(q * step + segment.offset);
                     context.strokeStyle = beat ? palette.strongGrid : palette.subtleGrid;
@@ -1893,13 +1901,22 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     target.stroke();
                     return;
                 }
+                // An offset beyond the lane's range is clipped at the lane edge instead of painting over the next lane.
+                const laneTop = view.top + this.lanes.rows[this.eventBand[index]] * lane;
+                const outside = !view.echo && (point.y - point.radius < laneTop || point.y + point.radius > laneTop + lane);
+                if (outside) {
+                    target.save();
+                    target.beginPath();
+                    target.rect(view.left, laneTop, view.width, lane);
+                    target.clip();
+                }
                 if (!view.echo) {
                     // Stem from the lane centre (0 ms) makes the timing offset readable at a glance.
                     target.globalAlpha = 0.6 * confidence;
                     target.strokeStyle = color;
                     target.lineWidth = dpr;
                     target.beginPath();
-                    target.moveTo(point.x, view.top + (this.lanes.rows[this.eventBand[index]] + 0.5) * lane);
+                    target.moveTo(point.x, laneTop + 0.5 * lane);
                     target.lineTo(point.x, point.y);
                     target.stroke();
                 }
@@ -1916,6 +1933,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     target.arc(point.x, point.y, point.radius + 2 * dpr, 0, 2 * Math.PI);
                     target.stroke();
                 }
+                if (outside) target.restore();
             }, this.eventSerial, true);
             target.globalAlpha = 1;
             target.restore();
@@ -1926,7 +1944,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
     // column is held from there to the right edge.
     _drawTempogram(context, strip, scroll, { palette, showText, showAxes, write, axisName, nameX, tickRight, drawSignal, markerColor, tempogramColor, fontSize, pad, dpr }) {
         const columns = RHYTHM_ANALYZER_TEMPOGRAM_COLUMNS;
-        const yOf = bpm => strip.top + (1 - rhythmAnalyzerBpmPosition(bpm)) * strip.height;
+        // Unlimited, so a tempo outside 30-480 BPM leaves the strip (clipped) instead of sticking to its edge.
+        const yOf = bpm => strip.top + (1 - rhythmAnalyzerBpmAxis(bpm)) * strip.height;
         const xOf = step => strip.left + (step + 0.5 - scroll) / columns * strip.width;
         const clampY = y => (y < strip.top + fontSize / 2 ? strip.top + fontSize / 2
             : y > strip.top + strip.height - fontSize / 2 ? strip.top + strip.height - fontSize / 2 : y);
@@ -2000,11 +2019,11 @@ class RhythmAnalyzerPlugin extends PluginBase {
             target.restore();
         });
         if (!showText) return;
-        // Axis names as in the spectrogram: 'Time' centered 8 px above the bottom edge, the vertical name rotated.
-        axisName('Time', strip.left + strip.width / 2, strip.top + strip.height - 8 * dpr, strip.width);
+        // Axis names as in the spectrogram: 'Time (s)' centered 8 px above the bottom edge, the vertical name rotated.
+        axisName('Time (s)', strip.left + strip.width / 2, strip.top + strip.height - 8 * dpr, strip.width);
         axisName('Tempo (BPM)', strip.left + nameX, strip.top + strip.height / 2, strip.height - pad, true);
-        const tickX = tickRight(strip.left, ['480']);
-        for (const bpm of RHYTHM_ANALYZER_BPM_TICKS) write(String(bpm), tickX, clampY(yOf(bpm)), palette.label, 'right');
+        const tickX = tickRight(strip.left, ['240']);
+        for (const bpm of RHYTHM_ANALYZER_BPM_TICKS) write(String(bpm), tickX, yOf(bpm), palette.label, 'right');
         // Labels follow the draw-only extension to the right edge.
         if (!(adopted > 0)) return;
         for (const [bpm, label] of [[adopted, 'adopted'], [adopted * 2, '×2'], [adopted / 2, '×½']]) {
@@ -2129,9 +2148,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 target.clip();
                 for (const row of lens.rows) {
                     const y = rowY(this.lanes.rows[row.band]);
-                    const offset = row.offset < -limit ? -limit : row.offset > limit ? limit : row.offset;
-                    const x = centerX(row.slot) + offset * msScale;
-                    const color = positionColor ? positionColor((x - rect.left) / rect.width) : signalColor;
+                    const x = centerX(row.slot) + row.offset * msScale;
+                    const position = (x - rect.left) / rect.width;
+                    const color = positionColor ? positionColor(position < 0 ? 0 : position > 1 ? 1 : position) : signalColor;
                     const alpha = (0.35 + 0.65 * row.count / maxCount) * this.onsetOpacity;
                     target.globalAlpha = 0.3 * alpha;
                     target.fillStyle = color;
@@ -2149,6 +2168,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             });
             for (const row of lens.rows) {
                 const y = rowY(this.lanes.rows[row.band]);
+                // The value text stays within the slot's ±limit range so it remains readable.
                 const offset = row.offset < -limit ? -limit : row.offset > limit ? limit : row.offset;
                 const x = centerX(row.slot) + offset * msScale;
                 const value = rhythmAnalyzerSigned(row.offset, 0);

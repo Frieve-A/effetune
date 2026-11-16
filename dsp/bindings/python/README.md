@@ -12,8 +12,8 @@ tree without distribution metadata reports `0+source`.
 
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
-host-neutral C++20 DSP core used by the EffeTune application. Version 0.18.1
-provides 112 semantic effect classes, ordered serial chains, stateful block
+host-neutral C++20 DSP core used by the EffeTune application. Version 0.19.0
+provides 113 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->
@@ -144,8 +144,8 @@ than `bassGain`, `lfeGain`, and `headroom`, or after changing
 `IRReverb.channelMode`, `latency`, or
 `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
 `filterDelaySamples`; or `latencyMode` / `filterDelaySamples` on
-`CrosstalkCancellation`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, or
-`RoomEQ`.
+`CrosstalkCancellation`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`,
+`HeadphoneEQ`, or `RoomEQ`.
 `close()` is idempotent. Processing or resetting a closed stream raises
 `StateError`.
 

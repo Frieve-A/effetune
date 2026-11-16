@@ -21,6 +21,7 @@ const STREAM_RECONFIGURATION_PARAMETERS = new Map([
   ['FiveBandFIRPEQ', new Set(['latencyMode', 'filterDelaySamples'])],
   ['GroupDelayEQ', new Set(['latencyMode', 'filterDelaySamples'])],
   ['GroupDelayPEQ', new Set(['latencyMode', 'filterDelaySamples'])],
+  ['HeadphoneEQ', new Set(['latencyMode', 'filterDelaySamples'])],
   ['IRReverb', new Set(['channelMode', 'latency', 'convolutionRate'])],
   ['RoomEQ', new Set(['latencyMode', 'filterDelaySamples'])]
 ]);

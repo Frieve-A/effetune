@@ -6,7 +6,12 @@ lang: en
 
 # Version History
 
-### Version 2.18.1 (TBD, 2026)
+### Version 2.19.0 (Nov 20, 2026)
+- Added Headphone EQ effect that corrects headphones from a measurement curve toward a target curve
+- Added detailed distortion measurement function and Distortion Correction effect
+- Various minor improvements
+
+### Version 2.18.1 (Nov 13, 2026)
 - Fixed SoundFont Player sample preloading when switching MIDI tracks with an SFZ instrument
 - Improved synchronization when sending audio to Chromecast speakers from the desktop app
 

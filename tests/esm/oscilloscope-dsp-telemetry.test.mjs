@@ -337,7 +337,7 @@ test('Oscilloscope orders M4 extrema by sample position and draws one continuous
   );
   const gridCalls = plugin.scopeGrid.canvas.getContext('2d').calls;
   assert.ok(gridCalls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'));
-  assert.ok(gridCalls.some(call => call[0] === 'fillText' && call[1] === 'Amplitude'));
+  assert.ok(gridCalls.some(call => call[0] === 'fillText' && call[1] === 'Amplitude (FS)'));
   const waveformCalls = plugin.scopeRaster.canvas.getContext('2d').calls;
   assert.equal(waveformCalls.filter(call => call[0] === 'moveTo').length, 1);
   assert.equal(
@@ -490,7 +490,7 @@ test('Oscilloscope rolling envelopes scroll continuously between telemetry frame
   }
   for (let index = 1; index < positions.length; index++) {
     assert.ok(positions[index] < positions[index - 1]);
-    assert.ok(Math.abs(positions[index] - positions[index - 1] + 0.3776) < 1e-6);
+    assert.ok(Math.abs(positions[index] - positions[index - 1] + 0.4096) < 1e-6);
   }
   assert.equal(plugin.scopeDisplayEnd(1000), 480768);
   runtime.windowRef.GraphReadout = { format: { number: String, time: String } };

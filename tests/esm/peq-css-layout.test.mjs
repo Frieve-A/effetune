@@ -16,7 +16,7 @@ function getRule(css, selector) {
   return css.slice(blockStart + 1, blockEnd);
 }
 
-test('inset SVG response graphs expose shared frequency and level axis titles', () => {
+test('SVG response graphs expose shared frequency and level axis titles', () => {
   const appCss = readCss('../../css/effetune.css');
   assert.match(
     appCss,
@@ -31,13 +31,8 @@ test('inset SVG response graphs expose shared frequency and level axis titles', 
     /color:\s*var\(--et-text-primary\);[\s\S]*font:\s*14px\/1 Arial, sans-serif;[\s\S]*pointer-events:\s*none;/
   );
   assert.match(
-    appCss,
-    /\.plugin-parameter-ui \.graph-axis-titled::after,\n\.plugin-parameter-ui \.spectrum-overlay-axis-title \{[\s\S]*font:\s*14px\/1 Arial, sans-serif;/
-  );
-  const overlayCss = readCss('../../plugins/spectrum-overlay.css');
-  assert.match(
-    getRule(overlayCss, '.plugin-parameter-ui .spectrum-overlay-axis-title'),
-    /right:\s*10px;[\s\S]*top:\s*50%;[\s\S]*translate\(50%, -50%\) rotate\(-90deg\);/
+    getRule(appCss, '.plugin-parameter-ui .graph-axis-titled::after {'),
+    /font:\s*14px\/1 Arial, sans-serif;/
   );
 
   for (const [path, graphVariable, graphClass] of [
@@ -150,7 +145,7 @@ test('5Band PEQ and Room EQ wrap mobile bands before their controls overflow', (
   }
 });
 
-test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () => {
+test('Room EQ keeps its full-height plot over the generic mobile SVG rule', () => {
   const mobileCss = readCss('../../css/effetune-mobile.css');
   const roomEqCss = readCss('../../plugins/eq/room_eq.css');
 
@@ -177,7 +172,7 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
         roomEqCss,
         `body.layout-mobile .room-eq-additional-eq-ui ${selector}`
       ),
-      /width:\s*calc\(100%\s*-\s*40px\)\s*!important;[\s\S]*height:\s*calc\(100%\s*-\s*40px\)\s*!important;/
+      /height:\s*100%\s*!important;/
     );
   }
 });
@@ -199,34 +194,17 @@ test('Room EQ keeps its external graph controls out of the graph overlay', () =>
   );
 });
 
-test('15Band PEQ keeps band parameter controls aligned after responsive layout changes', () => {
+test('15Band PEQ builds band parameters from the standard parameter rows', () => {
   const css = readCss('../../plugins/eq/fifteen_band_peq.css');
   const js = readCss('../../plugins/eq/fifteen_band_peq.js');
 
-  assert.match(
-    getRule(css, '.fifteen-band-peq-plugin-ui .fifteen-band-peq-q-label'),
-    /min-width:\s*80px;/
-  );
-  assert.match(js, /controlRow\.className = 'fifteen-band-peq-control-row';/);
-  assert.doesNotMatch(js, /fifteen-band-peq-type-row/);
-  assert.doesNotMatch(js, /fifteen-band-peq-freq-row/);
-  assert.doesNotMatch(js, /fifteen-band-peq-gain-row/);
-  assert.match(
-    getRule(css, '.fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row'),
-    /display:\s*flex;[\s\S]*flex-wrap:\s*wrap;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row'),
-    /display:\s*grid;[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label'),
-    /justify-self:\s*start;[\s\S]*min-width:\s*0;[\s\S]*margin-left:\s*0;/
-  );
-  assert.match(
-    getRule(css, 'body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-filter-type'),
-    /justify-self:\s*end;/
-  );
+  // The shared parameter-row styles provide the mobile label/input alignment and 16px inputs.
+  assert.match(js, /createSelectControl\('Type',/);
+  assert.match(js, /createParameterControl\('Freq', 20, 20000, 1,/);
+  assert.match(js, /createParameterControl\('Gain', -20, 20, 0\.1,/);
+  assert.match(js, /createParameterControl\('Q', 0\.1, 10, 0\.01,/);
+  assert.doesNotMatch(js, /fifteen-band-peq-control-row/);
+  assert.doesNotMatch(css, /fifteen-band-peq-(?:control-row|q-row|freq-text|gain-text|filter-type)/);
 });
 
 test('Earphone Cable Sim keeps resonance parameter inputs in the right-side column on mobile', () => {

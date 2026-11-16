@@ -554,8 +554,8 @@ class MultibandSaturationPlugin extends PluginBase {
             const width = canvas.width;
             const height = canvas.height;
             const dpr = this._getCanvasDpr(canvas);
-            const tickFont = Math.round(11 * dpr);
-            const axisFont = Math.round(13 * dpr);
+            const tickFont = Math.round(12 * dpr);
+            const axisFont = Math.round(14 * dpr);
             const axisInset = 12 * dpr;
             const bottomInset = 4 * dpr;
             const isMobileLayout = typeof document !== 'undefined' && document.body && document.body.classList.contains('layout-mobile');
@@ -564,45 +564,43 @@ class MultibandSaturationPlugin extends PluginBase {
 
             ctx.clearRect(0, 0, width, height);
 
-            // Draw grid lines
+            // Draw interior quarter grid lines only; the axis bounds get no grid line
             ctx.strokeStyle = GRID_COLOR;
             ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
             ctx.beginPath();
-            for (let x = 0; x <= width; x += width / 4) {
+            for (let i = 1; i < 4; i++) {
+                const x = width * i / 4;
+                const y = height * i / 4;
                 ctx.moveTo(x, 0);
                 ctx.lineTo(x, height);
-            }
-            for (let y = 0; y <= height; y += height / 4) {
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
             }
             ctx.stroke();
 
-            // Draw labels
+            // Tick values sit one row above the Input title and one column right of the Output title
+            const tickBottom = height - bottomInset - axisFont - 2 * dpr;
+            const tickRight = 40 * dpr;
             ctx.fillStyle = LABEL_COLOR;
             ctx.font = `${tickFont}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText('-6dB', width * 0.25, height - bottomInset);
-            ctx.fillText('-6dB', width * 0.75, height - bottomInset);
-            ctx.save();
-            ctx.translate(axisInset, height * 0.25);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('-6dB', 0, 0);
-            ctx.restore();
-            ctx.save();
-            ctx.translate(axisInset, height * 0.75);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('-6dB', 0, 0);
-            ctx.restore();
+            ctx.fillText('-0.5', width * 0.25, tickBottom);
+            ctx.fillText('0', width / 2, tickBottom);
+            ctx.fillText('0.5', width * 0.75, tickBottom);
+            ctx.textAlign = 'right';
+            ctx.fillText('0.5', tickRight, height * 0.25 + 4 * dpr);
+            ctx.fillText('0', tickRight, height / 2 + 4 * dpr);
+            ctx.fillText('-0.5', tickRight, height * 0.75 + 4 * dpr);
 
             // Draw axis labels
             ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.font = `${axisFont}px Arial`;
-            ctx.fillText('in', width / 2, height - bottomInset);
+            ctx.textAlign = 'center';
+            ctx.fillText('Input (FS)', width / 2, height - bottomInset);
             ctx.save();
             ctx.translate(axisInset, height / 2);
             ctx.rotate(-Math.PI / 2);
-            ctx.fillText('out', 0, 0);
+            ctx.fillText('Output (FS)', 0, 0);
             ctx.restore();
 
             // Draw transfer curve

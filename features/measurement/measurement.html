@@ -244,6 +244,153 @@
                 </form>
             </div>
 
+            <div id="newMeasurementScreen" class="screen" style="display: none;">
+                <div class="screen-header">
+                    <button id="newMeasurementBack" class="back-btn"><span class="back-arrow">&larr;</span> <span data-i18n="button:backSimple">Back</span></button>
+                    <h2 data-i18n="title:newMeasurement">New Measurement</h2>
+                </div>
+                <div class="measurement-choices">
+                    <div class="measurement-choice-card">
+                        <h3 data-i18n="title:frequencyResponseChoice">Frequency response</h3>
+                        <p data-i18n="message:frequencyResponseChoice"></p>
+                        <button id="measureFrequencyResponseBtn" type="button" class="primary-btn" data-i18n="button:measureFrequencyResponse">Measure frequency response</button>
+                    </div>
+                    <div class="measurement-choice-card">
+                        <h3 data-i18n="title:speakerDistortionChoice">Speaker distortion</h3>
+                        <p id="speakerDistortionChoiceMessage"></p>
+                        <button id="measureSpeakerDistortionBtn" type="button" class="primary-btn" data-i18n="button:measureSpeakerDistortion">Measure speaker distortion</button>
+                        <p id="speakerDistortionBusyMessage" class="explanation-text" data-i18n="message:speakerDistortionWaitForUpdate" hidden></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="speakerDistortionSetupScreen" class="screen speaker-distortion-screen" style="display: none;">
+                <h2 data-i18n="title:measureSpeakerDistortion">Measure speaker distortion</h2>
+                <ol class="speaker-distortion-steps">
+                    <li class="current" data-i18n="label:stepSetup">Setup</li>
+                    <li data-i18n="label:stepLevelCheck">Level check</li>
+                    <li data-i18n="label:stepMeasure">Measure</li>
+                </ol>
+                <div class="plugin-parameter-ui">
+                    <div class="form-group parameter-row">
+                        <span class="setting-label"><span class="parameter-label-text" data-i18n="label:channelsToMeasure">Channels to measure:</span></span>
+                        <div id="speakerDistortionChannels" class="channel-checkbox-group speaker-distortion-channels"></div>
+                        <div class="explanation-text" data-i18n="help:channelsToMeasure"></div>
+                    </div>
+                    <div id="speakerDistortionBand"></div>
+                    <p id="speakerDistortionBandMessage" class="speaker-distortion-info warning-message warning-visible" role="status" hidden></p>
+                    <p class="speaker-distortion-info" data-i18n="message:amplifierVolume"></p>
+                    <div class="form-group parameter-row">
+                        <span class="setting-label"><span class="parameter-label-text" data-i18n="label:microphonePosition">Microphone position:</span></span>
+                        <div class="radio-choice-group" role="radiogroup">
+                            <label><input type="radio" name="speakerDistortionPlacement" value="inFront"><span data-i18n="option:inFront">In front of the speaker</span></label>
+                            <label><input type="radio" name="speakerDistortionPlacement" value="listeningPosition"><span data-i18n="option:listeningPosition">Listening position</span></label>
+                        </div>
+                        <div class="explanation-text" data-i18n="help:microphonePosition"></div>
+                    </div>
+                    <div id="speakerDistortionInFrontBox" class="speaker-distortion-info">
+                        <svg class="speaker-distortion-diagram" viewBox="0 0 320 90" role="img" aria-hidden="true" focusable="false">
+                            <rect x="16" y="14" width="44" height="62" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="38" cy="36" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="38" cy="60" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <path d="M268 45h28M268 39v12" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="262" cy="45" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <path d="M72 45h176M72 45l8-5M72 45l8 5M248 45l-8-5M248 45l-8 5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                            <text x="38" y="88" text-anchor="middle" data-i18n="label:diagramSpeaker">Speaker</text>
+                            <text x="270" y="72" text-anchor="middle" data-i18n="label:diagramMicrophone">Microphone</text>
+                            <text x="160" y="36" text-anchor="middle" data-i18n="label:diagramDistance">0.5–1 m</text>
+                        </svg>
+                        <ol class="speaker-distortion-place-steps">
+                            <li data-i18n="message:placeInFront1"></li>
+                            <li data-i18n="message:placeInFront2"></li>
+                            <li data-i18n="message:placeInFront3"></li>
+                        </ol>
+                        <p class="explanation-text" data-i18n="help:placeInFrontWhy"></p>
+                    </div>
+                    <p id="speakerDistortionListeningBox" class="speaker-distortion-info" data-i18n="message:placeListeningPosition" hidden></p>
+                    <div class="form-group parameter-row">
+                        <label for="speakerDistortionAveraging"><span class="parameter-label-text" data-i18n="label:distortionAveraging">Distortion Averaging:</span></label>
+                        <select id="speakerDistortionAveraging"></select>
+                        <span id="speakerDistortionPerChannelTime" class="explanation-text"></span>
+                        <div class="explanation-text" data-i18n="help:distortionAveraging"></div>
+                    </div>
+                    <div class="form-group parameter-row">
+                        <label for="speakerDistortionSignalLevel"><span class="parameter-label-text" data-i18n="label:distortionSignalLevel">Signal Level:</span></label>
+                        <select id="speakerDistortionSignalLevel"></select>
+                        <div class="explanation-text" data-i18n="help:speakerDistortionSignalLevel"></div>
+                    </div>
+                    <div class="form-group parameter-row">
+                        <span class="setting-label"><span id="speakerDistortionNoiseRetryLabel" class="parameter-label-text" data-i18n="label:retryOnNoise">Retry on Noise:</span></span>
+                        <div class="radio-choice-group" role="radiogroup" aria-labelledby="speakerDistortionNoiseRetryLabel">
+                            <label><input type="radio" name="speakerDistortionNoiseRetry" value="on"><span data-i18n="option:retryOnNoiseOn">On</span></label>
+                            <label><input type="radio" name="speakerDistortionNoiseRetry" value="off"><span data-i18n="option:retryOnNoiseOff">Off</span></label>
+                        </div>
+                        <div class="explanation-text" data-i18n="help:retryOnNoise"></div>
+                    </div>
+                    <div id="speakerDistortionDevices"></div>
+                </div>
+                <div class="form-actions speaker-distortion-buttons">
+                    <button id="speakerDistortionSetupBack" type="button" class="secondary-btn" data-i18n="button:backSimple">Back</button>
+                    <button id="speakerDistortionSetupNext" type="button" class="primary-btn" data-i18n="button:next">Next</button>
+                    <span id="speakerDistortionRateMessage" class="warning-message warning-visible" data-i18n="message:speakerDistortionNeedsSampleRate" hidden></span>
+                </div>
+            </div>
+
+            <div id="speakerDistortionCheckScreen" class="screen speaker-distortion-screen" style="display: none;">
+                <h2 data-i18n="title:beforeYouStart">Before you start</h2>
+                <ol class="speaker-distortion-steps">
+                    <li data-i18n="label:stepSetup">Setup</li>
+                    <li class="current" data-i18n="label:stepLevelCheck">Level check</li>
+                    <li data-i18n="label:stepMeasure">Measure</li>
+                </ol>
+                <ul id="speakerDistortionNotice" class="speaker-distortion-notice"></ul>
+                <div class="speaker-distortion-check-card">
+                    <p id="speakerDistortionTarget"></p>
+                    <div class="speaker-distortion-buttons">
+                        <button id="speakerDistortionLevelCheckBtn" type="button" class="primary-btn" data-i18n="button:runLevelCheck">Run level check</button>
+                        <span class="explanation-text" data-i18n="help:levelCheck"></span>
+                    </div>
+                    <div id="speakerDistortionLevelMeter" class="level-meter-container" hidden>
+                        <h3 data-i18n="title:inputLevel">Input Level</h3>
+                        <div class="level-meter">
+                            <div id="speakerDistortionLevelBar" class="level-bar"></div>
+                            <div class="level-marks">
+                                <span class="mark" style="left: 0%">-60</span>
+                                <span class="mark" style="left: 20%">-48</span>
+                                <span class="mark" style="left: 40%">-36</span>
+                                <span class="mark" style="left: 60%">-24</span>
+                                <span class="mark" style="left: 80%">-12</span>
+                                <span class="mark" style="left: 100%">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="speakerDistortionCheckResult" class="speaker-distortion-check-result" role="status" hidden></div>
+                    <p id="speakerDistortionCheckLoudest" class="explanation-text" data-i18n="help:levelCheckLoudest" hidden></p>
+                </div>
+                <div class="form-actions speaker-distortion-buttons">
+                    <button id="speakerDistortionCheckBack" type="button" class="secondary-btn" data-i18n="button:backSimple">Back</button>
+                    <button id="speakerDistortionStart" type="button" class="primary-btn" data-i18n="button:startMeasurement" disabled>Start Measurement</button>
+                </div>
+            </div>
+
+            <div id="speakerDistortionRunScreen" class="screen speaker-distortion-screen" style="display: none;">
+                <h2 data-i18n="title:measuringSpeakerDistortion">Measuring speaker distortion</h2>
+                <ol class="speaker-distortion-steps">
+                    <li data-i18n="label:stepSetup">Setup</li>
+                    <li data-i18n="label:stepLevelCheck">Level check</li>
+                    <li class="current" data-i18n="label:stepMeasure">Measure</li>
+                </ol>
+                <ul id="speakerDistortionRunRows" class="speaker-distortion-run-rows"></ul>
+                <p id="speakerDistortionRunLine" class="speaker-distortion-run-line" aria-live="polite"></p>
+                <p id="speakerDistortionKeepQuiet" class="explanation-text" data-i18n="help:keepQuiet"></p>
+                <div id="speakerDistortionPause" class="speaker-distortion-pause" role="alert" hidden></div>
+                <div class="form-actions">
+                    <button id="speakerDistortionRunRestart" type="button" class="secondary-btn" hidden></button>
+                    <button id="speakerDistortionRunCancel" type="button" class="secondary-btn" data-i18n="button:cancel">Cancel</button>
+                </div>
+                <div id="speakerDistortionLevelGraph" class="measurement-progress"></div>
+            </div>
+
             <div id="levelAdjustmentScreen" class="screen" style="display: none;">
                 <div class="screen-header">
                     <button id="backFromLevelBtn" class="back-btn"><span class="back-arrow">&larr;</span> <span data-i18n="button:backSimple">Back</span></button>
@@ -336,6 +483,10 @@
                 <div id="measurementResults" style="display: none;">
                     <div class="result-header">
                         <h2 id="resultTitle" data-i18n="title:measurementResults">Measurement Results</h2>
+                        <div class="result-name">
+                            <label for="resultName" data-i18n="label:resultName">Name</label>
+                            <input id="resultName" type="text" data-i18n="placeholder:resultName" placeholder="">
+                        </div>
                         <div id="editActions" class="edit-actions" style="display: none;">
                             <button id="saveChangesBtn" class="primary-btn" data-i18n="button:saveChanges">Save Changes</button>
                             <button id="discardChangesBtn" class="secondary-btn" data-i18n="button:discardChanges">Discard Changes</button>
@@ -346,10 +497,25 @@
                         <div id="pointsGrid" class="points-grid"></div>
                         <div id="resultsChannelFilter" class="channel-filter" hidden></div>
                     </div>
+                    <div id="speakerDistortionResultBar" class="result-header speaker-distortion-result-bar" hidden>
+                        <h2 id="speakerDistortionResultTitle"></h2>
+                        <div id="speakerDistortionResultSaveArea" class="speaker-distortion-save">
+                            <p id="speakerDistortionResultPrompt" class="speaker-distortion-save-prompt" role="status"></p>
+                            <div class="result-name">
+                                <label for="speakerDistortionResultName" data-i18n="label:resultName">Name</label>
+                                <input id="speakerDistortionResultName" type="text" data-i18n="placeholder:resultName" placeholder="">
+                                <button id="speakerDistortionResultSave" type="button" class="primary-btn" data-i18n="button:saveMeasurement">Save measurement</button>
+                            </div>
+                        </div>
+                    </div>
 <div class="analysis-tabs" role="tablist" aria-label="Analysis">
 <button id="frequencyAnalysisTab" type="button" role="tab" data-analysis-tab="frequency" aria-controls="frequencyAnalysisPanel" aria-selected="true" tabindex="0" class="tab-button active" data-i18n="analysis:frequency">Frequency Response</button>
 <button id="impulseAnalysisTab" type="button" role="tab" data-analysis-tab="impulse" aria-controls="impulseAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:impulse">Impulse Response</button>
 <button id="distortionAnalysisTab" type="button" role="tab" data-analysis-tab="distortion" aria-controls="distortionAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:distortion">Distortion</button>
+<button id="diagnosisAnalysisTab" type="button" role="tab" data-analysis-tab="diagnosis" aria-controls="diagnosisAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:diagnosis" hidden>Diagnosis</button>
+<button id="diagnosisTonesAnalysisTab" type="button" role="tab" data-analysis-tab="diagnosisTones" aria-controls="diagnosisTonesAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:diagnosisTones" hidden>Single Tones</button>
+<button id="diagnosisHarmonicsAnalysisTab" type="button" role="tab" data-analysis-tab="diagnosisHarmonics" aria-controls="diagnosisHarmonicsAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:diagnosisHarmonics" hidden>Harmonics</button>
+<button id="diagnosisLevelAnalysisTab" type="button" role="tab" data-analysis-tab="diagnosisLevel" aria-controls="diagnosisLevelAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:diagnosisLevel" hidden>Level &amp; Noise</button>
 <button id="waterfallAnalysisTab" type="button" role="tab" data-analysis-tab="waterfall" aria-controls="waterfallAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:waterfall">Waterfall (3D)</button>
 <button id="detailsAnalysisTab" type="button" role="tab" data-analysis-tab="details" aria-controls="detailsAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:details">Measurement Details</button>
 </div>
@@ -404,6 +570,7 @@
                         <div class="export-actions-row">
                             <button id="copyPEQBtn" class="primary-btn" data-i18n="button:copyPEQ">Copy EffeTune PEQ settings to clipboard</button>
                             <button id="copyChannelPEQBtn" class="primary-btn" hidden data-i18n="button:copyChannelPEQ">Copy Channel PEQ Settings</button>
+                            <button id="copyRoomEqBtn" class="primary-btn" data-i18n="button:copyRoomEq">Copy Room EQ Settings</button>
                         </div>
                         <div class="explanation-text export-copy-help" data-i18n="help:exportOptions">The copied frequency correction settings can be pasted into EffeTune's Effect Pipeline by Ctrl+V.</div>
                         <div class="export-actions-row">
@@ -443,12 +610,19 @@
 <p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
 </section>
 <section id="distortionAnalysisPanel" data-analysis-panel="distortion" role="tabpanel" aria-labelledby="distortionAnalysisTab" hidden>
+<div id="speakerDistortionSection" class="speaker-distortion-section" hidden></div>
+<div id="harmonicDistortionContent">
 <div class="analysis-graph-header"><h3 data-i18n="analysis:distortion">Distortion</h3><div id="distortionAnalysisActions" class="analysis-graph-actions"><button id="distortionCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="distortionCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="distortionAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Distortion"></canvas></div><p id="distortionAnalysisStatus" class="analysis-status" role="status" hidden></p>
                         <p id="distortionAnalysisConditions" class="analysis-conditions"></p>
                         <output id="distortionAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
                             <div id="distortionAnalysisSettings" class="analysis-settings-grid"></div></details><p class="explanation-text" data-i18n="analysis:distortionNote"></p>
 <p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
+</div>
 </section>
+<section id="diagnosisAnalysisPanel" data-analysis-panel="diagnosis" role="tabpanel" aria-labelledby="diagnosisAnalysisTab" aria-busy="false" hidden></section>
+<section id="diagnosisTonesAnalysisPanel" data-analysis-panel="diagnosisTones" role="tabpanel" aria-labelledby="diagnosisTonesAnalysisTab" aria-busy="false" hidden></section>
+<section id="diagnosisHarmonicsAnalysisPanel" data-analysis-panel="diagnosisHarmonics" role="tabpanel" aria-labelledby="diagnosisHarmonicsAnalysisTab" aria-busy="false" hidden></section>
+<section id="diagnosisLevelAnalysisPanel" data-analysis-panel="diagnosisLevel" role="tabpanel" aria-labelledby="diagnosisLevelAnalysisTab" aria-busy="false" hidden></section>
 <section id="waterfallAnalysisPanel" data-analysis-panel="waterfall" role="tabpanel" aria-labelledby="waterfallAnalysisTab" hidden>
 <div class="analysis-graph-header"><h3 data-i18n="analysis:waterfall">Waterfall (3D)</h3><div id="waterfallAnalysisActions" class="analysis-graph-actions"><button id="waterfallCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="waterfallCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="waterfallAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Waterfall (3D)"></canvas></div><p id="waterfallAnalysisStatus" class="analysis-status" role="status" hidden></p>
                         <p id="waterfallAnalysisConditions" class="analysis-conditions"></p>
@@ -494,6 +668,15 @@
         </div>
     </div>
 
+    <!-- Speaker distortion leave dialogs -->
+    <div id="speakerDistortionDialog" class="dialog-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="speakerDistortionDialogTitle">
+        <div class="dialog-content">
+            <h3 id="speakerDistortionDialogTitle"></h3>
+            <p id="speakerDistortionDialogMessage"></p>
+            <div id="speakerDistortionDialogButtons" class="dialog-buttons"></div>
+        </div>
+    </div>
+
     <!-- Notification Dialog -->
     <div id="notificationDialog" class="dialog-overlay" style="display: none;">
         <div class="dialog-content">
@@ -508,27 +691,33 @@
     <script src="../../plugins/graph-readout.js"></script>
     <script src="layout-mode.js" type="module"></script>
     <script src="app.js" type="module"></script>
-    <script>
-        // Back button functionality
-        document.getElementById('back-button').addEventListener('click', function() {
-            if (window.electronAPI) {
-                window.electronAPI.navigateToMain()
-                    .then(result => {
-                        if (!result || !result.success) {
-                            console.error('Failed to navigate to main page:', result ? result.error : 'Unknown error');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error navigating to main page:', error);
-                    });
-            } else {
-                let restorePipeline = false;
-                try {
-                    restorePipeline = Boolean(sessionStorage.getItem('effetune_transient_pipeline_state'));
-                } catch (error) {
-                    console.warn('Could not check the saved effect pipeline:', error);
+    <script type="module">
+        import { confirmSpeakerDistortionLeave } from './ui/speaker-distortion-setup.js';
+
+        const backButton = document.getElementById('back-button');
+        backButton.addEventListener('click', async () => {
+            if (backButton.disabled) return;
+            backButton.disabled = true;
+            try {
+                if (!await confirmSpeakerDistortionLeave()) return;
+                if (window.electronAPI) {
+                    const result = await window.electronAPI.navigateToMain();
+                    if (!result?.success) {
+                        console.error('Failed to navigate to main page:', result?.error);
+                    }
+                } else {
+                    let restorePipeline = false;
+                    try {
+                        restorePipeline = Boolean(sessionStorage.getItem('effetune_transient_pipeline_state'));
+                    } catch (error) {
+                        console.warn('Could not check the saved effect pipeline:', error);
+                    }
+                    window.location.href = `../../effetune.html${restorePipeline ? '?restorePipeline=transient' : ''}`;
                 }
-                window.location.href = `../../effetune.html${restorePipeline ? '?restorePipeline=transient' : ''}`;
+            } catch (error) {
+                console.error('Error navigating to main page:', error);
+            } finally {
+                backButton.disabled = false;
             }
         });
 
@@ -543,16 +732,6 @@
                     })
                     .catch(error => {
                         console.error('Error hiding application menu:', error);
-                    });
-            }
-        });
-
-        // Restore default menu when the page is unloaded (Electron only)
-        window.addEventListener('beforeunload', () => {
-            if (window.electronAPI) {
-                window.electronAPI.restoreDefaultMenu()
-                    .catch(error => {
-                        console.error('Error restoring default menu:', error);
                     });
             }
         });

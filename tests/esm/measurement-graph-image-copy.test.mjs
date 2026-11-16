@@ -35,6 +35,16 @@ test('copy starts the browser write before asynchronous PNG encoding and reports
         clipboard.write = async items => { await items[0].data['image/png']; };
         canvas.toBlob = callback => callback(null);
         await assert.rejects(copyGraphImage(canvas), { code: 'encoding' });
+        // A promised canvas, rasterised asynchronously, starts the write at once too; its failure is an encoding one.
+        writes = 0;
+        clipboard.write = async items => { writes++; await items[0].data['image/png']; };
+        canvas.toBlob = callback => callback(new Blob(['png'], { type: 'image/png' }));
+        let resolveCanvas;
+        const later = copyGraphImage(new Promise(resolve => { resolveCanvas = resolve; }));
+        assert.equal(writes, 1);
+        resolveCanvas(canvas);
+        await later;
+        await assert.rejects(copyGraphImage(Promise.reject(new Error('decode'))), { code: 'encoding' });
     });
     await environment({ window: {}, navigator: {}, ClipboardItem: undefined }, async () => {
         await assert.rejects(copyGraphImage(canvas), { code: 'unsupported' });

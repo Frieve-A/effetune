@@ -64,7 +64,7 @@ Room EQ builds FIR correction filters from frequency-response measurements saved
 
 ### Parameters
 
-- **Measurement** - Selects the shared saved measurement (showing name, point count, and `IR` when impulse data is present). Click **Refresh measurements** after adding or editing measurements.
+- **Measurement** - Selects the shared saved measurement (showing name, point count, and `IR` when impulse data is present). Click **Refresh measurements** after adding or editing measurements. To add Room EQ with a measurement already selected, click **Copy Room EQ Settings** below the result in Acoustic Measurement, click an empty area of the Effect Pipeline and paste (Ctrl+V); a multichannel measurement fills **Measurement ChN** for each measured channel.
 - **Measurement ChN** - Optional per-channel measurement override for each routed bus channel. Leave at **(Shared)** to use the shared **Measurement**.
 - **Delay** (0 to 20 ms) - Manual delay applied to all routed channels; it is not included in the reported processing latency.
 - **Phase** - Selects FIR phase behavior:
@@ -87,7 +87,7 @@ Room EQ builds FIR correction filters from frequency-response measurements saved
 - **Reverb Max Freq** (20 to 20000 Hz; default 250 Hz) - Upper frequency limit for **Reverb Correction**, capped by **Correction High** (keeping it around 250 Hz focuses on low-frequency room decay that behaves consistently across nearby seats).
 - **Reverb Smoothing** (0.02 to 1.00 oct) - Gaussian smoothing applied to the reverb excess-phase delay.
 - **Reference Point** - Selects **Consensus (all points)** (reliability-weighted average across measurement points) or a single measurement point for excess-phase analysis. If the selected point is removed, it returns to Consensus.
-- **Additional EQ (folded into FIR)** - Five parametric target-shaping bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves) built directly into the FIR filter. Their phase is zero in Linear mode and minimum-phase in Minimum and Correction modes.
+- **Additional EQ (folded into FIR)** - Five parametric target-shaping bands (types **Peaking**, **LowShelv**, **HighShel**; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves) built directly into the FIR filter. For **Peaking**, a higher Q affects a narrower band and a lower Q a wider one; for the shelves, Q changes the shape near the transition. Their phase is zero in Linear mode and minimum-phase in Minimum and Correction modes.
 - **Gain** (-12 to +12 dB) - Output level trim.
 
 [Back to all effects](/dsp/effects/)

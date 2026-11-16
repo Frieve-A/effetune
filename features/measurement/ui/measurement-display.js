@@ -13,6 +13,29 @@ import {
     recalculateAverages,
     resolveResponseSweepBand
 } from '../measurement-model.js';
+import { defaultLength } from '../distortion-diagnosis.js';
+import { DISTORTION_FRAME, measuredDistortionCurve } from '../speaker-distortion-chart.js';
+import { formatMeasuredAt } from '../speaker-distortion-figures.js';
+
+/**
+ * History preview of a speaker distortion measurement: the uncorrected curve of the Distortion
+ * Diagnosis chart in 1/3-octave bands, averaged in dB over the channels that show the band
+ * (as the frequency response preview averages its channels).
+ */
+function distortionPreviewCurve(model) {
+    const curves = model.channels.map(entry =>
+        measuredDistortionCurve(entry, defaultLength(model, entry), model.bands, 'third'));
+    return curves[0].map(([frequency], k) => {
+        let sum = 0;
+        let count = 0;
+        for (const curve of curves) {
+            if (curve[k][1] === null) continue;
+            sum += curve[k][1];
+            count++;
+        }
+        return [frequency, count ? sum / count : null];
+    });
+}
 
 export function hasDesignableChannelResponses(measurement) {
     if (!isMultiChannelMeasurement(measurement) ||
@@ -74,6 +97,10 @@ class MeasurementDisplay {
             const nameSpan = document.createElement('span');
             nameSpan.className = 'measurement-item-name';
             nameSpan.textContent = measurement.name;
+            // A name cut off with an ellipsis shows in full as a tooltip.
+            nameSpan.addEventListener('mouseenter', () => {
+                nameSpan.title = nameSpan.scrollWidth > nameSpan.clientWidth ? measurement.name : '';
+            });
             
             const dateSpan = document.createElement('span');
             dateSpan.className = 'measurement-item-date';
@@ -110,11 +137,14 @@ class MeasurementDisplay {
             controls.appendChild(deleteBtn);
             
             header.appendChild(nameSpan);
-            if (measurement.effectPipeline) {
+            const badgeText = measurement.speakerModel ? ['label:speakerDistortionBadge', 'Distortion']
+                : measurement.effectPipeline ? ['label:effectPipelineBadge', 'Pipeline'] : null;
+            if (badgeText) {
+                const [key, fallback] = badgeText;
                 const badge = document.createElement('span');
                 badge.className = 'measurement-item-badge';
-                badge.dataset.i18n = 'label:effectPipelineBadge';
-                badge.textContent = i18n.t('label:effectPipelineBadge') || 'Pipeline';
+                badge.dataset.i18n = key;
+                badge.textContent = i18n.t(key) || fallback;
                 header.appendChild(badge);
             }
             header.appendChild(controls);
@@ -133,7 +163,10 @@ class MeasurementDisplay {
             listElement.appendChild(li);
             
             // Draw preview graph if data is available
-            if (measurement.averageFrequencyResponse) {
+            if (measurement.speakerModel) {
+                this.uiManager.graphRenderer.drawPreviewGraph(previewGraph,
+                    distortionPreviewCurve(measurement.speakerModel), DISTORTION_FRAME);
+            } else if (measurement.averageFrequencyResponse) {
                 this.uiManager.graphRenderer.drawPreviewGraph(previewGraph, measurement.averageFrequencyResponse);
             }
         });
@@ -168,9 +201,14 @@ class MeasurementDisplay {
      */
     calculateMeasurementSize(measurement) {
         try {
-            // Convert measurement to JSON string and get its length in bytes
-            const jsonString = JSON.stringify(measurement);
-            const bytes = new Blob([jsonString]).size;
+            // Size as JSON text, except that binary sample data counts as its bytes.
+            let binaryBytes = 0;
+            const jsonString = JSON.stringify(measurement, (key, value) => {
+                if (!ArrayBuffer.isView(value)) return value;
+                binaryBytes += value.byteLength;
+                return undefined;
+            });
+            const bytes = new Blob([jsonString]).size + binaryBytes;
             // Convert to KB and round to 1 decimal place
             return Math.round(bytes / 1024 * 10) / 10;
         } catch (error) {
@@ -218,6 +256,16 @@ class MeasurementDisplay {
         return true;
     }
 
+    /** Restores the saved result view or the empty state after the displayed result is removed. */
+    async selectLatestMeasurement() {
+        const latest = dataStorage.getLatestMeasurement();
+        if (latest) return this.selectMeasurement(latest.id);
+        this.uiManager.selectedMeasurementId = null;
+        document.getElementById('noMeasurementMessage').style.display = 'block';
+        document.getElementById('measurementResults').style.display = 'none';
+        this.uiManager.updateResultsGraph();
+    }
+
     /**
      * Display measurement details in the results screen
      * @param {string} id - Measurement ID to display
@@ -235,8 +283,9 @@ class MeasurementDisplay {
         document.getElementById('editActions').style.display = 'none';
         
         // Update title
-        document.getElementById('resultTitle').textContent = measurement.name;
-        
+        this.showResultTitle(measurement);
+        document.getElementById('resultName').value = measurement.name;
+
         // Format details
         this.renderMeasurementDetailRows(this.buildMeasurementDetailRows(measurement));
 
@@ -302,6 +351,14 @@ class MeasurementDisplay {
         if (!skipGraphUpdate) {
             this.uiManager.correctionHandler.requestCorrectionUpdate();
         }
+    }
+
+    /** Result heading "{name} — {date time}", as on the speaker distortion result. */
+    showResultTitle(measurement) {
+        const measuredAt = new Date(measurement.timestamp);
+        document.getElementById('resultTitle').textContent = Number.isNaN(measuredAt.getTime())
+            ? measurement.name
+            : `${measurement.name} — ${formatMeasuredAt(measuredAt, document.documentElement?.lang || 'en')}`;
     }
 
     /**
@@ -718,15 +775,7 @@ class MeasurementDisplay {
         this.updateMeasurementList();
         
         if (wasSelected) {
-            // Select the latest measurement if available
-            const latestMeasurement = dataStorage.getLatestMeasurement();
-            if (latestMeasurement) {
-                await this.selectMeasurement(latestMeasurement.id);
-            } else {
-                this.uiManager.selectedMeasurementId = null;
-                document.getElementById('noMeasurementMessage').style.display = 'block';
-                document.getElementById('measurementResults').style.display = 'none';
-            }
+            await this.selectLatestMeasurement();
         }
         return true;
     }

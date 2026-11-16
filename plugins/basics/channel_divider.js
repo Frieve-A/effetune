@@ -809,7 +809,6 @@ class ChannelDividerPlugin extends PluginBase {
     const ctx = this.canvas.getContext("2d");
     const { width, height } = this.canvas;
     const dpr = this._getCanvasDpr(this.canvas);
-    const cssWidth = width / dpr;
     const tickFont = Math.round(11 * dpr);
     const axisFont = Math.round(13 * dpr);
     const bottomTickY = height - 26 * dpr;
@@ -825,29 +824,29 @@ class ChannelDividerPlugin extends PluginBase {
     ctx.lineWidth = (isMobileLayout ? 1 : 0.5) * dpr;
     ctx.font = `${tickFont}px Arial`;
 
-    const gridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-    const labeledFreqs = cssWidth < 420
-      ? [20, 100, 500, 2000, 10000]
-      : gridFreqs;
-    gridFreqs.forEach(freq => {
+    // A frequency value that would overlap the previous value is omitted.
+    let previousRight = -Infinity;
+    [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(freq => {
       const x = width * (Math.log10(freq) - minFreqLog) / (maxFreqLog - minFreqLog);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-      if (labeledFreqs.includes(freq)) {
+      const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+      const halfWidth = ctx.measureText(label).width / 2;
+      if (x - halfWidth >= previousRight + 4 * dpr) {
         ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.textAlign = "center";
-        ctx.fillText(freq >= 1000 ? `${freq/1000}k` : freq, x, bottomTickY);
+        ctx.fillText(label, x, bottomTickY);
+        previousRight = x + halfWidth;
       }
     });
 
     const dbRange = [-60, 12]; 
     const totalDbSpan = dbRange[1] - dbRange[0];
-    const gridDBs = [-60, -48, -36, -24, -12, 0]; 
+    // Interior grid values only: -60 dB is the bottom axis bound
+    const gridDBs = [-48, -36, -24, -12, 0];
     gridDBs.forEach(db => {
       const y = height * (1 - (db - dbRange[0]) / totalDbSpan);
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-      if (db > -60) { 
-        ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.textAlign = "right";
-        ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
-      }
+      ctx.fillStyle = (window.ThemePalette?.get('graph-label') ?? ''); ctx.textAlign = "right";
+      ctx.fillText(`${db}`, leftLabelX, y + 3 * dpr);
     });
 
     ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); ctx.font = `${axisFont}px Arial`; ctx.textAlign = "center";

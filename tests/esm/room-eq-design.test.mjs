@@ -169,6 +169,45 @@ test('Room EQ design accepts Max Boost through 18 dB and caps higher settings', 
     assert.equal(maximumCorrection(30), 18);
 });
 
+test('Limit Peak Gain shifts only the synthesized filter and reports the shift as headroomDb', () => {
+    const measurement = {
+        id: 'limit-peak-gain-fixture',
+        averageFrequencyResponse: [[20, 0], [1000, -12], [3000, 0], [20000, 0]]
+    };
+    const design = limitPeakGain => designRoomEq({
+        config: {
+            sampleRate: 48000,
+            taps: 8192,
+            phase: 'lin',
+            smoothing: 0.05,
+            maxBoostDb: 12,
+            eqBands: [{ enabled: true, type: 'pk', frequency: 1000, gain: 4, q: 1 }],
+            ...limitPeakGain
+        },
+        sources: [{ measurement, impulses: [] }]
+    });
+    const plain = design({});
+    const limited = design({ limitPeakGain: true });
+    const preview = limited.previews[0];
+
+    assert.equal(plain.previews[0].headroomDb, 0);
+    const peakDb = Math.max(0, ...preview.baseCorrectionDb.map(
+        (base, index) => base + preview.targetDb[index] - preview.referenceLevelDb
+    ));
+    assert.ok(peakDb > 1);
+    assert.ok(Math.abs(preview.headroomDb + peakDb) < 1e-5);
+    for (const key of ['baseCorrectionDb', 'predictedDb', 'predictedBaseDb', 'targetDb']) {
+        assert.deepEqual(preview[key], plain.previews[0][key]);
+    }
+    // The filter is the unlimited filter scaled by the headroom.
+    const scale = 10 ** (preview.headroomDb / 20);
+    const plainTaps = plain.channels[0];
+    const limitedTaps = limited.channels[0];
+    for (let index = 0; index < plainTaps.length; index += 1) {
+        assert.ok(Math.abs(limitedTaps[index] - plainTaps[index] * scale) < 1e-6);
+    }
+});
+
 test('magnitude correction clips and zero-pads its range before smoothing sets the boundary tails', () => {
     const measurement = {
         id: 'correction-boundary-fixture',
@@ -242,11 +281,17 @@ test('correction amount scales automatic correction in dB without scaling Additi
     const full = design(1);
     const half = design(0.5);
     const none = design(0);
+    const inverse = design(-1);
     const index = nearestFrequencyIndex(full.frequencies, 1000);
+    const peakIndex = nearestFrequencyIndex(full.frequencies, 3000);
 
     assert.ok(full.baseCorrectionDb[index] > 1);
     assert.ok(Math.abs(half.baseCorrectionDb[index] - full.baseCorrectionDb[index] * 0.5) < 0.001);
     assert.ok(Math.abs(none.baseCorrectionDb[index]) < 0.001);
+    // A negative amount reproduces the deviation: the dip is cut instead of filled, and
+    // the response above it (a relative peak) is now the part Max Boost limits.
+    assert.ok(Math.abs(inverse.baseCorrectionDb[index] + full.baseCorrectionDb[index]) < 0.001);
+    assert.ok(Math.abs(inverse.baseCorrectionDb[peakIndex] + full.baseCorrectionDb[peakIndex]) < 0.5);
     // Differencing the predictions cancels the measurement and the Additional EQ that all
     // three share, leaving only the automatic correction, which must scale with the amount.
     assert.ok(Math.abs((full.predictedDb[index] - none.predictedDb[index]) -

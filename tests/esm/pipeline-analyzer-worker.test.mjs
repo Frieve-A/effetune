@@ -26,6 +26,7 @@ import {
 } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
 import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
 import { parseTelemetryPacket } from '../../js/audio/telemetry-hub.js';
+import { createSf2RuntimeFixture } from '../helpers/sf2-runtime-fixture.mjs';
 
 const SAMPLE_RATE = 48000;
 const CHANNEL_COUNT = 8;
@@ -1231,6 +1232,79 @@ test('offline-required IR Reverb snapshot activates its real WASM asset in a Wor
   } finally {
     await worker.terminate();
   }
+});
+
+test('an idle streamed SoundFont preserves bus routing in a Pipeline Analyzer Worker', async t => {
+  const fixture = await createSf2RuntimeFixture();
+  t.after(() => fixture.close());
+  const scope = vm.createContext({
+    window: { dspParamPackers: DSP_PARAM_PACKERS },
+    document: {},
+    MutationObserver: class { observe() {} },
+    Float32Array,
+    Uint8Array
+  });
+  for (const path of ['plugin-base.js', 'sfz-instrument.js', 'others/soundfont_player.js']) {
+    const source = fs.readFileSync(new URL(`../../plugins/${path}`, import.meta.url), 'utf8');
+    vm.runInContext(source, scope, { filename: path });
+  }
+  const soundFont = new scope.window.SoundFontPlayerPlugin();
+  Object.assign(soundFont, { id: 404, sf: 'a'.repeat(24), outputBus: 1 });
+  const filter = {
+    id: 405,
+    enabled: true,
+    constructor: { name: 'RoutedDelayAnalyzerTestPlugin' },
+    inputBus: 1,
+    outputBus: 0,
+    process() {},
+    processorString: `
+      let previous = context.previous || 0;
+      for (let frame = 0; frame < data.length; frame++) {
+        const input = data[frame];
+        data[frame] = input + 0.5 * previous;
+        previous = input;
+      }
+      context.previous = previous;
+      return data;
+    `
+  };
+  const wasm = fs.readFileSync(new URL('../../plugins/dsp/effetune-dsp.wasm', import.meta.url));
+  const audioManager = {
+    audioContext: { sampleRate: SAMPLE_RATE, destination: { channelCount: 1 } },
+    pipeline: [soundFont, filter],
+    getEnabledDspTypes: () => ['SoundFontPlayerPlugin'],
+    dspModuleInfo: { bytes: Uint8Array.from(wasm).buffer },
+    async waitForEffectiveActiveWasmAssets(plugin, slots) {
+      assert.equal(plugin, soundFont);
+      assert.deepEqual(slots, [0]);
+      return {
+        ready: true,
+        assets: new Map([[0, fixture.descriptor]]),
+        revisions: new Map([[0, { operationRevision: 1 }]]),
+        rejectedCandidates: new Map()
+      };
+    }
+  };
+  const { snapshot, speakerResponses } = await buildPipelineAnalyzerSnapshot({
+    audioManager,
+    workletSync: new PipelineWorkletSync({ audioManager }),
+    configuration: { inputChannel: 0, outputs: [{ channel: 0 }], measurementSettings: IMPULSE_SETTINGS },
+    resolveRequirements: getPipelineAnalysisRequirements
+  });
+  assert.deepEqual(snapshot.requiredWasmPluginIds, [soundFont.id]);
+  assert.deepEqual(snapshot.assets, []);
+
+  const worker = new Worker(new URL('../helpers/pipeline-analyzer-node-worker.mjs', import.meta.url));
+  t.after(() => worker.terminate());
+  const request = { type: 'analyze', snapshot, speakerResponses };
+  const { message: { result } } = await runInRealWorker(
+    worker, request, collectPipelineAnalyzerTransferables(request)
+  );
+  assert.equal(result.reportedLatency, 0);
+  assert.deepEqual(result.warnings, []);
+  // The direct path adds to the delayed signal routed out and back through bus 1.
+  assert.ok(Math.abs(result.after.impulse[0] - 2) < 1e-6);
+  assert.ok(Math.abs(result.after.impulse[1] - 0.5) < 1e-6);
 });
 
 test('non-cloneable compiled DSP module uses the bytes fallback through a real Worker', async () => {

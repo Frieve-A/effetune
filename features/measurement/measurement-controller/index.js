@@ -22,7 +22,8 @@ import {
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
-import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
+import { configureAndroidMeasurementOutput } from '../../../js/android/measurement.js';
 
 export class MeasurementSetupError extends Error {
     constructor(code) {
@@ -216,11 +217,7 @@ export class MeasurementController {
         const outputChannels = selectionFromConfig(configSnapshot);
         const multiChannel = isMultiChannelSelection(outputChannels);
         if (isAndroidHost()) {
-            const route = await getAndroidBridge().request('audio.configure', {
-                outputDeviceId: !configSnapshot.audioOutputId || configSnapshot.audioOutputId === 'default'
-                    ? 0 : Number(configSnapshot.audioOutputId),
-                channelCount: configSnapshot.outputChannelCount || 2
-            });
+            const route = await configureAndroidMeasurementOutput(configSnapshot);
             configSnapshot.outputChannelCount = route.channelCount;
         }
         const pipelineSnapshot = configSnapshot.effectPipeline ? this.pipelineHandoff?.snapshot : null;
@@ -353,6 +350,7 @@ export class MeasurementController {
      */
     cleanup() {
         console.log('MeasurementController cleanup starting');
+        const releases = [];
         
         // Stop any ongoing measurement
         this.isRunningMeasurement = false;
@@ -396,7 +394,7 @@ export class MeasurementController {
         
         try {
             console.log('Stopping microphone input from cleanup method');
-            audioUtils.stopMicrophoneInput();
+            releases.push(audioUtils.stopMicrophoneInput());
         } catch (e) {
             console.warn('Error stopping microphone input:', e);
         }
@@ -409,7 +407,7 @@ export class MeasurementController {
                 // Don't close the context as it might be needed later
                 if (audioUtils.audioContext.state === 'running') {
                     console.log('Suspending audio context');
-                    audioUtils.audioContext.suspend().catch(e => console.warn('Error suspending audio context:', e));
+                    releases.push(audioUtils.audioContext.suspend().catch(e => console.warn('Error suspending audio context:', e)));
                 }
             } catch (e) {
                 console.warn('Error handling audio context state:', e);
@@ -417,6 +415,7 @@ export class MeasurementController {
         }
         
         console.log('Measurement resources cleanup completed');
+        return Promise.all(releases);
     }
 
     /**

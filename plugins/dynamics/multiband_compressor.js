@@ -1177,9 +1177,10 @@ class MultibandCompressorPlugin extends PluginBase {
       const band = this.bands[bandIndex];
       const cssWidth = canvas.clientWidth || width;
       const scale = cssWidth > 0 ? width / cssWidth : 2;
-      const gridLabelFontSize = 11 * scale;
+      const gridLabelFontSize = 12 * scale;
       const axisFontSize = 14 * scale;
-      const gridLabelX = 40 * scale;
+      // Leaves room for the descenders of the rotated Y-axis title
+      const gridLabelX = 44 * scale;
       const gridLabelYOffset = 3 * scale;
       const bottomLabelOffset = 20 * scale;
       const axisBottomOffset = 3 * scale;
@@ -1209,30 +1210,7 @@ class MultibandCompressorPlugin extends PluginBase {
       });
       ctx.stroke();
 
-      // Draw labels for grid lines
-      ctx.fillStyle = LABEL_COLOR;
-      ctx.font = `${gridLabelFontSize}px Arial`;
-      DB_POINTS.forEach(db => {
-        const x = ((db + 60) / 60) * width;
-        const y = height - ((db + 60) / 60) * height;
-        ctx.textAlign = 'right';
-        ctx.fillText(`${db}dB`, gridLabelX, y + gridLabelYOffset);
-        ctx.textAlign = 'center';
-        ctx.fillText(`${db}dB`, x, height - bottomLabelOffset);
-      });
-
-      // Draw axis labels
-      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
-      ctx.font = `${axisFontSize}px Arial`;
-      ctx.textAlign = 'center';
-      ctx.fillText('in', width / 2, height - axisBottomOffset);
-      ctx.save();
-      ctx.translate(axisX, height / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText('out', 0, 0);
-      ctx.restore();
-
-      // Draw transfer curve for current band
+      // Draw transfer curve for current band before the text so it never covers tick values or axis titles
       ctx.strokeStyle = CURVE_COLOR;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -1240,16 +1218,42 @@ class MultibandCompressorPlugin extends PluginBase {
       const numPoints = Math.min(width, 100); // Reduce from width to 100 points
       const pointSpacing = width / numPoints;
 
-      ctx.moveTo(0, height); // Start at bottom-left
-
       for (let i = 0; i < numPoints; i++) {
         const x = i * pointSpacing;
         const inputDb = (x / width) * 60 - 60;
         const outputDb = inputDb + this._bandGain(band, inputDb);
         const y = height - ((outputDb + 60) / 60) * height;
-        ctx.lineTo(x, y);// do not clamp y here to allow curve to go off-canvas
+        // do not clamp y here to allow curve to go off-canvas
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
       ctx.stroke();
+
+      // Draw labels for grid lines
+      ctx.fillStyle = LABEL_COLOR;
+      ctx.font = `${gridLabelFontSize}px Arial`;
+      DB_POINTS.forEach(db => {
+        const x = ((db + 60) / 60) * width;
+        const y = height - ((db + 60) / 60) * height;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${db}`, gridLabelX, y + gridLabelYOffset);
+        ctx.textAlign = 'center';
+        ctx.fillText(`${db}`, x, height - bottomLabelOffset);
+      });
+
+      // Draw axis labels
+      ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
+      ctx.font = `${axisFontSize}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Input (dB)', width / 2, height - axisBottomOffset);
+      ctx.save();
+      ctx.translate(axisX, height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Output (dB)', 0, 0);
+      ctx.restore();
 
       // Draw gain reduction meter if applicable
       if (this.hasLocalAudio !== false && band.gr > 0) {

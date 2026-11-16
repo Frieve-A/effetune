@@ -74,7 +74,6 @@
     min-width: 0;
     position: relative;
     background: color-mix(in srgb, var(--et-surface-5), var(--et-graph-bg-deep) 25%);
-    border-radius: 4px;
     padding: 10px;
     box-sizing: border-box;
 }

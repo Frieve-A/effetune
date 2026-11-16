@@ -548,10 +548,10 @@ bool runDirectReference(const std::string &type, const Control &control,
   const bool room_eq = type == "RoomEqPlugin";
   const bool ir_reverb = type == "IRReverbPlugin";
   const bool fir_crossover = type == "FIRCrossoverPlugin";
-  // Both kernels convolve one mono impulse response into every channel and report the head
+  // These kernels convolve one mono impulse response into every channel and report the head
   // block plus the filter delay as latency, so they share one reference path.
   const bool mono_fir = type == "FiveBandFIRPEQPlugin" || type == "GroupDelayEqPlugin" ||
-                        type == "GroupDelayPEQPlugin";
+                        type == "GroupDelayPEQPlugin" || type == "HeadphoneEQPlugin";
   if (!room_eq && !ir_reverb && !mono_fir && !fir_crossover) {
     std::fputs("Direct reference is not available for this kernel\n", stderr);
     return false;
