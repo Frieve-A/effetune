@@ -1443,6 +1443,11 @@ export interface SoundFontPlayerOptions extends CommonEffectOptions {
   readonly previewMidi?: number;
   readonly previewChannel?: number;
   readonly sf2Compatibility?: number;
+  readonly respondGm?: boolean;
+  readonly respondGs?: boolean;
+  readonly respondXg?: boolean;
+  readonly transpose?: number;
+  readonly midiChannelsOff?: number;
   readonly assets: SoundFontPlayerAssets;
 }
 

@@ -2320,9 +2320,12 @@ class AMRadioSimulatorPlugin extends PluginBase {
         const eventActive = performance.now() < this.eventFlashUntil;
         const cards = [
             { title: 'S METER', value: `S${sValue.toFixed(1)}`, level: sLevel },
-            { title: 'AGC GAIN', value: `${values.agcGainDb >= 0 ? '+' : ''}${values.agcGainDb.toFixed(1)} dB`, level: (values.agcGainDb - AM_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) / (AM_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB - AM_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) },
-            { title: 'MODULATION', value: `${values.modPercent.toFixed(0)}%`, level: values.modPercent / 160 },
-            { title: 'FADE / EVENTS', value: `${values.fadeDb.toFixed(1)} dB  ⚡${values.staticRate.toFixed(1)}  ▲${values.clipRate.toFixed(1)}`, level: (values.fadeDb + 80) / 86 }
+            { title: 'AGC GAIN', fields: [['', `${values.agcGainDb >= 0 ? '+' : ''}${values.agcGainDb.toFixed(1)}`, '+00.0', ' dB']],
+                level: (values.agcGainDb - AM_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) /
+                    (AM_RADIO_SIMULATOR_MAXIMUM_AGC_GAIN_DB - AM_RADIO_SIMULATOR_MINIMUM_AGC_GAIN_DB) },
+            { title: 'MODULATION', fields: [['', values.modPercent.toFixed(0), '000', '%']], level: values.modPercent / 160 },
+            { title: 'FADE / EVENTS', fields: [['', values.fadeDb.toFixed(1), '-000.0', ' dB'],
+                ['  ⚡', values.staticRate.toFixed(1), '000.0'], ['  ▲', values.clipRate.toFixed(1), '000000.0']], level: (values.fadeDb + 80) / 86 }
         ];
         cards.forEach((card, index) => {
             const column = index % columns;
@@ -2340,7 +2343,9 @@ class AMRadioSimulatorPlugin extends PluginBase {
             context.fillText(card.title, x + 6 * scale, y + 5 * scale);
             context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             context.font = `${Math.round(11 * scale)}px Arial`;
-            context.fillText(card.value, x + 6 * scale, y + 21 * scale, cardWidth - 12 * scale);
+            if (card.fields) {
+                drawHudReadings(context, card.fields, x + 6 * scale, y + 21 * scale, cardWidth - 12 * scale);
+            } else context.fillText(card.value, x + 6 * scale, y + 21 * scale, cardWidth - 12 * scale);
             const level = card.level < 0 ? 0 : (card.level > 1 ? 1 : card.level);
             context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
             context.fillRect(x + 6 * scale, y + cardHeight - 9 * scale, cardWidth - 12 * scale, 4 * scale);

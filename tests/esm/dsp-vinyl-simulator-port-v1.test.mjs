@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -281,7 +282,7 @@ test('Vinyl Simulator keeps reference mode inside the seeded parity harness', as
   }
   const cancelledFrames = [];
   const context = {
-    PluginBase,
+    PluginBase, drawHudReadings,
     cancelAnimationFrame: id => cancelledFrames.push(id),
     performance: { now: () => 1000 },
     window: { dspTelemetryHub: null }
@@ -331,6 +332,7 @@ test('Vinyl Simulator keeps reference mode inside the seeded parity harness', as
   let canvasDraws = 0;
   const canvasText = [];
   const context2d = {
+    ...hudTextContext,
     clearRect() { canvasDraws++; canvasText.length = 0; },
     fillRect() {},
     strokeRect() {},

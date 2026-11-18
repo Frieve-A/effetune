@@ -59,17 +59,18 @@ test('actual FIR stages preserve audible gain and reject each decimation stopban
     }
 });
 
-test('DSF bit orders and raw interleaved DFF yield identical PCM without channel swapping', async () => {
+test('DSF bit orders and raw interleaved DFF yield identical PCM in file channel order up to 5.1', async () => {
     const sampleRate = 2822400;
     const sampleCount = sampleRate / 10;
-    const signals = [time => 0.4 * Math.sin(2 * Math.PI * 1000 * time),
-        time => 0.2 * Math.sin(2 * Math.PI * 3000 * time)];
+    const tones = [[1000, 0.4], [3000, 0.2], [500, 0.3], [2000, 0.25], [4000, 0.35], [5000, 0.15]];
+    const signals = tones.map(([frequency, level]) => time => level * Math.sin(2 * Math.PI * frequency * time));
     const outputs = [];
     for (const format of ['lsb', 'msb', 'dff']) {
         const bitOrder = format === 'lsb' ? 'lsb' : 'msb';
         const channels = signals.map(signal => encodeDsdSignal(sampleCount, sampleRate, signal, bitOrder));
-        const bytes = format === 'dff' ? createDffFixture({ sampleRate, sampleCount, channels }) :
-            createDsfFixture({ sampleRate, sampleCount, channels, bitOrder });
+        const bytes = format === 'dff' ?
+            createDffFixture({ sampleRate, sampleCount, channelCount: channels.length, channels }) :
+            createDsfFixture({ sampleRate, sampleCount, channelCount: channels.length, channels, bitOrder });
         const decoder = await createDsdDecoder(createDsdReader(bytes), { outputSampleRate: 48000 });
         outputs.push(await decoder.readFrames(0, decoder.totalFrames));
         assert.equal(decoder.totalFrames, 4800);
@@ -80,8 +81,10 @@ test('DSF bit orders and raw interleaved DFF yield identical PCM without channel
     assert.deepEqual(outputs[0], outputs[2]);
     const first = 480;
     const last = 4320;
-    assert.ok(Math.abs(20 * Math.log10(amplitude(outputs[0][0], 48000, 1000, first, last) / 0.4)) < 0.1);
-    assert.ok(Math.abs(20 * Math.log10(amplitude(outputs[0][1], 48000, 3000, first, last) / 0.2)) < 0.1);
+    assert.equal(outputs[0].length, tones.length);
+    tones.forEach(([frequency, level], channel) => {
+        assert.ok(Math.abs(20 * Math.log10(amplitude(outputs[0][channel], 48000, frequency, first, last) / level)) < 0.1);
+    });
     assert.ok(amplitude(outputs[0][0], 48000, 3000, first, last) < 0.001);
 });
 

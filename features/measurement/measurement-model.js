@@ -1,5 +1,6 @@
 import { INDIVIDUAL_CHANNELS } from './audio-utils/channel-selection.js';
 import { validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
+import { worstGaps } from '../../js/utils/measurement-dsp/recording-gaps.js';
 
 export const essFrequencyLimit = sampleRate => sampleRate * 0.49;
 
@@ -337,6 +338,23 @@ export function resolveDisplayedChannelCurves(measurement, pointIndex) {
         }));
 }
 
+/** Locale keys of the notes shown for a recording that dropped out (see recording-gaps.js). */
+export const RECORDING_GAP_NOTES = {
+    corrected: 'analysis:recordingGapsCorrected',
+    interrupted: 'analysis:recordingInterrupted'
+};
+
+/** The worst recording-gap state among the point and channel entries behind the displayed response. */
+export function displayedRecordingGaps(measurement, pointIndex = null, channelToken = null) {
+    const allPoints = pointIndex === null || pointIndex === undefined || pointIndex === 'all';
+    const allChannels = channelToken === null || channelToken === undefined || channelToken === 'all';
+    const points = (allPoints ? measurement?.points || [] : [measurement?.points?.[pointIndex]]).filter(Boolean);
+    const entries = isMultiChannelMeasurement(measurement)
+        ? points.flatMap(point => (point.channels || []).filter(entry => allChannels || entry.channel === channelToken))
+        : points;
+    return worstGaps(...entries.map(entry => entry.recordingGaps));
+}
+
 export function visibleChannelCurves(curves, hoveredChannel = null) {
     if (!Array.isArray(curves)) return [];
     return hoveredChannel ? curves.filter(curve => curve.channel === hoveredChannel) : curves;
@@ -375,6 +393,7 @@ export function mergeChannelRedoResult(point, records, channelToken, result, all
         channel: channelToken,
         frequencyResponse: result.frequencyResponse,
         maxSignalLevel: result.maxSignalLevel,
+        ...(result.recordingGaps ? { recordingGaps: result.recordingGaps } : {}),
         ...(ir ? { irId, ir } : {})
     };
     const nextPoint = {

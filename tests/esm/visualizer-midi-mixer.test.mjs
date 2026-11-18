@@ -148,7 +148,7 @@ test('MIDI mixer requests measured levels only while visible and releases its le
     class SoundFontPlayerPlugin {
         constructor() { this.enabled = true; this.sf = 'font'; }
         acquireVisualizerMidiMetering() { acquired++; return () => { released++; }; }
-        getVisualizerMidiMixerSnapshot() { return { state: { voices: 0, limit: 64, channels: [] }, presets: [], channelFilter: 0 }; }
+        getVisualizerMidiMixerSnapshot() { return { state: { voices: 0, limit: 64, channels: [] }, presets: [], channelMask: 65535 }; }
     }
     const plugin = new SoundFontPlayerPlugin();
     const manager = { getCurrentPipeline: () => [plugin], setVisualizerSources() {} };
@@ -187,7 +187,7 @@ test('MIDI mixer follows the first enabled SoundFont Player through pipeline cha
             this.snapshot = { state: { voices: 1, limit: 64, channels: [{ bank: 0, program: 0,
                 presetIndex: 0, volume: 100, pan: 64, expression: 127, reverb: 40, chorus: 0,
                 notes: new Uint8Array(16), voices: 1, levelPeak: peak }] },
-            presets: [{ bank: 0, program: 0, name }], channelFilter: 0 };
+            presets: [{ bank: 0, program: 0, name }], channelMask: 65535 };
         }
         acquireVisualizerMidiMetering() {
             this.leases++; leases.push(`acquire ${this.name}`);
@@ -202,8 +202,9 @@ test('MIDI mixer follows the first enabled SoundFont Player through pipeline cha
     let pipeline = [first, second, third];
     const sources = new VisualizerSources({ getCurrentPipeline: () => pipeline,
         setVisualizerSources() {} }, () => presentation);
-    const text = [], ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value)); },
+    const text = [], ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value).trim().replace(/\s+/g, ' ').replace('/ ', '/')); },
         beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
+        measureText: value => ({ width: value.length * 8 }),
         save() {}, restore() {}, translate() {}, scale() {} };
     const item = createItem('midi', 'midi');
     item.params.channelEnd = 1;
@@ -266,6 +267,11 @@ test('MIDI mixer follows the first enabled SoundFont Player through pipeline cha
         draw('second');
         assert.deepEqual(leases.slice(-2), ['release first', 'acquire second'],
             'changing the current pipeline releases the previous pipeline before acquiring the new one');
+        pipeline = [first, second];
+        first.respondsToCurrentSystem = () => false;
+        draw('second');
+        first.respondsToCurrentSystem = () => true;
+        draw('first');
     } finally {
         sources.dispose();
         assert.equal(second.leases, 0);
@@ -276,8 +282,9 @@ test('MIDI mixer follows the first enabled SoundFont Player through pipeline cha
 
 test('MIDI mixer paints projected controls without inventing channel audio levels', () => {
     const text = [], transforms = [];
-    const ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value)); },
+    const ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value).trim().replace(/\s+/g, ' ').replace('/ ', '/')); },
         beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
+        measureText: value => ({ width: value.length * 8 }),
         save() {}, restore() {}, translate(...args) { transforms.push(['translate', ...args]); },
         scale(...args) { transforms.push(['scale', ...args]); } };
     const canvas = { width: 960, height: 360, getContext: () => ctx };
@@ -317,7 +324,7 @@ test('instant-fall MIDI meters retain a measurement between animation frames and
     const params = { ...item.params.levelMeter, cf: 0, pk: false };
     const frame = {};
     const draw = (peak, currentFrame) => display.drawLevel(ctx, 0, 0, 100, 10, peak, currentFrame, 0,
-        params, item.params.levelPalette, 0, 1, '#ffffff', {});
+        params, item.params.levelPalette, 0, 1, '#ffffff', {}, 12);
     draw(.5, frame);
     const first = display.meterRows[0].ballistics.cur[0];
     draw(.5, frame);
@@ -336,13 +343,13 @@ test('MIDI level values and peaks stop at -144 dB through silence and recover on
     let now = 0;
     await withGlobals({ performance: { now: () => now } }, () => {
         for (const pk of [false, true]) {
-            const text = [], ctx = { fillRect() {}, fillText(value) { text.push(value); } };
+            const text = [], ctx = { fillRect() {}, save() {}, restore() {}, fillText(value) { text.push(value.trim()); } };
             const display = new MidiMixerDisplay(null, null);
             const item = createItem('midi', 'midi');
             const params = { ...item.params.levelMeter, dr: -48, cf: 1, ph: .5, pf: 1, pk, showLevelValues: true };
             const draw = samplePeak => {
                 display.drawLevel(ctx, 0, 0, 100, 10, samplePeak, {}, 0,
-                    params, item.params.levelPalette, 0, 1, '#ffffff', {});
+                    params, item.params.levelPalette, 0, 1, '#ffffff', {}, 12);
                 return text.at(-1);
             };
             assert.equal(draw(0), '-144.0 dB', 'zero amplitude (-Infinity dB) starts at the numeric floor');
@@ -364,8 +371,9 @@ test('MIDI level values and peaks stop at -144 dB through silence and recover on
 });
 
 test('a new MIDI score waits for a fresh SoundFont mixer frame', () => {
-    const text = [], ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value)); },
+    const text = [], ctx = { clearRect() {}, fillRect() {}, strokeRect() {}, fillText(value) { text.push(String(value).trim().replace(/\s+/g, ' ').replace('/ ', '/')); },
         beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
+        measureText: value => ({ width: value.length * 8 }),
         save() {}, restore() {}, translate() {}, scale() {} };
     const canvas = { width: 960, height: 360, getContext: () => ctx };
     const item = createItem('midi', 'midi');
@@ -376,7 +384,7 @@ test('a new MIDI score waits for a fresh SoundFont mixer frame', () => {
         reverb: 40, chorus: 0, mute: false, solo: false, voices: 5, notes: new Uint8Array(16), levelPeak: .4 }] };
     let mixerState = oldState;
     const sources = { getFrame: () => snapshot,
-        getSoundFontMixer: () => ({ state: mixerState, presets: [], channelFilter: 0 }) };
+        getSoundFontMixer: () => ({ state: mixerState, presets: [], channelMask: 65535 }) };
     const display = new MidiMixerDisplay(canvas, sources);
     display.draw(item, 0, 960, {});
     assert.ok(text.includes('Voices 5/64'));
@@ -394,6 +402,7 @@ test('MIDI change flash follows channel values without flashing initial, disable
     const strokes = [];
     const ctx = { clearRect() {}, fillRect() {}, strokeRect(...args) { strokes.push({ args, alpha: this.globalAlpha }); },
         fillText() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
+        measureText: value => ({ width: value.length * 8 }),
         save() {}, restore() {}, translate() {}, scale() {}, globalAlpha: 1 };
     const canvas = { width: 960, height: 240, getContext: () => ctx };
     const item = createItem('midi', 'midi');
@@ -403,7 +412,7 @@ test('MIDI change flash follows channel values without flashing initial, disable
         expression: 127, reverb: 40, chorus: 0 };
     let presets = [], state = { voices: 0, limit: 64, channels: [channel] };
     const sources = { getFrame: () => snapshot,
-        getSoundFontMixer: () => ({ state, presets, channelFilter: 0 }) };
+        getSoundFontMixer: () => ({ state, presets, channelMask: 65535 }) };
     const display = new MidiMixerDisplay(canvas, sources);
     display.draw(item, 1, 960, {});
     assert.equal(strokes.length, 0, 'first frame establishes a baseline');

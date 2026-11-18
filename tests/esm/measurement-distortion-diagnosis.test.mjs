@@ -15,6 +15,7 @@ import {
     autoRange,
     chartA,
     chartB,
+    chartCCells,
     chartD,
     chartH,
     chartS,
@@ -236,8 +237,11 @@ test('facts line: check state and the microphone warning', () => {
     assert.match(facts(first, 'long'), /check=analysis:diagFactsNotChecked\)$/);
     model.lastCheck = { at: Date.UTC(2026, 10, 14, 8, 0) };
     assert.match(facts(first, 'short'), /check=analysis:diagFactsCheckedAgain\(when=.+\)\)$/);
-    assert.ok(facts(second, 'short').endsWith(' · analysis:diagMicrophoneDistorted'));
+    assert.ok(facts(second, 'short').endsWith(' · analysis:diagMicrophoneDistorted · analysis:recordingGapsCorrected'));
     assert.ok(!facts(first, 'short').includes('diagMicrophoneDistorted'));
+    assert.ok(!facts(first, 'short').includes('analysis:recording'));
+    second.recordingGaps = 'interrupted';
+    assert.ok(facts(second, 'short').endsWith(' · analysis:recordingInterrupted'));
 });
 
 test('rule 1 fires inside -8 to -4 dB and not just outside', () => {
@@ -590,6 +594,13 @@ test('chart S: peak gains, dotted static bounds, the noise band and the map in a
     const masked = chartS(model, entry, t).map;
     assert.equal(masked.columns[1].gains, null);
     assert.equal(masked.scale.range, 2);
+    // Unmasked: that column keeps its cells, marked below the noise floor, and every peak sets the range.
+    const unmasked = chartS(model, entry, t, true).map;
+    const all = sweepStaticView(entry.sweep, levels);
+    assert.deepEqual(unmasked.columns[1].gains, all.map[31]);
+    assert.deepEqual(unmasked.columns.map(column => column.below), [false, true]);
+    const peaks = [30, 31].flatMap(k => [all.positive[k], all.negative[k]]).map(Math.abs);
+    assert.equal(unmasked.scale.range, staticScale(Math.max(...peaks)).range);
 });
 
 test('chart S range: the 1-2-5 step at or above the largest peak gain, its ticks and readout decimals', () => {
@@ -639,6 +650,41 @@ test('chart H: THD sums the harmonic power ratios, single orders and THD 6 dB lo
     assert.equal(chart.items.some(item => item.kind === 'note'), false);
     assert.deepEqual(chart.frame.yTicks.map(chart.frame.yTickLabel), ['100 %', '10 %', '1 %', '0.1 %', '0.01 %']);
     assert.equal(chart.frame.formatValue(-40), `${MINUS}40.0 dB (1.0 %)`);
+    // H3 below its noise floor: hidden by default, drawn unmasked; an order without data stays empty.
+    entry.diagnosis.ess.essL.z[1].fill(lin(-45));
+    const pointOf = (unmasked, color) => chartH(model, entry, 'third', t, unmasked).items
+        .find(item => item.kind === 'curve' && item.color === color).points[11];
+    assert.equal(pointOf(false, '--sdc-h3'), null);
+    near(pointOf(true, '--sdc-h3').y, -50);
+    assert.equal(pointOf(true, '--sdc-h5'), null);
+});
+
+test('show below the noise floor: chart C cells and chart A changes include ratios inside the noise', () => {
+    const { model, entry } = blankModel();
+    const ess = entry.diagnosis.ess;
+    setSweep(entry, 'essL', 2, ruleBand(11), -40);
+    setSweep(entry, 'ess6', 2, ruleBand(11), -46);
+    setSweep(entry, 'essL', 3, ruleBand(11), -50);
+    setSweep(entry, 'ess6', 3, ruleBand(11), -62);
+    setSweep(entry, 'essL', 4, ruleBand(11), -70);
+    for (const sweep of [ess.essL, ess.ess6]) sweep.z[1].fill(lin(-55));
+    ess.essL.z[2].fill(lin(-60));
+    const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-4, `${actual} vs ${expected}`);
+
+    const masked = chartCCells(model, entry);
+    assert.deepEqual(masked.map(cell => cell.order), [2, 3]);
+    assert.ok(masked.every(cell => !('below' in cell)));
+    const unmasked = chartCCells(model, entry, true);
+    assert.deepEqual(unmasked.map(cell => [cell.order, cell.below]), [[2, false], [3, false], [4, true]]);
+    near(unmasked[2].R, -70);
+
+    // H3 is within 6 dB of the noise at the set level and below it 6 dB lower: no change unless unmasked.
+    const change = (unmasked, color) => chartA(model, entry, t, unmasked).items
+        .find(item => item.kind === 'curve' && item.color === color).points[11];
+    near(change(false, '--sdc-h2').y, -6);
+    assert.equal(change(false, '--sdc-h3'), null);
+    near(change(true, '--sdc-h3').y, -12);
+    assert.equal(change(true, '--sdc-h5'), null);
 });
 
 test('compare: matched interpolation, clamping, levels differ and unmatched values', () => {

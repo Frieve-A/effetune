@@ -43,7 +43,7 @@ test('actual Player owner pauses a pending script, resumes a new generation and 
     const node = { context, port: { addEventListener(_type, listener) { listeners.add(listener); },
       removeEventListener(_type, listener) { listeners.delete(listener); }, start() {},
       postMessage(message) { p.handlePortMessage(message); } } };
-    class SoundFontPlayerPlugin { constructor() { this.id = 7; this.sf = 'bank'; } getParameters() { return { mc: 0 }; } }
+    class SoundFontPlayerPlugin { constructor() { this.id = 7; this.sf = 'bank'; } getParameters() { return { mco: 0 }; } }
     const plugin = new SoundFontPlayerPlugin();
     const manager = Object.assign({}, audioManagerSfzRuntimeMethods, { workletNode: node, audioContext: context,
       _audioGraphGeneration: 0, _getActiveDspWorklets: () => [node], _isActiveDspWorklet: target => target === node,
@@ -70,7 +70,7 @@ test('actual Player owner pauses a pending script, resumes a new generation and 
       return output[0].some(value => Math.abs(value) > 1e-5);
     };
     try {
-      const parameters = { enabled: true, sf: 'bank', mc: 0, pl: 64, og: 0 };
+      const parameters = { enabled: true, sf: 'bank', mco: 0, pl: 64, og: 0 };
       await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SoundFontPlayerPlugin', parameters,
         wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
       await h.send({ type: 'dspEnableTypes', types: ['SoundFontPlayerPlugin'] });
@@ -277,7 +277,7 @@ test('shared SFZ checkpoint helpers capture authoritative native clocks and vali
   plugin.parameters.sf = 'new-bank';
   assert.throws(() => p.restoreSfzRuntimeCheckpoint({ ...record, plannedMigration: true }, entry), /identity changed/);
   plugin.type = entry.type = 'SoundFontPlayerPlugin';
-  plugin.parameters.mc = 1.2;
+  plugin.parameters.mco = 1.2;
   const playerRecord = p.captureSfzRuntimeCheckpoint(plugin, entry);
   assert.equal(playerRecord.channel, 1, 'a new graph capture uses the effective parameter before scheduler registration');
   assert.equal(p.restoreSfzRuntimeCheckpoint(playerRecord, entry), true);
@@ -8786,8 +8786,9 @@ test('real worklet channel changes join future notes and gain updates preserve h
       frame += 128;
       return output[0];
     };
-    const update = async (mc, og = 0) => {
-      const parameters = { enabled: true, mc, og, pl: 64 };
+    // mco holds the channels turned off, so only the given channel plays.
+    const update = async (channel, og = 0) => {
+      const parameters = { enabled: true, mco: 65535 ^ 1 << channel - 1, og, pl: 64 };
       await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'SoundFontPlayerPlugin',
         parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
     };
@@ -8854,7 +8855,7 @@ test('real worklet instrument activation keeps the song clock advancing through 
       return Math.max(...output[0]);
     };
     const update = async ({ enabled = true, section = true, bypass = false, included = true, gain = 0 } = {}) => {
-      const parameters = { enabled, mc: 0, og: gain, pl: 64 };
+      const parameters = { enabled, mco: 0, og: gain, pl: 64 };
       await h.send({ type: 'updatePlugins', plugins: [
         pluginConfig({ id: 6, type: 'SectionPlugin', enabled: section, parameters: { enabled: section } }),
         ...(included ? [pluginConfig({ type: 'SoundFontPlayerPlugin', enabled, parameters,

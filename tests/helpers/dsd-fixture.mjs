@@ -2,8 +2,12 @@ export function writeAscii(bytes, offset, value) {
     for (let index = 0; index < value.length; index += 1) bytes[offset + index] = value.charCodeAt(index);
 }
 
+// DSF channel types by channel count: mono, stereo, 3 channels, quad, 5 channels, 5.1.
+const DSF_CHANNEL_TYPES = [0, 1, 2, 3, 4, 6, 7];
+const DFF_SURROUND_CHANNELS = ['MLFT', 'MRGT', 'C   ', 'LFE ', 'LS  ', 'RS  '];
+
 export function createDsfFixture({ sampleRate = 2822400, channelCount = 2, sampleCount = 40001,
-    bitOrder = 'lsb', channels = [], virtual = false } = {}) {
+    bitOrder = 'lsb', channels = [], virtual = false, channelType = DSF_CHANNEL_TYPES[channelCount] } = {}) {
     const blockSize = 4096;
     const dataByteLength = Math.ceil(Math.ceil(sampleCount / 8) / blockSize) * blockSize * channelCount;
     const bytes = new Uint8Array(virtual ? 92 : 92 + dataByteLength);
@@ -14,7 +18,7 @@ export function createDsfFixture({ sampleRate = 2822400, channelCount = 2, sampl
     writeAscii(bytes, 28, 'fmt ');
     view.setBigUint64(32, 52n, true);
     view.setUint32(40, 1, true);
-    view.setUint32(48, channelCount, true);
+    view.setUint32(48, channelType ?? 0, true);
     view.setUint32(52, channelCount, true);
     view.setUint32(56, sampleRate, true);
     view.setUint32(60, bitOrder === 'lsb' ? 1 : 8, true);
@@ -57,7 +61,8 @@ export function createDffFixture({ sampleRate = 2822400, channelCount = 2, sampl
     const channelNames = new Uint8Array(2 + channelCount * 4);
     new DataView(channelNames.buffer).setUint16(0, channelCount);
     for (let channel = 0; channel < channelCount; channel += 1) {
-        writeAscii(channelNames, 2 + channel * 4, channel === 0 ? 'SLFT' : 'SRGT');
+        writeAscii(channelNames, 2 + channel * 4, channelCount > 2 ? DFF_SURROUND_CHANNELS[channel] || 'C000' :
+            channel === 0 ? 'SLFT' : 'SRGT');
     }
     const cmpr = new Uint8Array(5);
     writeAscii(cmpr, 0, compression);

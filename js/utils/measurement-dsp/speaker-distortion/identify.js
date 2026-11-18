@@ -9,8 +9,9 @@ import {
 import { SDC_COLUMNS, SDC_SCORE_SETS, SDC_UNKNOWNS } from './kernels.js';
 import {
     PENALTY_MU, ROW_COUNT, activeClasses, aboveLimit, analyzeCall, binSets, estimateG, excitedRange, isBelowLimit,
-    isMains, isMeasured, limitSums, oddSets, rowFrequency, seedRows, takeWeights, termMask
+    isMains, isMeasured, limitSums, oddSets, offsetTolerance, rowFrequency, seedRows, takeWeights, termMask
 } from './preprocess.js';
+import { worstGaps } from '../recording-gaps.js';
 import { MAX_BIN, combLines, isMeasurableBand, levelCheckSignal } from './signals.js';
 import { constrainedSweepFit, singleToneWorseClass, sweepKappa, sweepRows, worseForSingleTones } from './sweep.js';
 
@@ -1071,19 +1072,28 @@ function callPowers(record, excited, K) {
 }
 
 /**
- * { signal, noise } powers of the recording of the call { seed, K, chirp } on the channel
- * { rateHz, bandwidth }, measured as in the level check. The spectrum is computed in a worker.
+ * { signal, noise, periodsLost } of the recording of the call { seed, K, chirp } on the channel
+ * { rateHz, bandwidth, label }: the powers measured as in the level check over the periods kept by the
+ * slip-tolerant averaging, and whether too few periods were kept. The spectrum is computed in a worker.
  */
-export async function callSignalNoise(recording, { seed, K, chirp }, { rateHz, bandwidth }, { signal = null } = {}) {
+export async function callSignalNoise(recording, { seed, K, chirp }, { rateHz, bandwidth, label }, { signal = null } = {}) {
     const record = await withExecutor(signal, executor =>
-        executor.run('analyze', { capture: recording, fsDev: rateHz, K, chirp }), { analysisOnly: true });
+        executor.run('analyze', { capture: recording, fsDev: rateHz, K, chirp, seed, bandwidth }), { analysisOnly: true });
     // Only the K full periods after the fade-in contribute to the estimate. Reject captures
     // that the analyzer would complete with zero padding in those periods.
     const end = record.latency + Math.round(0.5 * rateHz) + Math.round((K + 1) * rateHz);
     if (recording.length < end) throw analysisError();
-    const powers = callPowers(record, combLines(seed, bandwidth).excited, K);
+    logRecordingGaps(label, record);
+    const powers = callPowers(record, combLines(seed, bandwidth).excited, record.periods);
     if (!(powers.signal > 0) || !Number.isFinite(powers.signal) || !Number.isFinite(powers.noise)) throw analysisError();
-    return powers;
+    return { ...powers, periodsLost: record.gaps === 'interrupted' };
+}
+
+/** Console detail of a capture whose periods were realigned or dropped. */
+export function logRecordingGaps(label, record) {
+    if (!record.gaps) return;
+    console.info(`Speaker distortion: ${label} recording gaps ${record.gaps}; period lags [${record.lags.join(', ')}] `
+        + `samples, dropped periods [${record.dropped.join(', ')}], ${record.periods} periods averaged`);
 }
 
 /**
@@ -1137,14 +1147,29 @@ export function identifySpeakerModel({ recordings, plan, settings, signal = null
         const total = callCaptures.length + fitUnits(callCaptures, true) + 1;
         let done = 0;
         const tick = () => onProgress?.(++done < total ? done / total : 1);
-        const calls = await Promise.all(callCaptures.map(async capture => {
-            const { Y, Pn } = await executor.run('analyze', {
-                capture: recordings[plan.captures.indexOf(capture)], fsDev: settings.rateHz, K: capture.K, chirp: capture.chirp
-            });
+        const analyzeCapture = (capture, reference) => executor.run('analyze', {
+            capture: recordings[plan.captures.indexOf(capture)], fsDev: settings.rateHz, K: capture.K, chirp: capture.chirp,
+            seed: capture.seed, bandwidth: settings.bandwidth,
+            X: plan.drives.find(drive => drive.seed === capture.seed).X, reference
+        });
+        let records = await Promise.all(callCaptures.map(async capture => {
+            const record = await analyzeCapture(capture, null);
             tick();
-            const { seed, take, group, peakDbfs, K } = capture;
-            return { seed, take, group, peakDbfs, K, Y, Pn };
+            return record;
         }));
+        // The channel's reference peak is that of the call with the (lower) median offset, so neither a
+        // single capture nor a minority that slipped as a whole sets it; the calls whose offset differs from
+        // it are analysed again against its offset and sign.
+        const byOffset = records.map(record => record.peak).sort((a, b) => a.offset - b.offset);
+        const periodReference = byOffset[(byOffset.length - 1) >> 1];
+        const tolerance = offsetTolerance(settings.rateHz);
+        records = await Promise.all(records.map((record, i) => (Math.abs(record.peak.offset - periodReference.offset) > tolerance
+            ? analyzeCapture(callCaptures[i], periodReference) : record)));
+        records.forEach(record => logRecordingGaps(settings.label, record));
+        const calls = callCaptures.map(({ seed, take, group, peakDbfs }, i) => {
+            const { Y, Pn, periods } = records[i];
+            return { seed, take, group, peakDbfs, K: periods, Y, Pn };
+        });
         let diagnosis = null;
         let sweep = null;
         try {
@@ -1174,6 +1199,8 @@ export function identifySpeakerModel({ recordings, plan, settings, signal = null
             ampRef: perLength(() => null),
             checkFig: perLength(() => null),
             ...fields,
+            periodReference,
+            recordingGaps: worstGaps(...records.map(record => record.gaps)),
             diagnosis,
             sweep
         };

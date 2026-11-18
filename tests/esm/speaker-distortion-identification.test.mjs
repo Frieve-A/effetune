@@ -51,7 +51,7 @@ test('call noise uses a worker without starting a fit and terminates it on cance
         { signal: controller.signal });
     controller.abort();
     await assert.rejects(request, { name: 'AbortError' });
-    assert.deepEqual(sent, [{ id: 1, type: 'analyze', payload: { capture, fsDev: N, K, chirp } }]);
+    assert.deepEqual(sent, [{ id: 1, type: 'analyze', payload: { capture, fsDev: N, K, chirp, seed: 1, bandwidth: FULL_BAND } }]);
     assert.equal(terminated, 1);
 });
 
@@ -275,6 +275,76 @@ describe('speaker distortion signals and preprocessing', () => {
         const { wp, wq2 } = takeWeights({ Y, Pn }, bins);
         assert.ok(bins.fit.every(classBins => classBins.every(f => wp[f / 2 - 18] > 0)));
         assert.ok(Math.abs(wq2 - PENALTY_MU / pRef) < 1e-12 * wq2);
+    });
+
+    test('capture time slips: periods realigned or dropped, clean captures unchanged, too many losses interrupted', () => {
+        const fsDev = 96000, K = 14, latency = 3000, seed = 1;
+        const call = buildCall(context, combDrive(context, seed).X, { targetDbfs: -20, K, fsDev, bandwidth: FULL_BAND });
+        const noise = gaussian(7);
+        const base = new Float32Array(latency + call.samples.length + fsDev);
+        base.set(call.samples, latency);
+        for (let n = 0; n < base.length; n++) base[n] += 2e-5 * noise();
+        // Steady window i of the analysis starts 1.5 s + i periods after the chirp.
+        const windowAt = i => latency + Math.round((1.5 + i) * fsDev);
+        // Each slip [position, d] inserts d zeros (d > 0) or skips −d samples (d < 0) of the clean capture.
+        const slipped = (slips, source = base) => {
+            let samples = Array.from(source);
+            for (const [position, d] of [...slips].sort((a, b) => b[0] - a[0])) {
+                samples = d > 0
+                    ? [...samples.slice(0, position), ...new Array(d).fill(0), ...samples.slice(position)]
+                    : [...samples.slice(0, position), ...samples.slice(position - d)];
+            }
+            return Float32Array.from(samples);
+        };
+        const options = { fsDev, K, chirp: call.chirp, seed, bandwidth: FULL_BAND, X: call.X };
+        const plain = analyzeCall(base, { fsDev, K, chirp: call.chirp });
+        const clean = analyzeCall(base, options);
+        assert.deepEqual(clean.Y, plain.Y);
+        assert.deepEqual(clean.Pn, plain.Pn);
+        assert.equal(clean.gaps, null);
+        assert.equal(clean.periods, K);
+        assert.deepEqual(clean.dropped, []);
+        const reference = clean.peak;
+        assert.deepEqual(analyzeCall(base, { ...options, reference }).Y, plain.Y, 'the channel reference keeps a clean capture');
+        const { excited } = combLines(seed, FULL_BAND);
+        const errorDb = (Y, cleanY = plain.Y) => {
+            let error = 0, power = 0;
+            for (let f = 50; f <= 8000; f++) {
+                if (!excited[f]) continue;
+                error += (Y[2 * f] - cleanY[2 * f]) ** 2 + (Y[2 * f + 1] - cleanY[2 * f + 1]) ** 2;
+                power += cleanY[2 * f] ** 2 + cleanY[2 * f + 1] ** 2;
+            }
+            return db(error / power);
+        };
+        for (const d of [-960, 960, 768, -966, 8633]) {
+            const record = analyzeCall(slipped([[windowAt(6) + Math.round(0.3 * fsDev), d]]), { ...options, reference });
+            assert.equal(record.gaps, 'corrected', `${d}`);
+            assert.ok(record.periods >= 10 && record.dropped.includes(6), `${d}: ${record.dropped}`);
+            assert.ok(errorDb(record.Y) < -40, `${d}: ${errorDb(record.Y)} dB`);
+        }
+        // A slip in the gap between the chirp and the periods delays every period: the channel reference
+        // realigns them and drops the first window, which would reach into the fade-in.
+        const gapSlip = [[latency + Math.round(0.45 * fsDev), 960]];
+        const late = analyzeCall(slipped(gapSlip), { ...options, reference });
+        assert.equal(late.gaps, 'corrected');
+        assert.equal(late.peak.offset, reference.offset + 960);
+        assert.deepEqual(late.dropped, [0]);
+        assert.ok(errorDb(late.Y) < -40, `${errorDb(late.Y)} dB`);
+        // A response with nearly equal lobes of either sign 8 samples apart (from before the periods, so
+        // the chirp latency stays), where the largest magnitude of the slipped capture falls on the other
+        // lobe than the reference's: the offset follows the reference's lobe.
+        const lobesFrom = latency + Math.round(0.4 * fsDev);
+        const lobes = (a, b) => base.map((value, n) => (n < lobesFrom ? value : a * value + b * base[n - 8]));
+        const lobeReference = analyzeCall(lobes(1, -0.98), options).peak;
+        const other = lobes(0.98, -1);
+        const otherPlain = analyzeCall(other, { fsDev, K, chirp: call.chirp });
+        const lobeLate = analyzeCall(slipped(gapSlip, other), { ...options, reference: lobeReference });
+        assert.equal(lobeLate.peak.offset, lobeReference.offset + 960);
+        assert.ok(errorDb(lobeLate.Y, otherPlain.Y) < -40, `${errorDb(lobeLate.Y, otherPlain.Y)} dB`);
+        // A jump in every other period leaves too few periods with an agreeing lag.
+        const broken = analyzeCall(slipped([1, 3, 5, 7, 9, 11].map(i => [windowAt(i) + fsDev / 2, 960])), { ...options, reference });
+        assert.equal(broken.gaps, 'interrupted');
+        assert.ok(broken.periods < 0.7 * K || broken.dropped.length > 0.3 * K, `${broken.dropped}`);
     });
 });
 

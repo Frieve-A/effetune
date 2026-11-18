@@ -173,10 +173,10 @@ class AnalyzerDisplay {
             },
             drawUnderlay: (context, draw) => this.drawSignal(context, draw, null, this.underlayCanvas),
             drawKeyboard: (context, draw, geometry) => this.drawKeyboard(context, draw, geometry),
-            drawLevelValue: (context, text, x, y) => this.drawLevelValue(context, text, x, y),
+            drawLevelValue: (context, text, x, y, width) => this.drawLevelValue(context, text, x, y, width),
             textContext: {
-                fillText: (text, x, y) => this.drawText('fillText', text, x, y),
-                strokeText: (text, x, y) => this.drawText('strokeText', text, x, y)
+                fillText: (text, x, y, centerOffset) => this.drawText('fillText', text, x, y, centerOffset),
+                strokeText: (text, x, y, centerOffset) => this.drawText('strokeText', text, x, y, centerOffset)
             }
         };
         this.plugin.initializeDisplayCanvas?.(canvas);
@@ -713,11 +713,11 @@ class AnalyzerDisplay {
         finally { this.drawingKeyboard = false; context.restore(); }
     }
 
-    drawLevelValue(context, text, x, y) {
+    drawLevelValue(context, text, x, y, fixedWidth) {
         const metrics = context.measureText(text);
         const width = metrics.width;
-        const left = metrics.actualBoundingBoxLeft ?? (context.textAlign === 'right' ? width : width / 2);
-        const right = metrics.actualBoundingBoxRight ?? (context.textAlign === 'right' ? 0 : width / 2);
+        const left = fixedWidth ?? metrics.actualBoundingBoxLeft ?? (context.textAlign === 'right' ? width : width / 2);
+        const right = fixedWidth === undefined ? metrics.actualBoundingBoxRight ?? (context.textAlign === 'right' ? 0 : width / 2) : 0;
         const ascent = metrics.actualBoundingBoxAscent ?? 0;
         const descent = metrics.actualBoundingBoxDescent ?? 0;
         const centerX = (right - left) / 2;
@@ -732,16 +732,17 @@ class AnalyzerDisplay {
         if (originX - left >= 0 && originX + right <= this.plugin.canvas.width) {
             context.save();
             Object.assign(context, outline);
-            this.drawText('strokeText', text, x, y);
+            const centerOffset = fixedWidth === undefined ? undefined : -fixedWidth / 2;
+            this.drawText('strokeText', text, x, y, centerOffset);
             context.restore();
-            this.drawText('fillText', text, x, y);
+            this.drawText('fillText', text, x, y, centerOffset);
             return;
         }
         this.overflowLevelValues.push({ text, x: originX, y: originY, font: context.font, ...outline,
             fillStyle: context.fillStyle, textAlign: context.textAlign, textBaseline: context.textBaseline });
     }
 
-    drawText(method, text, x, y) {
+    drawText(method, text, x, y, centerOffset) {
         const context = this.plugin.ctx;
         const uprightSpectrum = this.type === 'spectrum' && this.params.orientation === 'vertical';
         if (this.drawingKeyboard || (!this.flipX && !this.flipY && !uprightSpectrum)) {
@@ -750,7 +751,7 @@ class AnalyzerDisplay {
         }
         const matrix = context.getTransform();
         const metrics = context.measureText(text);
-        const centerX = (metrics.actualBoundingBoxRight - metrics.actualBoundingBoxLeft) / 2;
+        const centerX = centerOffset ?? (metrics.actualBoundingBoxRight - metrics.actualBoundingBoxLeft) / 2;
         const centerY = (metrics.actualBoundingBoxDescent - metrics.actualBoundingBoxAscent) / 2;
         const sx = this.flipX ? -1 : 1, sy = this.flipY ? -1 : 1;
         // Reflect the label's position and alignment box, while preserving its

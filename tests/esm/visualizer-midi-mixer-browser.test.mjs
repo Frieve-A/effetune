@@ -123,7 +123,7 @@ test('MIDI item draws all 16 channels at two sizes and exposes working inspector
                     sourceProgram: 4, presetIndex: 0, volume: 90, pan: 64, expression: 127,
                     reverb: 40, chorus: 0, mute: false, solo: false, voices: channel === 7 ? 1 : 0,
                     notes, levelPeak: channel === 7 ? .5 : 0 })) },
-                presets: [{ bank: 0, program: 4, name: 'Electric Piano' }], channelFilter: 0 };
+                presets: [{ bank: 0, program: 4, name: 'Electric Piano' }], channelMask: 65535 };
             snapshot.source = {};
             const ctx = canvas.getContext('2d');
             const drawText = ctx.fillText.bind(ctx);
@@ -135,7 +135,8 @@ test('MIDI item draws all 16 channels at two sizes and exposes working inspector
             const keys = [], knobs = [], moves = [], lines = [], knobValues = [];
             ctx.fillText = (value, ...args) => {
                 labelsDrawn.push(String(value));
-                if (['90', '64', '127', '40', '0'].includes(String(value))) knobValues.push({ value: String(value), x: args[0] });
+                const reading = String(value).trim();
+                if (['90', '64', '127', '40', '0'].includes(reading)) knobValues.push({ value: reading, x: args[0] });
                 drawText(value, ...args);
             };
             ctx.fillRect = (...args) => {
@@ -176,7 +177,7 @@ test('MIDI item draws all 16 channels at two sizes and exposes working inspector
         for (const counts of result.counts) assert.ok(counts.every(count => count > 0),
             `all 16 rows have highlighted notes: ${counts}`);
         assert.ok(result.labelsDrawn.includes('Electric Piano'));
-        assert.ok(result.labelsDrawn.includes('Voices 1/64'));
+        assert.ok(result.labelsDrawn.some(label => /^Voices\s+1\/\s*64$/.test(label)));
         assert.ok(!result.labelsDrawn.includes('Mute') && !result.labelsDrawn.includes('Solo'));
         assert.equal(result.whiteKeys.length, 148);
         assert.equal(result.blackKeys.length, 106);
@@ -234,14 +235,17 @@ test('MIDI canvas centers aligned numeric groups, separates knob colors, and cus
             ctx.arc = (x, y, radius, ...rest) => { arcs.push({ x, y, radius }); arc(x, y, radius, ...rest); };
             ctx.stroke = () => { strokes.push(ctx.strokeStyle); stroke(); };
             ctx.font = '16px Arial';
-            for (const value of [7, 64, 127]) display.drawKnob(ctx, 20, 10, 100, 60, value, '#e157a0', {}, 1, params, 0);
+            for (const value of [7, 64, 127]) display.drawKnob(ctx, 20, 10, 100, 60, value, '#e157a0', {}, 1, params, 0, 16);
             const numeric = texts.splice(0), knobArcs = arcs.splice(0);
             const sample = () => [...ctx.getImageData(Math.round(knobArcs[0].x), 45, 1, 1).data].slice(0, 3);
             const filled = sample();
             ctx.fillStyle = '#232323'; ctx.fillRect(0, 0, 150, 90);
-            display.drawKnob(ctx, 20, 10, 100, 60, 7, '#e157a0', {}, 1, { ...params, knobStyle: 'outline' }, 0);
+            display.drawKnob(ctx, 20, 10, 100, 60, 7, '#e157a0', {}, 1, { ...params, knobStyle: 'outline' }, 0, 16);
             const outlined = sample();
             texts.length = 0;
+            const below = { ...params, knobValuePosition: 'below' };
+            for (const value of [7, 64, 127]) display.drawKnob(ctx, 20, 10, 24, 60, value, '#e157a0', {}, 1, below, 16);
+            const belowValues = texts.splice(0);
             const channels = [7, 64, 127].map(voices => ({ bank: 0, program: 0, presetIndex: 0,
                 voices, volume: 1, pan: 2, expression: 3, reverb: 4, chorus: 5,
                 levelPeak: .25, notes: new Uint8Array(16) }));
@@ -261,21 +265,23 @@ test('MIDI canvas centers aligned numeric groups, separates knob colors, and cus
             const meter = { ...params.levelMeter, dr: -96, cf: 0, pk: false, ds: 6 };
             const palette = { ...params.levelPalette, mode: 'gradient',
                 stops: [{ pos: 0, color: '#00ff00' }, { pos: 1, color: '#ff0000' }] };
-            display.drawLevel(ctx, 10, 100, 160, 20, .5, {}, 0, meter, palette, 0, 1, '#e157a0', {});
+            display.drawLevel(ctx, 10, 100, 160, 20, .5, {}, 0, meter, palette, 0, 1, '#e157a0', {}, 16);
             const segmented = rects.splice(0);
             display.drawLevel(ctx, 200, 100, 20, 100, .5, {}, 0,
                 { ...meter, orientation: 'vertical', ds: 0, pk: true, showLevelValues: true, showAxes: true,
-                    showAxisNumbers: true }, { ...palette, mode: 'solid', color: '#20a050' }, 0, 1, '#e157a0', {});
+                    showAxisNumbers: true }, { ...palette, mode: 'solid', color: '#20a050' }, 0, 1, '#e157a0', {}, 16);
             const vertical = rects.splice(0), meterText = texts.splice(0);
             const lut = new Uint8Array(256 * 4);
             for (let i = 0; i < 256; i++) { lut[i * 4] = i; lut[i * 4 + 3] = 255; }
             window.SpectrogramPlugin = { getHeatmapLuts: () => ({ rgba: lut }) };
             display.drawLevel(ctx, 300, 100, 160, 20, .5, {}, 0, meter,
-                { ...palette, mode: 'heatmap' }, 0, 1, '#e157a0', {});
-            return { numeric, knobArcs, filled, outlined, strokes, listText, segmented, vertical, meterText,
+                { ...palette, mode: 'heatmap' }, 0, 1, '#e157a0', {}, 16);
+            return { numeric, belowValues, knobArcs, filled, outlined, strokes, listText, segmented, vertical, meterText,
                 heatmap: rects.some(rect => rect.color === 'gradient') };
         });
         assert.ok(result.numeric.every(text => text.align === 'right' && text.x === result.numeric[0].x));
+        assert.deepEqual(result.belowValues.map(text => text.value.trim()), ['7', '64', '127']);
+        assert.ok(result.belowValues.every(text => text.align === 'right' && text.x === result.belowValues[0].x));
         for (const [index, knob] of result.knobArcs.entries()) {
             assert.ok(Math.abs((knob.x - knob.radius + result.numeric[index].x) / 2 - 70) < .001,
                 'knob plus reserved three-digit box stays centered');
@@ -284,7 +290,7 @@ test('MIDI canvas centers aligned numeric groups, separates knob colors, and cus
         assert.deepEqual(result.outlined, [35, 35, 35]);
         assert.ok(result.strokes.includes('#abcdef') && result.strokes.includes('#fe1234'));
         assert.ok(result.listText.every(text => text.color === '#e157a0'), 'palette colors every header and row text');
-        const voices = result.listText.filter(text => ['7', '64', '127'].includes(text.value));
+        const voices = result.listText.filter(text => ['7', '64', '127'].includes(text.value.trim()));
         assert.equal(voices.length, 3);
         assert.ok(voices.every(text => text.align === 'right' && text.x === voices[0].x));
         assert.equal(result.segmented.filter(rect => rect.color === 'gradient').length, 14);

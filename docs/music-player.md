@@ -18,9 +18,11 @@ For player-only use, set **Input Device:** to **None (music file player only)** 
 
 ## DSD files {#dsd-files}
 
-Open `.dsf` (DSF) or `.dff` (DSDIFF) files like other music files. Both uncompressed and DST-compressed DFF are supported. EffeTune converts mono or stereo DSD64, DSD128, and DSD256 to PCM for playback through the current effects. The audio device receives PCM, not native DSD or DoP.
+Open `.dsf` (DSF) or `.dff` (DSDIFF) files like other music files. Both uncompressed and DST-compressed DFF are supported. EffeTune converts DSD64, DSD128, and DSD256 with up to six channels (5.1) to PCM for playback through the current effects. The audio device receives PCM, not native DSD or DoP.
 
-Some DST encoding variants (segmented frames), files with more than two channels, DSD512, and 48 kHz-based DSD are not supported. If a file cannot be played, use an uncompressed DFF or a compatible PCM copy such as FLAC or WAV. DSD file playback is available in the desktop app and web/PWA player, but not the native Android app.
+Multichannel DSD reaches the effects in file channel order. If that order differs from your speaker outputs, place [**Matrix**](plugins/basics.md#matrix) first in the effect chain. For a five-channel DSF on a standard 5.1 output, route inputs 1–3 to their matching outputs and send inputs 4 and 5 only to outputs 5 and 6 respectively. This leaves output 4 (LFE) silent.
+
+Some DST encoding variants (segmented frames), files with more than six channels, DSD512, and 48 kHz-based DSD are not supported. If a file cannot be played, use an uncompressed DFF or a compatible PCM copy such as FLAC or WAV. DSD file playback is available in the desktop app and web/PWA player, but not the native Android app.
 
 High-rate DSD, especially at faster playback speeds, needs more processing power. If playback stutters or stops, lower the playback speed.
 

@@ -22,7 +22,8 @@ function player(options = {}) {
   document.createElement = tag => {
     const element = createElement(tag);
     element.dataset = {};
-    element.append = (...children) => children.forEach(child => element.appendChild(child));
+    // Text children carry nothing these tests read.
+    element.append = (...children) => children.forEach(child => typeof child === 'string' || element.appendChild(child));
     element.replaceChildren = (...children) => { element.children.length = 0; element.append(...children); };
     element.removeAttribute = name => { delete element.attributes[name]; };
     element.matches = selector => selector === 'input[type="range"]' && element.tagName === 'INPUT' && element.type === 'range';
@@ -42,6 +43,7 @@ function player(options = {}) {
     getParameters() { return { type: this.constructor.name, enabled: this.enabled }; }
     getWorkletPluginData(parameters = this.getParameters()) { return { parameters }; }
     parseFiniteNumber(value, min, max, fallback) { return Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Number(value))) : fallback; }
+    _registerUIControl() {}
     createParameterControl(...args) {
       const row = document.createElement('div'); row.controlArgs = args; return row;
     }
@@ -75,6 +77,7 @@ function player(options = {}) {
   vm.runInNewContext(`${instrumentSource}\n${playerSource}`, { PluginBase, window, document, console, performance, setTimeout, clearTimeout });
   return new window.SoundFontPlayerPlugin();
 }
+const voicesReadout = plugin => `${plugin._voiceCount.textContent} / ${plugin._voiceLimit.textContent}`;
 const bank = presets => ({ format: 'sf2', descriptor: { footprintBytes: 8 * 1048576 }, presets, sampleCount: 2 });
 
 test('SoundFont Player defaults and resets to FIR32 while preserving saved interpolation choices', () => {
@@ -85,6 +88,7 @@ test('SoundFont Player defaults and resets to FIR32 while preserving saved inter
   assert.equal(plugin.defaultParameters.sq, 1);
   assert.equal(packSoundFontPlayerPluginParams(plugin.getWorkletPluginData().parameters)[3], 1);
   plugin.setParameters({ mc: 2 });
+  assert.equal(plugin.getParameters().mco, 65535 ^ 2);
   assert.equal(plugin.getParameters().sq, 1, 'a saved state without interpolation uses the app default');
   for (const sq of [0, 1, 2]) {
     plugin.setParameters({ sq });
@@ -116,20 +120,21 @@ test('SoundFont Player enables automatic fallback by default and saves the choic
 
 function telemetry({ voices = 2, limit = 64, bank = 0, program = 0, note = 60, flags = 0, peak = 0,
   stolenReleased = 0, stolenHeld = 0 } = {}) {
-  const payload = new DataView(new ArrayBuffer(584));
+  const payload = new DataView(new ArrayBuffer(588));
   payload.setUint16(0, voices, true); payload.setUint16(2, limit, true);
   payload.setUint16(4, stolenReleased, true); payload.setUint16(6, stolenHeld, true);
   for (let channel = 0; channel < 16; channel++) {
     const row = 8 + channel * 32;
     payload.setUint16(row, bank, true); payload.setUint8(row + 2, program);
     payload.setUint8(row + 3, 100); payload.setUint8(row + 4, 64); payload.setUint8(row + 5, 127);
-    payload.setUint8(row + 6, 40); payload.setUint8(row + 8, flags);
+    payload.setUint8(row + 6, 40); payload.setUint8(row + 8, flags | (bank === 128 ? 4 : 0));
     payload.setUint8(row + 9, program);
     payload.setUint16(row + 12, channel === 0 ? voices : 0, true);
     if (channel === 0 && note >= 0) payload.setUint8(row + 16 + (note >> 3), 1 << (note & 7));
     payload.setFloat32(520 + channel * 4, channel === 0 ? peak : 0, true);
   }
-  return { frameType: 35, formatVersion: 2, payload };
+  payload.setUint8(584, 1);
+  return { frameType: 35, formatVersion: 3, payload };
 }
 
 test('SoundFont patch menus follow the effective percussion bank on any channel and return to melodic choices', () => {
@@ -141,6 +146,37 @@ test('SoundFont patch menus follow the effective percussion bank on any channel 
   plugin.handleMixerTelemetry(telemetry({ bank: 0, program: 0 }));
   assert.deepEqual(Array.from(plugin._mixerRows[9].presets, preset => preset.bank), [0]);
   assert.equal(plugin._mixerRows[9].patch.value, '0');
+  const missing = telemetry();
+  missing.payload.setUint8(584, 3);
+  for (const channel of [0, 9]) {
+    const row = 8 + channel * 32;
+    missing.payload.setUint16(row, 0xffff, true);
+    missing.payload.setUint16(row + 10, 0xffff, true);
+  }
+  missing.payload.setUint8(8 + 8, 4); // Channel 1 is a drum part; channel 10 is melodic.
+  plugin.handleMixerTelemetry(missing);
+  assert.deepEqual(Array.from(plugin._mixerRows[0].presets, preset => preset.bank), [128]);
+  assert.deepEqual(Array.from(plugin._mixerRows[9].presets, preset => preset.bank), [0]);
+  assert.equal(plugin._mixerRows[0].patch.value, '-1');
+});
+
+test('old single-channel presets restore the same notes and save the disabled-channel mask', () => {
+  const plugin = player();
+  for (const mc of [0, 1, 2, 16]) {
+    plugin.setParameters({ mc });
+    const expected = mc ? 65535 ^ (1 << (mc - 1)) : 0;
+    const saved = plugin.getParameters();
+    assert.equal(saved.mco, expected);
+    assert.equal(saved.mc, undefined);
+    const restored = player();
+    restored.setParameters(saved);
+    assert.equal(restored.getParameters().mco, expected);
+    const native = packSoundFontPlayerPluginParams(restored.getWorkletPluginData().parameters);
+    assert.equal(native[0], 0);
+    assert.equal(native[12], expected);
+  }
+  plugin.setParameters({ mc: 1, mco: 1 });
+  assert.equal(plugin.getParameters().mco, 65535);
 });
 
 test('SoundFont Player colors the Voices readout for three seconds after voice stealing', () => {
@@ -169,9 +205,9 @@ test('SoundFont Player colors the Voices readout for three seconds after voice s
 test('SoundFont Player stores configuration but never mixer performance state', async () => {
   const plugin = player(), first = 'a'.repeat(24), second = 'b'.repeat(24);
   const overrides = Object.fromEntries(Array.from({ length: 16 }, (_, channel) => [`sp${channel}`, channel * 128 + 3]));
-  plugin.setParameters({ sf: first, mc: 4, pl: 96, og: -2, sq: 1, ...overrides });
+  plugin.setParameters({ sf: first, mco: 4, pl: 96, og: -2, sq: 1, ...overrides });
   assert.equal(plugin.getParameters().sf, first);
-  assert.equal(plugin.getParameters().mc, 4);
+  assert.equal(plugin.getParameters().mco, 4);
   assert.equal(plugin.getParameters().pl, 96);
   assert.equal(plugin.getParameters().og, -2);
   assert.equal(plugin.getParameters().sq, 1);
@@ -215,12 +251,12 @@ test('SoundFont Player presents sixteen channel patch menus and separates config
   plugin.handleMixerTelemetry(telemetry({ bank: 128, flags: 3 }));
   assert.equal(plugin._mixerRows[9].patch.value, '16384');
   assert.equal(plugin._mixerRows[0].mute.getAttribute('aria-pressed'), 'true');
-  assert.equal(plugin._voiceValue.textContent, '2 / 64');
+  assert.equal(voicesReadout(plugin), '2 / 64');
   plugin.handleMixerTelemetry(telemetry({ voices: 0, note: 60 }));
-  assert.equal(plugin._voiceValue.textContent, '0 / 64');
+  assert.equal(voicesReadout(plugin), '0 / 64');
   assert.equal(plugin._mixerState.channels[0].notes[7], 16, 'A held MIDI key survives voice stealing');
   plugin.handleMixerTelemetry(telemetry({ voices: 2, note: -1 }));
-  assert.equal(plugin._voiceValue.textContent, '2 / 64');
+  assert.equal(voicesReadout(plugin), '2 / 64');
   assert.equal(plugin._mixerState.channels[0].notes[7], 0, 'NoteOff removes the key while release voices can remain');
   plugin._selectMixerTab('settings');
   assert.equal(plugin._tabs[0].panel.hidden, true);
@@ -232,7 +268,22 @@ test('SoundFont Player presents sixteen channel patch menus and separates config
   assert.equal(plugin._preparationProgress.parentNode, ui.children.at(-1));
   assert.equal(ui.children.at(-2).className, 'room-eq-panel');
   assert.equal(plugin._bankSummary.parentNode, plugin._tabs[1].panel);
-  assert.equal(plugin._tabs[1].panel.children[1].children[0].getAttribute('aria-label'), 'MIDI Channel');
+  const [channelRow, respondRow] = plugin._tabs[1].panel.children.slice(1, 3);
+  assert.equal(channelRow.children[0].textContent, 'MIDI Channel:');
+  const channelBoxes = channelRow.children[1].children.map(option => option.children[0]);
+  assert.deepEqual(channelRow.children[1].children.map(option => option.children[1].textContent),
+    ['All', ...Array.from({ length: 16 }, (_, channel) => String(channel + 1))]);
+  assert.equal(channelBoxes.every(box => box.type === 'checkbox' && box.checked), true, 'every channel plays by default');
+  channelBoxes[3].checked = false;
+  channelBoxes[3].dispatchEvent('change');
+  assert.equal(plugin.getParameters().mco, 4, 'the saved value holds the channels turned off');
+  assert.deepEqual([channelBoxes[0].checked, channelBoxes[0].indeterminate], [false, true], 'All shows a partial selection');
+  channelBoxes[0].checked = true;
+  channelBoxes[0].dispatchEvent('change');
+  assert.equal(plugin.getParameters().mco, 0);
+  assert.equal(channelBoxes[3].checked, true, 'All turns every channel back on');
+  assert.equal(respondRow.children[0].textContent, 'Respond to:');
+  assert.deepEqual(respondRow.children[1].children.map(option => option.children[1].textContent), ['GM', 'GS', 'XG']);
   const maxVoices = plugin._tabs[1].panel.children.find(child => child.controlArgs?.[0] === 'Max Voices');
   assert.deepEqual(maxVoices.controlArgs.slice(1, 5), [1, 1024, 1, 256]);
   assert.equal(maxVoices.controlArgs[9], true, 'voice limit uses the shared logarithmic slider mapping');
@@ -390,13 +441,13 @@ test('Visualizer leases meter actual MIDI and reads a frozen synced snapshot wit
   assert.equal(first.state.channels[0].levelPeak, .25);
   assert.equal(first.state.channels[0].notes[7], 16);
   assert.equal(first.presets[0].name, 'Piano');
-  assert.equal(first.channelFilter, 0);
+  assert.equal(first.channelMask, 65535);
   assert.equal(Object.isFrozen(first), true);
   assert.equal(Object.isFrozen(first.state.channels[0].notes), true);
   assert.equal(Object.isFrozen(first.presets[0]), true);
   assert.equal(plugin.getVisualizerMidiMixerSnapshot().state, first.state, 'one telemetry frame keeps its identity');
-  plugin.mc = 4;
-  assert.equal(plugin.getVisualizerMidiMixerSnapshot().channelFilter, 4);
+  plugin.mco = 4;
+  assert.equal(plugin.getVisualizerMidiMixerSnapshot().channelMask, 65535 ^ 4);
   hub.visualSyncEpoch = 2;
   assert.equal(plugin.getVisualizerMidiMixerSnapshot(), null, 'sync epoch change clears the old frame');
   assert.equal(subscriptions[0].removed, true);
@@ -485,17 +536,17 @@ test('SoundFont presentation follows shared output deadlines and discards queued
   hub.setVisualSyncResolver((...args) => manager._resolveVisualSyncDue(...args));
   plugin.createUI();
   const send = (values, endFrame) => {
-    const frame = telemetry(values), packet = new ArrayBuffer(600), header = new DataView(packet);
-    header.setUint16(0, 35, true); header.setUint16(2, 2, true); header.setUint32(4, 7, true);
-    header.setUint16(12, 584, true); new Uint8Array(packet, 16).set(new Uint8Array(frame.payload.buffer));
-    hub.handleMessage({ type: 'dspTelemetry', packet, bytes: 600, endFrame, recycle: false });
+    const frame = telemetry(values), packet = new ArrayBuffer(604), header = new DataView(packet);
+    header.setUint16(0, 35, true); header.setUint16(2, 3, true); header.setUint32(4, 7, true);
+    header.setUint16(12, 588, true); new Uint8Array(packet, 16).set(new Uint8Array(frame.payload.buffer));
+    hub.handleMessage({ type: 'dspTelemetry', packet, bytes: 604, endFrame, recycle: false });
   };
   send({ voices: 2 }, 48000);
   assert.equal(plugin._mixerState, null);
   now = 1069; hub._dispatchDueVisualSync(now);
   assert.equal(plugin._mixerState, null, 'State must wait for the output tap and applied output delay');
   now = 1070; hub._dispatchDueVisualSync(now);
-  assert.equal(plugin._voiceValue.textContent, '2 / 64');
+  assert.equal(voicesReadout(plugin), '2 / 64');
   send({ voices: 3 }, 52800);
   plugin.revision = 2; plugin._ensureMixerTelemetrySubscription();
   now = 1170; hub._dispatchDueVisualSync(now);
@@ -511,7 +562,7 @@ test('SoundFont presentation follows shared output deadlines and discards queued
   assert.equal(plugin._mixerState, null);
   manager.visualSyncEnabled = false; hub.setVisualSyncResolver(null); plugin._ensureMixerTelemetrySubscription();
   send({ voices: 5, note: 64 }, 96000);
-  assert.equal(plugin._voiceValue.textContent, '5 / 64', 'Sync OFF displays the incoming state immediately');
+  assert.equal(voicesReadout(plugin), '5 / 64', 'Sync OFF displays the incoming state immediately');
   assert.equal(hub.visualSyncQueue.length, 0);
   plugin.cleanup(); hub.clearSubscriptions();
 });
@@ -543,7 +594,7 @@ test('SoundFont Player mixer controls send transient actions and accept subseque
   await row.knobs[1].dispatchEvent('keydown', { key: 'ArrowRight', preventDefault() {} });
   await row.mute.dispatchEvent('click'); await row.solo.dispatchEvent('click');
   assert.deepEqual(actions, [
-    { type: 'program', channel: 0, bank: 1, program: 2 },
+    { type: 'program', channel: 0, bank: 1, program: 2, xg: false },
     { type: 'control', channel: 0, controller: 7, value: 72 },
     { type: 'control', channel: 0, controller: 10, value: 65 },
     { type: 'mute', channel: 0, value: true }, { type: 'solo', channel: 0, value: true }
@@ -554,8 +605,8 @@ test('SoundFont Player mixer controls send transient actions and accept subseque
   assert.equal(row.knobs[0].getAttribute('aria-valuenow'), '100');
   assert.equal(row.knobs[1].getAttribute('aria-valuenow'), '64');
   assert.equal(row.mute.getAttribute('aria-pressed'), 'false');
-  assert.equal(plugin._voiceValue.textContent, '0 / 64');
-  plugin.mc = 1; plugin._renderMixer();
+  assert.equal(voicesReadout(plugin), '0 / 64');
+  plugin.mco = 2; plugin._renderMixer();
   assert.equal(plugin._mixerRows[1].knobs[0].getAttribute('aria-disabled'), 'true');
   plugin.sf = ''; plugin._renderMixer();
   assert.equal(row.knobs[0].getAttribute('aria-disabled'), 'true');
@@ -586,11 +637,11 @@ test('SoundFont volume follows the drag until telemetry reaches its last applied
   const pointer = (type, clientY = 50) => volume.dispatchEvent(type, { pointerId: 1, button: 0, clientY, preventDefault() {} });
   const value = knob => knob.getAttribute('aria-valuenow');
   const send = (endFrame, volume, pan, mixerEndFrame = endFrame) => {
-    const { payload } = telemetry(), packet = new ArrayBuffer(600), header = new DataView(packet);
+    const { payload } = telemetry(), packet = new ArrayBuffer(604), header = new DataView(packet);
     payload.setUint8(11, volume); payload.setUint8(12, pan);
-    header.setUint16(0, 35, true); header.setUint16(2, 2, true); header.setUint32(4, 7, true);
-    header.setUint16(12, 584, true); new Uint8Array(packet, 16).set(new Uint8Array(payload.buffer));
-    hub.handleMessage({ type: 'dspTelemetry', packet, bytes: 600, endFrame, mixerEndFrame, recycle: false });
+    header.setUint16(0, 35, true); header.setUint16(2, 3, true); header.setUint32(4, 7, true);
+    header.setUint16(12, 588, true); new Uint8Array(packet, 16).set(new Uint8Array(payload.buffer));
+    hub.handleMessage({ type: 'dspTelemetry', packet, bytes: 604, endFrame, mixerEndFrame, recycle: false });
     now = endFrame;
     hub._dispatchDueVisualSync(now);
   };
@@ -682,13 +733,13 @@ test('SoundFont Player mixer keyboards preview the dragged key on the row channe
   listeners.get('blur')();
   assert.deepEqual(sent.slice(-2), [[60, 2], [-1, 2]]);
   await keyboard.dispatchEvent('pointerdown', at(60));
-  plugin.setParameters({ mc: 3 });
-  assert.deepEqual(sent.slice(-2), [[60, 2], [-1, 2]], 'changing the channel filter stops the preview');
+  plugin.setParameters({ mco: 1 });
+  assert.deepEqual(sent.slice(-2), [[60, 2], [-1, 2]], 'changing the channel mask stops the preview');
 
   const count = sent.length;
   await plugin._mixerRows[0].keyboard.dispatchEvent('pointerdown', at(60));
   assert.equal(sent.length, count, 'filtered rows do not start a preview');
-  plugin.setParameters({ mc: 0, enabled: false });
+  plugin.setParameters({ mco: 0, enabled: false });
   await keyboard.dispatchEvent('pointerdown', at(60));
   assert.equal(sent.length, count, 'a disabled plugin does not start a preview');
   plugin.setParameters({ enabled: true });
@@ -736,9 +787,9 @@ test('SoundFont Player shows sounding voices only from valid current telemetry',
   subscriptions[1].callback(telemetry({ voices: 0, note: -1 }));
   plugin._mixerVisible = false;
   subscriptions[1].callback(telemetry({ voices: 4 }));
-  assert.equal(plugin._voiceValue.textContent, '0 / 64', 'hidden mixer does no visual work');
+  assert.equal(voicesReadout(plugin), '0 / 64', 'hidden mixer does no visual work');
   plugin._mixerVisible = true; plugin.startAnimation();
-  assert.equal(plugin._voiceValue.textContent, '4 / 64');
+  assert.equal(voicesReadout(plugin), '4 / 64');
   plugin.cleanup();
   assert.equal(subscriptions[1].removed, true);
 });

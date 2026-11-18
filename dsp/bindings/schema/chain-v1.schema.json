@@ -7571,6 +7571,30 @@
               "minimum": 0,
               "maximum": 1,
               "default": 0
+            },
+            "respondGm": {
+              "type": "boolean",
+              "default": true
+            },
+            "respondGs": {
+              "type": "boolean",
+              "default": true
+            },
+            "respondXg": {
+              "type": "boolean",
+              "default": true
+            },
+            "transpose": {
+              "type": "integer",
+              "minimum": -12,
+              "maximum": 12,
+              "default": 0
+            },
+            "midiChannelsOff": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "default": 0
             }
           }
         },

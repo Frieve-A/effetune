@@ -4,7 +4,8 @@ import audioUtils from '../audio-utils/index.js';
 import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
 import { CHANNEL_COLORS, channelColor } from '../channel-colors.js';
 import { resolveAnalysisRecord, getAnalysisCapabilities, getValidHarmonicAnalysis, resolveDisplayedResponse,
-    resolveDisplayedChannelCurves, resolveResponseSweepBand, aggregateLevelWarnings } from '../measurement-model.js';
+    resolveDisplayedChannelCurves, resolveResponseSweepBand, aggregateLevelWarnings, displayedRecordingGaps,
+    RECORDING_GAP_NOTES } from '../measurement-model.js';
 import { responseReferenceDb } from '../response-normalization.js';
 import { findImpulsePeak, getImpulseTimeBounds, clampImpulseView, zoomImpulseView } from './impulse-response-plot.js';
 import { AnalysisPlot, distortionValue } from './analysis-plot.js';
@@ -801,6 +802,8 @@ export default class AnalysisController {
             messages.push(channels ? i18n.t(`warning:${key}Channels`).replace('{channels}', warnings[kind].map(channelDisplayLabel).join(', ')) :
                 i18n.t(`warning:${key}`));
         }
+        const gaps = displayedRecordingGaps(this.measurement, display.selectedPointIndex, display.selectedChannel);
+        if (gaps) messages.push(i18n.t(RECORDING_GAP_NOTES[gaps]));
         const element = byId('frequencyLevelWarning');
         element.textContent = messages.join(' · ');
         element.hidden = !messages.length;

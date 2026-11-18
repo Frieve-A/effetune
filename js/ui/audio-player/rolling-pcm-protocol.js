@@ -1,5 +1,8 @@
 export const ROLLING_PCM_PROTOCOL_VERSION = 4;
 
+// Planar slabs carry up to 5.1; PCM16 fragments stay mono or stereo.
+export const ROLLING_PCM_MAX_SLAB_CHANNELS = 6;
+
 export const RollingPcmCommand = Object.freeze({
   OPEN: 'open',
   FILL: 'fill',
@@ -96,7 +99,7 @@ export function validateRollingPcmSlab(message, limits) {
       !Number.isSafeInteger(message.startFrame) || message.startFrame < 0 ||
       !Number.isSafeInteger(message.frameCount) || message.frameCount < 1 ||
       !Number.isSafeInteger(message.channelCount) || message.channelCount < 1 ||
-      message.channelCount > 2 || !Array.isArray(message.planes) ||
+      message.channelCount > ROLLING_PCM_MAX_SLAB_CHANNELS || !Array.isArray(message.planes) ||
       message.planes.length !== message.channelCount) return false;
   const maxFrames = limits?.maxFrames;
   if (Number.isSafeInteger(maxFrames) && message.frameCount > maxFrames) return false;
@@ -137,8 +140,9 @@ export function validateRollingPcmFragment(message, limits) {
 
 export class FixedPlanarSlabAssembler {
   constructor({ channelCount, slabFrames, acquirePlane = null }) {
-    if (!Number.isSafeInteger(channelCount) || channelCount < 1 || channelCount > 2) {
-      throw new RangeError('channelCount must be 1 or 2');
+    if (!Number.isSafeInteger(channelCount) || channelCount < 1 ||
+        channelCount > ROLLING_PCM_MAX_SLAB_CHANNELS) {
+      throw new RangeError(`channelCount must be 1 to ${ROLLING_PCM_MAX_SLAB_CHANNELS}`);
     }
     if (!Number.isSafeInteger(slabFrames) || slabFrames < 1) {
       throw new RangeError('slabFrames must be a positive integer');

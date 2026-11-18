@@ -2,9 +2,10 @@
 // correction, with the odd block's measured checks.
 import { LENGTHS, LEVEL_CHECK_K, N_BANDS, ODD_CONFIGS } from './constants.js';
 import {
-    AMP_MIN_Z, amplifierReferences, estimateAmplifier, evaluateOddChecks, evaluateRule, levelCheckOf, oddActiveClasses,
-    oddClassBins, oddMeasuredReason, referenceSums, storedRuleInput, withExecutor
+    AMP_MIN_Z, amplifierReferences, estimateAmplifier, evaluateOddChecks, evaluateRule, levelCheckOf, logRecordingGaps,
+    oddActiveClasses, oddClassBins, oddMeasuredReason, referenceSums, storedRuleInput, withExecutor
 } from './identify.js';
+import { worstGaps } from '../recording-gaps.js';
 import { activeClasses, aboveLimit, binSets, oddSets } from './preprocess.js';
 import { MAX_BIN, combLines } from './signals.js';
 
@@ -27,13 +28,20 @@ function storedCall(executor, channel, seed, targetDbfs, K) {
     });
 }
 
-// Y and Pn of correction-check recordings played at L + t; the chirp depends only on that level, the
-// bandwidth and the rate.
+// Y and Pn of correction-check recordings played at L + t, aligned to the channel's offset; the chirp
+// depends only on that level, the bandwidth and the rate.
 async function analyzeChecks(executor, channel, recordings, t = 0) {
     const { chirp } = await storedCall(executor, channel, CHECK_SEED, storedLevel(channel) + t, 1);
     return Promise.all(recordings.map(capture => executor.run('analyze', {
-        capture, fsDev: channel.rateHz, K: CHECK_K, chirp
+        capture, fsDev: channel.rateHz, K: CHECK_K, chirp, seed: CHECK_SEED, bandwidth: channel.bandwidth,
+        X: driveOf(channel, CHECK_SEED), reference: channel.periodReference
     })));
+}
+
+// Channel entry with the recording-gap state of the check recordings added.
+function withGaps(channel, records) {
+    for (const record of records) logRecordingGaps(channel.label, record);
+    return { ...channel, recordingGaps: worstGaps(channel.recordingGaps, ...records.map(record => record.gaps)) };
 }
 
 const floored = (record, bins) => {
@@ -191,10 +199,10 @@ export function applyCorrectionCheck(channel, recordings, { signal = null, upper
             recordings.plain, ...keys.map(key => recordings[key]), ...configs.map(c => recordings[ODD_RECORDINGS[c]])
         ])).map(record => ({ ...record, excited: context.excited }));
         const checkCall = {
-            seed: CHECK_SEED, take: 'A', group: 'c', K: CHECK_K, peakDbfs: storedLevel(channel), Y: plain.Y, Pn: plain.Pn
+            seed: CHECK_SEED, take: 'A', group: 'c', K: plain.periods, peakDbfs: storedLevel(channel), Y: plain.Y, Pn: plain.Pn
         };
         const ampRef = await amplifierReferences(executor, { ...channel, checkCall });
-        let result = { ...channel, checkCall, ampRef, checkFig: { short: null, long: null } };
+        let result = { ...withGaps(channel, [plain, ...records]), checkCall, ampRef, checkFig: { short: null, long: null } };
         keys.forEach((key, i) => {
             result = withRule(result, key, checkFigures(plain, records[i], context.bins, context.active, 0));
         });
@@ -254,8 +262,9 @@ export function applyCheckAgain(channel, length, recordings, dv, { signal = null
         const analyzed = await analyzeChecks(executor, channel, names.map(name => recordings[name]));
         const { plain, corrected, odd } = Object.fromEntries(names.map((name, i) =>
             [name, { ...analyzed[i], excited: context.excited }]));
+        const gapped = withGaps(channel, analyzed);
         const result = corrected
-            ? withRule(channel, length, checkFigures(plain, corrected, context.bins, context.active, dv)) : channel;
+            ? withRule(gapped, length, checkFigures(plain, corrected, context.bins, context.active, dv)) : gapped;
         if (!odd) return result;
         return withOdd(result, entry => {
             entry.checkFig[corrected ? length : 'alone'] = oddCheckFig(plain, corrected ?? plain, odd, context, dv);
@@ -285,7 +294,7 @@ export function applyLoudCheck(channel, c, t, recordings, dv, { signal = null, u
         const [reference, corrected] = (await analyzeChecks(executor, channel, [recordings.reference, recordings.odd], t))
             .map(record => ({ ...record, excited: context.excited }));
         const { odd, total } = oddVersus(reference, corrected, context);
-        return withOdd(channel, entry => { entry.loud = { dv, t, odd, total }; });
+        return withOdd(withGaps(channel, [reference, corrected]), entry => { entry.loud = { dv, t, odd, total }; });
     });
 }
 

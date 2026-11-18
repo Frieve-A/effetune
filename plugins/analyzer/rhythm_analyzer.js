@@ -1410,7 +1410,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
     }
 
     // Header items flow left to right and wrap; an item wider than a line is scaled down to fit. A part with a
-    // live value reserves the width of its worst-case `slot` text, so changing values never reflow the header.
+    // live value reserves its `slot` width, so changing values never reflow the header.
     _layoutHeader(context, items, width, pad, fontSize) {
         const gap = 1.5 * fontSize;
         const partGap = 0.8 * fontSize;
@@ -1421,7 +1421,11 @@ class RhythmAnalyzerPlugin extends PluginBase {
         let top = pad;
         const placed = [];
         for (const item of items) {
-            const widths = item.map(part => (part.lamp ? fontSize : context.measureText(part.slot ?? part.text).width));
+            const widths = item.map(part => {
+                if (part.lamp) return fontSize;
+                return [part.prefix, part.slot ?? part.text, part.suffixSlot ?? part.suffix]
+                    .reduce((sum, text) => sum + (text ? context.measureText(text).width : 0), 0);
+            });
             const naturalWidth = widths.reduce((sum, value) => sum + value, 0) + partGap * (item.length - 1);
             const scale = naturalWidth > available ? available / naturalWidth : 1;
             const itemWidth = naturalWidth * scale;
@@ -1443,8 +1447,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const bpm = midi ? midi.beat.bpm * midi.speed : period > 0 ? 60 / period : NaN;
         const unavailable = !midi && snapshot?.analysisAvailable === false;
         const value = (number, text) => (Number.isFinite(number) ? text : RHYTHM_ANALYZER_DASH);
-        const tempo = unavailable ? 'Analysis unavailable at this sample rate'
-            : `${Number.isFinite(bpm) ? `${bpm.toFixed(1)} BPM  ` : ''}${gateOpen ? 'LOCKED' : 'searching'}`;
+        const tempoStatus = gateOpen ? 'LOCKED' : 'searching';
         const comb = snapshot?.strongestBpm > 0 ? snapshot.strongestBpm : NaN;
         const span = this.sp;
         return [
@@ -1452,20 +1455,22 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 // A closed gate has a hollow lamp; a previously shown pending event may still flash.
                 { lamp: true, level: gateOpen || this.ledLevel > 0 ? this.ledLevel : null,
                     minimumLevel: 0, color: gateOpen ? markerColor(Number.isFinite(bpm) ? bpm : 120) : palette.strongGrid },
-                { text: tempo, slot: unavailable ? tempo : '000.0 BPM  searching',
+                { ...(unavailable ? { text: 'Analysis unavailable at this sample rate' } : {
+                    text: value(bpm, bpm.toFixed(1)), slot: '000.0',
+                    suffix: ` BPM  ${tempoStatus}`, suffixSlot: ' BPM  searching'
+                }),
                     opacity: midi ? 1 : Number.isFinite(bpm) ? snapshot.confidence : 1,
                     color: Number.isFinite(bpm) ? markerColor(bpm) : palette.label }
             ],
             [
-                // Tempos stay below 480 BPM, so halves have 3 digits and doubles at most 4.
-                { text: `×½ ${value(bpm, (bpm / 2).toFixed(0))}`, slot: '×½ 000', color: palette.label },
-                { text: `×2 ${value(bpm, (bpm * 2).toFixed(0))}`, slot: '×2 0000', color: palette.label }
+                { prefix: '×½ ', text: value(bpm, (bpm / 2).toFixed(0)), slot: '000', color: palette.label },
+                { prefix: '×2 ', text: value(bpm, (bpm * 2).toFixed(0)), slot: '0000', color: palette.label }
             ],
-            [{ text: `strongest ${value(comb, `${comb.toFixed(0)} BPM`)}`, slot: 'strongest 000 BPM', color: palette.label }],
+            [{ prefix: 'strongest ', text: value(comb, comb.toFixed(0)), slot: '000', suffix: ' BPM', color: palette.label }],
             // Swing fractions below 0.8 keep the ratio under 4:1; deviations stay well below a second.
-            [{ text: `swing ${value(lens?.swing, `${lens?.swing.toFixed(2)}:1`)}`, slot: 'swing 0.00:1',
+            [{ prefix: 'swing ', text: value(lens?.swing, lens?.swing.toFixed(2)), slot: '0.00', suffix: ':1',
                 opacity: snapshot?.confidence ?? 0, color: palette.label }],
-            [{ text: `jitter ${value(lens?.jitter, `${lens?.jitter.toFixed(1)} ms`)}`, slot: 'jitter 000.0 ms',
+            [{ prefix: 'jitter ', text: value(lens?.jitter, lens?.jitter.toFixed(1)), slot: '000.0', suffix: ' ms',
                 opacity: snapshot?.confidence ?? 0, color: palette.label }],
             [
                 { text: '○ timing unavailable', color: palette.label },
@@ -1499,7 +1504,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this._readoutFrame = frame;
         // Text keeps a background-colored outline so it stays legible where it overlaps the plot; a rotated line
         // reads bottom to top.
-        const drawText = (value, x, y, color, align, baseline, size, rotated = false) => {
+        const drawText = (value, x, y, color, align, baseline, size, rotated = false, centerOffset, slotWidth) => {
             context.save();
             context.font = `${size}px Arial`;
             context.textAlign = align;
@@ -1507,15 +1512,26 @@ class RhythmAnalyzerPlugin extends PluginBase {
             context.strokeStyle = palette.background;
             context.lineWidth = 2 * dpr;
             context.lineJoin = 'round';
+            if (slotWidth !== undefined) {
+                const width = context.measureText(value).width;
+                if (width > slotWidth) {
+                    // Keep both the numeric right edge and the Visualizer's reflection center fixed.
+                    const scaleX = slotWidth / width;
+                    context.scale(scaleX, 1);
+                    x /= scaleX;
+                    centerOffset /= scaleX;
+                }
+            }
             if (rotated) {
                 context.translate(x, y);
                 context.rotate(-Math.PI / 2);
                 x = 0;
                 y = 0;
             }
-            text.strokeText(value, x, y);
+            const args = centerOffset === undefined || text === context ? [value, x, y] : [value, x, y, centerOffset];
+            text.strokeText(...args);
             context.fillStyle = color;
-            text.fillText(value, x, y);
+            text.fillText(...args);
             context.restore();
         };
         // Every text item over the graph (captions, axis names, row labels, tick and guide values, status text)
@@ -1605,7 +1621,18 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     } else {
                         context.save();
                         context.globalAlpha = part.opacity ?? 1;
-                        drawText(part.text, x, entry.top, part.color, 'left', 'top', size);
+                        if (part.slot) {
+                            context.font = `${size}px Arial`;
+                            const slotWidth = context.measureText(part.slot).width;
+                            const right = x + (part.prefix ? context.measureText(part.prefix).width : 0) + slotWidth;
+                            // Reflect the whole field in the Visualizer, keeping its parts in reading order.
+                            const center = x + entry.widths[index] * entry.scale / 2;
+                            const write = (value, at, align = 'left', limit) =>
+                                drawText(value, at, entry.top, part.color, align, 'top', size, false, center - at, limit);
+                            if (part.prefix) write(part.prefix, x);
+                            write(part.text, right, 'right', slotWidth);
+                            if (part.suffix) write(part.suffix, right);
+                        } else drawText(part.text, x, entry.top, part.color, 'left', 'top', size);
                         context.restore();
                     }
                     x += (entry.widths[index] + 0.8 * fontSize) * entry.scale;
@@ -2227,7 +2254,12 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     .map(row => ({
                         label: this.lanes.names[row.band],
                         color: frame.signalColor,
-                        value: `${rhythmAnalyzerSigned(row.offset, 1)} ms ± ${format.number(row.sd, 1)} ms`
+                        value: [
+                            { text: rhythmAnalyzerSigned(row.offset, 1), columns: 6 },
+                            ' ms ± ',
+                            { text: format.number(row.sd, 1), columns: 5 },
+                            ' ms'
+                        ]
                     }))
             };
         }

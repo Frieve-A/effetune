@@ -146,7 +146,8 @@ test('production schemas expose the audited automation population', async () => 
     },
     appInstrumentControls: {
       SoundFontPlayerPlugin: [
-        'midiChannel', 'maxVoices', 'sampleQuality', 'automaticFallback', 'previewMidi', 'previewChannel', 'sf2Compatibility'
+        'midiChannel', 'maxVoices', 'sampleQuality', 'automaticFallback', 'previewMidi', 'previewChannel', 'sf2Compatibility',
+        'respondGm', 'respondGs', 'respondXg', 'transpose', 'midiChannelsOff'
       ]
     },
     resetsLearningState: {

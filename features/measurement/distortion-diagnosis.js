@@ -31,6 +31,7 @@ import {
     modelAveragingText
 } from './speaker-distortion-figures.js';
 import { channelDisplayLabel } from './audio-utils/channel-selection.js';
+import { RECORDING_GAP_NOTES } from './measurement-model.js';
 import { createLinearTicks, finerDecimalStep } from './ui/analysis-axis-ticks.js';
 
 // Number of calls in each record set: the stored sums cover all calls. Quick plays one take of each call.
@@ -161,13 +162,20 @@ function sweepSums(sweep, bands, n) {
     return { h, h1, z };
 }
 
-/** Harmonic ratio of order n (2..10) of one sweep over `bands`, or null without data. */
+/**
+ * Harmonic ratio of order n (2..10) of one sweep over `bands`, or null without data: R where it exceeds the noise
+ * floor Rz, `raw` (dB) also below it.
+ */
 function sweepRatio(sweep, bands, n) {
     const { h, h1, z } = sweepSums(sweep, bands, n);
     if (!(h1 > 0)) return null;
     const shown = h > z;
-    return { shown, usable: shown && h >= 4 * z, R: shown ? db(h, h1) : null, Rz: finite(db(z, h1)) };
+    const raw = finite(db(h, h1));
+    return { shown, usable: shown && h >= 4 * z, R: shown ? raw : null, raw, Rz: finite(db(z, h1)) };
 }
+
+// The ratio a chart draws: R, or every measured ratio (`raw`) when the noise mask is off.
+const drawnRatio = (ratio, unmasked) => (unmasked ? ratio?.raw : ratio?.R) ?? null;
 
 /**
  * THD of one sweep over `bands`: the sum of the power ratios h/h1 of orders 2..10 (each over its own sweep
@@ -185,12 +193,15 @@ function sweepThd(sweep, bands) {
     }
     if (!any) return null;
     const shown = ratio > floor;
-    return { shown, R: shown ? db(ratio, 1) : null, Rz: finite(db(floor, 1)) };
+    const raw = finite(db(ratio, 1));
+    return { shown, R: shown ? raw : null, raw, Rz: finite(db(floor, 1)) };
 }
 
-function sweepChange(ess, bands, n) {
+// Change of order n at 6 dB lower: between ratios at least 6 dB above the noise, or any two with `unmasked`.
+function sweepChange(ess, bands, n, unmasked = false) {
     const atL = sweepRatio(ess.essL, bands, n);
     const at6 = sweepRatio(ess.ess6, bands, n);
+    if (unmasked) return atL?.raw != null && at6?.raw != null ? at6.raw - atL.raw : null;
     return atL?.usable && at6?.usable ? at6.R - atL.R : null;
 }
 
@@ -451,15 +462,19 @@ const distortionFrame = t => {
         yTitle: t('analysis:diagAxisDistortion'), xTitle: t('analysis:diagAxisFundamental') };
 };
 
-/** Chart H: THD and H2, H3, H5 of the set Signal Level sweep against the fundamental, and THD 6 dB lower. */
-export function chartH(model, entry, resolution, t) {
+/**
+ * Chart H: THD and H2, H3, H5 of the set Signal Level sweep against the fundamental, and THD 6 dB lower; above
+ * the noise floor only unless `unmasked`.
+ */
+export function chartH(model, entry, resolution, t, unmasked = false) {
     const ess = entry.diagnosis.ess;
     const display = chartBands(model.bands, resolution);
     const atL = display.groups.map(group => sweepThd(ess.essL, group));
-    const thd = atL.map((value, k) => pointAt(display, k, value?.R ?? null));
-    const thd6 = display.groups.map((group, k) => pointAt(display, k, sweepThd(ess.ess6, group)?.R ?? null));
+    const thd = atL.map((value, k) => pointAt(display, k, drawnRatio(value, unmasked)));
+    const thd6 = display.groups.map((group, k) =>
+        pointAt(display, k, drawnRatio(sweepThd(ess.ess6, group), unmasked)));
     const orders = SWEEP_ORDERS.map(n => ({ n, points: display.groups.map((group, k) =>
-        pointAt(display, k, sweepRatio(ess.essL, group, n)?.R ?? null)) }));
+        pointAt(display, k, drawnRatio(sweepRatio(ess.essL, group, n), unmasked))) }));
     const floor = {
         kind: 'area', color: '--sdc-lim', opacity: LIMIT_OPACITY,
         points: atL.map((value, k) => (value?.Rz == null ? null
@@ -574,15 +589,20 @@ function markOverload(items, display, stats, t, noteKey) {
     return t(noteKey, { span: formatSpan(overload.lo, overload.hi) });
 }
 
-/** Chart A: change of H2, H3 and H5 at 6 dB lower Signal Level. */
-export function chartA(model, entry, t) {
+/**
+ * Chart A: change of H2, H3 and H5 at 6 dB lower Signal Level; between ratios at least 6 dB above the noise
+ * unless `unmasked`.
+ */
+export function chartA(model, entry, t, unmasked = false) {
     const { display, stats } = ruleBands(model, entry);
     const items = [
         { kind: 'hline', y: 0, dash: '6 4' },
         { kind: 'hline', y: -6, color: '--sdc-h2', width: 1, dash: '6 4' },
         { kind: 'hline', y: -12, color: '--sdc-h3', width: 1, dash: '6 4' }
     ];
-    const orders = SWEEP_ORDERS.map(n => ({ n, points: stats.map((band, k) => pointAt(display, k, band.change[n])) }));
+    const change = (k, n) => (unmasked ? sweepChange(entry.diagnosis.ess, display.groups[k], n, true)
+        : stats[k].change[n]);
+    const orders = SWEEP_ORDERS.map(n => ({ n, points: stats.map((band, k) => pointAt(display, k, change(k, n))) }));
     for (const { n, points } of orders) items.push(curve(points, ORDER_TOKENS[n], 1.6));
     for (const { n, points } of orders) items.push(legend(t(`analysis:diagH${n}`), ORDER_TOKENS[n], 1.6, null, points));
     items.push(legend(t('analysis:diagGuideCorrectable'), '--sdc-h2', 1, '6 4'));
@@ -652,8 +672,9 @@ export function staticScale(max) {
  * `map` holds the same gain at every instantaneous level for the Map view: `columns` [{ lo, hi, gains }] with
  * `gains` per STATIC_LEVELS `levels`, null where both peaks are inside the noise band. The range (`scale`)
  * follows the peak gains outside the noise band, all of them when none is, and is shared by both views.
+ * `unmasked` fills every column, with `below` set where both peaks are inside the band, and scales to all peaks.
  */
-export function chartS(model, entry, t) {
+export function chartS(model, entry, t, unmasked = false) {
     const items = [];
     const columns = [];
     let scale = staticScale(0);
@@ -669,9 +690,11 @@ export function chartS(model, entry, t) {
             const shown = peaks.filter(value => value > noise);
             all.push(...peaks);
             outside.push(...shown);
-            columns.push({ ...span(k), gains: shown.length ? view.map[k] : null });
+            const below = !shown.length;
+            if (!unmasked) columns.push({ ...span(k), gains: below ? null : view.map[k] });
+            else columns.push({ ...span(k), gains: view.map[k], below });
         });
-        scale = staticScale(Math.max(0, ...(outside.length ? outside : all)));
+        scale = staticScale(Math.max(0, ...(outside.length && !unmasked ? outside : all)));
         const at = (k, y) => (y === null ? null : { x: view.frequencies[k], ...span(k), y });
         const series = values => values.map((y, k) => at(k, y));
         const positive = series(view.positive), negative = series(view.negative);
@@ -703,14 +726,20 @@ export function chartS(model, entry, t) {
     };
 }
 
-/** Chart C cells: { lo, hi, order, R } for every shown ratio of the set Signal Level sweep. */
-export function chartCCells(model, entry) {
+/**
+ * Chart C cells: { lo, hi, order, R } for every shown ratio of the set Signal Level sweep, or with `unmasked`
+ * for every measured one, with `below` marking those inside the noise floor.
+ */
+export function chartCCells(model, entry, unmasked = false) {
     const display = chartBands(model.bands, 'third');
     const cells = [];
     display.groups.forEach((group, k) => {
         for (let order = 2; order <= 10; order++) {
             const ratio = sweepRatio(entry.diagnosis.ess.essL, group, order);
-            if (ratio?.shown) cells.push({ lo: display.lo[k], hi: display.hi[k], order, R: ratio.R });
+            const R = drawnRatio(ratio, unmasked);
+            if (R === null) continue;
+            const cell = { lo: display.lo[k], hi: display.hi[k], order, R };
+            cells.push(unmasked ? { ...cell, below: !ratio.shown } : cell);
         }
     });
     return cells;
@@ -917,7 +946,10 @@ export function factsLine(model, entry, length, t, language) {
         averaging: modelAveragingText(model),
         check
     });
-    return entry.micDistortionWarning ? `${text} · ${t('analysis:diagMicrophoneDistorted')}` : text;
+    const notes = [text];
+    if (entry.micDistortionWarning) notes.push(t('analysis:diagMicrophoneDistorted'));
+    if (entry.recordingGaps) notes.push(t(RECORDING_GAP_NOTES[entry.recordingGaps]));
+    return notes.join(' · ');
 }
 
 // ---------------------------------------------------------------- summary

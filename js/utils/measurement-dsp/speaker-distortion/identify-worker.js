@@ -50,9 +50,9 @@ export function call(context, { seed, bandwidth, targetDbfs, K, fsDev, factor = 
         : seedCall(context, seed, { ...settings, factor });
 }
 
-/** `analyze`: Y and Pn of one capture. */
-export function analyze(_context, { capture, fsDev, K, chirp }) {
-    return analyzeCall(capture, { fsDev, K, chirp });
+/** `analyze`: Y and Pn of one capture (see analyzeCall for the options). */
+export function analyze(_context, { capture, ...options }) {
+    return analyzeCall(capture, options);
 }
 
 /** `diagnosis`: the diagnosis block. */

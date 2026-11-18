@@ -19,6 +19,7 @@ import {
     resolveOutputSweepBands
 } from '../measurement-model.js';
 import { SweepCancelledError } from './audio-processing.js';
+import { MAX_REPLAYS } from '../../../js/utils/measurement-dsp/recording-gaps.js';
 
 function setDisplay(id, display) {
     const element = globalThis.document?.getElementById(id);
@@ -70,6 +71,17 @@ const SweepMeasurement = {
             }
         }
         return sweep;
+    },
+
+    /** Record one channel's sweep, playing it again while too many repetitions are disturbed. */
+    async recordChannelSweep(channel, routeWidth) {
+        for (let play = 0; ; play += 1) {
+            // Sweep generation and deconvolution share mutable inverse-filter state,
+            // so each play generates its sweep after the previous analysis completed.
+            const result = await this.playAndRecordSweep(this.generateChannelSweep(channel), channel, routeWidth);
+            if (result.recordingGaps !== 'interrupted' || play === MAX_REPLAYS) return result;
+            console.info(`Sweep measurement: the recording of ${channel} was disturbed too often, playing the sweep again`);
+        }
     },
 
     /**
@@ -185,12 +197,7 @@ const SweepMeasurement = {
                         }) || `Measuring ${channelDisplayLabel(outputChannel)} (${index + 1}/${selection.length})`
                         : '';
                 }
-                // Sweep generation and deconvolution share mutable inverse-filter state,
-                // so every channel must complete before the next one is generated.
-                const sweepBuffer = this.generateChannelSweep(outputChannel);
-                const measurementResult = await this.playAndRecordSweep(
-                    sweepBuffer, outputChannel, routeWidth
-                );
+                const measurementResult = await this.recordChannelSweep(outputChannel, routeWidth);
                 results.push({ channel: outputChannel, ...measurementResult });
                 this.updateFrequencyResponseGraph(
                     multiChannel ? results : measurementResult.frequencyResponse,
@@ -243,7 +250,8 @@ const SweepMeasurement = {
                 const entry = {
                     channel: result.channel,
                     frequencyResponse: result.frequencyResponse,
-                    maxSignalLevel: result.maxSignalLevel
+                    maxSignalLevel: result.maxSignalLevel,
+                    ...(result.recordingGaps ? { recordingGaps: result.recordingGaps } : {})
                 };
                 if (result.irValid && result.impulseResponse instanceof Float32Array) {
                     const irId = this.currentMeasurement.nextPointId;
@@ -285,6 +293,7 @@ const SweepMeasurement = {
             name: `Point ${this.currentMeasurement.points.length + 1}`,
             frequencyResponse: measurementResult.frequencyResponse,
             maxSignalLevel: measurementResult.maxSignalLevel,
+            ...(measurementResult.recordingGaps ? { recordingGaps: measurementResult.recordingGaps } : {}),
             timestamp: new Date().toISOString()
         };
 
@@ -450,8 +459,7 @@ const SweepMeasurement = {
                 this.interfaceCalibrationImpulseResponse =
                     this.interfaceCalibrationImpulseResponsesByChannel.get(channelToken) || null;
             }
-            const sweepBuffer = this.generateChannelSweep(channelToken);
-            const result = await this.playAndRecordSweep(sweepBuffer, channelToken, routeWidth);
+            const result = await this.recordChannelSweep(channelToken, routeWidth);
             let nextPointId = this.currentMeasurement.nextPointId;
             const merged = mergeChannelRedoResult(
                 this.currentPoint,

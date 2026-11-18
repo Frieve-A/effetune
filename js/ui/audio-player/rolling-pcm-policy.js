@@ -3,7 +3,10 @@ import {
   sourceToOutputFrames
 } from './rolling-pcm-core.js';
 import { hasPlaybackRegionDescriptor } from './playback-region.js';
-import { ROLLING_PCM_PROTOCOL_VERSION } from './rolling-pcm-protocol.js';
+import {
+  ROLLING_PCM_MAX_SLAB_CHANNELS,
+  ROLLING_PCM_PROTOCOL_VERSION
+} from './rolling-pcm-protocol.js';
 
 export { ROLLING_PCM_PROTOCOL_VERSION } from './rolling-pcm-protocol.js';
 
@@ -221,7 +224,8 @@ export function getRollingPcmProfile(
   profileId = DEFAULT_ROLLING_PCM_PROFILE_ID
 ) {
   if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0 ||
-      !Number.isSafeInteger(channelCount) || channelCount < 1 || channelCount > 2) {
+      !Number.isSafeInteger(channelCount) || channelCount < 1 ||
+      channelCount > ROLLING_PCM_MAX_SLAB_CHANNELS) {
     return null;
   }
   const candidate = ROLLING_PCM_CANDIDATE_PROFILES.find(profile => profile.id === profileId);

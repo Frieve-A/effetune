@@ -194,7 +194,7 @@ class HumRemoverPlugin extends PluginBase {
             },
             {
                 title: 'REMOVED',
-                value: `${removed.toFixed(1)} dBFS`,
+                fields: [['', removed.toFixed(1), '-000.0', ' dBFS']],
                 level: (removed + 140) / 140
             }
         ];
@@ -217,8 +217,9 @@ class HumRemoverPlugin extends PluginBase {
             context.fillText(card.title, x + 6 * scale, padding + 5 * scale);
             context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             context.font = `${Math.round(12 * scale)}px Arial`;
-            context.fillText(card.value, x + 6 * scale, padding + 22 * scale,
-                cardWidth - 12 * scale);
+            if (card.fields) {
+                drawHudReadings(context, card.fields, x + 6 * scale, padding + 22 * scale, cardWidth - 12 * scale);
+            } else context.fillText(card.value, x + 6 * scale, padding + 22 * scale, cardWidth - 12 * scale);
             context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
             context.fillRect(x + 6 * scale, padding + cardHeight - 9 * scale,
                 cardWidth - 12 * scale, 4 * scale);

@@ -141,6 +141,29 @@ function frame(mode, channels, program = null, flags = 0) {
     return { frameType: 27, formatVersion: 1, payload };
 }
 
+test('the loudness table keeps its columns and row spacing when true peak gains a digit', async () => {
+    const { plugin } = await loadPlugin();
+    plugin.reading = {
+        integratedValid: true, lraValid: true,
+        program: { momentary: -9.9, shortTerm: -18.1, integrated: -23.0, lra: 8.1,
+            maxTruePeak: -9.9, integratedSeconds: 1800 }
+    };
+    const context = {
+        font: '12px monospace',
+        measureText(value) { return { width: parseFloat(this.font) * 0.6 * value.length }; },
+        fillText(value, x, y) { this.positions.push({ x, y, font: this.font, align: this.textAlign }); }
+    };
+    const draw = () => {
+        context.positions = [];
+        plugin.drawProgramStats(context, context, {}, 0, 100, 230, 36, 12);
+        return context.positions;
+    };
+    const before = draw();
+    assert.equal(before.length, 12);
+    plugin.reading.program.maxTruePeak = -10.0;
+    assert.deepEqual(draw(), before);
+});
+
 test('Analog Meter declares its parameter contract and execution requirements', async () => {
     const { Plugin, plugin } = await loadPlugin();
     assert.equal(plugin.name, 'Analog Meter');

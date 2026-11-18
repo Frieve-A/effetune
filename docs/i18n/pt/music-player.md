@@ -18,9 +18,11 @@ Para usar apenas o player, defina **Dispositivo de Entrada:** como **Nenhum (som
 
 ## Arquivos DSD {#dsd-files}
 
-Abra arquivos `.dsf` (DSF) ou `.dff` (DSDIFF) como qualquer outro arquivo de música. Arquivos DFF sem compressão e comprimidos com DST são compatíveis. O EffeTune converte DSD64, DSD128 e DSD256 mono ou estéreo em PCM para reproduzi-los com os efeitos atuais. O dispositivo de áudio recebe PCM, não DSD nativo nem DoP.
+Abra arquivos `.dsf` (DSF) ou `.dff` (DSDIFF) como qualquer outro arquivo de música. Arquivos DFF sem compressão e comprimidos com DST são compatíveis. O EffeTune converte DSD64, DSD128 e DSD256 de até seis canais (5.1) em PCM para reproduzi-los com os efeitos atuais. O dispositivo de áudio recebe PCM, não DSD nativo nem DoP.
 
-Algumas variantes de codificação DST (quadros segmentados), arquivos com mais de dois canais, DSD512 e DSD baseado em 48 kHz não são compatíveis. Se um arquivo não tocar, use um DFF sem compressão ou uma cópia PCM compatível, como FLAC ou WAV. A reprodução de DSD está disponível no aplicativo desktop e no player web/PWA, mas não no aplicativo Android nativo.
+O áudio DSD multicanal chega aos efeitos na ordem dos canais do arquivo. Se essa ordem for diferente da ordem das saídas dos alto-falantes, coloque [**Matrix**](plugins/basics.md#matrix) no início da cadeia de efeitos. Por exemplo, para reproduzir um DSF de cinco canais em uma saída 5.1 padrão, conecte as entradas 1 a 3 às saídas de mesmo número, a entrada 4 apenas à saída 5 e a entrada 5 apenas à saída 6. Assim, a saída 4 (LFE) fica sem sinal.
+
+Algumas variantes de codificação DST (quadros segmentados), arquivos com mais de seis canais, DSD512 e DSD baseado em 48 kHz não são compatíveis. Se um arquivo não tocar, use um DFF sem compressão ou uma cópia PCM compatível, como FLAC ou WAV. A reprodução de DSD está disponível no aplicativo desktop e no player web/PWA, mas não no aplicativo Android nativo.
 
 Arquivos DSD de taxa elevada exigem mais processamento, sobretudo em velocidades de reprodução maiores. Se o áudio falhar ou parar, reduza a velocidade.
 

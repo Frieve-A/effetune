@@ -1,5 +1,8 @@
 const MAX_READ_BYTES = 1024 * 1024;
 const DSD_RATES = new Set([2822400, 5644800, 11289600]);
+const MAX_CHANNELS = 6;
+// DSF channel types: mono, stereo, 3 channels, quad, 4 channels, 5 channels, 5.1.
+const DSF_CHANNEL_TYPE_COUNTS = [0, 1, 2, 3, 4, 4, 5, 6];
 
 export function dsdError(code, message) {
     return Object.assign(new Error(message), { code });
@@ -33,10 +36,12 @@ function uint64(bytes, offset, littleEndian) {
     return Number(value);
 }
 
+function requireSupportedChannelCount(channelCount) {
+    requireSupported(channelCount >= 1 && channelCount <= MAX_CHANNELS, 'Unsupported DSD channel count');
+}
+
 function completeMetadata(metadata) {
     requireSupported(DSD_RATES.has(metadata.sampleRate), 'Unsupported DSD sample rate');
-    requireSupported(metadata.channelCount === 1 || metadata.channelCount === 2,
-        'Unsupported DSD channel count');
     requireValid(Number.isSafeInteger(metadata.sampleCount) && metadata.sampleCount > 0,
         'Invalid DSD sample count');
     return Object.freeze({ ...metadata, bitsPerSample: 1,
@@ -56,8 +61,9 @@ async function parseDsf(reader) {
     requireSupported(view.getUint32(12, true) === 1 && view.getUint32(16, true) === 0,
         'Unsupported DSF encoding');
     const channelCount = view.getUint32(24, true);
-    requireSupported(channelCount === 1 || channelCount === 2, 'Unsupported DSD channel count');
-    requireValid(view.getUint32(20, true) === channelCount, 'Invalid DSF channel layout');
+    requireSupportedChannelCount(channelCount);
+    requireValid(DSF_CHANNEL_TYPE_COUNTS[view.getUint32(20, true)] === channelCount,
+        'Invalid DSF channel layout');
     const sampleRate = view.getUint32(28, true);
     const storedBits = view.getUint32(32, true);
     requireSupported(storedBits === 1 || storedBits === 8, 'Unsupported DSF bit order');
@@ -153,8 +159,7 @@ async function parseDff(reader, header) {
     });
     requireValid(metadata.dataOffset !== undefined && metadata.sampleRate !== undefined &&
         metadata.channelCount !== undefined && compression !== undefined, 'Incomplete DSDIFF header');
-    requireSupported(metadata.channelCount === 1 || metadata.channelCount === 2,
-        'Unsupported DSD channel count');
+    requireSupportedChannelCount(metadata.channelCount);
     requireValid(compression === (metadata.compression === 'dst' ? 'DST ' : 'DSD '),
         'DSDIFF compression does not match audio data');
     if (metadata.compression === 'dst') {

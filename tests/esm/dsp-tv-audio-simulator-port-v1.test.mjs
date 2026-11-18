@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -123,7 +124,7 @@ async function loadPlugin({ telemetryHub = null } = {}) {
   }
   const document = { createElement: tagName => new FakeElement(tagName) };
   const context = {
-    PluginBase,
+    PluginBase, drawHudReadings,
     document,
     performance: { now: () => 1000 },
     cancelAnimationFrame(id) { cancelledFrames.push(id); },
@@ -385,6 +386,7 @@ test('TV HUD fills and strokes the active spectrum like the FM receiver graph', 
   const plugin = new Plugin();
   const operations = [];
   const drawingContext = {
+    ...hudTextContext,
     fillStyle: '',
     clearRect() {},
     fillRect() {},
@@ -416,7 +418,7 @@ test('TV HUD fills and strokes the active spectrum like the FM receiver graph', 
   assert.ok(texts.includes('Frequency (Hz)'));
   assert.ok(texts.includes('Level (dB)'));
   // The 0 dB bound sits on the top edge, so it has no tick value.
-  assert.equal(texts.includes('0'), false);
+  assert.equal(operations.slice(0, fillIndex).some(operation => operation.type === 'text' && operation.text === '0'), false);
 });
 
 test('TV telemetry v1 validates its independent 216-byte payload', async () => {

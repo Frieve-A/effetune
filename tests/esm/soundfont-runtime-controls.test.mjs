@@ -48,10 +48,16 @@ test('paused mixer edits use the CONTROL-only native ingress, preserve pending m
     { offsetFrames: 0, status: 194, data1: 19, data2: 0 }], 5, 4096]]);
   assert.equal(result.checkpoints[0].cursor, 17);
   assert.equal(result.checkpoints[0].clockFrame, 123);
-  assert.equal(h.send({ type: 'program', channel: 2, bank: 128, program: 0 }).ok, false);
-  assert.equal(h.calls.length, 1, 'Drum bank must not be silently encoded as a melodic bank');
-  assert.equal(h.send({ type: 'program', channel: 9, bank: 128, program: 0 }).ok, true);
-  assert.equal(h.calls.at(-1)[2][0].data2, 0);
+  assert.equal(h.send({ type: 'program', channel: 2, bank: 129, program: 0 }).ok, false);
+  assert.equal(h.calls.length, 1, 'An out-of-range bank must be rejected');
+  assert.equal(h.send({ type: 'program', channel: 9, bank: 128, program: 5 }).ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1)[2])),
+    [{ offsetFrames: 0, status: 201, data1: 5, data2: 0 }], 'A drum kit changes only the program');
+  assert.equal(h.send({ type: 'program', channel: 2, bank: 42, program: 19, xg: true }).ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.at(-1)[2])), [
+    { offsetFrames: 0, status: 178, data1: 0, data2: 0 },
+    { offsetFrames: 0, status: 178, data1: 32, data2: 42 },
+    { offsetFrames: 0, status: 194, data1: 19, data2: 0 }], 'XG selects a melodic bank with the bank LSB');
 });
 
 test('channel mix actions are atomic per-channel operations and stale or rejected targets fail visibly', () => {

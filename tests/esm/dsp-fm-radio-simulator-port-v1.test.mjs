@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -278,7 +279,7 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
         cleanup() {}
     }
     const context = {
-        PluginBase,
+        PluginBase, drawHudReadings,
         performance: { now: () => 1000 },
         window: {
             dspTelemetryHub: {
@@ -312,6 +313,7 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
 
     const drawnText = [];
     const drawingContext = {
+        ...hudTextContext,
         clearRect() {}, fillRect() {}, strokeRect() {},
         beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {},
         save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {},
@@ -325,7 +327,7 @@ test('FM Radio Simulator drives the HUD from subscribed telemetry', async () => 
         getContext: () => drawingContext
     };
     plugin.drawHud();
-    const statusLine = drawnText.join(' ');
+    const statusLine = drawnText.join('');
     assert.match(statusLine, /dBµV/);
     assert.match(statusLine, /CNR 38\.\d dB/);
     assert.match(statusLine, /ST 75%/);
@@ -351,7 +353,7 @@ test('FM Radio Simulator narrow HUD keeps every status string inside a 320px can
         canRunAnimation() { return true; }
         cleanup() {}
     }
-    const context = { PluginBase, performance: { now: () => 1000 }, window: {} };
+    const context = { PluginBase, drawHudReadings, performance: { now: () => 1000 }, window: {} };
     vm.runInNewContext(source, context);
     const plugin = new context.window.FMRadioSimulatorPlugin();
     plugin._applyTelemetryMeasurements(plugin.parseDspTelemetryFrame({
@@ -366,14 +368,21 @@ test('FM Radio Simulator narrow HUD keeps every status string inside a 320px can
     const canvasWidth = 320;
     const drawn = [];
     const measure = text => ({ width: String(text).length * 6 });
+    let originX = 0, originY = 0, scaleX = 1;
     const drawingContext = {
         clearRect() {}, fillRect() {}, strokeRect() {},
         beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {},
-        save() {}, restore() {}, translate() {}, rotate() {}, rect() {}, clip() {},
+        save() {},
+        restore() { originX = originY = 0; scaleX = 1; },
+        translate(x, y) { originX += x; originY += y; },
+        scale(x) { scaleX *= x; },
+        rotate() {}, rect() {}, clip() {},
         textAlign: 'left',
         measureText: measure,
         fillText(text, x, y) {
-            drawn.push({ text: String(text), x, y, align: this.textAlign });
+            const width = measure(text).width * scaleX;
+            const anchor = originX + x * scaleX;
+            drawn.push({ text: String(text), x: anchor, y: originY + y, width, scaleX, align: this.textAlign });
         }
     };
     plugin.hudCanvas = {
@@ -384,21 +393,32 @@ test('FM Radio Simulator narrow HUD keeps every status string inside a 320px can
     };
     plugin.drawHud();
 
-    const statusPattern = /dBµV|CNR|ST \d|MPath|Clicks|●/;
+    const statusPattern = /dBµV|CNR| ST |MPath|Clicks|●/;
     const statusItems = drawn.filter(item => statusPattern.test(item.text));
     assert.equal(statusItems.length, 6, 'all six status items are drawn');
-    for (const item of statusItems) {
-        assert.equal(item.align, 'left');
-        const end = item.x + measure(item.text).width;
+    for (const item of drawn.filter(item => statusItems.some(status => status.y === item.y))) {
+        const start = item.align === 'right' ? item.x - item.width : item.x;
+        const end = start + item.width;
         assert.ok(end <= canvasWidth,
             `"${item.text}" ends at ${end}, beyond the ${canvasWidth}px canvas`);
-        assert.ok(item.x >= 0, `"${item.text}" starts inside the canvas`);
+        assert.ok(start >= 0, `"${item.text}" starts inside the canvas`);
     }
-    const clicksItem = statusItems.find(item => item.text.startsWith('Clicks'));
+    const clicksItem = statusItems.find(item => item.text.trimStart().startsWith('Clicks'));
     const levelItem = statusItems.find(item => item.text.includes('dBµV'));
     assert.ok(clicksItem && levelItem);
     assert.notEqual(clicksItem.y, levelItem.y,
         'narrow layout splits the status items into two rows');
+    const position = text => {
+        const item = drawn.find(item => item.text === text && item.y === clicksItem.y);
+        return item.x - item.scaleX * measure(text.slice(text.indexOf('.'))).width;
+    };
+    const before = [position('-118.9'), position('99.9')];
+    drawn.length = 0;
+    plugin.hudValues.multipathDb = -9.9;
+    plugin.hudValues.clickRate = 100;
+    plugin.drawHud();
+    assert.deepEqual([position('-9.9'), position('100.0')], before,
+        'changing digit counts preserves both decimal positions after the row is scaled to fit');
     assert.ok(drawn.every(item => item.text !== 'WASM ACTIVE'));
 });
 

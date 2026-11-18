@@ -64,7 +64,7 @@ const isCalls = calls => Array.isArray(calls) && calls.length > 0 && calls.every
 
 function isCheckCall(call) {
     return isObject(call) && Number.isSafeInteger(call.seed) && call.take === 'A' && call.group === 'c' &&
-        call.K === 7 && isCallData(call);
+        call.K <= 7 && isCallData(call);
 }
 
 function isCallData(call) {
@@ -72,6 +72,7 @@ function isCallData(call) {
         isF32(SPECTRUM_LENGTH)(call.Y) && isF32(NOISE_LENGTH)(call.Pn);
 }
 
+const isPeriodReference = peak => isObject(peak) && Number.isSafeInteger(peak.offset) && (peak.sign === 1 || peak.sign === -1);
 const isDrive = drive => isObject(drive) && Number.isSafeInteger(drive.seed) && isF32(SPECTRUM_LENGTH)(drive.X);
 
 // Measured figures without dv: { fig, level, bandSums }.
@@ -126,7 +127,9 @@ function isChannel(channel) {
         !isPerLength(isCheckFig)(channel.checkFig) || !isPerLength(isNullOr(isF32(WEIGHT_COUNT)))(channel.weights) ||
         !isPerLength(isBoolean)(channel.on) || !isPerLength(isNullOr(reason => LENGTH_REASONS.includes(reason)))(channel.reason) ||
         !isPerLength(isWorst)(channel.worst) || !isPerSet(isF32(REF_LENGTH))(channel.ref) ||
-        !isBoolean(channel.micDistortionWarning) || !isDiagnosis(channel.diagnosis) || !isSweep(channel.sweep) ||
+        !isBoolean(channel.micDistortionWarning) || !isPeriodReference(channel.periodReference) ||
+        !isNullOr(gaps => ['corrected', 'interrupted'].includes(gaps))(channel.recordingGaps) ||
+        !isDiagnosis(channel.diagnosis) || !isSweep(channel.sweep) ||
         !isPerLength(isNullOr(isF32(2 * SWEEP_COUNT)))(channel.sweepResponse) ||
         (channel.odd !== undefined && !isOdd(channel.odd))) {
         return false;

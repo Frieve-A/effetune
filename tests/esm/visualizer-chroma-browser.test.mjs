@@ -287,9 +287,12 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             context.fillText = (text, x, y) => {
                 const transform = context.getTransform();
                 const box = context.measureText(text);
-                const center = new DOMPoint(x + (box.actualBoundingBoxRight - box.actualBoundingBoxLeft) / 2,
+                // Vertical dB readings reflect their whole padded field. OVERLOAD reflects its ink bounds.
+                const field = item.params.orientation === 'vertical' && text.endsWith(' dB');
+                const offsetX = field ? -box.width / 2 : (box.actualBoundingBoxRight - box.actualBoundingBoxLeft) / 2;
+                const center = new DOMPoint(x + offsetX,
                     y + (box.actualBoundingBoxDescent - box.actualBoundingBoxAscent) / 2).matrixTransform(transform);
-                labels.push({ text, center: [center.x, center.y],
+                labels.push({ text, center: [center.x, center.y], width: box.width, align: context.textAlign,
                     transform: [transform.a, transform.b, transform.c, transform.d] });
                 fillText(text, x, y);
             };
@@ -315,6 +318,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             draw();
             const verticalLabels = structuredClone(labels);
             const verticalBar = fillRects[0];
+            const verticalReadouts = verticalLabels.filter(label => label.text.endsWith(' dB'));
             const left = display.signalCanvas.getContext('2d').getImageData(50, 80, 1, 1).data[3];
             const right = display.signalCanvas.getContext('2d').getImageData(450, 80, 1, 1).data[3];
             const verticalColorAxes = [];
@@ -330,6 +334,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
                 item.flipX = flipX; item.flipY = flipY; labels.length = 0;
                 draw();
                 verticalFlips.push(labels.length === verticalLabels.length && labels.every((label, index) =>
+                    label.text === verticalLabels[index].text && label.align === verticalLabels[index].align &&
                     label.transform.every((value, axis) => value === [1, 0, 0, 1][axis]) &&
                     Math.abs(label.center[0] - (flipX ? 800 - verticalLabels[index].center[0]
                         : verticalLabels[index].center[0])) < .01 &&
@@ -350,7 +355,9 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             const monoSource = manager.sources[0];
             callbacks.get(monoSource.tapId).callback({ frameType: 1, formatVersion: 1, payload: monoPayload }, {});
             labels.length = fillRects.length = 0; draw();
-            const singleChannel = fillRects.length === 2 && labels.some(label => label.text === 'L -6.0 dB');
+            const monoReadouts = labels.filter(label => label.text.endsWith(' dB'));
+            const singleChannel = fillRects.length === 2 && monoReadouts.length === 1 &&
+                monoReadouts[0].text === 'L   -6.0 dB' && Math.abs(monoReadouts[0].center[0] - 400) < .01;
             item.params.showLevelValues = false;
             labels.length = 0; draw();
             const valuesHidden = labels.every(label => !label.text.includes('dB')) &&
@@ -373,7 +380,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             const stopped = manager.sources.length === 0;
             display.dispose(); sources.dispose();
             return { factory, parameterUpdates, sourceType: source.type, received, colorModes, resized,
-                orientations, layers, annotations, verticalBar, horizontalBar, left, right, verticalColorAxes, verticalFlips,
+                orientations, layers, annotations, verticalBar, horizontalBar, left, right, verticalColorAxes, verticalReadouts, verticalFlips,
                 clearedOnChannelSwitch, singleChannel, valuesHidden, clearedOnPairReturn, pairChannels,
                 stopped, subscriptions: callbacks.size };
         });
@@ -393,6 +400,12 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
         JSON.stringify([meter.verticalBar, meter.horizontalBar]));
         assert.ok(meter.left > 0 && meter.right === 0, 'Vertical levels rise from bottom with independent left/right strengths');
         assert.deepEqual(meter.verticalColorAxes, [[0, 200, 0, 0], [0, 200, 0, 0]]);
+        assert.deepEqual(meter.verticalReadouts.map(label => label.text), ['L   -6.0 dB', 'R  -40.0 dB']);
+        const [leftReadout, rightReadout] = meter.verticalReadouts;
+        assert.ok(meter.verticalReadouts.every(label => label.align === 'right'));
+        assert.ok(Math.abs(leftReadout.width - rightReadout.width) < .01);
+        assert.ok(leftReadout.center[0] > 0 && leftReadout.center[0] < 400 &&
+            Math.abs(rightReadout.center[0] - leftReadout.center[0] - 400) < .01);
         assert.deepEqual(meter.verticalFlips, [true, true, true]);
         assert.ok(meter.clearedOnChannelSwitch && meter.singleChannel && meter.valuesHidden &&
             meter.clearedOnPairReturn && meter.pairChannels);

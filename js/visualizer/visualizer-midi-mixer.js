@@ -62,7 +62,7 @@ export class MidiMixerDisplay {
         if (params.showPatch) columns.push(['Patch', .19, 'patch']);
         if (params.showKeyboard) columns.push(['Notes', .31, 'keyboard']);
         if (params.showLevel) columns.push(['Level', .10, 'level']);
-        if (params.showVoices) columns.push([state ? `Voices ${state.voices}/${state.limit}` : 'Voices', .10, 'voices']);
+        if (params.showVoices) columns.push(['Voices', .10, 'voices']);
         if (params.showControllers) columns.push(...CONTROLLERS.map(([label, key]) => [label, .065, key]));
         if (params.showState) columns.push(['Mute', .06, 'mute'], ['Solo', .06, 'solo']);
         const sum = columns.reduce((total, column) => total + column[1], 0);
@@ -81,8 +81,16 @@ export class MidiMixerDisplay {
         ctx.textAlign = 'left';
         ctx.fillStyle = accent;
         for (let index = 0; index < columns.length; index++) {
-            const [label] = columns[index], left = edges[index], right = edges[index + 1];
-            ctx.fillText(label, left + 3, headerHeight / 2, Math.max(1, right - left - 6));
+            const [label, , key] = columns[index], left = edges[index], right = edges[index + 1];
+            const available = Math.max(1, right - left - 6);
+            if (key === 'voices') {
+                ctx.save();
+                ctx.font = `${fontSize}px monospace`;
+                const count = String(state?.voices ?? '—').padStart(4);
+                const limit = String(state?.limit ?? '—').padStart(4);
+                ctx.fillText(`${label} ${count}/${limit}`, left + 3, headerHeight / 2, available);
+                ctx.restore();
+            } else ctx.fillText(label, left + 3, headerHeight / 2, available);
         }
         const hasMixer = !!state;
         for (let channel = first; channel < last; channel++) {
@@ -103,7 +111,7 @@ export class MidiMixerDisplay {
             }
             if (!params.flashChanges) flashTimes.fill(-Infinity);
             this.flashRows[channel] = flashValues ? { mode: flashMode, values: flashValues, times: flashTimes } : null;
-            const filtered = hasMixer && mixer.channelFilter && mixer.channelFilter !== channel + 1;
+            const filtered = hasMixer && !(mixer.channelMask >> channel & 1);
             if (row % 2 === 1) {
                 ctx.globalAlpha = .45;
                 ctx.fillStyle = swatch(theme, 'graph-base-soft');
@@ -124,10 +132,10 @@ export class MidiMixerDisplay {
                         params.keyboardColor, channel, params.keyboardActiveColor);
                 } else if (key === 'level') {
                     this.drawLevel(ctx, left + 3, top + 3, right - left - 6, rowHeight - 6,
-                        data?.levelPeak, state, channel, params.levelMeter, params.levelPalette, time, scale, accent, theme);
+                        data?.levelPeak, state, channel, params.levelMeter, params.levelPalette, time, scale, accent, theme, fontSize);
                 } else if (controller) {
                     this.drawKnob(ctx, left, top, right - left, rowHeight,
-                        data?.[key] ?? projected?.cc?.[controller[2]], accent, theme, scale, params, flash);
+                        data?.[key] ?? projected?.cc?.[controller[2]], accent, theme, scale, params, flash, fontSize);
                 } else {
                     let value;
                     if (key === 'channel') value = String(channel + 1).padStart(2, '0');
@@ -138,12 +146,16 @@ export class MidiMixerDisplay {
                     if (key === 'patch' && flash) this.drawFlash(ctx, left, top, right - left, rowHeight,
                         flash, params.flashColor, scale);
                     ctx.fillStyle = accent;
-                    const numeric = key === 'voices';
-                    ctx.textAlign = numeric ? 'right' : 'left';
-                    const textX = numeric ? (left + right) / 2 + this.numericWidth(ctx, scale) / 2 : left + 3;
-                    ctx.fillText(value, numeric ? Math.min(right - 3, textX) : textX,
-                        top + rowHeight / 2, Math.max(1, right - left - 6));
-                    ctx.textAlign = 'left';
+                    const available = Math.max(1, right - left - 6);
+                    const y = top + rowHeight / 2;
+                    if (key === 'voices') {
+                        ctx.save();
+                        ctx.font = `${fontSize}px monospace`;
+                        ctx.textAlign = 'right';
+                        const slot = Math.min(available, ctx.measureText('0000').width);
+                        ctx.fillText(value.padStart(4), (left + right + slot) / 2, y, slot);
+                        ctx.restore();
+                    } else ctx.fillText(value, left + 3, y, available);
                 }
             }
             ctx.globalAlpha = 1;
@@ -169,7 +181,7 @@ export class MidiMixerDisplay {
         return `${bank}Program ${projected.program + 1}`;
     }
 
-    drawLevel(ctx, x, y, width, height, samplePeak, frame, channel, params, palette, time, scale, textColor, theme) {
+    drawLevel(ctx, x, y, width, height, samplePeak, frame, channel, params, palette, time, scale, textColor, theme, fontSize) {
         if (!(width > 0 && height > 0)) return;
         ctx.fillStyle = swatch(theme, 'graph-base-soft');
         ctx.fillRect(x, y, width, height);
@@ -244,16 +256,15 @@ export class MidiMixerDisplay {
         }
         if (params.showLevelValues) {
             const value = params.pk ? peak : level;
+            ctx.save();
+            ctx.font = `${fontSize}px monospace`;
             ctx.textAlign = 'right';
             ctx.fillStyle = textColor;
-            ctx.fillText(`${value.toFixed(1)} dB`, x + width - 2 * scale,
+            ctx.fillText(`${value.toFixed(1).padStart(6)} dB`, x + width - 2 * scale,
                 barY + barHeight / 2, Math.max(1, width - 4 * scale));
+            ctx.restore();
         }
         ctx.textAlign = 'left';
-    }
-
-    numericWidth(ctx, scale) {
-        return ctx.measureText ? Math.max(...Array.from('0123456789', digit => ctx.measureText(digit).width)) * 3 : 21 * scale;
     }
 
     drawFlash(ctx, x, y, width, height, intensity, accent, scale) {
@@ -268,7 +279,7 @@ export class MidiMixerDisplay {
         ctx.globalAlpha = alpha;
     }
 
-    drawKnob(ctx, x, y, width, height, value, accent, theme, scale, params, flash) {
+    drawKnob(ctx, x, y, width, height, value, accent, theme, scale, params, flash, fontSize) {
         if (!Number.isFinite(value)) {
             ctx.fillStyle = accent;
             ctx.textAlign = 'center';
@@ -278,7 +289,11 @@ export class MidiMixerDisplay {
         }
         const showValue = params.knobValuePosition !== 'none';
         const valueRight = showValue && params.knobValuePosition === 'right';
-        const valueWidth = valueRight ? Math.min(this.numericWidth(ctx, scale), width * .48) : 0;
+        ctx.save();
+        ctx.font = `${fontSize}px monospace`;
+        const numericWidth = ctx.measureText('000').width;
+        ctx.restore();
+        const valueWidth = valueRight ? Math.min(numericWidth, width * .48) : 0;
         const gap = valueRight ? Math.min(3 * scale, width * .05) : 0;
         const centerY = y + height * (showValue && !valueRight ? .4 : .5);
         const radius = Math.max(1, Math.min(
@@ -317,10 +332,14 @@ export class MidiMixerDisplay {
             ctx.globalAlpha = alpha;
         }
         if (showValue) {
-            ctx.textAlign = valueRight ? 'right' : 'center';
+            ctx.save();
+            ctx.font = `${fontSize}px monospace`;
+            ctx.textAlign = 'right';
             ctx.fillStyle = accent;
-            ctx.fillText(String(value), valueRight ? x + (width + groupWidth) / 2 : centerX,
-                valueRight ? centerY : y + height * .82, Math.max(1, valueRight ? valueWidth : width - 4 * scale));
+            const slot = Math.max(1, valueRight ? valueWidth : Math.min(numericWidth, width - 4 * scale));
+            ctx.fillText(String(value).padStart(3), valueRight ? x + (width + groupWidth) / 2 : centerX + slot / 2,
+                valueRight ? centerY : y + height * .82, slot);
+            ctx.restore();
         }
         ctx.textAlign = 'left';
     }

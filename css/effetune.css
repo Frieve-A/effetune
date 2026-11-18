@@ -170,10 +170,11 @@ input[type="checkbox"] + label::before {
     row-gap: inherit;
 }
 
-/* A radio and its caption are one wrapping unit. Giving every unit the normal
-   row height also keeps wrapped lines on the same vertical rhythm as the
-   surrounding parameter rows. */
+/* A radio or checkbox and its caption are one wrapping unit. Giving every unit
+   the normal row height also keeps wrapped lines on the same vertical rhythm as
+   the surrounding parameter rows. */
 .radio-options > :has(> input[type="radio"]),
+.radio-options > :has(> input[type="checkbox"]),
 .radio-group > :has(> input[type="radio"]) {
     display: inline-flex;
     align-items: center;

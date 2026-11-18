@@ -246,3 +246,89 @@ test('ESS preserves peak timing and flat gain with ordinary low-level recording 
         assert.ok(Math.abs(db) < 0.006, `${frequency} Hz: ${db} dB`);
     }
 });
+
+test('ESS excludes silent repetitions and counts them against the original capture', () => {
+    const sweep = createEssSignal({ length: 4096, sampleRate: 8000, startFrequency: 40, endFrequency: 3000 });
+    const plan = createEssCapturePlan(sweep, 4);
+    const recording = new Float32Array(plan.playbackSamples);
+    const analyze = repetitions => analyzeEssRecording(recording, sweep, { repetitions, playbackOffsetSamples: 0 });
+    assert.throws(() => analyze(1), /No usable ESS response/);
+    assert.throws(() => analyze(4), /No usable ESS response/);
+
+    const played = Float32Array.from(sweep.signal, sample => sample * 0.5);
+    for (const repeat of [0, 1, 3]) recording.set(played, repeat * plan.intervalSamples);
+    const reference = analyze(1);
+    const corrected = analyze(4);
+    assert.equal(corrected.recordingGaps, 'corrected');
+    assert.deepEqual(corrected.harmonicAnalysis.quality, reference.harmonicAnalysis.quality);
+    assert.ok(Math.abs(corrected.peakDb - reference.peakDb) < 0.001);
+
+    recording.fill(0, 3 * plan.intervalSamples);
+    assert.equal(analyze(4).recordingGaps, 'interrupted');
+});
+
+test('ESS averages only the repetitions whose capture did not slip', () => {
+    const sweep = createEssSignal();
+    const offset = Math.round(0.55 * sweep.sampleRate);
+    const delay = 120;
+    const gain = 0.4;
+    const played = Float32Array.from(sweep.signal, value => value * gain);
+    // The input path drops 10 ms of samples and later inserts 10 ms of silence.
+    const lost = Math.round(0.01 * sweep.sampleRate);
+    const removeAt = Math.round(0.3 * sweep.length);
+    const insertAt = Math.round(0.6 * sweep.length);
+    const slipped = new Float32Array(played.length);
+    slipped.set(played.subarray(0, removeAt));
+    slipped.set(played.subarray(removeAt + lost, insertAt), removeAt);
+    slipped.set(played.subarray(insertAt), insertAt);
+    // gapBefore: silence inserted into the gap before that repetition shift it and all later ones.
+    // hum: a low tone that is not locked to the repetition interval, so it differs between repetitions.
+    const analyze = (slippedRepeats, noise, { repetitions = 4, gapBefore = repetitions, hum = 0 } = {}) => {
+        const plan = createEssCapturePlan(sweep, repetitions);
+        let seed = 987654321;
+        const recording = Float32Array.from({ length: offset + plan.playbackSamples + sweep.sampleRate / 2 }, (_, i) => {
+            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+            return (seed / 2 ** 32 * 2 - 1) * noise + hum * Math.sin(2 * Math.PI * 27.3 * i / sweep.sampleRate);
+        });
+        for (let repeat = 0; repeat < repetitions; repeat++) {
+            const source = slippedRepeats.includes(repeat) ? slipped : played;
+            const start = offset + repeat * plan.intervalSamples + delay + (repeat >= gapBefore ? lost : 0);
+            for (let i = 0; i < source.length; i++) recording[start + i] += source[i];
+        }
+        return analyzeEssRecording(recording, sweep, {
+            repetitions, playbackOffsetSamples: offset, outputTimeReference: 'audio-context', levelDb: 20 * Math.log10(gain)
+        });
+    };
+    const clean = analyze([], 0.0001);
+    assert.equal(clean.recordingGaps, undefined);
+
+    const corrected = analyze([2], 0.0001);
+    assert.equal(corrected.recordingGaps, 'corrected');
+    assert.deepEqual(corrected.harmonicAnalysis.quality, clean.harmonicAnalysis.quality);
+    assert.equal(corrected.trimStartSamples, clean.trimStartSamples);
+    corrected.frequencyResponse.forEach(([frequency, db], i) => {
+        assert.ok(Math.abs(db - clean.frequencyResponse[i][1]) < 0.01, `${frequency} Hz: ${db} dB`);
+    });
+
+    // Repetitions that differ only by their noise all count, however loud the noise is.
+    const noisy = analyze([], 0.02);
+    assert.equal(noisy.recordingGaps, undefined);
+    assert.ok(!noisy.harmonicAnalysis.quality.reasons.includes('inconsistent-capture'));
+
+    const interrupted = analyze([1, 2], 0.0001);
+    assert.equal(interrupted.recordingGaps, 'interrupted');
+    assert.ok(interrupted.harmonicAnalysis.quality.reasons.includes('inconsistent-capture'));
+
+    // A slip in the silent gap moves later repetitions without changing their responses;
+    // the delay stays that of the earliest repetition.
+    const gapSlip = analyze([], 0.0001, { gapBefore: 2 });
+    assert.equal(gapSlip.recordingGaps, undefined);
+    assert.equal(gapSlip.trimStartSamples, clean.trimStartSamples);
+
+    // Two repetitions have no noise estimate of their own: hum that differs by about 4 % in the
+    // lowest octave, but far below 1 % over the whole band, does not count as a disturbance.
+    const twoHum = analyze([], 0.0001, { repetitions: 2, hum: 0.05 });
+    assert.equal(twoHum.recordingGaps, undefined);
+    assert.ok(!twoHum.harmonicAnalysis.quality.reasons.includes('inconsistent-capture'));
+    assert.equal(analyze([1], 0.0001, { repetitions: 2 }).recordingGaps, 'interrupted');
+});

@@ -1,4 +1,5 @@
 import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -71,7 +72,7 @@ test('AM Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 21);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'f063553356a430e2fbc5053ba082a5984fe08a323c4c48befdfd647b07bfd7eb'
+      '9cdfb01e302ce5af04d256730a74f5a84e7abe985ff12a6bac1e992320efdc4a'
   ));
 });
 
@@ -284,7 +285,7 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
     canRunAnimation() { return true; }
   }
   const context = {
-    PluginBase,
+    PluginBase, drawHudReadings,
     performance: { now: () => 1000 },
     window: {
       dspTelemetryHub: {
@@ -323,6 +324,7 @@ test('AM Radio Simulator drives the HUD stereo lamp from subscribed v2 telemetry
   const drawn = [];
   const fills = [];
   const drawingContext = {
+    ...hudTextContext,
     clearRect() {},
     fillRect(...args) { fills.push({ style: this.fillStyle, args }); },
     strokeRect() {},

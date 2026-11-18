@@ -1,9 +1,10 @@
 const SFZ_TYPES = new Set(['SoundFontPlayerPlugin', 'SFZNotePlayerPlugin']);
 const SFZ_CHECKPOINT_TIMEOUT_MS = 5000;
 
+// The MIDI Channel setting as saved (a mask of the channels turned off), compared as an identity.
 function channelOf(plugin) {
-    const value = plugin?.getParameters?.()?.mc;
-    return Number.isFinite(value) ? Math.round(Math.min(16, Math.max(0, value))) : 0;
+    const value = plugin?.getParameters?.()?.mco;
+    return Number.isFinite(value) ? Math.round(Math.min(65535, Math.max(0, value))) : 0;
 }
 
 export const audioManagerSfzRuntimeMethods = {

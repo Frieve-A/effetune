@@ -60,9 +60,10 @@ a JavaScript array or `Uint8Array`, or a Python list, tuple, `bytes`, or
 `effetune.midi.note_on()` in Python, and so on) build these messages. Note on, note
 off, control change, program change (two or three bytes), and pitch bend are played.
 Aftertouch and system messages are ignored, so raw Web MIDI data can be passed
-unchanged; a malformed message raises `ValidationError`. The player's
-`midiChannel` parameter selects which MIDI channels it follows (`0` follows all of
-them). Each segment of `blockSize` frames (Python: `block_size`) accepts up to 4096 MIDI
+unchanged; a malformed message raises `ValidationError`. The player follows all
+16 channels by default. Use `midiChannel` to select one channel or
+`midiChannelsOff` to exclude individual channels. Each segment of
+`blockSize` frames (Python: `block_size`) accepts up to 4096 MIDI
 events per effect; if a segment has more, spread the events over more frames or use
 a smaller block size.
 

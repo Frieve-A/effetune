@@ -918,8 +918,16 @@ renders a MIDI file.
 
 ### Parameter values
 
-- \`midiChannel\`: \`0\` (default) follows all 16 MIDI channels; \`1\` to \`16\`
-  follows only that channel.
+- Leave \`midiChannel\` at \`0\` (default) to receive all 16 MIDI channels, or set it
+  to \`1\` through \`16\` to select one channel. \`midiChannelsOff\` then excludes
+  channels from that selection. Each set bit disables one channel, starting with
+  bit 0 for channel 1. For example, \`512\` excludes channel 10 and the default
+  \`0\` excludes none.
+- \`transpose\` shifts melodic notes by −12 to +12 semitones. The default is
+  \`0\`. Drum parts keep their original keys.
+- \`respondGm\`, \`respondGs\` and \`respondXg\` each enable playback for the
+  corresponding MIDI system. All three default to \`true\`. The library starts
+  in GM mode and its MIDI API ignores system reset messages.
 - \`sampleQuality\`: \`0\` (default) is FIR (64 taps), \`1\` is FIR (32 taps), and \`2\`
   is Cubic (4 points). The library default is FIR (64 taps), unlike the app's
   FIR (32 taps) default described below.
@@ -1749,9 +1757,10 @@ a JavaScript array or \`Uint8Array\`, or a Python list, tuple, \`bytes\`, or
 \`effetune.midi.note_on()\` in Python, and so on) build these messages. Note on, note
 off, control change, program change (two or three bytes), and pitch bend are played.
 Aftertouch and system messages are ignored, so raw Web MIDI data can be passed
-unchanged; a malformed message raises \`ValidationError\`. The player's
-\`midiChannel\` parameter selects which MIDI channels it follows (\`0\` follows all of
-them). Each segment of \`blockSize\` frames (Python: \`block_size\`) accepts up to 4096 MIDI
+unchanged; a malformed message raises \`ValidationError\`. The player follows all
+16 channels by default. Use \`midiChannel\` to select one channel or
+\`midiChannelsOff\` to exclude individual channels. Each segment of
+\`blockSize\` frames (Python: \`block_size\`) accepts up to 4096 MIDI
 events per effect; if a segment has more, spread the events over more frames or use
 a smaller block size.
 

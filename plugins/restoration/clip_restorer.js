@@ -187,7 +187,8 @@ class ClipRestorerPlugin extends PluginBase {
         context.fillText('RESTORED', padding + 6 * scale, padding + 5 * scale);
         context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
         context.font = `${Math.round(16 * scale)}px Arial`;
-        context.fillText(`${restored.toFixed(2)}%`, padding + 6 * scale, padding + 22 * scale);
+        drawHudReadings(context, [['', restored.toFixed(2), '100.00', '%']],
+            padding + 6 * scale, padding + 22 * scale, cardWidth - 12 * scale);
         context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
         context.fillRect(padding + 6 * scale, padding + cardHeight - 9 * scale,
             cardWidth - 12 * scale, 4 * scale);

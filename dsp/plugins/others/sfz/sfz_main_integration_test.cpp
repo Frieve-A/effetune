@@ -61,13 +61,14 @@ struct Player {
     kernel->setRandomSeed(19, 23);
   }
   ~Player() { descriptor->destroy(kernel); }
-  void configureMidi(float gain, unsigned selectedChannel = 0) {
+  void configureMidi(float gain) {
     std::array<float, generated::SoundFontPlayerPluginParams::kFloatCount> values;
     values.fill(-1);
-    values[0] = static_cast<float>(selectedChannel);
+    values[0] = 0;
     values[1] = 64;
     values[2] = gain;
-    values[4] = 1;
+    values[11] = values[12] = 0;
+    values[4] = values[8] = values[9] = values[10] = 1;
     CHECK(kernel->stageParameters(values.data(), descriptor->paramsFloatCount,
                                   descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();

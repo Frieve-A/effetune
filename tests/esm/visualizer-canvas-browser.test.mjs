@@ -1545,7 +1545,8 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                 if (text.endsWith(' dB')) {
                     const metrics = stageContext.measureText(text);
                     stageValues.push({ text, left: x - metrics.actualBoundingBoxLeft,
-                        right: x + metrics.actualBoundingBoxRight, color: stageContext.fillStyle });
+                        right: x + metrics.actualBoundingBoxRight, color: stageContext.fillStyle,
+                        decimal: x - stageContext.measureText(text.slice(text.indexOf('.'))).width });
                 }
                 stageFill(text, x, y, ...rest);
             };
@@ -1575,6 +1576,13 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                     rows.push({ orientation, flipX, flipY, stageValues: structuredClone(stageValues),
                         axisStrokes: structuredClone(axisStrokes), axisFills: structuredClone(axisFills),
                         localValues: [...localValues] });
+                    if (orientation === 'vertical') {
+                        stageValues.length = 0;
+                        plugin.lv = plugin.pl = plugin.raw = [-10];
+                        renderer.draw(layout, sources, {}, 1, { quality: 'high' });
+                        rows.at(-1).decimalsAfter = stageValues.map(value => value.decimal);
+                        plugin.lv = plugin.pl = plugin.raw = [-6];
+                    }
                 }
             }
             item.rect = { x: .1, y: .3, w: .8, h: .2 };
@@ -1618,7 +1626,8 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             assert.equal(row.stageValues.length, 1, `${row.orientation} draws its full value on the stage`);
             assert.equal(row.localValues.length, 0, 'The clipped item canvas does not draw the value');
             const value = row.stageValues[0];
-            assert.equal(value.text, 'L -6.0 dB');
+            assert.equal(value.text.replace(/ +/g, ' '), 'L -6.0 dB');
+            if (row.orientation === 'vertical') assert.deepEqual(row.decimalsAfter, [value.decimal]);
             assert.ok(value.left >= 0 && value.right <= 800, `${row.orientation} value fits the stage`);
             assert.ok(value.left < 16 || value.right > 56, 'Only the value may leave the narrow item');
             assert.ok(row.axisStrokes.length > 0);

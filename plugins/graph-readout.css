@@ -153,6 +153,16 @@
     font-variant-numeric: tabular-nums;
 }
 
+.graph-readout [data-compound="true"] > span {
+    flex: none;
+    white-space: pre;
+}
+
+.graph-readout-fixed-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 .graph-readout-prefix {
     text-align: right;
     white-space: pre;

@@ -76,6 +76,40 @@
       "min": 0,
       "max": 1,
       "default": 0
+    },
+    {
+      "name": "respondGm",
+      "key": "rg",
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "name": "respondGs",
+      "key": "rs",
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "name": "respondXg",
+      "key": "rx",
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "name": "transpose",
+      "key": "tr",
+      "kind": "int",
+      "min": -12,
+      "max": 12,
+      "default": 0
+    },
+    {
+      "name": "midiChannelsOff",
+      "key": "mco",
+      "kind": "int",
+      "min": 0,
+      "max": 65535,
+      "default": 0
     }
   ]
 }

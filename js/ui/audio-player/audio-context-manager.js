@@ -4141,7 +4141,12 @@ export class AudioContextManager {
           }
           return source;
         } });
-      transport = this.createRollingPcmTransport(reservationRole, preparationOwner);
+      transport = this.createRollingPcmTransport(
+        reservationRole,
+        preparationOwner,
+        null,
+        metadata.channelCount
+      );
       await transport.prepare(snapshot, { startTimeSec });
       if (isStale?.() || transport.failed || transport.disposed) {
         await this.disposeRollingTransport(transport);
@@ -4377,10 +4382,12 @@ export class AudioContextManager {
   createRollingPcmTransport(
     reservationRole = 'candidate',
     preparationOwner = null,
-    sourceReacquirer = null
+    sourceReacquirer = null,
+    channelCountHint = 2
   ) {
     let transport = null;
     transport = new RollingPcmTransport(this.audioPlayer.audioContext, {
+      channelCountHint,
       reservationLedger: this.rollingReservationLedger,
       reservationRole,
       preparationOwner,

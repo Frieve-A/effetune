@@ -216,13 +216,15 @@ function phaseSelectEqConstraintLabel(constraint) {
     return label;
 }
 
-function phaseSelectEqBalanceRatio(balance) {
+function phaseSelectEqBalanceParts(balance) {
     const value = phaseSelectEqClamp(phaseSelectEqFinite(balance, 0), -100, 100);
-    const format = part => phaseSelectEqFormatBoundaryValue(part, 1);
     const lower = Math.round((100 - Math.abs(value)) * 5) / 10;
     const higher = 100 - lower;
-    const [left, right] = value < 0 ? [higher, lower] : [lower, higher];
-    return `${format(left)}:${format(right)}`;
+    return value < 0 ? [higher, lower] : [lower, higher];
+}
+
+function phaseSelectEqBalanceRatio(balance) {
+    return phaseSelectEqBalanceParts(balance).map(part => phaseSelectEqFormatBoundaryValue(part, 1)).join(':');
 }
 
 function phaseSelectEqBandConstraintLabel(region, visibleAxis) {
@@ -1685,9 +1687,15 @@ class PhaseSelectEqPlugin extends PluginBase {
         if (!frame?.valid) return null;
         const { format } = window.GraphReadout;
         const horizontal = this._xToHorizontal(x / frame.scale);
-        const value = this.xAxisMode === 'balance'
-            ? phaseSelectEqBalanceRatio(horizontal) : format.degrees(horizontal);
-        return { cursor: `${format.frequency(this._yToFrequency(y / frame.scale))} · ${value}`, rows: [] };
+        const frequency = format.frequency(this._yToFrequency(y / frame.scale));
+        if (this.xAxisMode === 'balance') {
+            const [left, right] = phaseSelectEqBalanceParts(horizontal);
+            return { cursor: [
+                { text: frequency, columns: 9 }, ' · ',
+                { text: left.toFixed(1), columns: 5 }, ':', { text: right.toFixed(1), columns: 5 }
+            ], rows: [] };
+        }
+        return { cursor: `${frequency} · ${format.degrees(horizontal)}`, rows: [] };
     }
 
     cleanup() {

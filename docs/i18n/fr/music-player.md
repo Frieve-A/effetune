@@ -18,9 +18,11 @@ Pour utiliser uniquement le lecteur, réglez **Périphérique d'entrée :** sur 
 
 ## Fichiers DSD {#dsd-files}
 
-Ouvrez les fichiers `.dsf` (DSF) ou `.dff` (DSDIFF) comme les autres fichiers musicaux. Les fichiers DFF non compressés et compressés en DST sont pris en charge. EffeTune convertit en PCM les fichiers DSD64, DSD128 et DSD256 mono ou stéréo pour les lire avec les effets actuels. L’appareil audio reçoit du PCM, et non du DSD natif ou du DoP.
+Ouvrez les fichiers `.dsf` (DSF) ou `.dff` (DSDIFF) comme les autres fichiers musicaux. Les fichiers DFF non compressés et compressés en DST sont pris en charge. EffeTune convertit en PCM les fichiers DSD64, DSD128 et DSD256 comptant jusqu’à six canaux (5.1) pour les lire avec les effets actuels. L’appareil audio reçoit du PCM, et non du DSD natif ou du DoP.
 
-Certaines variantes d’encodage DST (trames segmentées), les fichiers de plus de deux canaux, le DSD512 et le DSD basé sur 48 kHz ne sont pas pris en charge. Si un fichier ne peut pas être lu, utilisez un DFF non compressé ou une copie PCM compatible, par exemple en FLAC ou WAV. La lecture des fichiers DSD est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android native.
+Les effets reçoivent les canaux DSD dans l’ordre du fichier. Si cet ordre diffère de celui des sorties de vos enceintes, placez [**Matrix**](plugins/basics.md#matrix) en tête de la chaîne d’effets. Pour lire un fichier DSF à cinq canaux sur une sortie 5.1 standard, reliez les entrées 1 à 3 aux sorties de même numéro, l’entrée 4 à la seule sortie 5 et l’entrée 5 à la seule sortie 6. La sortie 4 (LFE) reste ainsi silencieuse.
+
+Certaines variantes d’encodage DST (trames segmentées), les fichiers de plus de six canaux, le DSD512 et le DSD basé sur 48 kHz ne sont pas pris en charge. Si un fichier ne peut pas être lu, utilisez un DFF non compressé ou une copie PCM compatible, par exemple en FLAC ou WAV. La lecture des fichiers DSD est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android native.
 
 Les fichiers DSD à fréquence élevée demandent davantage de puissance de traitement, surtout à vitesse de lecture accélérée. Si le son s’interrompt ou si la lecture s’arrête, réduisez la vitesse.
 

@@ -185,12 +185,26 @@ test('bands at or below the limit, negative sums and gaps draw nothing but the l
     const display = chartBands(BAND_EDGES, 'sixth');
     assert.deepEqual(measured.map(element => points(element).map(([x]) => x)), [
         [xPixel(display.fc[18]), xPixel(display.fc[19])],
-        [xPixel(display.fc[21]), xPixel(display.fc[22])],
-        // An isolated drawn band becomes a segment across the band.
-        [xPixel(display.lo[30]), xPixel(display.hi[30])]
+        [xPixel(display.fc[21]), xPixel(display.fc[22])]
     ]);
+    // An isolated drawn band is a filled dot at its centre, in the curve's colour, sized by its width.
+    const [dot] = byRole(chart, 'dot');
+    assert.equal(byRole(chart, 'dot').length, 1);
+    near(dot.attrs.cx, xPixel(display.fc[30]));
+    near(dot.attrs.cy, yPixel(-20));
+    assert.equal(dot.style.fill, 'var(--sdc-l0)');
+    assert.deepEqual(dot.match, measured[0].style);
     assert.equal(areas(chart, '--sdc-lim').length, 2);
     assert.equal(noteText(chart), null);
+    // Unmasked: bands at or below the limit are drawn too, the limit area stays; gaps and negative sums do not.
+    const unmasked = buildDistortionChart(spec({ channel, unmasked: true }));
+    const drawn = curves(unmasked, '--sdc-l0', undefined).flatMap(points);
+    const at = k => drawn.find(([x]) => Math.abs(x - xPixel(display.fc[k])) < 0.02);
+    near(at(18)[1], yPixel(-20));
+    near(at(23)[1], yPixel(-40));
+    assert.equal(at(20), undefined);
+    assert.equal(at(25), undefined);
+    assert.equal(areas(unmasked, '--sdc-lim').length, 2);
     const silent = buildDistortionChart(spec({ channel: makeChannel({ power: () => -1e-3 }) }));
     assert.equal(curves(silent, '--sdc-l0', undefined).length, 0);
     assert.equal(noteText(silent), 'all below');
@@ -350,10 +364,18 @@ test('check replaces the dotted curve of the emphasized set with the check curve
     noisy[3] = noisy[7] = 1e-3;
     noisy[2 * N_BANDS + 3] = 4e-6;
     noisy[2 * N_BANDS + 7] = 1e-4;
-    const drawn = curves(buildDistortionChart(spec({ channel, scale: SCALE_REDUCE, check: noisy })), '--sdc-l0', '7 4')
-        .flatMap(points);
+    const noisyChart = buildDistortionChart(spec({ channel, scale: SCALE_REDUCE, check: noisy }));
+    const drawn = curves(noisyChart, '--sdc-l0', '7 4').flatMap(points);
     near(drawn.find(([x]) => x === xPixel(display.fc[3]))[1], yPixel(dB(2 * Math.sqrt(4e-6), 1)));
     assert.ok(!drawn.some(([x]) => x === xPixel(display.fc[7])));
+    // The shading reaches up to that limit in the band the check curve rides on, and only there; unmasked the same.
+    const shadeTop = (chart, k) => areas(chart, '--sdc-lim').flatMap(topEdge).find(([x]) => x === xPixel(display.fc[k]))[1];
+    const plainChart = buildDistortionChart(spec({ channel, scale: SCALE_REDUCE, check: checkSums() }));
+    near(shadeTop(noisyChart, 3), yPixel(dB(2 * Math.sqrt(4e-6), 1)));
+    assert.ok(shadeTop(plainChart, 3) > shadeTop(noisyChart, 3));
+    for (const k of [2, 4, 7]) assert.equal(shadeTop(noisyChart, k), shadeTop(plainChart, k));
+    const unmaskedChart = buildDistortionChart(spec({ channel, scale: SCALE_REDUCE, check: noisy, unmasked: true }));
+    assert.deepEqual(areas(unmaskedChart, '--sdc-lim').map(points), areas(noisyChart, '--sdc-lim').map(points));
     for (const value of [null, undefined]) {
         const plain = buildDistortionChart(spec({ channel, sets: ['L', 'L-6'], scale: SCALE_REDUCE, check: value }));
         assert.equal(curves(plain, '--sdc-l0', '2 3').length, 1);

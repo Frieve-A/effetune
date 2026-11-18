@@ -1060,17 +1060,25 @@ class AnalogMeterPlugin extends PluginBase {
         // Numeric readings.
         if (!numbers) return;
         context.fillStyle = palette.text;
-        context.textAlign = 'center';
+        context.textAlign = 'right';
         context.textBaseline = 'top';
         context.font = `${fontSize}px monospace`;
-        const reading = db === null ? '---' : scale.unit === 'VU' && appearance.readoutUnit === 'percent'
+        const percent = scale.unit === 'VU' && appearance.readoutUnit === 'percent';
+        const suffix = percent ? '%' : scale.unit ? ` ${scale.unit}` : '';
+        const reading = db === null ? '---' : percent
             ? `${(db <= ANALOG_METER_SILENCE_DB ? 0 : 100 * 10 ** ((db - this.rl) / 20)).toFixed(1)}%`
             : scale.readout(db);
-        if (appearance.showReadout !== false) text.fillText(reading, pivotX, baseY + fontSize * 0.8);
+        const readoutWidth = context.measureText(percent ? '0000.0%' : scale.unit ? `-000.0${suffix}` : 'Mark 00.0').width;
+        const missing = reading === '---' || reading === '-∞';
+        const suffixWidth = missing ? context.measureText(suffix).width : 0;
+        if (appearance.showReadout !== false) {
+            const right = pivotX + readoutWidth / 2 - suffixWidth;
+            const top = baseY + fontSize * 0.8;
+            if (text === context) text.fillText(reading, right, top);
+            else text.fillText(reading, right, top, suffixWidth - readoutWidth / 2);
+        }
         if (channel >= 0 || !this.reading?.program) return;
-        // A fixed-width sample keeps the statistics still while the readout changes.
-        const readoutHalf = context.measureText('-88.8 LUFS').width / 2;
-        this.drawProgramStats(context, text, palette, x, y + height - inset * 2, width, readoutHalf, fontSize);
+        this.drawProgramStats(context, text, palette, x, y + height - inset * 2, width, readoutWidth / 2, fontSize);
     }
 
     // The program meter keeps the channel meters' dial geometry; its loudness statistics fill the
@@ -1093,10 +1101,10 @@ class AnalogMeterPlugin extends PluginBase {
         const margin = 4 * (this.graphDpr || 1) + fontSize * 0.5;
         let size = fontSize * 0.9;
         context.font = `${size}px monospace`;
-        const labelWidths = tables.map(rows => Math.max(...rows.map(([label]) => context.measureText(label).width)));
-        const valueWidths = tables.map(rows => Math.max(...rows.map(([, value]) => context.measureText(value).width)));
+        const labelWidth = context.measureText('Time').width;
+        const valueWidth = context.measureText('-000.0 LUFS').width;
         const gap = size * 0.6;
-        const tableWidth = Math.max(labelWidths[0] + valueWidths[0], labelWidths[1] + valueWidths[1]) + gap;
+        const tableWidth = labelWidth + valueWidth + gap;
         const available = width / 2 - margin - readoutHalf - fontSize * 0.6;
         if (available <= 0) return;
         // Narrow cells shrink the tables rather than letting them run into the readout.
@@ -1115,7 +1123,8 @@ class AnalogMeterPlugin extends PluginBase {
                 text.fillText(label, left, lineY);
                 context.fillStyle = palette.text;
                 context.textAlign = 'right';
-                text.fillText(value, left + scaledWidth, lineY);
+                if (text === context) text.fillText(value, left + scaledWidth, lineY);
+                else text.fillText(value, left + scaledWidth, lineY, -valueWidth * fit / 2);
             });
         });
     }

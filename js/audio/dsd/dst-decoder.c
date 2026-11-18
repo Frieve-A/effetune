@@ -6,6 +6,7 @@
  * Modified 2026-11-01: freestanding bounded mono/stereo frame decoder,
  * packed DSD output, implicit one-entry probability table support and
  * two-word predictor history updates.
+ * Modified 2026-11-17: channel-to-element mapping for up to six channels.
  * See dst-decoder.NOTICE.txt and dst-decoder.LICENSE.txt.
  * This library is distributed WITHOUT ANY WARRANTY, including the implied
  * warranties of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -45,20 +46,32 @@ static int read_rice(Bits *bits, int count) {
   return value && read_bits(bits, 1, 0) ? -value : value;
 }
 
+#define DST_MAX_CHANNELS 6
+
 typedef struct {
   int elements;
-  unsigned map[2];
-  int length[2];
-  int32_t coefficients[2][128];
+  unsigned map[DST_MAX_CHANNELS];
+  int length[DST_MAX_CHANNELS];
+  int32_t coefficients[DST_MAX_CHANNELS][128];
 } Tables;
 
-static void read_map(Bits *bits, Tables *table, int channels) {
+static int read_map(Bits *bits, Tables *table, int channels) {
   table->elements = 1;
-  table->map[0] = table->map[1] = 0;
-  if (!read_bits(bits, 1, 0) && channels == 2) {
-    table->map[1] = read_bits(bits, 1, 0);
-    table->elements += (int)table->map[1];
+  for (int channel = 0; channel < DST_MAX_CHANNELS; ++channel)
+    table->map[channel] = 0;
+  if (read_bits(bits, 1, 0))
+    return 0;
+  for (int channel = 1; channel < channels; ++channel) {
+    // A channel reuses an earlier element or introduces the next one.
+    const unsigned element =
+        read_bits(bits, 32 - __builtin_clz((unsigned)table->elements), 0);
+    if (element > (unsigned)table->elements)
+      return -1;
+    if (element == (unsigned)table->elements)
+      ++table->elements;
+    table->map[channel] = element;
   }
+  return 0;
 }
 
 static int read_tables(Bits *bits, Tables *tables, int probability) {
@@ -142,7 +155,8 @@ static unsigned arithmetic_bit(Arithmetic *decoder, unsigned probability) {
 
 int dst_decode(const uint8_t *packet, int length, int channels, int samples,
                uint8_t *output) {
-  if (length <= 1 || length > 1048576 || (channels != 1 && channels != 2) ||
+  if (length <= 1 || length > 1048576 || channels < 1 ||
+      channels > DST_MAX_CHANNELS ||
       (samples != 37632 && samples != 75264 && samples != 150528))
     return -1;
   const int output_size = samples / 8 * channels;
@@ -160,14 +174,15 @@ int dst_decode(const uint8_t *packet, int length, int channels, int samples,
     return -2;
   const unsigned same_map = read_bits(&bits, 1, 0);
   Tables filters, probabilities;
-  read_map(&bits, &filters, channels);
+  if (read_map(&bits, &filters, channels))
+    return -1;
   if (same_map) {
     probabilities.elements = filters.elements;
-    probabilities.map[0] = filters.map[0];
-    probabilities.map[1] = filters.map[1];
-  } else
-    read_map(&bits, &probabilities, channels);
-  unsigned half[2] = {0, 0};
+    for (int channel = 0; channel < channels; ++channel)
+      probabilities.map[channel] = filters.map[channel];
+  } else if (read_map(&bits, &probabilities, channels))
+    return -1;
+  unsigned half[DST_MAX_CHANNELS];
   for (int channel = 0; channel < channels; ++channel)
     half[channel] = read_bits(&bits, 1, 0);
   if (read_tables(&bits, &filters, 0) || read_tables(&bits, &probabilities, 1))
@@ -177,7 +192,8 @@ int dst_decode(const uint8_t *packet, int length, int channels, int samples,
   Arithmetic arithmetic = {4095, read_bits(&bits, 12, 0), &bits};
   if (bits.invalid)
     return -1;
-  int16_t lookup[2][16][256];
+  // Static storage keeps the 48 KiB table off the 64 KiB stack.
+  static int16_t lookup[DST_MAX_CHANNELS][16][256];
   for (int element = 0; element < filters.elements; ++element) {
     for (int group = 0; group < 16; ++group) {
       for (unsigned value = 0; value < 256; ++value) {
@@ -194,7 +210,7 @@ int dst_decode(const uint8_t *packet, int length, int channels, int samples,
     }
   }
   // WebAssembly is little-endian, so the byte view retains the lookup order.
-  uint64_t history[2][2];
+  uint64_t history[DST_MAX_CHANNELS][2];
   for (int channel = 0; channel < channels; ++channel) {
     for (int group = 0; group < 2; ++group)
       history[channel][group] = UINT64_C(0xaaaaaaaaaaaaaaaa);

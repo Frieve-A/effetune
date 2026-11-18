@@ -9,7 +9,7 @@ import { createCompressedDstPacket, createDstFixture } from '../helpers/dst-fixt
 
 test('DST compressed frames decode mapped and Rice-coded tables at all supported rates', () => {
     for (const sampleRate of [2822400, 5644800, 11289600]) {
-        for (const channelCount of [1, 2]) {
+        for (const channelCount of [1, 2, 5, 6]) {
             for (const coded of [false, true]) {
                 const packet = createCompressedDstPacket({ sampleRate, channelCount, coded, separateMaps: coded });
                 const output = decodeDstFrame(packet, channelCount, sampleRate / 75);
@@ -28,25 +28,31 @@ test('DST uncoded packets retain interleaved bytes and reject truncation and uns
     }
     assert.throws(() => decodeDstFrame(new Uint8Array([0x80, 0]), 2, 37632), { code: 'DSD_UNSUPPORTED' });
     assert.throws(() => decodeDstFrame(createCompressedDstPacket().slice(0, 12), 2, 37632), { code: 'DSD_CORRUPT' });
+    // The third channel names element 3 while only elements 0 and 1 exist.
+    assert.throws(() => decodeDstFrame(new Uint8Array([0xfb, 0x80, 0, 0]), 3, 37632), { code: 'DSD_CORRUPT' });
+    assert.throws(() => decodeDstFrame(createCompressedDstPacket({ channelCount: 7 }), 7, 37632),
+        { code: 'DSD_CORRUPT' });
 });
 
 test('DST nonzero predictors preserve channel histories across both 64-bit words', () => {
     for (const sampleRate of [2822400, 5644800, 11289600]) {
-        const taps = [64, 127];
-        const packet = createCompressedDstPacket({ sampleRate, separateMaps: true,
-            fixedProbability: true, predictionTaps: taps });
-        const samples = sampleRate / 75;
-        const expected = new Uint8Array(samples / 8 * 2);
-        // A positive unit tap and residual 1 repeat the initial history with
-        // period tap + 1; this closed form is independent of the shift layout.
-        for (let sample = 0; sample < samples; sample += 1) {
-            for (let channel = 0; channel < 2; channel += 1) {
-                const tap = taps[channel];
-                const bit = (tap - sample % (tap + 1)) & 1;
-                expected[(sample >>> 3) * 2 + channel] |= bit << (7 - (sample & 7));
+        for (const taps of [[64, 127], [64, 127, 1, 9, 63, 100]]) {
+            const channelCount = taps.length;
+            const packet = createCompressedDstPacket({ sampleRate, channelCount, separateMaps: true,
+                fixedProbability: true, predictionTaps: taps });
+            const samples = sampleRate / 75;
+            const expected = new Uint8Array(samples / 8 * channelCount);
+            // A positive unit tap and residual 1 repeat the initial history with
+            // period tap + 1; this closed form is independent of the shift layout.
+            for (let sample = 0; sample < samples; sample += 1) {
+                for (let channel = 0; channel < channelCount; channel += 1) {
+                    const tap = taps[channel];
+                    const bit = (tap - sample % (tap + 1)) & 1;
+                    expected[(sample >>> 3) * channelCount + channel] |= bit << (7 - (sample & 7));
+                }
             }
+            assert.deepEqual(decodeDstFrame(packet, channelCount, samples), expected);
         }
-        assert.deepEqual(decodeDstFrame(packet, 2, samples), expected);
     }
 });
 

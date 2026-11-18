@@ -1948,21 +1948,21 @@ test('Tube Simulator HUD gates animation, keeps a 96-frame main-thread ring, and
   }
   assert.equal(plugin.trajectoryCount, 96);
   assert.equal(plugin.trajectoryIndex, 4);
-  assert.match(plugin.hudValues.stage1Bias.textContent, /^L /);
+  assert.match(plugin.hudValues.stage1Bias.textContent, /^L\s/);
   // Each stage has its own cell now, and the signed readouts carry an explicit sign and a
   // space-padded integer part so their columns cannot move.
-  assert.match(plugin.hudValues.plateSag1.textContent, /^L [+−]\s*\d+\.\d\d \/ R /);
-  assert.match(plugin.hudValues.plateSag2.textContent, /^L [+−]\s*\d+\.\d\d \/ R /);
+  assert.match(plugin.hudValues.plateSag1.textContent, /^L\s[+−]\s*\d+\.\d\d \/ R\s/);
+  assert.match(plugin.hudValues.plateSag2.textContent, /^L\s[+−]\s*\d+\.\d\d \/ R\s/);
   assert.equal(
     plugin.hudValues.plateSag1.textContent.length,
     plugin.hudValues.plateSag2.textContent.length,
     'the two sag readouts must occupy the same number of columns');
-  assert.match(plugin.hudValues.ltpBalance.textContent, /^L [+−]\s*\d+\.\d\d \/ R /);
+  assert.match(plugin.hudValues.ltpBalance.textContent, /^L\s[+−]\s*\d+\.\d\d \/ R\s/);
   // The flux readout shows the magnitude of the flux linkage (the single-ended core carries a
   // standing bias flux), so the sign column is always '+' and the integer part is space-padded
   // to two columns for the swing towards the saturation figures. Three fraction digits keep the
   // sub-10 Wb-turns reading at the same relative resolution the volt-scale readouts get from two.
-  assert.match(plugin.hudValues.transformerFlux.textContent, /^L \+[ \d]\d\.\d{3} \/ R /);
+  assert.match(plugin.hudValues.transformerFlux.textContent, /^L\s\+[\s\d]\d\.\d{3} \/ R\s/);
 
   const initialRevision = plugin.hudAxesRevision;
   plugin.setParameters({ dr: 6, og: -3, mx: 75 });

@@ -3,7 +3,7 @@ EffeTune Rolling PCM Decoder Worker
 Generated from mediabunny 1.66.0.
 Source: https://github.com/Vanilagy/mediabunny/tree/v1.66.0
 The unmodified Mediabunny source for this bundle is available at the URL above under MPL-2.0.
-Bundle SHA-256: 933ff6f6cbbcb20a1806181820a72c75555c104b89c857a99f4df8474e2a185e
+Bundle SHA-256: 87dbcae2192ec63fb9f28a5855b0ff2af6ab0aafe2cb9176e11725685668072d
 
 mediabunny license:
 
@@ -400,6 +400,10 @@ Modifications by Yoshiyuki Kobayashi, 2026-11-01:
   retaining the byte lookup order and bit-exact lossless reconstruction.
 - Removed FFmpeg allocation, codec registration and PCM conversion; the
   existing EffeTune converter performs the DSD-to-PCM stage separately.
+
+Modifications by Yoshiyuki Kobayashi, 2026-11-17:
+- Restored the upstream channel-to-element mapping so that frames of up to
+  six channels decode, with the mapping validated against the channel count.
 
 Supported compressed frames use a single shared segment layout, as in the
 upstream decoder. Filter/probability mappings may differ. Uncoded DST frames

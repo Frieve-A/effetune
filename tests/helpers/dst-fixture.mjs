@@ -19,7 +19,10 @@ export function createCompressedDstPacket({ sampleRate = 2822400, channelCount =
     put(separateMaps ? 0 : 1, 1);
     const mapping = () => {
         put(separateMaps ? 0 : 1, 1);
-        if (separateMaps && channelCount === 2) put(1, 1);
+        // Each later channel introduces the next element, coded in just enough bits.
+        for (let channel = 1; channel < (separateMaps ? channelCount : 1); channel += 1) {
+            put(channel, 32 - Math.clz32(channel));
+        }
     };
     mapping();
     if (separateMaps) mapping();

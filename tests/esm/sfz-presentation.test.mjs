@@ -73,7 +73,7 @@ test('details render safe text and native-selected labels per channel, and relea
   plugin._activeSwitches = [24, 26];
   plugin._renderActiveSwitchLabels();
   assert.equal(plugin._currentSwitchLabels.textContent, 'Keyswitch · Channel 1: Legato · Channel 2: Pizzicato');
-  plugin.mc = 2; plugin._renderActiveSwitchLabels();
+  plugin._channelOn = channel => channel === 1; plugin._renderActiveSwitchLabels();
   assert.equal(plugin._currentSwitchLabels.textContent, 'Keyswitch · Channel 2: Pizzicato');
   plugin._setInstrumentPresentation(null);
   assert.deepEqual(revoked, ['blob:instrument']);

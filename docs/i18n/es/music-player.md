@@ -18,9 +18,11 @@ Si solo vas a usar el reproductor, ajusta **Dispositivo de entrada:** en **Ningu
 
 ## Archivos DSD {#dsd-files}
 
-Abre archivos `.dsf` (DSF) o `.dff` (DSDIFF) como cualquier otro archivo de música. Se admiten archivos DFF sin comprimir y comprimidos con DST. EffeTune convierte DSD64, DSD128 y DSD256 mono o estéreo a PCM para reproducirlos con los efectos actuales. El dispositivo de audio recibe PCM, no DSD nativo ni DoP.
+Abre archivos `.dsf` (DSF) o `.dff` (DSDIFF) como cualquier otro archivo de música. Se admiten archivos DFF sin comprimir y comprimidos con DST. EffeTune convierte DSD64, DSD128 y DSD256 de hasta seis canales (5.1) a PCM para reproducirlos con los efectos actuales. El dispositivo de audio recibe PCM, no DSD nativo ni DoP.
 
-No se admiten algunas variantes de codificación DST (tramas segmentadas), archivos de más de dos canales, DSD512 ni DSD basado en 48 kHz. Si un archivo no se reproduce, utiliza un DFF sin comprimir o una copia PCM compatible, como FLAC o WAV. Los archivos DSD se pueden reproducir en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación nativa de Android.
+El audio DSD multicanal llega a los efectos en el orden de los canales del archivo. Si no coincide con el orden de las salidas de tus altavoces, coloca [**Matrix**](plugins/basics.md#matrix) al principio de la cadena de efectos. Por ejemplo, para reproducir un DSF de cinco canales en una salida 5.1 estándar, conecta las entradas 1 a 3 a las salidas del mismo número, la entrada 4 solo a la salida 5 y la entrada 5 solo a la salida 6. Así, la salida 4 (LFE) queda en silencio.
+
+No se admiten algunas variantes de codificación DST (tramas segmentadas), archivos de más de seis canales, DSD512 ni DSD basado en 48 kHz. Si un archivo no se reproduce, utiliza un DFF sin comprimir o una copia PCM compatible, como FLAC o WAV. Los archivos DSD se pueden reproducir en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación nativa de Android.
 
 Los archivos DSD de alta frecuencia requieren más capacidad de procesamiento, sobre todo al aumentar la velocidad de reproducción. Si el audio se entrecorta o se detiene, reduce la velocidad.
 

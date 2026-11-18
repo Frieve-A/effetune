@@ -473,7 +473,7 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
     clearRect() { mainFills.length = 0; labels.length = 0; gridLines = 0; },
     fillRect(...args) { mainFills.push(args); },
     beginPath() {}, moveTo() {}, lineTo() {}, stroke() { gridLines++; },
-    save() {}, restore() {}, translate() {}, rotate() {}, measureText() { return { width: 60 }; }
+    save() {}, restore() {}, translate() {}, rotate() {}, measureText(text) { return { width: text.length * 6 }; }
   };
   const signal = { fillRect(...args) { signalFills.push({ style: this.fillStyle, args }); } };
   const canvas = { width: 600, height: 60, getContext: () => main };
@@ -524,6 +524,10 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
   assert.ok(gridLines > 0);
   assert.equal(plugin.canvasWidth, 300);
   plugin.displayOptions.orientation = 'vertical';
+  const verticalReadouts = [];
+  plugin.displayOptions.drawLevelValue = (ctx, text, x, y, width) => {
+    verticalReadouts.push({ text, x, width, align: ctx.textAlign, font: ctx.font });
+  };
   canvas.height = 120;
   signalFills.length = 0;
   plugin.updateMeter(1000);
@@ -531,7 +535,16 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
   assert.equal(signalFills.length, 2);
   assert.ok(signalFills[0].args[1] > 0 && signalFills[0].args[3] > 0,
     'Vertical bar grows upward from the canvas bottom');
-  assert.ok(labels.includes('L -6.0 dB'));
+  // A fresh one-channel frame resets peak hold so the next peak crosses a digit boundary.
+  plugin.handleDspLevelTelemetry(makeLevelFrame({ peaks: [0.01] }).frame);
+  plugin.updateMeter(1000);
+  const width = main.measureText('L -000.0 dB').width;
+  const slot = { x: (canvas.width + width) / 2, width, align: 'right', font: '12px monospace' };
+  assert.deepEqual(verticalReadouts, [
+    { text: 'L   -6.0 dB', ...slot }, { text: 'L  -40.0 dB', ...slot }
+  ]);
+  delete plugin.displayOptions.drawLevelValue;
+  plugin.handleDspLevelTelemetry(makeLevelFrame({ peaks: [0.5, 0.5] }).frame);
   plugin.displayOptions.orientation = 'horizontal';
   plugin.displayOptions.channel = null;
   signalFills.length = 0;

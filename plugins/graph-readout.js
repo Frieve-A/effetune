@@ -8,9 +8,10 @@
  *     plot(point),  // optional: -> {left, top, width, height} plot rect in surface units (default: the
  *                   // whole surface); point = {x, y} of the pointer in surface units (lets panel layouts
  *                   // return the panel under the pointer, or null outside every panel)
- *     read(x, y),   // -> null | { cursor: string, rows: [{label, color, value, y?}], at?: {x, y}, crosshair?, plainCursor? }
- *                   // x, y, rows[].y and at are in surface units; value is a preformatted string
- *                   // (use GraphReadout.format); color is a CSS color, e.g. 'var(--et-graph-trace)'.
+ *     read(x, y),   // -> null | { cursor, rows: [{label, color, value, y?}], at?: {x, y}, crosshair?, plainCursor? }
+ *                   // x, y, rows[].y and at are in surface units; color is a CSS color.
+ *                   // cursor and value are preformatted strings or arrays of strings and
+ *                   // { text, columns } numeric slots, where columns is the width in ch.
  *                   // A row with a finite y gets a dot at (at?.x ?? x, y) when that lies inside the plot;
  *                   // crosshair lines stay inside the plot; a result crosshair overrides the option for that
  *                   // point (e.g. 'none' over a keyboard gutter); plainCursor: true shows a cursor that names a
@@ -248,8 +249,31 @@
     // at a constant width and the number right-aligned (the decimal point stays put while it changes).
     // Text without a number (e.g. '—'), or not split, goes into the number span.
     function setValue(node, text, split = true) {
-        if (node.dataset.value === text) return;
-        node.dataset.value = text;
+        // Compound readings opt into separate fixed-width numeric slots. Literal parts can
+        // still carry variable-precision coordinates such as the cursor frequency.
+        const compound = Array.isArray(text);
+        const key = compound ? JSON.stringify(text) : text;
+        const wasCompound = node.dataset.compound === 'true';
+        if (node.dataset.value === key && wasCompound === compound) return;
+        node.dataset.value = key;
+        if (compound) {
+            node.dataset.compound = 'true';
+            if (!wasCompound || node.children.length !== text.length) {
+                node.replaceChildren(...text.map(() => document.createElement('span')));
+            }
+            text.forEach((part, index) => {
+                const span = node.children[index];
+                const numeric = typeof part !== 'string';
+                span.classList.toggle('graph-readout-fixed-number', numeric);
+                span.style.width = numeric ? `${part.columns}ch` : '';
+                setText(span, numeric ? part.text : part);
+            });
+            return;
+        }
+        if (wasCompound) {
+            delete node.dataset.compound;
+            node.replaceChildren();
+        }
         if (!text) {
             node.replaceChildren();
             return;
@@ -574,3 +598,38 @@
 
     window.GraphReadout = { attach, format, pathValueAt, seriesValueAt, historyValueAt, columnValueAt, place, toSurface, fromSurface };
 })();
+
+// Draws one HUD line. Each field is [label, value, width sample, unit, color].
+// Arial has tabular digits; measure the samples so both the anchors and the fit
+// depend on the layout, never on the current readings.
+function drawHudReadings(context, fields, x, y, width) {
+    const layout = fields.map(([label, , sample, unit]) => [
+        context.measureText(label).width,
+        sample ? context.measureText(sample).width : 0,
+        unit ? context.measureText(unit).width : 0
+    ]);
+    const naturalWidth = layout.reduce((sum, parts) => sum + parts[0] + parts[1] + parts[2], 0);
+    const fit = Math.min(1, width / naturalWidth);
+    if (!(fit > 0)) return;
+    context.save();
+    context.translate(x, y);
+    if (fit < 1) context.scale(fit, 1);
+    let left = 0;
+    fields.forEach(([label, value, , unit, color], index) => {
+        const [labelWidth, valueWidth, unitWidth] = layout[index];
+        if (color) context.fillStyle = color;
+        context.textAlign = 'left';
+        if (label) context.fillText(label, left, 0);
+        left += labelWidth + valueWidth;
+        if (value) {
+            context.textAlign = 'right';
+            context.fillText(value, left, 0);
+        }
+        if (unit) {
+            context.textAlign = 'left';
+            context.fillText(unit, left, 0);
+        }
+        left += unitWidth;
+    });
+    context.restore();
+}

@@ -334,8 +334,11 @@ export class VisualizerSources {
                 sectionEnabled = plugin.enabled !== false;
                 continue;
             }
+            // A player standing by for another standard is skipped, so the display follows
+            // the first player that sounds the current song.
             if (wanted && sectionEnabled && plugin.enabled !== false &&
-                plugin.constructor?.name === 'SoundFontPlayerPlugin') {
+                plugin.constructor?.name === 'SoundFontPlayerPlugin' &&
+                plugin.respondsToCurrentSystem?.() !== false) {
                 if (plugin.sf && plugin.acquireVisualizerMidiMetering) target = plugin;
                 break;
             }

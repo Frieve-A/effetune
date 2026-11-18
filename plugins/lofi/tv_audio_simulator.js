@@ -2080,24 +2080,27 @@ class TVAudioSimulatorPlugin extends PluginBase {
         });
         const label = this._hudSignalLabel();
         const multipath = values.multipathDb <= -119 ? '-∞' : values.multipathDb.toFixed(1);
-        const status = `${this.ss}  ${label}  ${info.spectrum}  ` +
-            `${values.carrierLevelDb.toFixed(1)} dBµV  CNR ${values.cnrDb.toFixed(1)} dB  ` +
-            `Health ${Math.round(values.schemeHealth * 100)}%  ` +
-            `MPath ${multipath} dB  Errors ${values.errorRate.toFixed(1)}/s`;
-        const statusLines = narrow ? [
-            `${this.ss}  ${label}  ${info.spectrum}`,
-            `${values.carrierLevelDb.toFixed(1)} dBµV  CNR ${values.cnrDb.toFixed(1)} dB`,
-            `Health ${Math.round(values.schemeHealth * 100)}%  ` +
-                `MPath ${multipath} dB  Errors ${values.errorRate.toFixed(1)}/s`
-        ] : [status];
+        // NICAM can switch to its fallback during reception. Reserve that label's width as well.
+        const status = info.nicam
+            ? [[`${this.ss}  `], ['', label, 'FALLBACK'], [`  ${info.spectrum}`]]
+            : [[`${this.ss}  ${label}  ${info.spectrum}`]];
+        const signal = [
+            ['', values.carrierLevelDb.toFixed(1), '-000.0', ' dBµV'],
+            ['  CNR ', values.cnrDb.toFixed(1), '-000.0', ' dB']
+        ];
+        const reception = [
+            ['Health ', Math.round(values.schemeHealth * 100).toString(), '000', '%'],
+            ['  MPath ', multipath, '-000.0', ' dB'],
+            ['  Errors ', values.errorRate.toFixed(1), '00000.0', '/s']
+        ];
+        const statusLines = narrow ? [status, signal, reception]
+            : [[...status, ['  '], ...signal, ['  '], ...reception]];
         context.fillStyle = window.ThemePalette?.get('graph-tone-97') ?? '';
-        context.textAlign = 'left';
         context.textBaseline = 'middle';
         context.font = `${Math.round((narrow ? 9 : 11) * scale)}px Arial`;
-        statusLines.forEach((line, index) => {
-            const y = height - statusHeight +
-                statusHeight * (index + 0.5) / statusLines.length;
-            context.fillText(line, 8 * scale, y, width - 16 * scale);
+        statusLines.forEach((fields, index) => {
+            const y = height - statusHeight + statusHeight * (index + 0.5) / statusLines.length;
+            drawHudReadings(context, fields, 8 * scale, y, width - 16 * scale);
         });
         this._graphReadout?.refresh();
     }

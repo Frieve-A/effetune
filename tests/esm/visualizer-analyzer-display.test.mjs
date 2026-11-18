@@ -2776,7 +2776,7 @@ test('default MIDI Rhythm draws before the first DSP telemetry frame', async () 
         assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === '120.0 BPM'));
         const header = display.plugin._headerItems(null, { label: '', strongGrid: '' }, () => '');
         assert.equal(header[0][1].opacity, 1);
-        assert.match(header[0][1].text, /LOCKED/);
+        assert.match(header[0][1].suffix, /LOCKED/);
         display.dispose();
     });
 });

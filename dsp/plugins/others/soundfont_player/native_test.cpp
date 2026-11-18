@@ -36,8 +36,8 @@ int failures = 0;
     }                                                                                              \
   } while (false)
 using Region = std::array<float, kStride>;
-std::array<std::uint8_t, 584> readMixer(PluginKernel &kernel);
-float mixerPeak(const std::array<std::uint8_t, 584> &state, unsigned channel);
+std::array<std::uint8_t, 588> readMixer(PluginKernel &kernel);
+float mixerPeak(const std::array<std::uint8_t, 588> &state, unsigned channel);
 Region region() {
   Region r{};
   r[Frames] = 1024;
@@ -253,17 +253,25 @@ struct Player {
     CHECK(events({}, ET_MIDI_RESET, 2) == ET_OK);
     return true;
   }
+  // Channel 0 plays all 16; channelMask can restrict the selection further.
   void configure(unsigned channel, float gain = 0, unsigned voices = 64, unsigned quality = 0,
                  bool fallback = true, int previewMidi = -1, unsigned previewChannel = 0,
-                 bool strict = false) {
-    generated::SoundFontPlayerPluginParams params{static_cast<float>(channel),
-                                                  static_cast<float>(voices),
-                                                  gain,
-                                                  static_cast<float>(quality),
-                                                  fallback ? 1.0F : 0.0F,
-                                                  static_cast<float>(previewMidi),
-                                                  static_cast<float>(previewChannel),
-                                                  strict ? 1.0F : 0.0F};
+                 bool strict = false, unsigned respond = 7u, int transpose = 0,
+                 int channelMask = -1) {
+    generated::SoundFontPlayerPluginParams params{
+        static_cast<float>(channel),
+        static_cast<float>(voices),
+        gain,
+        static_cast<float>(quality),
+        fallback ? 1.0F : 0.0F,
+        static_cast<float>(previewMidi),
+        static_cast<float>(previewChannel),
+        strict ? 1.0F : 0.0F,
+        respond & 1u ? 1.0F : 0.0F,
+        respond & 2u ? 1.0F : 0.0F,
+        respond & 4u ? 1.0F : 0.0F,
+        static_cast<float>(transpose),
+        static_cast<float>(channelMask < 0 ? 0 : 65535 ^ channelMask)};
     CHECK(kernel->stageParameters(reinterpret_cast<const float *>(&params),
                                   descriptor->paramsFloatCount, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -1376,6 +1384,39 @@ void channelConfigurationOwnership() {
   p.process();
   CHECK(p.peak() == 0);
 }
+void channelMaskAndTranspose() {
+  const auto play = [](Player &player, std::initializer_list<et_midi_event> notes) {
+    CHECK(player.events(notes) == ET_OK);
+    player.process();
+    player.process();
+  };
+  const auto sine = [] { return Player({region()}, false, false, {}, true); };
+  // Channels 1 and 3 are on, so the channel 2 note stays silent.
+  auto masked = sine(), reference = sine(), silent = sine();
+  masked.configure(0, 0, 64, 0, true, -1, 0, false, 7u, 0, 0b101);
+  silent.configure(0, 0, 64, 0, true, -1, 0, false, 7u, 0, 0);
+  const auto first = event(0, 0x90, 60, 127, 1), third = event(0, 0x92, 67, 127, 3);
+  play(masked, {first, event(0, 0x91, 64, 127, 2), third});
+  play(reference, {first, third});
+  play(silent, {first, third});
+  CHECK(reference.peak() > .01F && masked.audio == reference.audio && silent.peak() == 0);
+
+  // Transpose moves a melodic part and leaves the drum part on channel 10 alone.
+  auto transposed = sine(), pitched = sine(), drum = sine(), drumReference = sine();
+  transposed.configure(0, 0, 64, 0, true, -1, 0, false, 7u, 12);
+  drum.configure(0, 0, 64, 0, true, -1, 0, false, 7u, 12);
+  play(transposed, {event(0, 0x90, 60, 127, 1)});
+  play(pitched, {event(0, 0x90, 72, 127, 1)});
+  play(drum, {event(0, 0x99, 60, 127, 1)});
+  play(drumReference, {event(0, 0x99, 60, 127, 1)});
+  CHECK(pitched.peak() > .01F && transposed.audio == pitched.audio);
+  CHECK(drum.audio == drumReference.audio && drum.audio != pitched.audio);
+  // A note transposed past the top key does not sound.
+  auto beyond = sine();
+  beyond.configure(0, 0, 64, 0, true, -1, 0, false, 7u, 12);
+  play(beyond, {event(0, 0x90, 120, 127, 1)});
+  CHECK(beyond.peak() == 0);
+}
 void stagedEnvelopeTiming() {
   EnvelopeParameters values;
   values.value = {.01F, 20.0F, .02F, .01F, .02F, 50.0F, .01F};
@@ -2196,7 +2237,7 @@ void scriptCurrentEventAndDomains() {
   std::vector<std::uint8_t> checkpoint(source.kernel->midiCheckpointSize());
   CHECK(source.kernel->writeMidiCheckpoint(checkpoint.data(),
                                            static_cast<unsigned>(checkpoint.size())) == ET_OK);
-  CHECK(checkpoint[4] == 9u);
+  CHECK(checkpoint[4] == 10u);
   Player resumed({r}, false, false, {}, false, kScriptGainDomainFixture);
   CHECK(resumed.kernel->readMidiCheckpoint(checkpoint.data(),
                                            static_cast<unsigned>(checkpoint.size())) == ET_OK);
@@ -2457,7 +2498,7 @@ void resamplingImages() {
 std::uint16_t mixerU16(const std::uint8_t *data) {
   return static_cast<std::uint16_t>(data[0] | (static_cast<unsigned>(data[1]) << 8u));
 }
-std::array<std::uint8_t, 584> readMixer(PluginKernel &kernel) {
+std::array<std::uint8_t, 588> readMixer(PluginKernel &kernel) {
   std::array<std::uint8_t, 8192> storage{}, output{};
   TelemetryRing ring;
   ring.adopt(storage.data(), static_cast<unsigned>(storage.size()));
@@ -2468,12 +2509,12 @@ std::array<std::uint8_t, 584> readMixer(PluginKernel &kernel) {
     kernel.writeTelemetry(writer);
   }
   const auto bytes = ring.read(output.data(), static_cast<unsigned>(output.size()), nullptr);
-  std::array<std::uint8_t, 584> mixer{};
+  std::array<std::uint8_t, 588> mixer{};
   bool found = false;
   for (auto offset = 0u; offset + 16u <= bytes;) {
     const auto size = mixerU16(output.data() + offset + 12u);
     if (mixerU16(output.data() + offset) == 35u) {
-      CHECK(size == mixer.size() && mixerU16(output.data() + offset + 2u) == 2u);
+      CHECK(size == mixer.size() && mixerU16(output.data() + offset + 2u) == 3u);
       std::copy_n(output.data() + offset + 16u, mixer.size(), mixer.data());
       found = true;
     }
@@ -2482,7 +2523,7 @@ std::array<std::uint8_t, 584> readMixer(PluginKernel &kernel) {
   CHECK(found);
   return mixer;
 }
-float mixerPeak(const std::array<std::uint8_t, 584> &state, unsigned channel) {
+float mixerPeak(const std::array<std::uint8_t, 588> &state, unsigned channel) {
   std::uint32_t bits = 0;
   for (auto byte = 0u; byte < 4u; ++byte)
     bits |= static_cast<std::uint32_t>(state[520u + channel * 4u + byte]) << (8u * byte);
@@ -3001,6 +3042,116 @@ void percussionDesignation() {
   auto invalid = designation;
   invalid.message |= 4u << 16u;
   CHECK(kit.events({invalid}, 0, 2) == ET_ERR_ARGS);
+}
+et_midi_event systemReset(std::uint32_t kind) {
+  return {0u, 0u, kind, ET_MIDI_SYSTEM_RESET, 0u, 0u};
+}
+void standardBankSelection() {
+  CHECK(readMixer(*Player().kernel)[584] == ET_MIDI_SYSTEM_GM);
+  // The fixture presets are (0, 0), (0, 1), (1, 2), and (128, 0). Automatic fallback is off so
+  // that a bank the standard does not select reports no preset.
+  const auto select = [](std::uint32_t kind, unsigned msb, unsigned lsb, unsigned program) {
+    Player player;
+    player.loadSf2({}, false);
+    player.configure(0u, 0, 64u, 0u, false);
+    CHECK(player.events({systemReset(kind), event(0u, 0xb0u, 0u, msb), event(0u, 0xb0u, 32u, lsb),
+                         event(0u, 0xc0u, program, 0u)},
+                        0u, 2u) == ET_OK);
+    player.process();
+    const auto state = readMixer(*player.kernel);
+    CHECK(state[584] == kind);
+    CHECK((state[8u + 8u] & 4u) == (kind == ET_MIDI_SYSTEM_XG && msb >= 126u ? 4u : 0u));
+    return mixerU16(state.data() + 8u);
+  };
+  for (const std::uint32_t kind : {ET_MIDI_SYSTEM_GM, ET_MIDI_SYSTEM_GS}) {
+    CHECK(select(kind, 1u, 0u, 2u) == 1u);
+    CHECK(select(kind, 0u, 1u, 2u) == 0xffffu);
+    CHECK(select(kind, 127u, 0u, 0u) == 0xffffu);
+  }
+  CHECK(select(ET_MIDI_SYSTEM_XG, 0u, 1u, 2u) == 1u);
+  CHECK(select(ET_MIDI_SYSTEM_XG, 64u, 1u, 2u) == 1u);
+  CHECK(select(ET_MIDI_SYSTEM_XG, 1u, 0u, 2u) == 0xffffu);
+  CHECK(select(ET_MIDI_SYSTEM_XG, 126u, 0u, 0u) == 128u);
+  CHECK(select(ET_MIDI_SYSTEM_XG, 127u, 1u, 0u) == 128u);
+  CHECK(select(ET_MIDI_SYSTEM_XG, 127u, 0u, 1u) == 0xffffu);
+
+  Player drum, xg;
+  for (auto *player : {&drum, &xg})
+    player->loadSf2({}, false);
+  CHECK(drum.events({event(0u, 0x99u, 72u, 127u, 1u)}, 0u, 2u) == ET_OK);
+  drum.process();
+  drum.process();
+  // An XG drum bank takes effect at the next program change, on any channel.
+  CHECK(xg.events({systemReset(ET_MIDI_SYSTEM_XG), event(0u, 0xb0u, 0u, 127u)}, 0u, 2u) == ET_OK);
+  xg.process();
+  CHECK(mixerU16(readMixer(*xg.kernel).data() + 8u) == 0u);
+  CHECK(xg.events({event(0u, 0xc0u, 0u, 0u), event(0u, 0x90u, 72u, 127u, 1u)}, 0u, 2u) == ET_OK);
+  xg.process();
+  xg.process();
+  CHECK(mixerU16(readMixer(*xg.kernel).data() + 8u) == 128u);
+  CHECK(std::abs(xg.peak() - drum.peak()) < .00001F);
+  CHECK(xg.events({}, ET_MIDI_PAUSE, 2u) == ET_OK);
+  std::vector<std::uint8_t> checkpoint(xg.kernel->midiCheckpointSize());
+  CHECK(xg.kernel->writeMidiCheckpoint(checkpoint.data(),
+                                       static_cast<unsigned>(checkpoint.size())) == ET_OK);
+  CHECK(xg.events({systemReset(ET_MIDI_SYSTEM_GM)}, ET_MIDI_HYDRATE_CHANNEL_STATE, 2u) == ET_OK);
+  auto state = readMixer(*xg.kernel);
+  CHECK(state[584] == ET_MIDI_SYSTEM_GM && mixerU16(state.data() + 8u) == 0u);
+  CHECK(xg.kernel->readMidiCheckpoint(checkpoint.data(),
+                                      static_cast<unsigned>(checkpoint.size())) == ET_OK);
+  state = readMixer(*xg.kernel);
+  CHECK(state[584] == ET_MIDI_SYSTEM_XG && mixerU16(state.data() + 8u) == 128u);
+  // A melodic bank at the next program change returns the channel to melodic presets.
+  CHECK(xg.events({event(0u, 0xb0u, 0u, 0u), event(0u, 0xc0u, 0u, 0u)},
+                  ET_MIDI_HYDRATE_CHANNEL_STATE, 2u) == ET_OK);
+  CHECK(mixerU16(readMixer(*xg.kernel).data() + 8u) == 0u);
+}
+void standardRespondGate() {
+  for (const std::uint32_t kind : {ET_MIDI_SYSTEM_GM, ET_MIDI_SYSTEM_GS, ET_MIDI_SYSTEM_XG}) {
+    const auto bit = 1u << (kind - ET_MIDI_SYSTEM_GM);
+    Player reference, answering, standby;
+    for (auto *player : {&reference, &answering, &standby})
+      player->loadSf2({}, false);
+    answering.configure(0u, 0, 64u, 0u, true, -1, 0u, false, bit);
+    standby.configure(0u, 0, 64u, 0u, true, -1, 0u, false, 7u & ~bit);
+    for (auto *player : {&reference, &answering, &standby})
+      CHECK(player->events(
+                {systemReset(kind), event(0u, 0xb0u, 7u, 127u), event(0u, 0x90u, 72u, 127u, 1u)},
+                0u, 2u) == ET_OK);
+    for (auto block = 0u; block < 4u; ++block) {
+      for (auto *player : {&reference, &answering, &standby})
+        player->process();
+      CHECK(answering.audio == reference.audio && standby.peak() == 0);
+    }
+    CHECK(reference.peak() > 0);
+    // A player standing by keeps tracking the song without starting voices.
+    const auto state = readMixer(*standby.kernel);
+    CHECK(mixerU16(state.data()) == 0u && state[584] == kind && state[8u + 3u] == 127u);
+    // Its key preview still sounds.
+    standby.configure(0u, 0, 64u, 0u, true, 72, 0u, false, 7u & ~bit);
+    standby.process();
+    standby.process();
+    CHECK(standby.peak() > 0);
+    // Turning the current standard off silences the notes already sounding.
+    answering.configure(0u, 0, 64u, 0u, true, -1, 0u, false, 7u & ~bit);
+    answering.process();
+    answering.process();
+    CHECK(answering.peak() == 0);
+  }
+  // A system reset alone changes which player answers.
+  Player gs;
+  gs.loadSf2({}, false);
+  gs.configure(0u, 0, 64u, 0u, true, -1, 0u, false, 2u);
+  CHECK(gs.events({systemReset(ET_MIDI_SYSTEM_XG), event(0u, 0x90u, 72u, 127u, 1u)}, 0u, 2u) ==
+        ET_OK);
+  gs.process();
+  gs.process();
+  CHECK(gs.peak() == 0);
+  CHECK(gs.events({systemReset(ET_MIDI_SYSTEM_GS), event(0u, 0x90u, 72u, 127u, 2u)}, 0u, 2u) ==
+        ET_OK);
+  gs.process();
+  gs.process();
+  CHECK(gs.peak() > 0);
 }
 void transientChannelMixer() {
   Player reference, mixed;
@@ -3598,15 +3749,15 @@ void extendedVoiceCapacity() {
   }
 }
 void selectableSampleQuality() {
-  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 8u);
+  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 13u);
   auto r = region();
   r[LoopStart] = r[Offset] = 37;
   r[LoopEnd] = 1006;
   r[KeyCenter] = 55;
   Player current({r}, false, false, {}, true);
-  CHECK(current.descriptor->paramsFloatCount == 8u);
+  CHECK(current.descriptor->paramsFloatCount == 13u);
   CHECK(current.descriptor->paramsHash == generated::SoundFontPlayerPluginParams::kHash);
-  const std::array<float, 8> defaults{0, 64, 0, 0, 1, -1, 0, 0};
+  const std::array<float, 13> defaults{0, 64, 0, 0, 1, -1, 0, 0, 1, 1, 1, 0, 0};
   CHECK(current.kernel->stageParameters(defaults.data(), 3, current.descriptor->paramsHash) ==
         ET_ERR_ARGS);
   CHECK(current.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);
@@ -3644,12 +3795,12 @@ void selectableSampleQuality() {
       allocation_guard::Scope guard;
       CHECK(original.kernel->writeMidiCheckpoint(
                 checkpoint.data(), static_cast<unsigned>(checkpoint.size())) == ET_OK);
-      CHECK(checkpoint[4] == 9u);
+      CHECK(checkpoint[4] == 10u);
       if (quality == 0u) {
-        checkpoint[4] = 8u;
+        checkpoint[4] = 9u;
         CHECK(restored.kernel->readMidiCheckpoint(
                   checkpoint.data(), static_cast<unsigned>(checkpoint.size())) == ET_ERR_ARGS);
-        checkpoint[4] = 9u;
+        checkpoint[4] = 10u;
       }
       CHECK(restored.kernel->readMidiCheckpoint(checkpoint.data(),
                                                 static_cast<unsigned>(checkpoint.size())) == ET_OK);
@@ -3732,6 +3883,8 @@ int main() {
   transientChannelMixer();
   systemResetAndDemandPreparation();
   percussionDesignation();
+  standardBankSelection();
+  standardRespondGate();
   resamplingImages();
   {
     Player beat;
@@ -3912,6 +4065,7 @@ int main() {
   sourceVoiceOwnership();
   selectedChannelAndHeldHistory();
   channelConfigurationOwnership();
+  channelMaskAndTranspose();
   stagedEnvelopeTiming();
   envelopeControllers();
   equalizerResponse();

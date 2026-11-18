@@ -19,7 +19,12 @@
     "af": true,
     "pm": 83,
     "pc": 0,
-    "sc": 0
+    "sc": 0,
+    "rg": true,
+    "rs": true,
+    "rx": true,
+    "tr": 0,
+    "mco": 0
   },
   "events": [],
   "asset": {
@@ -32,7 +37,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:9c0bff3d1beb02082ff52371c818d1dff91a0dda8fa4e24600af00089209b401",
+  "referenceHash": "sha256:d84499adcbded74de3fcde85d2df2912ca7de72ed13b0bd3d259e066776c063b",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type SoundFontPlayerPlugin --promote-production-native",
   "outputFloats": 24000,
   "byteLength": 96000,

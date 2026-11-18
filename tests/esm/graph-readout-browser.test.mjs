@@ -147,6 +147,50 @@ test('a plain cursor stays one text so a category name ending in a digit is not 
     assert.deepEqual(parts, ['', '', 'Beat position 1', '']);
   });
 
+test('compound live readings reserve both decimal positions from the first frame', { timeout: 60_000 }, async () => {
+  const states = await inPage(async () => {
+    const mount = document.getElementById('mount');
+    let offset = '+9.9', deviation = '9.9', frequency = '20 Hz', left = '50.0', right = '50.0';
+    window.GraphReadout.attach({
+      mount,
+      surface: document.getElementById('surface'),
+      avoid: () => [{ left: 210, top: 0, width: 190, height: 70 }],
+      read: () => ({
+        cursor: [{ text: frequency, columns: 9 }, ' · ', { text: left, columns: 5 }, ':', { text: right, columns: 5 }],
+        rows: [{ label: 'Offset', color: 'red', value: [
+          { text: offset, columns: 6 }, ' ms ± ', { text: deviation, columns: 5 }, ' ms'
+        ] }]
+      })
+    });
+    const measure = async () => {
+      mount.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', clientX: 50, clientY: 150 }));
+      await window.nextFrame();
+      const slots = [...mount.querySelectorAll('.graph-readout-fixed-number')].slice(1);
+      return slots.map(slot => {
+        const text = slot.firstChild;
+        const dot = text.data.indexOf('.');
+        const range = document.createRange();
+        range.setStart(text, dot);
+        range.setEnd(text, dot + 1);
+        return range.getBoundingClientRect().left;
+      });
+    };
+    const first = await measure();
+    deviation = '10.0';
+    const second = await measure();
+    offset = '−10.0';
+    deviation = '100.0';
+    frequency = '1.00 kHz';
+    left = '0.0';
+    right = '100.0';
+    return [first, second, await measure()];
+  });
+  assert.equal(states[0].length, 4);
+  for (const state of states.slice(1)) {
+    state.forEach((x, index) => assert.ok(Math.abs(x - states[0][index]) < 0.1));
+  }
+});
+
 test('row text keeps the label color while the swatch follows a changing series color in place',
   { timeout: 60_000 }, async () => {
     const [first, second] = await inPage(async () => {

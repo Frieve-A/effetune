@@ -504,7 +504,7 @@ test('lens marks and spread ease toward updated values between telemetry frames 
     const x = lens.left + 3.5 * lens.width / 6 + row.offset * 0.42 * lens.width / 6 / 30;
     assert.ok(context.segments.some(line => line.lineWidth === 2 && line.x0 === x && line.x1 === x), 'the tick uses the eased offset');
     const readout = plugin._readRhythm(lens.left + 3.5 * lens.width / 6, lens.top + lens.height / 2);
-    assert.equal(readout.rows[0].value, `+${row.offset.toFixed(1)} ms ± ${row.sd.toFixed(1)} ms`);
+    assert.equal(readout.rows[0].value.map(part => typeof part === 'string' ? part : part.text).join(''), `+${row.offset.toFixed(1)} ms ± ${row.sd.toFixed(1)} ms`);
     assert.equal(summary.rows[0].offset, 20, 'drawing leaves the analysis untouched');
     assert.equal(summary.rows[0].sd, 10);
     // A changing target starts from the current display, without restarting from the old target.
@@ -577,14 +577,15 @@ test('a new lock epoch re-aligns without moving the beat clock back and restarts
 test('a closed tick gate preserves committed analysis, while digital silence clears only current readings', async () => {
     const { plugin } = await loadPlugin();
     const palette = { label: '#000', strongGrid: '#111' };
-    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, 'searching');
+    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].suffix.trim(), 'BPM  searching');
     feed(plugin, pattern(4, BACKBEAT));
     const previous = plugin.beatClock;
     feed(plugin, pattern(2, BACKBEAT, 4), { gateOpen: false, confidence: 0.2 });
     assert.ok(plugin.beatClock > previous);
     assert.ok(plugin.openSegment);
     assert.ok(plugin.lensSummary());
-    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, '120.0 BPM  searching');
+    const header = plugin._headerItems(null, palette, () => '#333')[0][1];
+    assert.equal(header.text + header.suffix, '120.0 BPM  searching');
     assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].opacity, Math.fround(0.2));
     const clock = plugin.beatClock;
     plugin.handleTelemetry(buildFrame({ frameCount: plugin.testFrame + 100, period: 0, confidence: 0, strongestBpm: 0, gateOpen: false }));
@@ -897,6 +898,45 @@ test('the header layout does not move as its values change width', async () => {
     same(layout(), searching);
     feed(plugin, pattern(1, BACKBEAT, 8), { strongestBpm: 216 });
     same(layout(), searching);
+});
+
+test('compact MIDI headers leave room for the plots and fit wider tempos to the numeric fields', async () => {
+    const { plugin } = await loadPlugin();
+    const context = fakeContext();
+    const stack = [], labels = new Map();
+    context.measureText = value => ({ width: String(value).length * parseFloat(context.font) * 0.5 });
+    let scaleX = 1;
+    context.save = () => stack.push(scaleX);
+    context.restore = () => { scaleX = stack.pop(); };
+    context.scale = x => { scaleX *= x; };
+    plugin.canvas = { width: 400, height: 75 };
+    plugin.ctx = context;
+    plugin.displayOptions = { showBeat: false, textContext: {
+        strokeText() {},
+        fillText(value, x, y, centerOffset) {
+            labels.set(value, { anchor: x * scaleX, center: (x + centerOffset) * scaleX,
+                width: context.measureText(value).width * scaleX, scaleX });
+        }
+    } };
+    plugin.midiSnapshot = midiSnapshot({}, 0);
+    plugin.drawVisualizerRhythm();
+    assert.ok(plugin._readoutFrame.main?.height > 0 && plugin._readoutFrame.lens?.height > 0);
+    const half = labels.get('60'), double = labels.get('240');
+    assert.equal(half.scaleX, 1);
+    assert.equal(double.scaleX, 1);
+
+    plugin.midiSnapshot = { ...plugin.midiSnapshot, beat: { quarter: 0, bpm: 60000000 }, speed: 4 };
+    plugin.drawVisualizerRhythm();
+    for (const [label, prefix, ordinary] of [
+        ['120000000', '×½ ', half], ['480000000', '×2 ', double]
+    ]) {
+        const wide = labels.get(label);
+        const caption = labels.get(prefix);
+        assert.ok(Math.abs(wide.anchor - ordinary.anchor) < 1e-9);
+        assert.ok(Math.abs(wide.center - caption.center) < 1e-9);
+        assert.ok(Math.abs((wide.anchor - wide.width) - (caption.anchor + caption.width)) < 1e-9);
+        assert.equal(caption.scaleX, 1);
+    }
 });
 
 test('High is on top in lanes, echo rows, lens and readout', async () => {

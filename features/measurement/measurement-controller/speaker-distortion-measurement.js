@@ -6,6 +6,7 @@
  */
 import * as speakerDistortion from '../../../js/utils/measurement-dsp/speaker-distortion/index.js';
 import { essPlaybackSeconds } from '../../../js/utils/measurement-dsp/ess.js';
+import { MAX_REPLAYS } from '../../../js/utils/measurement-dsp/recording-gaps.js';
 
 // A recording whose peak |x| reaches this value is an overload.
 export const CAPTURE_OVERLOAD_PEAK = 0.999;
@@ -29,9 +30,8 @@ const LOUD_STEPS_DB = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 const OVERLOAD_TAIL_SECONDS = 1;
 const OVERLOAD_BLOCK_SECONDS = 0.02;
 // Retry on Noise: a test signal whose recording has more than NOISE_LIMIT_DB more noise than the level
-// check plays again, at most NOISE_RETRIES times.
+// check plays again, at most MAX_REPLAYS times.
 const NOISE_LIMIT_DB = 10;
-const NOISE_RETRIES = 2;
 
 /**
  * Planned duration in seconds of one channel with run settings `settings` (level check, captures with
@@ -288,17 +288,22 @@ export async function runSpeakerDistortionMeasurement({ settingsList, placement,
 
 /**
  * Plays `samples` with the overload check. With `noise` = { reference } (a noise power) and a `call`
- * { seed, K, chirp }, unusable recordings and recordings with noise above the limit are retried.
- * If no recording meets the limit, keep the quietest usable one and use its noise as the reference.
+ * { seed, K, chirp }, unusable recordings, recordings with noise above the limit and recordings that lost
+ * too many periods to recording gaps are retried. If no recording passes, keep the quietest usable one
+ * (one that kept its periods first); its noise becomes the reference only when the noise was steady (every
+ * usable play within the limit of the quietest), not for a passing disturbance.
  * `show(retrying)` shows the status before each play.
  */
 async function playJudged({ samples, gapSeconds, call, noise, settings, steps, show, signal, deps }) {
     show(false);
     if (!noise || !call) return steps.playChecked(samples, gapSeconds, settings);
     const db = power => (10 * Math.log10(power)).toFixed(1);
-    const limit = noise.reference * 10 ** (NOISE_LIMIT_DB / 10);
+    const margin = 10 ** (NOISE_LIMIT_DB / 10);
+    const limit = noise.reference * margin;
     let best = null;
-    for (let play = 0; play <= NOISE_RETRIES; play++) {
+    let worst = 0;
+    let usable = 0;
+    for (let play = 0; play <= MAX_REPLAYS; play++) {
         if (play > 0) show(true);
         const recording = await steps.playChecked(samples, gapSeconds, settings);
         try {
@@ -307,19 +312,31 @@ async function playJudged({ samples, gapSeconds, call, noise, settings, steps, s
             if (!Number.isFinite(powers.signal) || powers.signal <= 0 || !Number.isFinite(power) || power < 0) {
                 throw new SpeakerDistortionStepError('analysis', new Error('The recording has no usable noise estimate.'));
             }
+            const lost = powers.periodsLost;
             console.info(`Speaker distortion: ${settings.label} S/N ${db(powers.signal / power)} dB, `
-                + `noise ${db(power / noise.reference)} dB over the reference`);
-            if (power <= limit) return recording;
-            if (!best || power < best.power) best = { recording, power };
+                + `noise ${db(power / noise.reference)} dB over the reference`
+                + (lost ? '; too many periods lost to recording gaps' : ''));
+            if (!lost && power <= limit) return recording;
+            if (!lost) {
+                usable++;
+                if (power > worst) worst = power;
+            }
+            if (!best || (best.lost && !lost) || (best.lost === lost && power < best.power)) best = { recording, power, lost };
         } catch (error) {
             signal.throwIfAborted();
-            if (play === NOISE_RETRIES && !best) throw error;
+            if (play === MAX_REPLAYS && !best) throw error;
             console.warn(`Speaker distortion: ${settings.label} could not judge the recording's noise.`, error);
         }
-        if (play < NOISE_RETRIES) console.info(`Speaker distortion: ${settings.label} playing the test signal again`);
+        if (play < MAX_REPLAYS) console.info(`Speaker distortion: ${settings.label} playing the test signal again`);
     }
-    noise.reference = best.power;
-    console.info(`Speaker distortion: ${settings.label} kept the quietest usable recording; its noise is the new reference`);
+    if (usable > 1 && !best.lost && worst <= best.power * margin) {
+        noise.reference = best.power;
+        console.info(`Speaker distortion: ${settings.label} kept the quietest usable recording; `
+            + 'the noise was steady, so its noise is the new reference');
+    } else {
+        console.info(`Speaker distortion: ${settings.label} kept the quietest usable recording; `
+            + 'the noise was not shown to be steady, so the reference is unchanged');
+    }
     return best.recording;
 }
 

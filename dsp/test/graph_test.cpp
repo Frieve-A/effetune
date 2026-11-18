@@ -946,8 +946,9 @@ void testNativeMidiHostAndStrictOffline() {
   GRAPH_CHECK(instrument != 0u);
   std::array<float, effetune::generated::SoundFontPlayerPluginParams::kFloatCount> parameters;
   parameters.fill(-1.0F);
-  parameters[0] = parameters[2] = 0.0F;
+  parameters[0] = parameters[2] = parameters[11] = parameters[12] = 0.0F;
   parameters[1] = 64.0F;
+  parameters[8] = parameters[9] = parameters[10] = 1.0F;
   GRAPH_CHECK(et_instance_set_params(engine, instrument, parameters.data(),
                                      static_cast<std::uint32_t>(parameters.size()),
                                      effetune::generated::SoundFontPlayerPluginParams::kHash,
@@ -1102,8 +1103,10 @@ void testNativePreparationFloor() {
     GRAPH_CHECK(instrument != 0u);
     std::array<float, effetune::generated::SoundFontPlayerPluginParams::kFloatCount> parameters;
     parameters.fill(-1.0F);
-    parameters[0] = parameters[2] = 0.0F;
+    parameters[12] = 65535.0F;
+    parameters[0] = parameters[2] = parameters[11] = 0.0F;
     parameters[1] = 64.0F;
+    parameters[8] = parameters[9] = parameters[10] = 1.0F;
     GRAPH_CHECK(et_instance_set_params(engine, instrument, parameters.data(),
                                        static_cast<std::uint32_t>(parameters.size()),
                                        effetune::generated::SoundFontPlayerPluginParams::kHash,

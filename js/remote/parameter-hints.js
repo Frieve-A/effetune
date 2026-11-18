@@ -199,6 +199,10 @@ export const PARAMETER_HINTS = Object.freeze({
         mx: { control: 'number', label: 'Highest Note', min: 21, max: 108, step: 1, unit: 'MIDI note', scale: 'linear', integer: true, minKey: 'mn', description: 'Raised to the Lowest Note when sent below it.' }
     }),
     SoundFontPlayerPlugin: Object.freeze({
+        mco: { control: 'number', label: 'Disabled MIDI Channels', min: 0, max: 65535, step: 1, unit: '', scale: 'linear', integer: true, description: 'Each set bit disables one MIDI channel. Bit 0 disables channel 1 and bit 15 disables channel 16. Use 0 to enable all channels. The legacy mc setting selects all channels (0) or one channel (1–16). When both are supplied, mco can also disable the selected channel.' },
+        rg: { control: 'checkbox', label: 'Respond to GM', description: 'Play songs that select GM or have no MIDI system reset.' },
+        rs: { control: 'checkbox', label: 'Respond to GS', description: 'Play songs that select GS with a MIDI system reset.' },
+        rx: { control: 'checkbox', label: 'Respond to XG', description: 'Play songs that select XG with a MIDI system reset.' },
         ...Object.fromEntries(Array.from({ length: 16 }, (_, channel) => [`sp${channel}`, {
             ...SOUNDFONT_PRESET_HINT, label: `Channel ${channel + 1} Preset`,
             description: `SF2 preset for MIDI channel ${channel + 1}: bank * 128 + program, with program numbered 0–127. Choose a bank/program present in the loaded collection; -1 means Follow MIDI (Bank Select and Program Change). Changes apply to new notes. Does not affect SFZ instruments.`

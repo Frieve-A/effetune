@@ -54,8 +54,8 @@ export function prepareOfflineMidiSession(session, timeline, pipeline, sampleRat
             session.binding.instanceSetSeed?.(entry.instanceId, 0x4d494449, 1);
             delays.set(plugin.id, inputDelay);
             const assets = entry.offlineState?.assets ?? plugin.getWasmAssets?.();
-            const selected = params.mc ? [dataEntry[params.mc - 1]] : dataEntry;
-            const range = selected.filter(Boolean).reduce((result, value) => ({
+            // mco holds the MIDI channels turned off; only the played channels extend the tail.
+            const range = dataEntry.filter((value, channel) => value && !(params.mco >> channel & 1)).reduce((result, value) => ({
                 coarse: Math.max(result?.coarse ?? 0, value.coarse),
                 fine: Math.max(result?.fine ?? 0, value.fine)
             }), null);

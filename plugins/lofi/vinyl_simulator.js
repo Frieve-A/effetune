@@ -1723,12 +1723,30 @@ class VinylSimulatorPlugin extends PluginBase {
         const clamp01 = value => value < 0 ? 0 : (value > 1 ? 1 : value);
         const jitterMagnitude = values.jitterNs < 0 ? -values.jitterNs : values.jitterNs;
         const cards = [
-            { key: 'force', title: 'CONTACT FORCE', value: `${(values.forceL * 1000).toFixed(1)} / ${(values.forceR * 1000).toFixed(1)} mN`, level: Math.max(values.forceL, values.forceR) / 0.03 },
-            { key: 'pressure', title: 'CONTACT PRESSURE', value: `${(Math.max(values.pressL, values.pressR) / 1e9).toFixed(2)} GPa`, level: Math.max(values.pressL, values.pressR) / 1e9 },
-            { key: 'tip', title: 'TIP VELOCITY', value: `${(values.tipVelRms * 100).toFixed(2)} cm/s  ${(20 * Math.log10(values.tipVelRms / 0.05 + 1e-12)).toFixed(1)} dB`, level: values.tipVelRms / 0.1 },
-            { key: 'tracking', title: 'TRACKING S/E', value: `${values.trkSE_L.toFixed(1)} / ${values.trkSE_R.toFixed(1)} dB`, level: (Math.min(values.trkSE_L, values.trkSE_R) - 20) / 60 },
-            { key: 'jitter', title: 'READING JITTER', value: `${jitterMagnitude.toFixed(1)} ns`, level: jitterMagnitude / READING_JITTER_BAR_MAX_NS },
-            { key: 'events', title: 'EVENTS / SECOND', value: `mistrack ${values.mistrackRate.toFixed(1)}  skip ${values.skipRate.toFixed(1)}  pop ${values.popRate.toFixed(1)}  dust ${values.dustHitRate.toFixed(1)}`, level: Math.max(values.mistrackRate, values.skipRate, values.popRate, values.dustHitRate) / 10 }
+            { key: 'force', title: 'CONTACT FORCE', fields: [
+                ['', (values.forceL * 1000).toFixed(1), '00.0'],
+                [' / ', (values.forceR * 1000).toFixed(1), '00.0', ' mN']
+            ], level: Math.max(values.forceL, values.forceR) / 0.03 },
+            { key: 'pressure', title: 'CONTACT PRESSURE', fields: [
+                ['', (Math.max(values.pressL, values.pressR) / 1e9).toFixed(2), '00.00', ' GPa']
+            ], level: Math.max(values.pressL, values.pressR) / 1e9 },
+            { key: 'tip', title: 'TIP VELOCITY', fields: [
+                ['', (values.tipVelRms * 100).toFixed(2), '000.00', ' cm/s'],
+                ['  ', (20 * Math.log10(values.tipVelRms / 0.05 + 1e-12)).toFixed(1), '-000.0', ' dB']
+            ], level: values.tipVelRms / 0.1 },
+            { key: 'tracking', title: 'TRACKING S/E', fields: [
+                ['', values.trkSE_L.toFixed(1), '-000.0'],
+                [' / ', values.trkSE_R.toFixed(1), '-000.0', ' dB']
+            ], level: (Math.min(values.trkSE_L, values.trkSE_R) - 20) / 60 },
+            { key: 'jitter', title: 'READING JITTER', fields: [
+                ['', jitterMagnitude.toFixed(1), '0000.0', ' ns']
+            ], level: jitterMagnitude / READING_JITTER_BAR_MAX_NS },
+            { key: 'events', title: 'EVENTS / SECOND', fields: [
+                ['mistrack ', values.mistrackRate.toFixed(1), '0000.0'],
+                ['  skip ', values.skipRate.toFixed(1), '0000.0'],
+                ['  pop ', values.popRate.toFixed(1), '0000.0'],
+                ['  dust ', values.dustHitRate.toFixed(1), '0000.0']
+            ], level: Math.max(values.mistrackRate, values.skipRate, values.popRate, values.dustHitRate) / 10 }
         ];
         if (this.selectedTab !== 'stylus') cards.splice(4, 1);
 
@@ -1757,7 +1775,7 @@ class VinylSimulatorPlugin extends PluginBase {
             }
             ctx.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
             ctx.font = `${Math.round((narrow && card.key === 'events' ? 9 : 11) * dpr)}px Arial`;
-            ctx.fillText(card.value, x + 6 * dpr, y + 19 * dpr, cardWidth - 12 * dpr);
+            drawHudReadings(ctx, card.fields, x + 6 * dpr, y + 19 * dpr, cardWidth - 12 * dpr);
 
             const barX = x + 6 * dpr;
             const barY = y + cardHeight - 9 * dpr;

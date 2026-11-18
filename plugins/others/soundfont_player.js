@@ -9,11 +9,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this.registerProcessor('return data;');
         this.name = 'SoundFont Player';
         this.description = 'Plays MIDI songs through SoundFont and SFZ instruments';
-        this.mc = 0;
+        this.mco = 0; // Bit n is set when MIDI channel n + 1 is turned off, so 0 plays all 16.
+        this.tr = 0;
         this.pl = 256;
         this.sq = 1;
         this.sc = 0;
         this.af = true;
+        this.rg = this.rs = this.rx = true;
         this._presetChannels = 16;
         this._mixerRows = [];
         this._mixerLevelFrame = null;
@@ -30,7 +32,14 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
 
     getParameters() {
         return { ...PluginBase.prototype.getParameters.call(this), sf: this.sf,
-            mc: this.mc, pl: this.pl, og: this.og, sq: this.sq, sc: this.sc, af: this.af };
+            mco: this.mco, pl: this.pl, og: this.og, sq: this.sq, sc: this.sc, af: this.af,
+            rg: this.rg, rs: this.rs, rx: this.rx, tr: this.tr };
+    }
+
+    // Whether this player sounds the standard the current song selected. Unknown counts as yes.
+    respondsToCurrentSystem() {
+        const key = [null, 'rg', 'rs', 'rx'][this._mixerState?.system];
+        return !key || this[key];
     }
 
     getWorkletPluginData(parameters = this.getParameters()) {
@@ -57,7 +66,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
                 Object.freeze({ bank, program, name })));
         }
         return Object.freeze({ state: this._visualizerMixerState,
-            presets: this._visualizerMixerPresets, channelFilter: this.mc });
+            presets: this._visualizerMixerPresets, channelMask: this.mco ^ 65535 });
     }
 
     acquireVisualizerMidiMetering() {
@@ -72,18 +81,25 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     }
 
     setParameters(params = {}) {
-        if (params.mc !== undefined) {
-            const mc = Math.round(this.parseFiniteNumber(params.mc, 0, 16, this.mc));
-            if (mc !== this.mc) this._stopPreview();
-            this.mc = mc;
+        if (params.mco !== undefined || params.mc !== undefined) {
+            // Older presets select one channel with mc (1..16), or all channels with 0.
+            const channel = Math.round(this.parseFiniteNumber(params.mc, 0, 16, 0));
+            const disabled = channel ? 65535 ^ (1 << (channel - 1)) : 0;
+            const mco = disabled | (params.mco === undefined ? 0
+                : Math.round(this.parseFiniteNumber(params.mco, 0, 65535, this.mco)));
+            if (mco !== this.mco) this._stopPreview();
+            this.mco = mco;
         }
-        for (const [key, min, max] of [['pl', 1, 1024], ['og', -60, 12]]) {
+        for (const [key, min, max] of [['pl', 1, 1024], ['og', -60, 12], ['tr', -12, 12]]) {
             if (params[key] !== undefined) this[key] = this.parseFiniteNumber(params[key], min, max, this[key]);
         }
         this.pl = Math.round(this.pl);
+        this.tr = Math.round(this.tr);
         if ([0, 1, 2].includes(params.sq)) this.sq = params.sq;
         if ([0, 1].includes(params.sc)) this.sc = params.sc;
-        if (typeof params.af === 'boolean') this.af = params.af;
+        for (const key of ['af', 'rg', 'rs', 'rx']) {
+            if (typeof params[key] === 'boolean') this[key] = params[key];
+        }
         PluginBase.prototype._setValidatedParameters.call(this, params);
         if (typeof params.sf === 'string') {
             const id = /^[a-f0-9]{24}$/.test(params.sf) ? params.sf : '';
@@ -188,10 +204,9 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const [mixer, settings] = this._tabs.map(item => item.panel);
         this._createMixer(mixer);
         settings.appendChild(this._bankSummary);
-        settings.append(this.createSelectControl('MIDI Channel',
-            Array.from({ length: 17 }, (_, value) => ({ value, label: value === 0 ? 'All' : String(value) })),
-            this.mc, value => this.setParameters({ mc: Number(value) }), 'mc'));
+        settings.append(this._createChannelControl(), this._createRespondControl());
         for (const [key, label, min, max, step, unit, logarithmic] of [
+            ['tr', 'Transpose', -12, 12, 1, 'semitones', false],
             ['og', 'Instrument Level', -60, 12, 0.1, 'dB', false],
             ['pl', 'Max Voices', 1, 1024, 1, '', true]
         ]) settings.append(this.createParameterControl(label, min, max, step, this[key],
@@ -327,6 +342,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     _renderStatus() {
         super._renderStatus();
         this._ensureMixerTelemetrySubscription();
+        this._renderPlayerStatus();
+        this._renderMixer();
+    }
+
+    // The status area alone, so a telemetry frame can refresh it without re-validating the
+    // subscription that delivered it and without drawing the mixer twice.
+    _renderPlayerStatus() {
         this._renderBankSummary();
         if (!this._status) {
             this._updateMidiMetering();
@@ -349,9 +371,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const error = this._errorMessage();
         this._mixerReady = ready && !this._pending && !error;
         const sampleAvailable = metadata?.sampleAvailable ?? this._sampleAvailable;
-        const waiting = this._mixerReady && sampleAvailable === false;
-        const limited = this._mixerReady && metadata?.limited === true;
-        const playbackStatus = waiting ? 'Waiting for sample data…' : limited
+        const standby = this._mixerReady && !this.respondsToCurrentSystem();
+        const waiting = this._mixerReady && !standby && sampleAvailable === false;
+        const limited = this._mixerReady && !standby && metadata?.limited === true;
+        const playbackStatus = standby
+            ? this._t('soundFontPlayer.status.standby', 'Standing by. The current song uses {standard}.',
+                { standard: ['', 'GM', 'GS', 'XG'][this._mixerState.system] })
+            : waiting ? 'Waiting for sample data…' : limited
             ? this._t('soundFontPlayer.status.limitedPreloading', 'Limited preloading. Some notes may start late.')
             : 'Ready to play.';
         this._status.textContent = error || (this.sf || this._pending ? ready && !this._pending
@@ -363,7 +389,6 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         if (this._selectedBankName && this.sf && !this._name && (this._pending || !error)) {
             this._selectedBankName.textContent = 'SoundFont';
         }
-        this._renderMixer();
     }
 
     onSfzPreparationProgress(progress) {
@@ -405,15 +430,84 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         }
     }
 
+    // Independently checkable options sharing one row, laid out like a radio group.
+    // Each option is [id suffix, label, change handler receiving the new checked state].
+    _createCheckboxRow(caption, options) {
+        const row = document.createElement('div');
+        row.className = 'parameter-row radio-group';
+        const captionLabel = document.createElement('label');
+        captionLabel.textContent = `${caption}:`;
+        const list = document.createElement('span');
+        list.className = 'radio-options';
+        const group = caption.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const checkboxes = options.map(([suffix, text, onChange]) => {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = checkbox.name = `${this.id}-${this.name}-${group}-${suffix}`;
+            checkbox.autocomplete = 'off';
+            checkbox.addEventListener('change', () => onChange(checkbox.checked));
+            const label = document.createElement('label');
+            label.htmlFor = checkbox.id;
+            label.textContent = text;
+            const option = document.createElement('span');
+            option.className = 'radio-option';
+            option.append(checkbox, label);
+            list.appendChild(option);
+            return checkbox;
+        });
+        row.append(captionLabel, list);
+        return { row, checkboxes };
+    }
+
+    // All sits before the 16 channels: checked when every channel plays, mixed when only some do.
+    _createChannelControl() {
+        const setMask = mask => {
+            this.setParameters({ mco: mask });
+            apply(this.mco);
+        };
+        const { row, checkboxes } = this._createCheckboxRow('MIDI Channel', [
+            ['all', 'All', checked => setMask(checked ? 0 : 65535)],
+            ...Array.from({ length: 16 }, (_, channel) => [channel + 1, String(channel + 1),
+                checked => setMask(checked ? this.mco & ~(1 << channel) : this.mco | 1 << channel)])
+        ]);
+        const [all, ...channels] = checkboxes;
+        const apply = mask => {
+            all.checked = mask === 0;
+            all.indeterminate = mask !== 0 && mask !== 65535;
+            channels.forEach((checkbox, channel) => { checkbox.checked = this._channelOn(channel, mask); });
+        };
+        apply(this.mco);
+        this._registerUIControl('mco', checkboxes, apply);
+        return row;
+    }
+
+    _createRespondControl() {
+        const keys = ['rg', 'rs', 'rx'];
+        const { row, checkboxes } = this._createCheckboxRow('Respond to', keys.map((key, index) =>
+            [key, ['GM', 'GS', 'XG'][index], checked => this.setParameters({ [key]: checked })]));
+        checkboxes.forEach((checkbox, index) => {
+            checkbox.checked = this[keys[index]];
+            this._registerUIControl(keys[index], [checkbox], value => { checkbox.checked = !!value; });
+        });
+        return row;
+    }
+
+    _channelOn(channel, mask = this.mco) {
+        return !(mask >> channel & 1);
+    }
+
     _createMixer(container) {
         const meter = document.createElement('div');
         meter.className = 'soundfont-voice-meter';
         const label = document.createElement('span');
         label.textContent = 'Voices';
-        this._voiceValue = document.createElement('strong');
+        const value = document.createElement('strong');
+        this._voiceCount = document.createElement('span');
+        this._voiceLimit = document.createElement('span');
+        value.append(this._voiceCount, ' / ', this._voiceLimit);
         this._voiceBar = document.createElement('div');
         this._voiceBar.className = 'soundfont-voice-bar';
-        meter.append(label, this._voiceValue, this._voiceBar);
+        meter.append(label, value, this._voiceBar);
         this._voiceMeter = meter;
         container.appendChild(meter);
         const scroll = document.createElement('div'), table = document.createElement('table');
@@ -450,7 +544,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             patch.addEventListener('change', () => {
                 const key = Number(patch.value);
                 if (Number.isInteger(key) && key >= 0) this._sendMixerAction({ type: 'program', channel,
-                    bank: Math.floor(key / 128), program: key % 128 });
+                    bank: Math.floor(key / 128), program: key % 128, xg: this._mixerState?.system === 3 });
             });
             const keyboard = document.createElement('canvas');
             keyboard.width = 384;
@@ -609,7 +703,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     _renderPresetSelection() {
         for (const [channel, row] of (this._mixerRows || []).entries()) {
             const data = this._mixerState?.channels[channel];
-            const percussion = data?.presetIndex !== undefined && data.presetIndex !== 0xffff ? data.bank === 128 : channel === 9;
+            const percussion = data?.percussion ?? (channel === 9);
             if (row.presetMenu === this._presets && row.percussion === percussion) continue;
             row.presetMenu = this._presets;
             row.percussion = percussion;
@@ -723,11 +817,13 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     }
 
     handleMixerTelemetry(frame) {
-        if (frame?.frameType !== 35 || frame.formatVersion !== 2 || frame.payload?.byteLength !== 584) return;
+        if (frame?.frameType !== 35 || frame.formatVersion !== 3 || frame.payload?.byteLength !== 588) return;
         const payload = frame.payload;
         const voices = payload.getUint16(0, true), limit = payload.getUint16(2, true);
         const stolenReleased = payload.getUint16(4, true), stolenHeld = payload.getUint16(6, true);
-        if (limit < 1 || limit > 1024 || voices > limit) return;
+        // 1 = GM, 2 = GS, 3 = XG: the standard the song's latest system reset selected.
+        const system = payload.getUint8(584);
+        if (limit < 1 || limit > 1024 || voices > limit || system < 1 || system > 3) return;
         const channels = [];
         for (let channel = 0; channel < 16; channel++) {
             const offset = 8 + channel * 32;
@@ -736,6 +832,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
                 expression: payload.getUint8(offset + 5), reverb: payload.getUint8(offset + 6),
                 chorus: payload.getUint8(offset + 7), mute: !!(payload.getUint8(offset + 8) & 1),
                 solo: !!(payload.getUint8(offset + 8) & 2),
+                percussion: !!(payload.getUint8(offset + 8) & 4),
                 sourceProgram: payload.getUint8(offset + 9), presetIndex: payload.getUint16(offset + 10, true),
                 voices: payload.getUint16(offset + 12, true), sourceBankMsb: payload.getUint8(offset + 14),
                 sourceBankLsb: payload.getUint8(offset + 15),
@@ -748,7 +845,9 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             if (!Number.isFinite(data.levelPeak) || data.levelPeak < 0) return;
             channels.push(data);
         }
-        this._mixerState = { voices, limit, channels, endFrame: frame.endFrame };
+        const systemChanged = system !== this._mixerState?.system;
+        this._mixerState = { voices, limit, system, channels, endFrame: frame.endFrame };
+        if (systemChanged) this._renderPlayerStatus();
         if (stolenHeld || stolenReleased) this._noteVoiceShortage(stolenHeld, stolenReleased);
         this._renderPresetSelection();
         this._mixerLevelFrame = this._selectedTab === 'mixer' && this._mixerVisible && !document.hidden
@@ -773,7 +872,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     }
 
     _mixerChannelEnabled(channel, controlsEnabled = this._mixerControlsEnabled()) {
-        return controlsEnabled && (this.mc === 0 || this.mc === channel + 1);
+        return controlsEnabled && this._channelOn(channel);
     }
 
     _previewMixerAt(event, canvas) {
@@ -808,13 +907,14 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         const active = this.enabled !== false && this._sectionEnabled !== false;
         const voices = active ? state?.voices ?? null : 0;
         const limit = state?.limit ?? this.pl;
-        if (this._voiceValue) this._voiceValue.textContent = `${voices ?? '—'} / ${limit}`;
+        if (this._voiceCount) this._voiceCount.textContent = voices ?? '—';
+        if (this._voiceLimit) this._voiceLimit.textContent = limit;
         if (this._voiceBar) this._voiceBar.style.backgroundSize = `${(voices ?? 0) / limit * 100}% 100%`;
         const controlsEnabled = this._mixerControlsEnabled();
         for (const [channel, row] of (this._mixerRows || []).entries()) {
             const data = state?.channels[channel];
             const enabled = this._mixerChannelEnabled(channel, controlsEnabled);
-            row.row.dataset.filtered = String(this.mc !== 0 && this.mc !== channel + 1);
+            row.row.dataset.filtered = String(!this._channelOn(channel));
             row.patch.disabled = !enabled || !this._presets.length || !!this._pending;
             row.mute.disabled = row.solo.disabled = !enabled;
             for (const knob of row.knobs) {
@@ -954,7 +1054,8 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._resetMixerKnobDrags();
         this._resetMixerFlashes();
         this._mixerRows = [];
-        this._tabs = this._voiceMeter = this._voiceValue = this._voiceBar = this._bankSummary = this._preparationProgress = null;
+        this._tabs = this._voiceMeter = this._voiceCount = this._voiceLimit = this._voiceBar =
+            this._bankSummary = this._preparationProgress = null;
         this._observedPreparation = null;
         super.cleanup();
     }

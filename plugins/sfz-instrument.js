@@ -497,11 +497,16 @@ class SFZInstrumentPlugin extends PluginBase {
         this._renderActiveSwitchLabels();
     }
 
+    // An instrument with a MIDI channel selection overrides this.
+    _channelOn() {
+        return true;
+    }
+
     _renderActiveSwitchLabels() {
         if (!this._currentSwitchLabels) return;
         const values = [];
         for (const [channel, key] of (this._activeSwitches || []).entries()) {
-            if (key < 0 || this.mc > 0 && channel !== this.mc - 1) continue;
+            if (key < 0 || !this._channelOn(channel)) continue;
             const names = this._instrumentPresentation?.switches?.filter(item => key >= item.first && key <= item.last).map(item => item.label);
             if (names?.length) values.push(`Channel ${channel + 1}: ${[...new Set(names)].join(', ')}`);
         }

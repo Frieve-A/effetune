@@ -1,6 +1,7 @@
 import FFT from './fft.js';
 import { analyzeImpulseResponse } from './analysis.js';
 import { applyInterfaceCalibration } from './interface-calibration.js';
+import { MIN_KEPT_SHARE } from './recording-gaps.js';
 
 const MAX_FFT = 2 ** 23;
 
@@ -119,6 +120,54 @@ function peakIndex(data, start, end) {
     return position;
 }
 
+// A repetition whose capture lost or inserted samples, or was disturbed by noise, differs from the
+// others far more than their noise does. Repetitions are compared in pairs and bands: a pair's residual
+// in a band is half their difference (each one's deviation from the pair's mean) relative to the
+// repetition's own energy there. A band's limit is CONSISTENT_RESIDUAL; with three or more repetitions
+// it is raised to OUTLIER_FACTOR times the band's closest pair, which shows this measurement's own
+// noise. A repetition is kept when at least half of the others stay within the limit in every band,
+// so repetitions disturbed alike cannot vouch for each other. Three or more repetitions are compared
+// in octave bands, where a slip shows in the octaves it moved. Two repetitions give no noise estimate,
+// so they are compared over the whole valid band as one band.
+const OUTLIER_FACTOR = 10;
+const CONSISTENT_RESIDUAL = 0.01;
+
+function consistentRepetitions(windows, sampleRate, minFrequency, maxFrequency) {
+    const count = windows.length;
+    if (count < 2) return { kept: [0], excess: [0] };
+    const size = 2 ** Math.ceil(Math.log2(windows[0].length));
+    const spectra = windows.map(window => transform(window, size));
+    const bands = [];
+    const step = count > 2 ? 2 : Infinity;
+    for (let low = minFrequency; low < maxFrequency; low *= step) {
+        bands.push([Math.ceil(low * size / sampleRate), Math.ceil(Math.min(step * low, maxFrequency) * size / sampleRate)]);
+    }
+    const bandSums = term => bands.map(([from, to]) => {
+        let sum = 0;
+        for (let k = from; k < to; k++) sum += term(k);
+        return sum;
+    });
+    const energy = spectra.map(({ real, imag }) => bandSums(k => real[k] ** 2 + imag[k] ** 2));
+    // relative[r][s][b]: the pair's difference in band b relative to repetition r's energy there.
+    const relative = spectra.map(() => new Array(count).fill(null));
+    for (let r = 0; r < count; r++) {
+        for (let s = r + 1; s < count; s++) {
+            const a = spectra[r], b = spectra[s];
+            const difference = bandSums(k => ((a.real[k] - b.real[k]) ** 2 + (a.imag[k] - b.imag[k]) ** 2) / 4);
+            relative[r][s] = difference.map((value, band) => (value > 0 ? value / energy[r][band] : 0));
+            relative[s][r] = difference.map((value, band) => (value > 0 ? value / energy[s][band] : 0));
+        }
+    }
+    const limits = bands.map((_, band) => Math.max(CONSISTENT_RESIDUAL, count > 2
+        ? OUTLIER_FACTOR * Math.min(...relative.flatMap(row => row.flatMap(pair => (pair ? [pair[band]] : []))))
+        : 0));
+    // excess[r]: the largest band residual relative to the band's limit, against the closest half of the others.
+    const half = Math.ceil((count - 1) / 2) - 1;
+    const excess = relative.map(row => row.flatMap(pair =>
+        (pair ? [Math.max(...pair.map((value, band) => value / limits[band]))] : [])).sort((x, y) => x - y)[half]);
+    return { kept: excess.flatMap((value, r) => (value <= 1 ? [r] : [])), excess };
+}
+
 export function analyzeEssRecording(recording, sweep, {
     repetitions = 1, playbackOffsetSamples = Math.round(sweep.sampleRate * 0.55),
     outputTimeReference = 'unknown', levelDb = 0, overloaded = false, calibration = null,
@@ -157,9 +206,10 @@ export function analyzeEssRecording(recording, sweep, {
             validMinFrequency, validMaxFrequency: orderMaxFrequency };
     });
     if (orders[1].validMaxFrequency <= orders[1].validMinFrequency) reasons.add('insufficient-harmonic-band');
-    let firstPeak = null;
-    let firstResponse = null;
-    let latency = null;
+    const referenceIndex = sweep.length - 1;
+    // A known path latency replaces the peak search, so silent or noise-only captures stay aligned.
+    const fixed = fixedLatencySamples !== undefined;
+    const captures = [];
     for (let repeat = 0; repeat < repetitions; repeat++) {
         const offset = playbackOffsetSamples + repeat * plan.intervalSamples;
         if (offset + sweep.length + Math.round(2 * sampleRate) > recording.length) {
@@ -167,19 +217,35 @@ export function analyzeEssRecording(recording, sweep, {
         }
         const capture = recording.subarray(offset, Math.min(recording.length, offset + plan.intervalSamples));
         const response = convolveLinear(capture, sweep.inverseFilter);
-        const referenceIndex = sweep.length - 1;
-        // A known path latency replaces the peak search, so silent or noise-only captures stay aligned.
-        const fixed = fixedLatencySamples !== undefined;
         const peak = fixed ? referenceIndex + fixedLatencySamples
             : peakIndex(response, referenceIndex, referenceIndex + Math.round(sampleRate));
-        if (!fixed && !(Math.abs(response[peak]) > 1e-8)) throw new RangeError('No usable ESS response');
-        // Compare repeated sweeps over the same band. Within one sweep, frequency-dependent
-        // group delay cannot be distinguished from clock mismatch without a known path.
-        if (firstPeak === null) {
-            firstPeak = peak;
-            firstResponse = response;
-            latency = peak - referenceIndex;
-        } else if (Math.abs(peak - firstPeak) > 2) reasons.add('clock-drift');
+        if (fixed || Math.abs(response[peak]) > 1e-8) captures.push({ response, peak });
+    }
+    if (!captures.length) throw new RangeError('No usable ESS response');
+    const linear = orders[0];
+    const { kept, excess } = consistentRepetitions(captures.map(({ response, peak }) => {
+        const start = peak - linear.onsetIndex;
+        if (start < 0 || start + linear.data.length > response.length) throw new RangeError('Incomplete ESS separation');
+        return response.subarray(start, start + linear.data.length);
+    }), sampleRate, validMinFrequency, validMaxFrequency);
+    const recordingGaps = kept.length === repetitions ? null
+        : kept.length < MIN_KEPT_SHARE * repetitions ? 'interrupted' : 'corrected';
+    // When no repetition agrees with enough others, none is more trustworthy, so all of them are averaged.
+    const used = kept.length ? kept.map(index => captures[index]) : captures;
+    if (recordingGaps) {
+        console.info('ESS repetitions kept: ' + kept.length + ' of ' + repetitions +
+            ', difference from the closest half of the others over the limit, per aligned repetition: ' +
+            excess.map(value => value.toFixed(2)).join(', '));
+    }
+    if (recordingGaps === 'interrupted') reasons.add('inconsistent-capture');
+    const peaks = used.map(({ peak }) => peak);
+    // Compare repeated sweeps over the same band. Within one sweep, frequency-dependent
+    // group delay cannot be distinguished from clock mismatch without a known path.
+    if (Math.max(...peaks) - Math.min(...peaks) > 2) reasons.add('clock-drift');
+    // Lost or inserted samples shift everything recorded after them, so the earliest kept repetition
+    // is the least exposed one.
+    const latency = peaks[0] - referenceIndex;
+    for (const { response, peak } of used) {
         for (const entry of orders) {
             if (entry.order > 1 && entry.validMaxFrequency <= entry.validMinFrequency) continue;
             const center = peak - Math.round(sweep.sweepConstant * Math.log(entry.order) * sampleRate);
@@ -188,23 +254,10 @@ export function analyzeEssRecording(recording, sweep, {
             for (let i = 0; i < entry.data.length; i++) {
                 const value = response[start + i] / referenceGain;
                 if (!Number.isFinite(value)) throw new RangeError('Non-finite ESS response');
-                entry.data[i] += value / repetitions;
+                entry.data[i] += value / used.length;
             }
         }
     }
-    // Repetitions must agree after alignment: missing blocks and unstable paths invalidate harmonic ratios.
-    if (repetitions > 1) {
-        const linear = orders[0];
-        let difference = 0;
-        let energy = 0;
-        for (let i = 0; i < linear.data.length; i++) {
-            const value = firstResponse[firstPeak - linear.onsetIndex + i] / referenceGain;
-            difference += (value - linear.data[i]) ** 2;
-            energy += value * value;
-        }
-        if (difference > energy * 0.01) reasons.add('inconsistent-capture');
-    }
-    const linear = orders[0];
     let linearEnergy = 0;
     let unresolvedTail = 0;
     const supportedHarmonics = orders.slice(1).filter(entry => entry.validMaxFrequency > entry.validMinFrequency);
@@ -252,7 +305,7 @@ export function analyzeEssRecording(recording, sweep, {
     const result = { data: correctedLinear, sampleRate, onsetIndex: linearPre, prerollSamples: linearPre,
         trimStartSamples: outputTimeReference === 'audio-context' ? latency - linearPre : null,
         outputTimeReference, refScale: 1, peakDb: 20 * Math.log10(peakAmplitude), irValid: true,
-        acquisitionMethod: 'ess', harmonicAnalysis };
+        acquisitionMethod: 'ess', harmonicAnalysis, ...(recordingGaps ? { recordingGaps } : {}) };
     if (calibration) Object.assign(result, applyInterfaceCalibration(result, calibration, {
         sampleRate, minFrequency: sweep.startFrequency, maxFrequency: sweep.endFrequency,
         outputLength: result.data.length, prerollSamples: linearPre

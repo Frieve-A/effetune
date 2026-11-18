@@ -4,9 +4,9 @@ import { probeDsdSource } from '../../js/audio/dsd/dsd-parser.js';
 import { createDsfFixture, createDffFixture, createDsdReader, createVirtualDsfReader,
     dffChunk, writeAscii } from '../helpers/dsd-fixture.mjs';
 
-test('DSF accepts supported rates, mono/stereo, both bit orders, and a partial final byte', async () => {
+test('DSF accepts supported rates, mono to 5.1, both bit orders, and a partial final byte', async () => {
     for (const sampleRate of [2822400, 5644800, 11289600]) {
-        for (const channelCount of [1, 2]) {
+        for (const channelCount of [1, 2, 3, 4, 5, 6]) {
             for (const bitOrder of ['lsb', 'msb']) {
                 const reader = createDsdReader(createDsfFixture({ sampleRate, channelCount, bitOrder, sampleCount: 40001 }));
                 const metadata = await probeDsdSource(reader);
@@ -31,18 +31,22 @@ test('raw DFF reads big endian properties and skips unknown odd padded chunks', 
         assert.equal(metadata.channelCount, 2);
         assert.equal(metadata.bitOrder, 'msb');
     }
+    const surround = await probeDsdSource(createDsdReader(createDffFixture({ channelCount: 6 })));
+    assert.equal(surround.channelCount, 6);
+    assert.equal(surround.sampleCount, 40000);
 });
 
 test('recognized unsupported DSD is distinct from corrupt DSD and ordinary media', async () => {
     assert.equal(await probeDsdSource(createDsdReader(new Uint8Array([1, 2, 3]))), null);
     assert.equal(await probeDsdSource(createDsdReader(new Uint8Array(100))), null);
     for (const bytes of [createDsfFixture({ sampleRate: 22579200 }),
-        createDsfFixture({ sampleRate: 3072000 }), createDsfFixture({ channelCount: 6 }),
-        createDffFixture({ compression: 'BAD ' }), createDffFixture({ channelCount: 6 })]) {
+        createDsfFixture({ sampleRate: 3072000 }), createDsfFixture({ channelCount: 7 }),
+        createDffFixture({ compression: 'BAD ' }), createDffFixture({ channelCount: 7 })]) {
         await assert.rejects(probeDsdSource(createDsdReader(bytes)), { code: 'DSD_UNSUPPORTED' });
     }
     const valid = createDsfFixture();
-    for (const bytes of [valid.slice(0, 4), valid.slice(0, -1)]) {
+    for (const bytes of [valid.slice(0, 4), valid.slice(0, -1),
+        createDsfFixture({ channelCount: 6, channelType: 2 })]) {
         await assert.rejects(probeDsdSource(createDsdReader(bytes)), { code: 'DSD_CORRUPT' });
     }
     const unsafe = valid.slice();

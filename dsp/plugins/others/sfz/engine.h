@@ -58,9 +58,25 @@ struct MidiChannel {
   int last = -1, previous = -1, bend = 0, inputBend = 0;
   std::uint32_t program = 0u, aftertouch = 0u;
   std::uint32_t bank = 0u, melodicBank = 0u, drumMode = 0u, preset = UINT32_MAX;
+  // The standard selected by the last system reset; every channel holds the same value.
+  std::uint32_t system = ET_MIDI_SYSTEM_GM;
+  bool xgDrumBank = false;
   std::uint32_t inputAftertouch = 0u;
   float bendRange = 2.0F;
 };
+// The SF2 bank a channel selects: percussion for a drum part or an XG drum bank.
+std::uint32_t channelBank(const MidiChannel &state) noexcept {
+  return state.drumMode || state.xgDrumBank ? 128u : state.melodicBank;
+}
+// Latches the bank at a Program Change. GM and GS select the melodic bank with CC0; XG selects
+// it with CC32 and reserves CC0 126 and 127 for its drum banks.
+void applyProgramChange(MidiChannel &state, std::uint32_t program) noexcept {
+  const bool xg = state.system == ET_MIDI_SYSTEM_XG;
+  state.program = program;
+  state.melodicBank = state.cc[xg ? 32u : 0u];
+  state.xgDrumBank = xg && state.cc[0] >= 126u;
+  state.bank = channelBank(state);
+}
 void applyChannelControllerState(MidiChannel &state, std::uint32_t key,
                                  std::uint32_t value) noexcept {
   state.cc[key] = state.inputCC[key] = static_cast<std::uint8_t>(value);
@@ -197,7 +213,7 @@ struct RenderState {
   bool midi_running_ = false, midi_paused_ = false, midi_ended_ = false,
        midi_history_requested_ = false, midi_history_pending_ = false;
   std::uint32_t max_frames_ = 0u, midi_count_ = 0u, midi_generation_ = 0u, midi_flags_ = 0u,
-                midi_channel_ = 0u, midi_selected_channel_ = 0u, midi_note_id_ = 0u,
+                midi_channel_ = 0u, midi_channel_mask_ = 0xffffu, midi_note_id_ = 0u,
                 midi_trigger_ = 0u;
   int midi_controller_ = -1;
   bool midi_state_only_ = false, midi_reattack_ = false, midi_first_ = true;
@@ -209,6 +225,8 @@ struct RenderState {
   std::array<std::uint32_t, 16> channel_revision_{};
   std::array<int, 16> sf2_override_cache_{};
   bool sf2_fallback_cache_ = true;
+  std::uint32_t respond_cache_ = 7u;
+  int transpose_cache_ = 0;
   // Compatibility mode applied to sounding voices; a change refreshes their modulation.
   bool sf2_strict_applied_ = false;
   std::uint32_t sf2_frame_ = 0, sf2_block_frames_ = 0, sf2_fx_position_ = 0,
@@ -275,6 +293,7 @@ public:
     if constexpr (Midi) {
       params_.automaticFallback = 1.0F;
       params_.previewMidi = -1.0F;
+      params_.respondGm = params_.respondGs = params_.respondXg = 1.0F;
     }
   }
   static std::uint32_t assetCapacityForSlot(std::uint32_t slot) noexcept {
@@ -665,7 +684,7 @@ public:
       return ET_ERR_STATE;
     for (auto index = 0u; index < count; ++index) {
       if (systemResetEvent(events[index])) {
-        initializeMidiChannels(*forecast_channels_, true);
+        initializeMidiChannels(*forecast_channels_, true, events[index].note_id);
         continue;
       }
       if (drumModeEvent(events[index])) {
@@ -675,19 +694,16 @@ public:
       const auto message = events[index].message;
       const auto channel = message & 15u, kind = message & 0xf0u;
       const auto key = (message >> 8u) & 127u, value = (message >> 16u) & 127u;
-      if constexpr (Midi)
-        if (midi_selected_channel_ && midi_selected_channel_ != channel + 1u)
-          continue;
+      if (!midiChannelOn(channel))
+        continue;
       auto &state = (*forecast_channels_)[channel];
       if (kind == 0x90u && value)
         forecastNoteSamples(*forecast_channels_, channel, key, value, window);
       else if (kind == 0xb0u) {
         applyChannelControllerState(state, key, value);
-      } else if (kind == 0xc0u) {
-        state.program = key;
-        state.melodicBank = state.cc[0];
-        state.bank = state.drumMode ? 128u : state.melodicBank;
-      } else if (kind == 0xd0u)
+      } else if (kind == 0xc0u)
+        applyProgramChange(state, key);
+      else if (kind == 0xd0u)
         state.aftertouch = key;
       else if (kind == 0xa0u)
         state.pressure[key] = static_cast<std::uint8_t>(value);
@@ -1128,7 +1144,7 @@ public:
         for (auto index = 0u; index < count; ++index) {
           const auto message = events[index].message;
           hydrateChannelState(message);
-          if (!midi_selected_channel_ || midi_selected_channel_ == (message & 15u) + 1u)
+          if (midiChannelOn(message & 15u))
             acceptGlobalState(message);
         }
         if (count)
@@ -1147,7 +1163,7 @@ public:
         for (auto index = 0u; index < count; ++index) {
           const auto &event = events[index];
           if (systemResetEvent(event)) {
-            initializeMidiChannels(*midi_channels_);
+            initializeMidiChannels(*midi_channels_, false, event.note_id);
             accepted_global_cc_ = (*midi_channels_)[0].normalizedCC;
             accepted_global_extended_ = {8192.0F / 16383.0F, 0, 0};
             ++midi_revision_;
@@ -1161,8 +1177,7 @@ public:
           const auto message = event.message;
           if (!(event.flags & ET_MIDI_HYDRATE_GLOBAL_CC))
             hydrateChannelState(message);
-          if (!(event.flags & ET_MIDI_HYDRATE_CHANNEL_ONLY) &&
-              (!midi_selected_channel_ || midi_selected_channel_ == (message & 15u) + 1u))
+          if (!(event.flags & ET_MIDI_HYDRATE_CHANNEL_ONLY) && midiChannelOn(message & 15u))
             acceptGlobalState(message);
         }
         modulation_cache_bank_ = nullptr;
@@ -1267,7 +1282,10 @@ public:
 
 private:
   void writeMixerTelemetry(TelemetryWriter &writer) noexcept {
-    std::array<std::uint8_t, 584> payload{};
+    std::array<std::uint8_t, 588> payload{};
+    payload[584] =
+        static_cast<std::uint8_t>(midi_channels_ ? (*midi_channels_)[0].system
+                                                 : static_cast<std::uint32_t>(ET_MIDI_SYSTEM_GM));
     std::uint16_t total = 0;
     for (auto channel = 0u; channel < 16u; ++channel) {
       auto *row = payload.data() + 8u + 32u * channel;
@@ -1279,6 +1297,8 @@ private:
       if (!midi_channels_)
         continue;
       const auto &state = (*midi_channels_)[channel];
+      if (state.bank == 128u)
+        row[8] |= 4u;
       row[3] = state.cc[7];
       row[4] = state.cc[10];
       row[5] = state.cc[11];
@@ -1313,7 +1333,7 @@ private:
     if (midi_meters_.enabled())
       for (auto channel = 0u; channel < 16u; ++channel)
         binary_io::writeF32(payload.data() + 520u + channel * 4u, midi_meters_.peak(channel));
-    if (writer.write(35u, 2u, payload.data(), static_cast<std::uint16_t>(payload.size()))) {
+    if (writer.write(35u, 3u, payload.data(), static_cast<std::uint16_t>(payload.size()))) {
       stolen_released_ = stolen_held_ = 0u;
       if (midi_meters_.enabled())
         midi_meters_.consume();
@@ -1512,9 +1532,9 @@ private:
           reconstructReattack(reattack, true);
           collectVoice(reattack);
         }
-      if ((flags & 8u) && bank()->sf2_)
+      if ((flags & 8u) && bank()->sf2_ && respondsTo((*forecast_channels_)[0].system, true))
         for (auto channel = 0u; channel < (Midi ? 16u : 1u); ++channel) {
-          if (midi_selected_channel_ && midi_selected_channel_ != channel + 1u)
+          if (!midiChannelOn(channel))
             continue;
           const auto presetIndex = sf2PresetIndex(channel, (*forecast_channels_)[channel], true);
           if (presetIndex == UINT32_MAX)
@@ -1572,7 +1592,7 @@ private:
         return ET_ERR_ARGS;
       forecast_offset_ = forecast_last_offset_ = event.offset_frames;
       if (systemResetEvent(event)) {
-        initializeMidiChannels(*forecast_channels_, true);
+        initializeMidiChannels(*forecast_channels_, true, event.note_id);
         for (auto channel = 0u; channel < 16u; ++channel)
           refreshForecastPitch(channel, 0xb0u, 0u, true, true);
         continue;
@@ -1583,7 +1603,7 @@ private:
       }
       const auto message = event.message, channel = message & 15u, kind = message & 0xf0u;
       const auto key = (message >> 8u) & 127u, value = (message >> 16u) & 127u;
-      if (midi_selected_channel_ && midi_selected_channel_ != channel + 1u)
+      if (!midiChannelOn(channel))
         continue;
       auto &state = (*forecast_channels_)[channel];
       const auto range = state.bendRange;
@@ -1592,11 +1612,9 @@ private:
                             bank()->sf2_ ? window : window - event.offset_frames);
       else if (kind == 0xb0u)
         applyChannelControllerState(state, key, value);
-      else if (kind == 0xc0u) {
-        state.program = key;
-        state.melodicBank = state.cc[0];
-        state.bank = state.drumMode ? 128u : state.melodicBank;
-      } else if (kind == 0xd0u)
+      else if (kind == 0xc0u)
+        applyProgramChange(state, key);
+      else if (kind == 0xd0u)
         state.aftertouch = key;
       else if (kind == 0xa0u)
         state.pressure[key] = static_cast<std::uint8_t>(value);
@@ -1782,13 +1800,15 @@ private:
   void forecastNoteSamples(const std::array<MidiChannel, 16> &channels, std::uint32_t channel,
                            std::uint32_t key, std::uint32_t velocity,
                            std::uint32_t window) noexcept {
-    const auto musicalKey = logicalNoteKey(key);
+    const auto &state = channels[channel];
+    if (!respondsTo(state.system, true))
+      return;
+    const auto musicalKey = transposedKey(logicalNoteKey(key), state, true);
     if (musicalKey < 0 || musicalKey > 127)
       return;
     const auto sampleKey = sampleKeyForTarget(musicalKey);
     if (sampleKey < 0 || sampleKey > 127)
       return;
-    const auto &state = channels[channel];
     std::uint32_t selected = UINT32_MAX;
     if (bank()->sf2_) {
       selected = sf2PresetIndex(channel, state, true);
@@ -1970,17 +1990,17 @@ private:
     if (!bank() || bank()->state_ != ET_ASSET_STATE_ACTIVE)
       return 0;
     const std::uint64_t bytes =
-        200u + 131u * 8u + 16u * 7736u + kVoices * 180u +
+        200u + 131u * 8u + 16u * 7744u + kVoices * 180u +
         static_cast<std::uint64_t>(bank()->group_count_) * 8u + bank()->timer_frames_.size() * 8u +
         (script_session_ ? ScriptSession::checkpointBytes() + script::VM::checkpointBytes() : 0u);
     return bytes <= 32u * 1024u * 1024u ? static_cast<std::uint32_t>(bytes) : 0u;
   }
   template <bool Reading> bool checkpointState(script::CheckpointIO<Reading> &io) noexcept {
-    auto magic = 0x31434d45u, version = 9u, size = checkpointStorageSize();
+    auto magic = 0x31434d45u, version = 10u, size = checkpointStorageSize();
     auto profile = (kVersion << 1u) | (Midi ? 1u : 0u);
     auto fingerprint = bank()->fingerprint_;
     double oldRate = rate_;
-    auto channel = midi_selected_channel_;
+    auto channels = midi_channel_mask_;
     auto scripted = script_session_ != nullptr;
     auto groups = bank()->group_count_;
     io.field(magic);
@@ -1989,16 +2009,15 @@ private:
     io.field(profile);
     io.field(fingerprint);
     io.field(oldRate);
-    io.field(channel);
+    io.field(channels);
     if constexpr (Reading) {
-      if (magic != 0x31434d45u || version != 9u || size != io.length ||
+      if (magic != 0x31434d45u || version != 10u || size != io.length ||
           profile != ((kVersion << 1u) | (Midi ? 1u : 0u)) || fingerprint != bank()->fingerprint_ ||
           !std::isfinite(oldRate) || oldRate < 1 || oldRate > 768000)
         return false;
-      if constexpr (Midi)
-        if (channel != static_cast<unsigned>(std::round(bounded(params_.midiChannel, 0, 16, 0))))
-          return false;
-      midi_selected_channel_ = channel;
+      if (channels != midiChannelMask())
+        return false;
+      midi_channel_mask_ = channels;
     }
     io.field(midi_generation_);
     io.field(midi_clock_);
@@ -2123,6 +2142,8 @@ private:
       io.field(state.bank);
       io.field(state.melodicBank);
       io.field(state.drumMode);
+      io.field(state.system);
+      io.field(state.xgDrumBank);
       io.field(state.preset);
       io.field(state.aftertouch);
       io.field(state.inputAftertouch);
@@ -2132,7 +2153,10 @@ private:
           state.inputBend > 8191 || state.program > 127 || state.aftertouch > 127 ||
           state.inputAftertouch > 127 || state.bendRange < 0 || state.bendRange > 129 ||
           state.bank > 128 || state.melodicBank > 127 || state.drumMode > 3 ||
-          state.bank != (state.drumMode ? 128u : state.melodicBank) ||
+          state.system < ET_MIDI_SYSTEM_GM || state.system > ET_MIDI_SYSTEM_XG ||
+          state.system != (*midi_channels_)[0].system ||
+          (state.xgDrumBank && state.system != ET_MIDI_SYSTEM_XG) ||
+          state.bank != channelBank(state) ||
           (state.preset != UINT32_MAX && (!bank()->sf2_ || state.preset >= bank()->preset_count_)))
         io.ok = false;
     }
@@ -3071,12 +3095,26 @@ private:
   }
   void synchronizeMidiChannel() noexcept {
     if constexpr (Midi) {
-      const auto selected =
-          static_cast<std::uint32_t>(std::round(bounded(params_.midiChannel, 0, 16, 0)));
-      if (selected != midi_selected_channel_) {
+      const auto channels = midiChannelMask();
+      if (channels != midi_channel_mask_) {
         retireMidi();
         resetMidi();
-        midi_selected_channel_ = selected;
+        midi_channel_mask_ = channels;
+      }
+      const auto transpose = transposeSemitones();
+      if (transpose != transpose_cache_) {
+        transpose_cache_ = transpose;
+        clearSampleForecast();
+      }
+      const auto respond = respondMask();
+      if (respond != respond_cache_) {
+        respond_cache_ = respond;
+        // Notes of a standard that is no longer answered fall silent.
+        if (midi_channels_ && !respondsTo((*midi_channels_)[0].system)) {
+          retireMidi();
+          clearPausedVoices();
+        }
+        clearSampleForecast();
       }
     }
     if (bank() && bank()->sf2_) {
@@ -3096,6 +3134,46 @@ private:
     } else {
       return true;
     }
+  }
+  // The channel selector chooses all or one; each bit in midiChannelsOff excludes that channel.
+  std::uint32_t midiChannelMask() const noexcept {
+    if constexpr (Midi) {
+      const auto channel =
+          static_cast<unsigned>(std::round(bounded(params_.midiChannel, 0, 16, 0)));
+      const auto disabled =
+          static_cast<unsigned>(std::round(bounded(params_.midiChannelsOff, 0, 65535, 0)));
+      return (channel ? 1u << (channel - 1u) : 0xffffu) & ~disabled;
+    } else {
+      return 0xffffu;
+    }
+  }
+  bool midiChannelOn(std::uint32_t channel) const noexcept {
+    return (midi_channel_mask_ >> channel) & 1u;
+  }
+  int transposeSemitones(bool staged = false) const noexcept {
+    if constexpr (Midi) {
+      const auto &parameters = staged && params_pending_ ? staged_params_ : params_;
+      return static_cast<int>(std::round(bounded(parameters.transpose, -12, 12, 0)));
+    } else {
+      return 0;
+    }
+  }
+  // Transpose moves melodic parts only; a drum part keeps every key on its own instrument.
+  int transposedKey(int key, const MidiChannel &state, bool staged = false) const noexcept {
+    return key < 0 || state.bank == 128u ? key : key + transposeSemitones(staged);
+  }
+  // Bit n is set when notes sound while the standard ET_MIDI_SYSTEM_GM + n is current.
+  std::uint32_t respondMask(bool staged = false) const noexcept {
+    if constexpr (Midi) {
+      const auto &parameters = staged && params_pending_ ? staged_params_ : params_;
+      return (parameters.respondGm >= .5F ? 1u : 0u) | (parameters.respondGs >= .5F ? 2u : 0u) |
+             (parameters.respondXg >= .5F ? 4u : 0u);
+    } else {
+      return 7u;
+    }
+  }
+  bool respondsTo(std::uint32_t system, bool staged = false) const noexcept {
+    return (respondMask(staged) >> (system - ET_MIDI_SYSTEM_GM)) & 1u;
   }
   int sf2PresetOverride(std::uint32_t channel, bool staged = false) const noexcept {
     int selected = -1;
@@ -3132,9 +3210,7 @@ private:
     if (kind == 0xb0u)
       applyChannelControllerState(state, key, value);
     else if (kind == 0xc0u) {
-      state.program = key;
-      state.melodicBank = state.cc[0];
-      state.bank = state.drumMode ? 128u : state.melodicBank;
+      applyProgramChange(state, key);
       if (bank()->sf2_) {
         selectSf2Preset(channel);
       }
@@ -3181,7 +3257,7 @@ private:
     const auto channel = (event.message >> 8u) & 15u;
     auto &state = channels[channel];
     state.drumMode = (event.message >> 16u) & 3u;
-    state.bank = state.drumMode ? 128u : state.melodicBank;
+    state.bank = channelBank(state);
     if (bank() && bank()->sf2_)
       state.preset = sf2PresetIndex(channel, state, staged);
   }
@@ -3190,7 +3266,8 @@ private:
            event.note_id >= ET_MIDI_SYSTEM_GM && event.note_id <= ET_MIDI_SYSTEM_XG &&
            event.render_frame_low == 0u && event.render_frame_high == 0u;
   }
-  void initializeMidiChannels(std::array<MidiChannel, 16> &channels, bool staged = false) noexcept {
+  void initializeMidiChannels(std::array<MidiChannel, 16> &channels, bool staged = false,
+                              std::uint32_t system = ET_MIDI_SYSTEM_GM) noexcept {
     channels.fill({});
     for (auto &channel : channels) {
       channel.cc[7] = 100u;
@@ -3224,15 +3301,16 @@ private:
       }
     }
     for (auto channel = 0u; channel < 16u; ++channel) {
+      channels[channel].system = system;
       channels[channel].drumMode = channel == 9u ? 1u : 0u;
-      channels[channel].bank = channels[channel].drumMode ? 128u : 0u;
+      channels[channel].bank = channelBank(channels[channel]);
       if (bank() && bank()->sf2_)
         channels[channel].preset = sf2PresetIndex(channel, channels[channel], staged);
     }
     for (auto &channel : channels)
       channel.noteOnFrames.fill(UINT64_MAX);
   }
-  void resetMidi(bool preserveEvents = false) noexcept {
+  void resetMidi(bool preserveEvents = false, std::uint32_t system = ET_MIDI_SYSTEM_GM) noexcept {
     if constexpr (Midi)
       midi_meters_.clear();
     mixer_mute_ = mixer_solo_ = 0;
@@ -3258,7 +3336,7 @@ private:
     }
     if (!midi_channels_)
       return;
-    initializeMidiChannels(*midi_channels_);
+    initializeMidiChannels(*midi_channels_, false, system);
     accepted_global_cc_ = (*midi_channels_)[0].normalizedCC;
     if (bank() && bank()->sf2_)
       for (auto channel = 0u; channel < 16u; ++channel)
@@ -3631,7 +3709,7 @@ private:
         const auto mute = mixer_mute_, solo = mixer_solo_;
         clearNotes();
         clearPausedVoices();
-        resetMidi(true);
+        resetMidi(true, event.note_id);
         invalidateForecastReceipt(true);
         if (flags & ET_MIDI_STATE_ONLY) {
           mixer_mute_ = mute;
@@ -3661,9 +3739,8 @@ private:
     }
     if (midi_paused_)
       return;
-    if constexpr (Midi)
-      if (midi_selected_channel_ != 0u && midi_selected_channel_ != (event.message & 15u) + 1u)
-        return;
+    if (!midiChannelOn(event.message & 15u))
+      return;
     ++midi_revision_;
     ++channel_event_count_;
     ++channel_revision_[event.message & 15u];
@@ -3853,9 +3930,7 @@ private:
         startVoices(60u, 60, 127u, false);
       }
     } else if (kind == 0xc0u) {
-      c.program = key;
-      c.melodicBank = c.cc[0];
-      c.bank = c.drumMode ? 128u : c.melodicBank;
+      applyProgramChange(c, key);
       if (bank() && bank()->sf2_) {
         selectSf2Preset(midi_channel_);
       }
@@ -4941,6 +5016,9 @@ private:
   }
   void startVoices(std::uint32_t midi, int target_key, std::uint32_t velocity,
                    bool preview) noexcept {
+    // A player standing by for another standard keeps tracking state without sounding notes.
+    if (!preview && !respondsTo((*midi_channels_)[0].system))
+      return;
     if (midi_trigger_ > 0 && !(bank()->trigger_mask_ & (1u << midi_trigger_)))
       return;
     const auto *incoming = script_session_ ? script_session_->find(midi_note_id_) : nullptr;
@@ -4959,6 +5037,7 @@ private:
             } else
               release(v, preview);
           }
+    target_key = transposedKey(target_key, (*midi_channels_)[midi_channel_]);
     if (target_key < 0 || target_key > 127)
       return;
     // Select a neighboring key's timbre, but tune playback to the unshifted target key.

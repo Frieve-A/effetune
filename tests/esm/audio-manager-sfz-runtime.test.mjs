@@ -6,8 +6,8 @@ import { AudioManager } from '../../js/audio-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class SoundFontPlayerPlugin {
-  constructor(sf) { this.id = 7; this.sf = sf; this.mc = 1; }
-  getParameters() { return { mc: this.mc }; }
+  constructor(sf) { this.id = 7; this.sf = sf; this.mco = 1; }
+  getParameters() { return { mco: this.mco }; }
 }
 class SFZNotePlayerPlugin {
   constructor() { this.id = 8; this.sf = 'note-bank'; }

@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:0fd06b565da00a5088ca4f9d8e553a403d6ef7fc81c61797a0d1367098e22cd7",
+  "sourceDigest": "sha256:b50656ca3d206c8dc2e58687b79af0a1848e9279c4568b6858a3d2a4591e0daa",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -965,7 +965,7 @@
     },
     {
       "name": "SoundFontPlayerPlugin",
-      "hash": 4067548753,
+      "hash": 625111408,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1179,7 +1179,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4920091,
-    "simd": 5149149
+    "baseline": 4924759,
+    "simd": 5153823
   }
 }

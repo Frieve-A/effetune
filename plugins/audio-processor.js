@@ -5615,9 +5615,9 @@ class PluginProcessor extends AudioWorkletProcessor {
         const forecast = stream.forecast, snapshot = stream.readiness;
         if (forecast?.pressure && forecast.generation === this.midiScheduler?.generation &&
             forecast.timeline === this.midiScheduler?.timeline && forecast.speed === this.midiScheduler?.speed &&
-            forecast.channel === (plugin.parameters?.mc ?? 0)) return true;
+            forecast.channel === (plugin.parameters?.mco ?? 0)) return true;
         if (!forecast?.ready || !snapshot || snapshot.pendingPages || snapshot.generation !== forecast.nativeGeneration ||
-            forecast.channel !== (plugin.parameters?.mc ?? 0)) return false;
+            forecast.channel !== (plugin.parameters?.mco ?? 0)) return false;
         if (plugin.type === 'SFZNotePlayerPlugin') return forecast.freeze === entry.sfzRuntimeFrozen;
         return forecast.generation === this.midiScheduler?.generation && forecast.timeline === this.midiScheduler?.timeline &&
             forecast.speed === this.midiScheduler?.speed && (snapshot.scope !== 1 || snapshot.readyAheadFrames > 0);
@@ -5642,7 +5642,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const readiness = stream.readinessScratch ??= {};
         const snapshot = stream.readiness = this.dspBinding.instanceStreamReadiness(entry.id, readiness);
         let forecast = stream.forecast;
-        const goal = stream.forecastGoal, channel = plugin.parameters?.mc ?? 0;
+        const goal = stream.forecastGoal, channel = plugin.parameters?.mco ?? 0;
         const changedGoal = !goal || goal.generation !== generation || goal.nativeGeneration !== nativeGeneration ||
             goal.timeline !== timeline || goal.scope !== scope || goal.speed !== speed ||
             goal.channel !== channel || note && goal.freeze !== entry.sfzRuntimeFrozen;
@@ -5662,7 +5662,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             // Until the instance syncs to this generation, its cursor may index the previous timeline.
             const cursor = known && state?.enabled && state.generation === generation ? state.cursor : 0;
             forecast = stream.forecast = { generation, nativeGeneration, timeline, speed, scope,
-                channel: plugin.parameters?.mc ?? 0, freeze: entry.sfzRuntimeFrozen,
+                channel: plugin.parameters?.mco ?? 0, freeze: entry.sfzRuntimeFrozen,
                 position, frame, delay, initialCursor: cursor, cursor, windowIndex: 0,
                 windowFrames: Math.ceil(rate * 1.5), horizon: position + 1.5 * speed,
                 reset: true, scanned: !known, ready: false, pressure: false,
@@ -7745,14 +7745,15 @@ class PluginProcessor extends AudioWorkletProcessor {
         return keepAlive;
     }
 
+    // The MIDI Channel setting as saved (a mask of the channels turned off), compared as an identity.
     _normalizedMidiChannel(value) {
-        return Number.isFinite(value) ? Math.round(Math.min(16, Math.max(0, value))) : 0;
+        return Number.isFinite(value) ? Math.round(Math.min(65535, Math.max(0, value))) : 0;
     }
 
     observeMidiOwnership(plugin, entry, assetState, enabled) {
         const scheduler = this.midiScheduler;
         const previous = scheduler.instances.get(plugin.id);
-        const channel = this._normalizedMidiChannel(plugin.parameters?.mc);
+        const channel = this._normalizedMidiChannel(plugin.parameters?.mco);
         const token = this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0;
         const active = enabled && (assetState & 255) === 3;
         const wasActive = previous?.ownershipActive === true;
@@ -7830,9 +7831,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                 let events;
                 if (action.type === 'program' && Number.isInteger(action.bank) &&
                     Number.isInteger(action.program) && action.program >= 0 && action.program < 128 &&
-                    (channel === 9 ? action.bank === 128 : action.bank >= 0 && action.bank < 128)) {
-                    events = [event(0xb0, 0, channel === 9 ? 0 : action.bank), event(0xb0, 32, 0),
-                        event(0xc0, action.program)];
+                    action.bank >= 0 && action.bank <= 128) {
+                    // Bank 128 is a drum kit: the channel is already a rhythm part, so only the
+                    // program changes. A melodic bank goes in CC32 for XG and in CC0 otherwise.
+                    events = action.bank === 128 ? [] : action.xg === true
+                        ? [event(0xb0, 0, 0), event(0xb0, 32, action.bank)]
+                        : [event(0xb0, 0, action.bank), event(0xb0, 32, 0)];
+                    events.push(event(0xc0, action.program));
                 } else if (action.type === 'control' && [7, 10, 11, 91, 93].includes(action.controller) &&
                     Number.isInteger(action.value) && action.value >= 0 && action.value < 128) {
                     events = [event(0xb0, action.controller, action.value)];
@@ -7893,7 +7898,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         return { pluginId: plugin.id, type: plugin.type, instanceId: entry.id, instanceEpoch: entry.instanceEpoch ?? 0,
             sf: plugin.parameters?.sf, channel: plugin.type === 'SoundFontPlayerPlugin' ?
-                this._normalizedMidiChannel(plugin.parameters?.mc) : 0,
+                this._normalizedMidiChannel(plugin.parameters?.mco) : 0,
             token: this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision ?? 0,
             replayEpoch: this.dspAssetCache.get(plugin.id)?.get(0)?.replayEpoch,
             graph: this.powerPolicy.workletGraphGeneration, sampleRate: globalThis.sampleRate,
@@ -7906,7 +7911,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         const plugin = this.plugins.find(item => item.id === record.pluginId);
         const token = this.dspAssetCache.get(record.pluginId)?.get(0)?.operationRevision ?? 0;
         const replay = this.dspAssetCache.get(record.pluginId)?.get(0)?.replayEpoch;
-        const channel = plugin?.type === 'SoundFontPlayerPlugin' ? this._normalizedMidiChannel(plugin.parameters?.mc) : 0;
+        const channel = plugin?.type === 'SoundFontPlayerPlugin' ? this._normalizedMidiChannel(plugin.parameters?.mco) : 0;
         if (!plugin || !entry || plugin.type !== record.type || plugin.parameters?.sf !== record.sf ||
             channel !== record.channel || (record.plannedMigration !== true &&
                 (record.instanceId !== entry.id || (record.instanceEpoch ?? 0) !== (entry.instanceEpoch ?? 0) ||
@@ -8134,7 +8139,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const enabled = plugin.enabled !== false && sectionEnabled && !this.masterBypass;
                 const token = this.dspAssetCache.get(plugin.id)?.get(0)?.operationRevision;
                 if (plugin.runtimeAssetErrorRevision > 0 && plugin.runtimeAssetErrorRevision === token) {
-                    scheduler.register(plugin.id, entry.id, token, this._normalizedMidiChannel(plugin.parameters?.mc));
+                    scheduler.register(plugin.id, entry.id, token, this._normalizedMidiChannel(plugin.parameters?.mco));
                     scheduler.retireFailedInstance(plugin.id);
                     continue;
                 }

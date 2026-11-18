@@ -1,4 +1,5 @@
 import { installThemePaletteStub } from '../helpers/theme-palette-stub.mjs';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -44,7 +45,7 @@ async function loadPlugin({ id = 12, hub = null, clock = null } = {}) {
   const source = await fs.readFile(pluginSourcePath, 'utf8');
   const now = clock ?? { value: 1000 };
   const context = {
-    PluginBase: createStubPluginBase(id),
+    PluginBase: createStubPluginBase(id), drawHudReadings,
     performance: { now: () => now.value },
     cancelAnimationFrame: () => {},
     window: hub ? { dspTelemetryHub: hub } : {}
@@ -153,7 +154,7 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 28);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      '15ff45c8532986747f25cf699275d95284874f12be38a3bb6f72af4514a1e310'
+      'a78941935bf4f5dd8ef0ce36a9ecb4a28a09cd010af80b4530b76c6a3515f2b5'
   ));
 });
 
@@ -628,6 +629,7 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   const drawn = [];
   const fills = [];
   const drawingContext = {
+    ...hudTextContext,
     clearRect() {},
     fillRect(...args) { fills.push({ style: this.fillStyle, args }); },
     strokeRect() {},
@@ -642,8 +644,8 @@ test('SW Radio Simulator drives the HUD from measurements and validated executio
   assert.ok(drawn.includes('FADE'));
   assert.ok(drawn.includes('AGC GAIN'));
   assert.ok(drawn.includes('MOD / EVENTS'));
-  assert.ok(drawn.includes('-3.5 dB'));
-  assert.ok(drawn.includes('+9.5 dB'));
+  assert.ok(drawn.includes('-3.5'));
+  assert.ok(drawn.includes('+9.5'));
   assert.ok(drawn.includes('S4.9'));
 
   const meterTracks = fills.filter(fill => fill.style === 'stub:graph-tone-13');

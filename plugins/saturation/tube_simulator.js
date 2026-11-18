@@ -6795,35 +6795,17 @@ class TubeSimulatorPlugin extends PluginBase {
         );
     }
 
-    _formatStereo(left, right, unit = 'V', digits = 2) {
-        if (!Number.isFinite(left) || !Number.isFinite(right)) return 'L — / R —';
-        return `L ${left.toFixed(digits)} / R ${right.toFixed(digits)} ${unit}`;
-    }
-
-    /**
-     * Fixed-column form for the readouts that change sign. Without it the leading digit and the
-     * decimal point move whenever the sign flips or the magnitude crosses a power of ten, and the
-     * unit at the end of the line moves with them, which makes the number unreadable while it is
-     * changing. An explicit sign is always emitted and the integer part is padded with spaces to
-     * a width the quantity cannot exceed, so every column stays put. U+2212 is used for the minus
-     * because it is the same advance width as the plus; the ASCII hyphen is narrower.
-     *
-     * The reading element sets font-variant-numeric: tabular-nums and white-space: pre-wrap, so
-     * equal-width digits and the padding spaces both survive to the screen.
-     */
-    _formatFixedNumber(value, digits, integerDigits) {
-        const sign = value < 0 ? '\u2212' : '+';
-        const text = Math.abs(value).toFixed(digits);
-        const point = text.indexOf('.');
-        const whole = point < 0 ? text : text.slice(0, point);
-        const fraction = point < 0 ? '' : text.slice(point);
-        return `${sign}${whole.padStart(integerDigits, ' ')}${fraction}`;
-    }
-
-    _formatStereoFixed(left, right, unit, digits, integerDigits) {
-        if (!Number.isFinite(left) || !Number.isFinite(right)) return 'L — / R —';
-        return `L ${this._formatFixedNumber(left, digits, integerDigits)} / ` +
-            `R ${this._formatFixedNumber(right, digits, integerDigits)} ${unit}`;
+    _formatStereo(left, right, unit = 'V', digits = 2, integerDigits = 3, signed = false) {
+        const width = integerDigits + digits + 2;
+        const space = '\u00a0';
+        const format = value => {
+            if (!Number.isFinite(value)) return '—'.padStart(width, space);
+            if (!signed) return value.toFixed(digits).padStart(width, space);
+            const sign = value < 0 ? '−' : '+';
+            return sign + Math.abs(value).toFixed(digits).padStart(width - 1, space);
+        };
+        // Keep each channel together when the readout wraps on a narrow card.
+        return `L${space}${format(left)} / R${space}${format(right)}${space}${unit}`;
     }
 
     _updateHudValues() {
@@ -6844,17 +6826,17 @@ class TubeSimulatorPlugin extends PluginBase {
         const { left, right } = telemetry;
         if (this.hudValues.stage1Bias) {
             this.hudValues.stage1Bias.textContent = this.tp === 'Bypass'
-                ? 'L — / R —'
+                ? this._formatStereo(NaN, NaN)
                 : this._formatStereo(left.vk1, right.vk1);
         }
         if (this.hudValues.stage2Bias) {
             this.hudValues.stage2Bias.textContent = this.tp === 'Bypass'
-                ? 'L — / R —'
+                ? this._formatStereo(NaN, NaN)
                 : this._formatStereo(left.vk2, right.vk2);
         }
         if (this.hudValues.bPlus) {
             this.hudValues.bPlus.textContent = this.tp === 'Bypass'
-                ? 'L — / R —'
+                ? this._formatStereo(NaN, NaN)
                 : this._formatStereo(left.vbPlus, right.vbPlus);
         }
         // One stage per cell. Packed into a single cell the four stereo pairs wrapped, which
@@ -6866,19 +6848,19 @@ class TubeSimulatorPlugin extends PluginBase {
         // negative on others - so the sign column is always occupied.
         if (this.hudValues.plateSag1) {
             this.hudValues.plateSag1.textContent = this.tp === 'Bypass'
-                ? 'L — / R —'
-                : this._formatStereoFixed(
+                ? this._formatStereo(NaN, NaN)
+                : this._formatStereo(
                     left.vak1 + left.vk1 - left.vbPlus,
                     right.vak1 + right.vk1 - right.vbPlus,
-                    'V', 2, 3);
+                    'V', 2, 3, true);
         }
         if (this.hudValues.plateSag2) {
             this.hudValues.plateSag2.textContent = this.tp === 'Bypass'
-                ? 'L — / R —'
-                : this._formatStereoFixed(
+                ? this._formatStereo(NaN, NaN)
+                : this._formatStereo(
                     left.vak2 + left.vk2 - left.vbPlus,
                     right.vak2 + right.vk2 - right.vbPlus,
-                    'V', 2, 3);
+                    'V', 2, 3, true);
         }
         // Three integer digits: the balance is the difference of the two long-tailed-pair plate
         // voltages, each bounded by the Power stage supply, whose range tops out at 470 V.
@@ -6886,7 +6868,7 @@ class TubeSimulatorPlugin extends PluginBase {
         // unpadded form unreadable.
         if (this.hudValues.ltpBalance) {
             this.hudValues.ltpBalance.textContent =
-                this._formatStereoFixed(left.ltpBalanceV, right.ltpBalanceV, 'V', 2, 3);
+                this._formatStereo(left.ltpBalanceV, right.ltpBalanceV, 'V', 2, 3, true);
         }
         if (this.hudValues.powerBPlus) {
             this.hudValues.powerBPlus.textContent =
@@ -6900,7 +6882,7 @@ class TubeSimulatorPlugin extends PluginBase {
             this.hudValues.speakerPower.textContent = this._formatStereo(
                 left.speakerRealPower100ms,
                 right.speakerRealPower100ms,
-                'W'
+                'W', 2, 4
             );
         }
         // Magnitude of the flux linkage, two integer digits: both cores read their flux-linkage
@@ -6910,25 +6892,15 @@ class TubeSimulatorPlugin extends PluginBase {
         // sign column carries no information; the push-pull reading swings about zero towards a
         // saturation flux of 2.9-6.8 Wb-turns depending on the selected profile.
         //
-        // Three fraction digits: every other telemetry readout on this HUD - everything
-        // _formatStereo and _formatStereoFixed render - prints two, and those are volt- and
-        // watt-scale quantities (the two cathode biases, the LTP balance, both supplies, the
-        // speaker volts and the speaker watts) whose ranges top out between a few units and a
-        // few hundred, so two digits there resolve a part in a thousand or better over most of
-        // their travel. The sag readouts take the same two digits without that guarantee, since
-        // they collapse to a few hundred millivolts on some Power branches as the note above
-        // records. The flux reading is a two-orders-of-magnitude smaller number - 0.43 Wb-turns
-        // at the quiet end of the gapped-core standing bias - where two digits would quantise the
-        // display to about 2 % of the reading. One extra digit restores the same relative
-        // resolution the voltage readouts get; the six digits this used to print were far below
-        // anything the animation rate lets a reader follow.
+        // A third fraction digit keeps the smaller flux readings legible near 0.43 Wb-turns.
         if (this.hudValues.transformerFlux) {
-            this.hudValues.transformerFlux.textContent = this._formatStereoFixed(
+            this.hudValues.transformerFlux.textContent = this._formatStereo(
                 Math.abs(left.transformerFluxWb),
                 Math.abs(right.transformerFluxWb),
                 'Wb',
                 3,
-                2
+                2,
+                true
             );
         }
     }
@@ -7540,7 +7512,7 @@ class TubeSimulatorPlugin extends PluginBase {
         this.hudCanvas.setAttribute('role', 'img');
         const values = document.createElement('div');
         values.className = 'tube-simulator-values';
-        const addValue = (key, label, requiresLocalAudio = true) => {
+        const addValue = (key, label, requiresLocalAudio = true, unit = 'V', digits = 2, integerDigits = 3) => {
             const item = document.createElement('div');
             item.className = requiresLocalAudio ? 'tube-simulator-value local-audio-only' : 'tube-simulator-value';
             const heading = document.createElement('span');
@@ -7548,7 +7520,8 @@ class TubeSimulatorPlugin extends PluginBase {
             heading.textContent = label;
             const reading = document.createElement('span');
             reading.className = 'tube-simulator-value-reading';
-            reading.textContent = 'L — / R —';
+            if (requiresLocalAudio) reading.classList.add('tube-simulator-stereo-reading');
+            reading.textContent = requiresLocalAudio ? this._formatStereo(NaN, NaN, unit, digits, integerDigits) : '—';
             item.appendChild(heading);
             item.appendChild(reading);
             values.appendChild(item);
@@ -7563,9 +7536,9 @@ class TubeSimulatorPlugin extends PluginBase {
         addValue('stage1ExternalInput', 'STAGE 1 EXTERNAL INPUT (0 dBFS)', false);
         addValue('ltpBalance', 'POWER LTP BALANCE');
         addValue('powerBPlus', 'POWER B+');
-        addValue('speakerVrms', 'SPEAKER OUTPUT (100 ms)');
-        addValue('speakerPower', 'SPEAKER REAL POWER (100 ms)');
-        addValue('transformerFlux', 'TRANSFORMER FLUX');
+        addValue('speakerVrms', 'SPEAKER OUTPUT (100 ms)', true, 'Vrms');
+        addValue('speakerPower', 'SPEAKER REAL POWER (100 ms)', true, 'W', 2, 4);
+        addValue('transformerFlux', 'TRANSFORMER FLUX', true, 'Wb', 3, 2);
 
         const status = document.createElement('div');
         status.className = 'tube-simulator-status local-audio-only';

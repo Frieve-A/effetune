@@ -101,9 +101,12 @@ function tested(power, x, limit) {
     return x > 0 && power > limit ? db(power, x) : null;
 }
 
+// Band value without the display test: every positive power, also below the noise floor.
+const untested = (power, x) => tested(power, x, 0);
+
 // The uncorrected value of a band: even (power at the measured scale) or odd order.
-const measuredValue = (band, odd) => (odd ? tested(band.odd, band.x, band.oddLimit)
-    : tested(band.power(SCALE_MEASURED), band.x, band.limit));
+const measuredValue = (band, odd, test = tested) => (odd ? test(band.odd, band.x, band.oddLimit)
+    : test(band.power(SCALE_MEASURED), band.x, band.limit));
 
 /** Uncorrected even-order distortion at the set Signal Level: [[centre Hz, dB re X or null]] per display band. */
 export function measuredDistortionCurve(channel, length, bands, resolution) {
@@ -121,16 +124,19 @@ function distortionItems(spec) {
     const wouldScale = odd ? null : spec.wouldScale ?? null;
     const setName = set => texts.setNames?.[set] ?? set;
     const width = set => (set === spec.emph ? WIDTH_EMPH : WIDTH_OTHER);
+    // `unmasked` draws every value, also below the noise floor, which stays shaded as a reference.
+    const test = spec.unmasked ? untested : tested;
 
-    const measuredOf = sums => series(display, (group, k) => measuredValue(sums[k], odd));
+    const measuredOf = sums => series(display, (group, k) => measuredValue(sums[k], odd, test));
 
     const perSet = spec.sets.map(set => {
         const sums = setSums(spec.channel, spec.length, set, display);
         const measured = measuredOf(sums);
         const afterMeasured = (k, value) => (measured[k] === null ? null : value);
         const atScale = s => series(display, (group, k) =>
-            afterMeasured(k, tested(sums[k].power(s), sums[k].x, sums[k].limit)));
+            afterMeasured(k, test(sums[k].power(s), sums[k].x, sums[k].limit)));
         let corrected = null;
+        let correctedPower = null;
         let isCheck = false;
         // The noise floor that tests the corrected value of a band: the check has its own.
         let correctedBands = sums;
@@ -140,17 +146,16 @@ function distortionItems(spec) {
                 correctedBands = display.groups.map(group => ({
                     x: sumOver(group, check, N_BANDS), limit: 2 * Math.sqrt(sumOver(group, check, 2 * N_BANDS))
                 }));
-                corrected = series(display, (group, k) => afterMeasured(k, tested(sumOver(group, check, 0),
-                    correctedBands[k].x, correctedBands[k].limit)));
-            } else {
-                corrected = atScale(scale);
             }
+            correctedPower = display.groups.map((group, k) => (isCheck ? sumOver(group, check, 0) : sums[k].power(scale)));
+            corrected = series(display, (group, k) => afterMeasured(k, test(correctedPower[k],
+                correctedBands[k].x, correctedBands[k].limit)));
         }
         return {
-            set, sums, measured, corrected, correctedBands, isCheck,
+            set, sums, measured, corrected, correctedPower, correctedBands, isCheck,
             would: set === spec.emph && wouldScale !== null ? atScale(wouldScale) : null,
             oddOverlay: !odd && spec.showOdd ? series(display, (group, k) =>
-                tested(sums[k].odd, sums[k].x, sums[k].oddLimit)) : null,
+                test(sums[k].odd, sums[k].x, sums[k].oddLimit)) : null,
             compared: spec.compare
                 ? measuredOf(setSums(spec.compare.channel, spec.compare.length, set, display))
                 : null
@@ -166,15 +171,21 @@ function distortionItems(spec) {
 
     const allBelowWith = perSet.some(entry => entry.corrected)
         && !perSet.some(entry => entry.corrected && isDrawn(entry.corrected));
-    // Where the correction brings a band of the emphasized set below the noise floor, its curve follows that floor
-    // (the value is at most that), so the curve stays continuous instead of vanishing. A floor at or above the
-    // measured value tells nothing and leaves a gap.
+    // Where the correction brings a band of the emphasized set below the noise floor of its corrected value (the
+    // check's own), the corrected curve follows that floor (the value is at most that), so the curve stays continuous
+    // instead of vanishing, and the shading reaches up to it. A floor at or above the measured value tells nothing and
+    // leaves a gap. The bands are found with the display test, so the shading does not depend on `unmasked`.
+    const ridden = display.groups.map((group, k) => {
+        if (!emph.corrected) return null;
+        const value = measuredValue(emph.sums[k], odd);
+        const band = emph.correctedBands[k];
+        if (value === null || tested(emph.correctedPower[k], band.x, band.limit) !== null) return null;
+        const floor = floorDb(band.x, band.limit);
+        return floor !== null && floor < value ? floor : null;
+    });
     if (emph.corrected) {
-        emph.corrected = emph.measured.map((point, k) => {
-            if (point === null || emph.corrected[k] !== null) return emph.corrected[k];
-            const floor = floorDb(emph.correctedBands[k].x, emph.correctedBands[k].limit);
-            return floor !== null && floor < point.y ? { ...point, y: floor } : null;
-        });
+        emph.corrected = emph.corrected.map((point, k) => point
+            ?? (ridden[k] === null ? null : { ...emph.measured[k], y: ridden[k] }));
     }
 
     const items = [];
@@ -183,7 +194,8 @@ function distortionItems(spec) {
     items.push({
         kind: 'area', color: '--sdc-lim', opacity: LIMIT_OPACITY,
         points: display.groups.map((group, k) => {
-            const top = limitDb(k);
+            const limit = limitDb(k);
+            const top = limit === null || (ridden[k] !== null && ridden[k] > limit) ? ridden[k] : limit;
             return top === null ? null : { x: display.fc[k], lo: display.lo[k], hi: display.hi[k], top, bottom: -Infinity };
         })
     });
@@ -263,12 +275,14 @@ function distortionItems(spec) {
     return items;
 }
 
-// Splits points at nulls; a single point becomes a segment across its band.
-function runs(points, toPixel) {
+// Splits points at nulls. A run of a single point stays one point ('point', drawn as a dot), spans its band
+// ('band', a shading or a readout across the band) or is left out ('skip').
+function runs(points, toPixel, lone = 'band') {
     const result = [];
     let current = [];
     const flush = () => {
-        if (current.length === 1 && Number.isFinite(current[0].lo)) {
+        if (current.length === 1 && lone === 'skip') current = [];
+        if (current.length === 1 && lone === 'band' && Number.isFinite(current[0].lo)) {
             const [point] = current;
             current = [{ ...point, x: point.lo }, { ...point, x: point.hi }];
         }
@@ -464,11 +478,23 @@ function layoutLogFrequencyChart(frame, items, textWidth = estimateTextWidth) {
                 if (point.y < extent.yMin) extent.yMin = point.y;
                 if (point.y > extent.yMax) extent.yMax = point.y;
             }
-            for (const run of runs(item.points, point => [xPixel(point.x), yPixel(point.y)])) {
-                addData('polyline', { points: pointList(run) }, strokeStyle(item), 'curve');
+            // A lone point is a filled dot in the curve's colour, about 2.2 widths across; `match` keeps it with its
+            // curve's legend entry for emphasizeChartLegend, and the emphasis' wider stroke enlarges it.
+            for (const run of runs(item.points, point => [xPixel(point.x), yPixel(point.y)], 'point')) {
+                if (run.length > 1) addData('polyline', { points: pointList(run) }, strokeStyle(item), 'curve');
+                else {
+                    const [[cx, cy]] = run;
+                    elements.push({
+                        tag: 'circle', attrs: { cx, cy, r: round(item.width * 0.6) },
+                        style: { fill: color(item.color), stroke: color(item.color), 'stroke-width': item.width },
+                        role: 'dot', clip: true, match: strokeStyle(item)
+                    });
+                }
             }
         } else if (item.kind === 'area') {
-            const polygons = runs(item.points, point => [xPixel(point.x), yPixel(point.top), yPixel(point.bottom)])
+            // The shaded change between two curves (an area of a level) has nothing to fill at a lone point.
+            const polygons = runs(item.points, point => [xPixel(point.x), yPixel(point.top), yPixel(point.bottom)],
+                item.set === undefined ? 'band' : 'skip')
                 .map(run => ({
                     tag: 'polygon',
                     attrs: { points: pointList([...run.map(([x, y]) => [x, y]), ...run.reverse().map(([x, , y]) => [x, y])]) },
@@ -625,7 +651,7 @@ export function readChartAt(chart, x) {
     return { cursor: format.frequency(chart.frequencyAt(x)), rows };
 }
 
-const STROKED_ROLES = new Set(['curve', 'hline', 'vline']);
+const STROKED_ROLES = new Set(['curve', 'dot', 'hline', 'vline']);
 
 // While the entry of a level whose shaded change is kept aside is hovered, its polygons take the place of the drawn
 // ones (the emphasized level's), under the curves; returns the undo. Nothing hidden stays in the svg.
@@ -635,7 +661,7 @@ function swapLevelArea(svg, chart, set) {
     // Read before any node moves: svg child i draws chart element i.
     const shown = chart.elements.flatMap((element, index) => (element.role === 'area' && element.set !== null
         ? [svg.children[index]] : []));
-    const place = svg.children[chart.elements.findIndex(element => element.role === 'curve')];
+    const place = svg.children[chart.elements.findIndex(element => element.role === 'curve' || element.role === 'dot')];
     const clipPath = place.getAttribute('clip-path');
     const added = polygons.map(polygon => {
         const node = svgNode(svg.ownerDocument, polygon.tag, polygon.attrs, polygon.style);
@@ -659,9 +685,10 @@ export function emphasizeChartLegend(svg, chart, text) {
     if (!entry || entry.square || !svg) return null;
     const keys = Object.keys(entry.style);
     // The chart writes its elements in order, so svg child i draws chart element i.
+    const styleOf = element => element.match ?? element.style;
     const nodes = chart.elements.flatMap((element, index) => (STROKED_ROLES.has(element.role)
-        && Object.keys(element.style).length === keys.length
-        && keys.every(key => element.style[key] === entry.style[key]) ? [svg.children[index]] : []));
+        && Object.keys(styleOf(element)).length === keys.length
+        && keys.every(key => styleOf(element)[key] === entry.style[key]) ? [svg.children[index]] : []));
     const places = nodes.map(node => node.nextSibling);
     const undoArea = swapLevelArea(svg, chart, entry.set ?? null);
     for (const node of nodes) {

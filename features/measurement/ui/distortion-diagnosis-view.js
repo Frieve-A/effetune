@@ -76,6 +76,10 @@ const HEAT_FRAME = { xMin: 20, xMax: 10000 };
 const C_RANGE = { ...HEAT_FRAME, yMin: -90, yMax: -30 };
 // The level axis of each chart's display settings (RANGE_KINDS); chart S's Peaks and Map views share theirs.
 const RANGE_KIND = { E: 'db', T: 'percent', T3: 'percent', H: 'percent', S: 'fine', C: 'dbr', A: 'db', D: 'db', B: 'db' };
+// Charts that hide values below the noise floor unless their display setting Show below the noise floor is on.
+const MASKED_CHARTS = new Set(['E', 'H', 'A', 'C', 'S']);
+// Readout suffix of a heat-map value below the noise floor.
+const belowFloor = (value, below) => (below ? `${value} (${t('analysis:diagLegendNoiseFloor')})` : value);
 const RESET_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
     + 'stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true" focusable="false">'
     + '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
@@ -228,7 +232,8 @@ function cellExtent(cells, value) {
 }
 
 /**
- * Chart C as a heat map: one row per order 2 to 10, a cell per rule band; the readout gives the ratio in dBr.
+ * Chart C as a heat map: one row per order 2 to 10, a cell per rule band; the readout gives the ratio in dBr,
+ * followed by the noise floor for a cell below it (noise mask off).
  * The set display values `override` choose the frequencies and the colour range (yMin…yMax).
  */
 function chartCMap(cells, override) {
@@ -257,7 +262,7 @@ function chartCMap(cells, override) {
             return {
                 label: `${t('analysis:diagAxisOrder')} ${order}`,
                 color: cell ? heatColor(cell.R, stops) : 'transparent',
-                value: cell ? `${window.GraphReadout.format.number(cell.R, 1)} dBr` : '—'
+                value: cell ? belowFloor(`${window.GraphReadout.format.number(cell.R, 1)} dBr`, cell.below) : '—'
             };
         }
     };
@@ -267,7 +272,8 @@ function chartCMap(cells, override) {
  * Chart S's map: a row per instantaneous level, each cell spanning halfway to its neighbours, so the edge rows
  * are half high and equal the peaks. The gain fades from the plot's background at 0 dB to --sdc-squash at
  * −range and to --sdc-stretch at +range with the share (|gain|/range)^0.5, which magnifies small gains; the
- * colour bar follows the same curve. A column inside the noise band has no cells. The set display values
+ * colour bar follows the same curve. A column inside the noise band has no cells unless the noise mask is off,
+ * when its readout names the noise floor after the gain. The set display values
  * `override` choose the frequencies and the gain range (staticMapScale).
  */
 function staticMap({ levels, columns, scale: autoScale }, override) {
@@ -310,7 +316,7 @@ function staticMap({ levels, columns, scale: autoScale }, override) {
             return {
                 label: `${percent > 0 ? '+' : percent < 0 ? '−' : ''}${percent < 0 ? -percent : percent} %`,
                 color: gain === null ? 'transparent' : fill(gain),
-                value: !column ? '—' : column.gains ? formatDb(gain, '—', scale.readDecimals)
+                value: !column ? '—' : column.gains ? belowFloor(formatDb(gain, '—', scale.readDecimals), column.below)
                     : t('analysis:diagLegendNoiseFloor')
             };
         }
@@ -370,6 +376,8 @@ export default class DistortionDiagnosisView {
         // Display settings per chart key, kept for the window: the set values only, and whether each is open.
         this.ranges = {};
         this.displayOpen = {};
+        // Charts set to Show below the noise floor, by key (MASKED_CHARTS).
+        this.showBelow = {};
         this.charts = new Map();
         // The stylesheet sizes each chart like the acoustic graphs; a redraw fills the new size.
         this.resizeObserver = new ResizeObserver(entries => {
@@ -465,8 +473,9 @@ export default class DistortionDiagnosisView {
             { ...options, crosshair: 'xy', range: defaults });
         // A chart in bands has the Band resolution control.
         const banded = () => ({ segment: this.resolutionSegment(), setting: t(RESOLUTION_KEYS[this.resolution]) });
+        const unmasked = key => Boolean(this.showBelow[key]);
         if (this.tab === 'diagnosisTones') {
-            const spec = chartS(model, entry, t);
+            const spec = chartS(model, entry, t, unmasked('S'));
             const view = { segment: this.staticViewSegment(), setting: t(STATIC_VIEW_KEYS[this.staticView]) };
             const staticCard = this.staticView === 'peaks' ? logChart('S', spec, view)
                 : heatChart('S', override => staticMap(spec.map, override), rangeDefaults(spec.frame, 'fine'),
@@ -476,11 +485,11 @@ export default class DistortionDiagnosisView {
             return [logChart('T', chartT(model, entry, t)), logChart('T3', chartT3(model, entry, t)), staticCard];
         }
         if (this.tab === 'diagnosisHarmonics') {
-            const cells = chartCCells(model, entry);
-            return [logChart('H', chartH(model, entry, this.resolution, t), banded()),
+            const cells = chartCCells(model, entry, unmasked('C'));
+            return [logChart('H', chartH(model, entry, this.resolution, t, unmasked('H')), banded()),
                 heatChart('C', override => chartCMap(cells, override), C_RANGE, { subtitle: subtitle() })];
         }
-        return [logChart('A', chartA(model, entry, t)), logChart('D', chartD(model, entry, t)),
+        return [logChart('A', chartA(model, entry, t, unmasked('A'))), logChart('D', chartD(model, entry, t)),
             logChart('B', chartB(model, entry, this.resolution, t), banded())];
     }
 
@@ -735,7 +744,8 @@ export default class DistortionDiagnosisView {
     /**
      * Display settings of chart `key`, as on the acoustic graphs: Auto range and Reset for the header and the
      * closed-by-default details below the chart with Frequency from/to and Level from/to, each a slider and a
-     * number input. A change stores the set value (this.ranges) and redraws this chart only.
+     * number input. A change stores the set value (this.ranges) and redraws this chart only. A chart in
+     * MASKED_CHARTS adds Show below the noise floor (this.showBelow), which Reset clears as well.
      */
     displaySettings(key, defaults) {
         const kind = RANGE_KIND[key];
@@ -788,7 +798,12 @@ export default class DistortionDiagnosisView {
         const reset = button('analysis-reset-button', t('analysis:reset'), RESET_ICON);
         reset.addEventListener('click', () => {
             delete this.ranges[key];
-            redraw();
+            if (!this.showBelow[key]) {
+                redraw();
+                return;
+            }
+            delete this.showBelow[key];
+            this.render();
         });
 
         const details = element('details', 'analysis-settings');
@@ -850,6 +865,29 @@ export default class DistortionDiagnosisView {
             grid.append(row);
             inputs[name] = { input, slider, toSlider };
         }
+        if (MASKED_CHARTS.has(key)) {
+            // The chart's data depend on the mask, so a change renders the tab again.
+            const row = element('div', 'parameter-row');
+            const id = `diagnosis-${key}-showBelow`;
+            const label = element('label');
+            label.htmlFor = id;
+            const text = element('span', 'parameter-label-text');
+            text.append(element('span', '', t('analysis:diagShowBelowNoiseFloor')), element('span', 'parameter-unit', ''),
+                element('span', 'parameter-colon', ':'));
+            label.append(text);
+            label.title = label.textContent;
+            const input = element('input');
+            input.type = 'checkbox';
+            input.id = id;
+            input.checked = Boolean(this.showBelow[key]);
+            input.addEventListener('change', () => {
+                if (input.checked) this.showBelow[key] = true;
+                else delete this.showBelow[key];
+                this.render();
+            });
+            row.append(label, input);
+            grid.append(row);
+        }
         sync();
         return { auto, reset, details };
     }
@@ -908,7 +946,7 @@ export default class DistortionDiagnosisView {
         const compare = compared ? { channel: compared.entry, length: this.length } : null;
         return this.chartCard('E',
             (width, height) => readable(drawDistortionChart(this.svgOf('E'), { ...spec, width, height, texts, compare,
-                frame: rangedFrame(DISTORTION_FRAME, this.ranges.E ?? {}, RANGE_KIND.E) })),
+                unmasked: Boolean(this.showBelow.E), frame: rangedFrame(DISTORTION_FRAME, this.ranges.E ?? {}, RANGE_KIND.E) })),
             { controls, note: fitted ? null : t('analysis:diagNoFit'), range: rangeDefaults(DISTORTION_FRAME, RANGE_KIND.E),
                 subtitle: subtitle(
                 fitted ? `${t('analysis:diagFilterLength')}: ${t(LENGTH_KEYS[this.length])}` : null,

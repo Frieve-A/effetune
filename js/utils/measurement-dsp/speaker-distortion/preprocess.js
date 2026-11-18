@@ -3,8 +3,10 @@
 // level check can run outside the worker pool.
 import FFT from '../fft.js';
 import { resampleWindowedSinc } from '../resample.js';
+import { MIN_KEPT_SHARE } from '../recording-gaps.js';
+import { correlationPeak, segmentLag } from '../segment-lag.js';
 import { BAND_EDGES, N_BANDS } from './constants.js';
-import { MAX_BIN, N, SPECTRUM_BINS } from './signals.js';
+import { MAX_BIN, N, SPECTRUM_BINS, combLines } from './signals.js';
 
 export const ROW_COUNT = 3983;
 export const rowFrequency = r => 2 * (r + 18);
@@ -135,23 +137,9 @@ export function findLatency(capture, chirp, fsDev) {
     return latency;
 }
 
-/**
- * Latency from the chirp, then the period mean Y = mean of DFT/N over the K periods
- * after the faded-in one (interleaved Float32Array(16002)) and its noise Pn (Float32Array(8001)),
- * both accumulated in float64.
- */
-export function analyzeCall(capture, { fsDev, K, chirp }) {
-    const latency = findLatency(capture, chirp, fsDev);
-    const blockStart = latency + Math.round(0.5 * fsDev);
-    const block48 = fsDev === N
-        ? capture.subarray(blockStart, blockStart + (K + 2) * N)
-        : resampleWindowedSinc(capture.subarray(blockStart, blockStart + Math.round((K + 2) * fsDev)), fsDev, N);
-    const block = new Float64Array((K + 2) * N);
-    block.set(block48.subarray(0, block.length));
-    const period = i => block.subarray(N * (1 + i), N * (2 + i));
-    const spectra = [];
-    for (let i = 0; i < K; i += 2) spectra.push(...periodSpectra(period(i), i + 1 < K ? period(i + 1) : null));
-    if (spectra.length > K) spectra.pop();
+// Period mean (float64, interleaved) and its noise Pn (Float32Array(8001)) of K ≥ 2 period spectra.
+function averagePeriods(spectra) {
+    const K = spectra.length;
     const mean = new Float64Array(2 * SPECTRUM_BINS);
     for (const Yi of spectra) for (let i = 0; i < mean.length; i++) mean[i] += Yi[i];
     for (let i = 0; i < mean.length; i++) mean[i] /= K;
@@ -165,7 +153,157 @@ export function analyzeCall(capture, { fsDev, K, chirp }) {
     }
     const Pn = new Float32Array(SPECTRUM_BINS);
     for (let k = 0; k < SPECTRUM_BINS; k++) Pn[k] = noise[k] / (K * (K - 1));
-    return { latency, Y: Float32Array.from(mean), Pn };
+    return { mean, Pn };
+}
+
+/**
+ * Latency from the chirp, then the period mean Y = mean of DFT/N over the K periods
+ * after the faded-in one (interleaved Float32Array(16002)) and its noise Pn (Float32Array(8001)),
+ * both accumulated in float64. With the call's `seed` and `bandwidth` the periods are realigned
+ * against capture time slips first (see realignPeriods); `X` (the drive spectrum) and `reference` (the
+ * channel's reference peak, null for none) also align the whole capture.
+ */
+export function analyzeCall(capture, { fsDev, K, chirp, seed = null, bandwidth = null, X = null, reference = null }) {
+    const latency = findLatency(capture, chirp, fsDev);
+    const blockStart = latency + Math.round(0.5 * fsDev);
+    const block48 = fsDev === N
+        ? capture.subarray(blockStart, blockStart + (K + 2) * N)
+        : resampleWindowedSinc(capture.subarray(blockStart, blockStart + Math.round((K + 2) * fsDev)), fsDev, N);
+    const block = new Float64Array((K + 2) * N);
+    block.set(block48.subarray(0, block.length));
+    const period = i => block.subarray(N * (1 + i), N * (2 + i));
+    const spectra = [];
+    for (let i = 0; i < K; i += 2) spectra.push(...periodSpectra(period(i), i + 1 < K ? period(i + 1) : null));
+    if (spectra.length > K) spectra.pop();
+    if (seed === null) {
+        const { mean, Pn } = averagePeriods(spectra);
+        return { latency, Y: Float32Array.from(mean), Pn };
+    }
+    const { mean, Pn, ...realigned } = realignPeriods(spectra, { fsDev, seed, bandwidth, X, reference });
+    return { latency, Y: Float32Array.from(mean), Pn, ...realigned };
+}
+
+// ------------------------------------------------------------- slip-tolerant averaging
+
+// The recording of a call may jump in time between periods. Each period's lag against the periods
+// of the majority lag is estimated by cross-correlation on the excited lines, the periods are
+// realigned by a phase ramp (exact for periodic content), and the periods a jump corrupts are left out.
+const SAME_LAG = 2; // device samples: lags this close count as the same lag
+/** Whole-capture offset (device samples) up to which a capture counts as aligned: 0.25 ms. */
+export const offsetTolerance = fsDev => Math.round(0.00025 * fsDev);
+const HEIGHT_FLOOR = 0.95; // correlation height (1 for identical periods) below which a period is dropped
+const OUTLIER_FACTOR = 10;
+const LAG_LOW_HZ = 50;
+
+// Spectrum S of a period delayed by `shift` device samples, advanced back: S·e^(+j2πf·shift/fsDev).
+function advanced(S, shift, fsDev) {
+    if (shift === 0) return S;
+    const out = new Float64Array(S.length);
+    for (let f = 0; f < SPECTRUM_BINS; f++) {
+        const angle = 2 * Math.PI * ((f * shift) % fsDev) / fsDev;
+        const c = Math.cos(angle), s = Math.sin(angle);
+        out[2 * f] = S[2 * f] * c - S[2 * f + 1] * s;
+        out[2 * f + 1] = S[2 * f] * s + S[2 * f + 1] * c;
+    }
+    return out;
+}
+
+/**
+ * Mean and noise of the K period spectra of a call, robust to capture time slips:
+ * { mean, Pn, periods, gaps, peak, lags, dropped }.
+ * - lags: each period's lag (device samples) against the mean of the periods whose lags agree with the
+ *   majority within SAME_LAG, from the largest positive cross-correlation peak on the excited lines
+ *   from 50 Hz, weighted by 1/|X|² (the correlation of the transfer functions).
+ * - peak: { offset, sign } of the majority's impulse response within ±0.25 s (null without `X`): its
+ *   largest magnitude, or with the channel's `reference` peak its largest value of the reference's sign,
+ *   since a response can hold lobes of either sign close together. When the offset differs from the
+ *   reference offset by more than 0.25 ms, every period is shifted by the difference as well.
+ * - A period is dropped when its correlation height is below HEIGHT_FLOOR, when its lag differs from a
+ *   neighbour's (a jump within or between the two), or when its realigned window would reach outside
+ *   the steady periods. Only when periods were dropped, a remaining period whose deviation from the mean
+ *   exceeds OUTLIER_FACTOR × the median is dropped too.
+ * - periods: the number averaged (Pn is the noise of that mean); gaps: null for an untouched capture,
+ *   'corrected' when periods were realigned or dropped, 'interrupted' when fewer than MIN_KEPT_SHARE of
+ *   the periods remain. A capture without slips is averaged exactly as without this step.
+ */
+function realignPeriods(spectra, { fsDev, seed, bandwidth, X, reference }) {
+    const K = spectra.length;
+    const { excited, target } = combLines(seed, bandwidth);
+    const lines = [];
+    for (let f = LAG_LOW_HZ; f <= MAX_BIN; f++) if (excited[f] && !isMains(f)) lines.push(f);
+    const weights = new Float64Array(SPECTRUM_BINS);
+    for (const f of lines) weights[f] = 1 / (target[f] * target[f]);
+    const meanOf = indices => {
+        const R = new Float64Array(2 * SPECTRUM_BINS);
+        for (const i of indices) {
+            for (const f of lines) {
+                R[2 * f] += spectra[i][2 * f] / indices.length;
+                R[2 * f + 1] += spectra[i][2 * f + 1] / indices.length;
+            }
+        }
+        return R;
+    };
+    const lagsAgainst = R => spectra.map(S => segmentLag(S, R, lines, weights, fsDev));
+    const all = spectra.map((_, i) => i);
+    const first = lagsAgainst(meanOf(all)).map(row => row.lag);
+    let majority = null;
+    for (const t of first) {
+        const members = all.filter(i => Math.abs(first[i] - t) <= SAME_LAG);
+        if (!majority || members.length > majority.members.length ||
+            (members.length === majority.members.length && Math.abs(t) < Math.abs(majority.t))) majority = { t, members };
+    }
+    const majorityMean = meanOf(majority.members);
+    const rows = lagsAgainst(majorityMean);
+    const tolerance = offsetTolerance(fsDev);
+    let peak = null;
+    let shiftAll = 0;
+    if (X) {
+        const H = new Float64Array(2 * lines.length);
+        lines.forEach((f, j) => {
+            const xr = X[2 * f], xi = X[2 * f + 1], d = xr * xr + xi * xi;
+            H[2 * j] = (majorityMean[2 * f] * xr + majorityMean[2 * f + 1] * xi) / d;
+            H[2 * j + 1] = (majorityMean[2 * f + 1] * xr - majorityMean[2 * f] * xi) / d;
+        });
+        const { t, value } = correlationPeak(H, lines, fsDev, { within: Math.floor(fsDev / 4), sign: reference?.sign ?? 0 });
+        peak = { offset: t, sign: value < 0 ? -1 : 1 };
+        if (reference && Math.abs(t - reference.offset) > tolerance) shiftAll = t - reference.offset;
+    }
+    const lags = rows.map(row => row.lag);
+    const shifts = lags.map(lag => lag + shiftAll);
+    let kept = all.filter(i => rows[i].height >= HEIGHT_FLOOR &&
+        !(i > 0 && Math.abs(lags[i] - lags[i - 1]) > SAME_LAG) &&
+        !(i < K - 1 && Math.abs(lags[i + 1] - lags[i]) > SAME_LAG) &&
+        // Window i holds steady period 1 + i; delayed by `shift`, it starts `shift` earlier in the call.
+        shifts[i] <= i * fsDev + tolerance && shifts[i] >= -(K - 1 - i) * fsDev - tolerance);
+    const result = (averaged, gaps) => ({
+        ...averaged, gaps, peak, lags, dropped: all.filter(i => !kept.includes(i))
+    });
+    if (kept.length === K && shifts.every(shift => shift === 0)) {
+        return result({ ...averagePeriods(spectra), periods: K }, null);
+    }
+    const gapsOf = count => (count < MIN_KEPT_SHARE * K ? 'interrupted' : 'corrected');
+    if (kept.length < 2) return result({ ...averagePeriods(spectra), periods: K }, gapsOf(kept.length));
+    let aligned = kept.map(i => advanced(spectra[i], shifts[i], fsDev));
+    let averaged = averagePeriods(aligned);
+    if (kept.length < K) {
+        // Only in a capture that already lost periods: corruption that shows no lag change.
+        const deviation = aligned.map(S => {
+            let sum = 0;
+            for (let f = LAG_LOW_HZ; f <= MAX_BIN; f++) {
+                const dr = S[2 * f] - averaged.mean[2 * f], di = S[2 * f + 1] - averaged.mean[2 * f + 1];
+                sum += dr * dr + di * di;
+            }
+            return sum;
+        });
+        const limit = OUTLIER_FACTOR * medianOf(deviation);
+        const ok = deviation.map(d => d <= limit);
+        if (ok.includes(false) && ok.filter(Boolean).length >= 2) {
+            kept = kept.filter((_, j) => ok[j]);
+            aligned = aligned.filter((_, j) => ok[j]);
+            averaged = averagePeriods(aligned);
+        }
+    }
+    return result({ ...averaged, periods: kept.length }, gapsOf(kept.length));
 }
 
 // --------------------------------------------------------------------- response g

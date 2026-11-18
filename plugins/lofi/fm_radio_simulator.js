@@ -1513,25 +1513,24 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const stereoOn = values.blendRatio >= 0.5;
         const multipathText = values.multipathDb <= -119 ? '-∞' :
             values.multipathDb.toFixed(1);
-        const segments = [
-            [`${values.rfLevelDb.toFixed(1)} dBµV`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 24 * dpr],
-            [`CNR ${values.cnrDb.toFixed(1)} dB`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr],
-            ['●', stereoOn ? (window.ThemePalette?.get('accent') ?? '') : (window.ThemePalette?.get('graph-tone-22') ?? ''), 12 * dpr],
-            [`ST ${Math.round(values.blendRatio * 100)}%`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 4 * dpr],
-            [`MPath ${multipathText} dB`, (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr],
-            [`Clicks ${values.clickRate.toFixed(1)}/s`,
-                values.clickRate >= 0.5 ? (window.ThemePalette?.get('warning') ?? '') : (window.ThemePalette?.get('graph-tone-97') ?? ''), 12 * dpr]
+        const textColor = window.ThemePalette?.get('graph-tone-97') ?? '';
+        const stereoColor = (window.ThemePalette?.get(stereoOn ? 'accent' : 'graph-tone-22') ?? '');
+        const clickColor = values.clickRate >= 0.5 ? (window.ThemePalette?.get('warning') ?? '') : textColor;
+        const signal = [
+            ['', values.rfLevelDb.toFixed(1), '-000.0', ' dBµV'],
+            ['  CNR ', values.cnrDb.toFixed(1), '-000.0', ' dB']
         ];
-        const rows = narrow ? [segments.slice(0, 2), segments.slice(2)] : [segments];
-        rows.forEach((rowSegments, rowIndex) => {
-            let textX = meterX;
-            const rowY = rowIndex === 0 ? statusY : statusY2;
-            for (const [text, color, gap] of rowSegments) {
-                textX += gap;
-                ctx.fillStyle = color;
-                ctx.fillText(text, textX, rowY);
-                textX += ctx.measureText?.(text)?.width ?? text.length * 6 * dpr;
-            }
+        const reception = [
+            ['●', null, null, null, stereoColor],
+            [' ST ', Math.round(values.blendRatio * 100).toString(), '000', '%', textColor],
+            ['  MPath ', multipathText, '-000.0', ' dB', textColor],
+            ['  Clicks ', values.clickRate.toFixed(1), '00000.0', '/s', clickColor]
+        ];
+        const rows = narrow ? [signal, reception] : [[...signal, ['  '], ...reception]];
+        rows.forEach((fields, index) => {
+            const left = meterX + (index === 0 ? 24 * dpr : 0);
+            ctx.fillStyle = textColor;
+            drawHudReadings(ctx, fields, left, index === 0 ? statusY : statusY2, width - left - 8 * dpr);
         });
         this._graphReadout?.refresh();
     }

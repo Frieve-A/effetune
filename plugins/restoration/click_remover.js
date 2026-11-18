@@ -187,7 +187,8 @@ class ClickRemoverPlugin extends PluginBase {
         context.fillText('REPAIRS/S', padding + 6 * scale, padding + 5 * scale);
         context.fillStyle = (window.ThemePalette?.get('graph-tone-97') ?? '');
         context.font = `${Math.round(16 * scale)}px Arial`;
-        context.fillText(repairs.toFixed(1), padding + 6 * scale, padding + 22 * scale);
+        drawHudReadings(context, [['', repairs.toFixed(1), '000000.0']],
+            padding + 6 * scale, padding + 22 * scale, cardWidth - 12 * scale);
         context.fillStyle = (window.ThemePalette?.get('graph-tone-13') ?? '');
         context.fillRect(padding + 6 * scale, padding + cardHeight - 9 * scale,
             cardWidth - 12 * scale, 4 * scale);

@@ -18,6 +18,10 @@ Modifications by Yoshiyuki Kobayashi, 2026-11-01:
 - Removed FFmpeg allocation, codec registration and PCM conversion; the
   existing EffeTune converter performs the DSD-to-PCM stage separately.
 
+Modifications by Yoshiyuki Kobayashi, 2026-11-17:
+- Restored the upstream channel-to-element mapping so that frames of up to
+  six channels decode, with the mapping validated against the channel count.
+
 Supported compressed frames use a single shared segment layout, as in the
 upstream decoder. Filter/probability mappings may differ. Uncoded DST frames
 are also supported. Other segment layouts return an unsupported-format error.

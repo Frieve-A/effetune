@@ -332,7 +332,7 @@ test('channel progress advances through every step and stays monotonic during an
     assert.ok(Math.abs(statuses[0].progress.done - 8.5) < 1e-9, 'the first channel starts after its level check');
 });
 
-test('Retry on Noise plays a noisy test signal again and keeps the quietest of three as the new reference', async () => {
+test('Retry on Noise plays a noisy test signal again and makes the quietest of three steady plays the new reference', async () => {
     const deps = runDeps([]);
     const plan = capturePlan();
     plan.captures = plan.captures.map(capture => ({ ...capture, kind: 'call', seed: 1, K: 7, chirp: null }));
@@ -340,7 +340,8 @@ test('Retry on Noise plays a noisy test signal again and keeps the quietest of t
     Object.assign(plan.check, check);
     deps.buildCheckCall = async () => plan.check;
     // Reference 1, so a noise above 10 is too much: the first capture passes on its second play, the
-    // second keeps its quietest play (20) as the new reference, so 150 passes on the third capture.
+    // second keeps its quietest play (20) and, its plays being steady (40 within 10 dB of 20), makes it
+    // the new reference, so 150 passes on the first play of the third capture.
     const noises = [50, 2, 30, 20, 40, 150, 1, 1];
     const judgedCalls = [];
     deps.callSignalNoise = async (recording, call) => {
@@ -365,6 +366,53 @@ test('Retry on Noise plays a noisy test signal again and keeps the quietest of t
     assert.deepEqual(recorded, [2, 4, 6]);
     assert.equal(phases.filter(phase => phase === 'noiseRetry').length, 3);
     assert.deepEqual(judgedCalls.slice(6), [check, check], 'the correction-check passes are judged too');
+});
+
+test('Retry on Noise keeps the reference after a disturbance that outlasts the retries', async () => {
+    const deps = runDeps([]);
+    const plan = capturePlan();
+    plan.captures = plan.captures.map(capture => ({ ...capture, kind: 'call', seed: 1, K: 7, chirp: null }));
+    // Reference 1 (limit 10): the first capture's plays 300, 20, 400 are not steady (400 > 10 · 20), so the
+    // reference stays 1 and the second capture's 50 is still played again. The two correction-check passes take 1.
+    const noises = [300, 20, 400, 50, 2, 1, 1, 1];
+    deps.callSignalNoise = async () => ({ signal: 1e4, noise: noises.shift() });
+    let plays = 0;
+    await runSpeakerDistortionMeasurement({
+        settingsList: [settingsFor(0, 'Left')], placement: 'listeningPosition', averaging: 1, retryOnNoise: true,
+        first: { plan, judged: { outcome: 'passed', headroomDb: 12, noisePower: 1 } },
+        play: async () => Float32Array.of(++plays / 1000), pause: async () => {},
+        signal: new AbortController().signal, deps
+    });
+    assert.equal(plays, 8);
+    assert.equal(noises.length, 0);
+});
+
+test('Retry on Noise plays again a take that lost too many periods, as one over the noise limit', async () => {
+    const deps = runDeps([]);
+    const plan = capturePlan();
+    plan.captures = plan.captures.map(capture => ({ ...capture, kind: 'call', seed: 1, K: 7, chirp: null }));
+    // Reference 1 (limit 10): the first capture's quiet play lost its periods, so it is played again; the
+    // second capture never keeps its periods but once, and that take is kept although it is the noisiest.
+    const takes = [[1, true], [5, false], [1, true], [30, false], [2, true], [1, false], [1, false], [1, false]];
+    deps.callSignalNoise = async () => {
+        const [noise, periodsLost] = takes.shift();
+        return { signal: 1e4, noise, periodsLost };
+    };
+    let recorded = null;
+    const identify = deps.identifySpeakerModel;
+    deps.identifySpeakerModel = async args => {
+        recorded = args.recordings.map(recording => Math.round(recording[0] * 1000));
+        return identify(args);
+    };
+    let plays = 0;
+    await runSpeakerDistortionMeasurement({
+        settingsList: [settingsFor(0, 'Left')], placement: 'listeningPosition', averaging: 1, retryOnNoise: true,
+        first: { plan, judged: { outcome: 'passed', headroomDb: 12, noisePower: 1 } },
+        play: async () => Float32Array.of(++plays / 1000), pause: async () => {},
+        signal: new AbortController().signal, deps
+    });
+    assert.equal(plays, 8);
+    assert.deepEqual(recorded, [2, 4, 6]);
 });
 
 test('Retry on Noise skips a silent recording and keeps the next usable take', async () => {

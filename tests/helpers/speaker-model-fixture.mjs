@@ -97,6 +97,8 @@ function channel(index, fitted, withDiagnosis) {
             (_, s) => CLASSES.map((_, k) => (s === 0 ? 0 : k === 2 ? null : -0.5 * (s + k))))),
         ref: perSet((set, i) => filled(Float32Array, REF_LENGTH, seed + 200 + i)),
         micDistortionWarning: index !== 0,
+        periodReference: { offset: 0, sign: 1 },
+        recordingGaps: index === 0 ? null : 'corrected',
         report: {
             lambda: perLength(length => (fitted[length] ? 0.01 : null)),
             micWeight: perLength(length => (fitted[length] ? 0.5 : null)),

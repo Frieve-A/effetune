@@ -640,13 +640,16 @@ class LevelMeterPlugin extends PluginBase {
             // Display peak level value
             if (numDrawableChannels <= 4 && (!options || options.showLevelValues !== false)) {
                 ctx.fillStyle = (options?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '';
-                ctx.font = `${12 * dpr}px Arial`;
-                ctx.textAlign = vertical ? 'center' : 'right';
+                ctx.font = `${12 * dpr}px ${vertical ? 'monospace' : 'Arial'}`;
+                ctx.textAlign = 'right';
                 ctx.textBaseline = vertical ? 'top' : 'middle';
-                const peakText = (channelLabels ? `${channelLabels[channel]} ` : '') + (showPeaks ? peakLevel : level).toFixed(1) + ' dB';
-                const textX = vertical ? start + channelSize / 2 : this.canvasWidth - (10 * dpr);
+                const label = channelLabels ? `${channelLabels[channel]} ` : '';
+                const value = (showPeaks ? peakLevel : level).toFixed(1);
+                const peakText = label + (vertical ? value.padStart(6) : value) + ' dB';
+                const readoutWidth = vertical ? ctx.measureText(label + '-000.0 dB').width : undefined;
+                const textX = vertical ? start + (channelSize + readoutWidth) / 2 : this.canvasWidth - (10 * dpr);
                 const textY = vertical ? 2 * dpr : start + channelSize / 2 + (numDrawableChannels === 1 ? 0 : dpr);
-                if (options?.drawLevelValue) options.drawLevelValue(ctx, peakText, textX, textY);
+                if (options?.drawLevelValue) options.drawLevelValue(ctx, peakText, textX, textY, readoutWidth);
                 else (options?.textContext ?? ctx).fillText(peakText, textX, textY);
             }
         }

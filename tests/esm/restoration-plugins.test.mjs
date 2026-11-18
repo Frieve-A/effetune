@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RESTORATION_PLUGINS = [
@@ -36,7 +37,7 @@ const RESTORATION_PLUGINS = [
     telemetryAssertion(plugin) {
       assert.equal(plugin.restoredPercent, 3.25);
       assert.ok(plugin._telemetryHudCanvas.hudText.includes('RESTORED'));
-      assert.ok(plugin._telemetryHudCanvas.hudText.includes('3.25%'));
+      assert.ok(plugin._telemetryHudCanvas.hudText.join('').includes('3.25%'));
     }
   },
   {
@@ -56,7 +57,7 @@ const RESTORATION_PLUGINS = [
       assert.ok(plugin._telemetryHudCanvas.hudText.includes('FUNDAMENTAL'));
       assert.ok(plugin._telemetryHudCanvas.hudText.includes('59.88 Hz'));
       assert.ok(plugin._telemetryHudCanvas.hudText.includes('REMOVED'));
-      assert.ok(plugin._telemetryHudCanvas.hudText.includes('-26.5 dBFS'));
+      assert.ok(plugin._telemetryHudCanvas.hudText.join('').includes('-26.5 dBFS'));
     }
   }
 ];
@@ -88,6 +89,7 @@ class FakeElement {
       this.hudText = [];
       this.getBoundingClientRect = () => ({ width: 400, height: 80 });
       this.getContext = () => ({
+        ...hudTextContext,
         clearRect() {},
         fillRect() {},
         strokeRect() {},
@@ -246,6 +248,7 @@ async function loadPlugin(definition, telemetryHub = null) {
   const document = { createElement: tagName => new FakeElement(tagName) };
   const context = vm.createContext({
     PluginBase: createPluginBase(document),
+    drawHudReadings,
     document,
     window
   });

@@ -932,6 +932,18 @@ test('mono READY metadata keeps conservative admission promotable', async () => 
   await transport.dispose();
 });
 
+test('READY channel count must fit the count the reservation was sized for', async () => {
+  const create = channelCountHint => new RollingPcmTransport(new FakeAudioContext(), {
+    channelCountHint,
+    workerFactory: () => new FakeWorker({ channelCount: 6 })
+  });
+  const surround = create(6);
+  assert.equal((await surround.prepare(canonical(new Uint8Array([1])))).channelCount, 6);
+  await surround.dispose();
+  await assert.rejects(create(2).prepare(canonical(new Uint8Array([1]))),
+    { code: 'decoded-format-ineligible' });
+});
+
 test('seek generations reject delayed slabs and release the replaced queue', async () => {
   const context = new FakeAudioContext();
   const workers = [];

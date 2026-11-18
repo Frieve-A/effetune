@@ -199,7 +199,8 @@ export async function createDsdDecoder(reader, { metadata, outputSampleRate } = 
         totalFrames,
         durationSec: metadata.durationSec,
         // Includes the conversion arena (under 17 MiB even at 8 kHz), shared DST
-        // arena (1.125 MiB), packet cache, bounded input reads and returned slab.
+        // arena (1.25 MiB), packet cache, bounded input reads and returned slab,
+        // with the per-channel parts counted for six channels.
         // The conversion arena includes at most 1 MiB of exact coefficient cache.
         // It is independent of track duration and bounds in-flight work.
         get residentByteLength() { return disposed ? 0 : MAX_RESIDENT_BYTES; },

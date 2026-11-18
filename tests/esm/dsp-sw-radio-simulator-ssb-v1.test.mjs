@@ -1,4 +1,5 @@
 // Phase 1 gate for the SW Radio Simulator SSB reception feature: legacy-preset
+import { drawHudReadings, hudTextContext } from '../helpers/hud-readings.mjs';
 // compatibility of the new `mo` / `bf` keys, the Tuning and Receiver tab layout with
 // its mode-dependent disabled states, and the physics of the JavaScript reference
 // path (sideband shift sign, unwanted-sideband suppression, carrier residual,
@@ -198,7 +199,7 @@ async function loadPlugin({ id = 12, clock = null } = {}) {
   }
 
   const context = {
-    PluginBase,
+    PluginBase, drawHudReadings,
     document: { createElement },
     performance: { now: () => now.value },
     cancelAnimationFrame: () => {},
@@ -358,6 +359,7 @@ test('SW Radio Simulator Tuning/Receiver tabs order their rows and gate them by 
   plugin.hudCanvas = {
     width: 900, height: 120, clientWidth: 900,
     getContext: () => ({
+      ...hudTextContext,
       clearRect() {}, fillRect() {}, strokeRect() {},
       fillText: text => drawn.push(String(text))
     })

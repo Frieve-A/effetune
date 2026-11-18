@@ -145,7 +145,8 @@ const AudioProcessing = {
             peakDb: processed.peakDb,
             refScale: processed.refScale,
             acquisitionMethod: processed.acquisitionMethod,
-            harmonicAnalysis: processed.harmonicAnalysis
+            harmonicAnalysis: processed.harmonicAnalysis,
+            ...(processed.recordingGaps ? { recordingGaps: processed.recordingGaps } : {})
         };
     },
 

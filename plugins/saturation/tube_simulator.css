@@ -34,10 +34,10 @@
     font-variant-numeric: tabular-nums;
     line-height: 1.35;
     overflow-wrap: anywhere;
-    /* The signed readouts pad their integer part with spaces so the decimal point and the unit
-       stay in one column; collapsing runs of spaces would undo that. pre-wrap rather than pre so
-       a reading that outgrows its cell still wraps instead of overflowing the panel. */
-    white-space: pre-wrap;
+}
+
+.tube-simulator-stereo-reading {
+    font-family: monospace;
 }
 
 /* The selector belongs to the graph below it, not to the parameter panel above, so the space is

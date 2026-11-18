@@ -13,6 +13,7 @@ import {
   createRollingPcmEnvelope,
   RollingPcmCommand,
   RollingPcmEvent,
+  ROLLING_PCM_MAX_SLAB_CHANNELS,
   validateRollingPcmEnvelope,
   validateRollingPcmFragment,
   validateRollingPcmSlab
@@ -286,8 +287,9 @@ export class RollingPcmTransport {
       decoderProfile: readyMessage.decoderProfile ?? null,
       resamplerProfile: readyMessage.resamplerProfile ?? null
     });
+    // The admission reservation was sized from the hint, so the source must fit within it.
     if (this.metadata.sampleRate !== this.audioContext.sampleRate ||
-        this.metadata.channelCount < 1 || this.metadata.channelCount > 2) {
+        this.metadata.channelCount > this.channelCountHint) {
       await this.dispose();
       throw codedError('decoded-format-ineligible');
     }
@@ -1305,7 +1307,8 @@ function isValidReadyMessage(message, decoderContract = null, dsd = false) {
   if (!message || message.type !== RollingPcmEvent.READY ||
       !Number.isSafeInteger(message.sampleRate) || message.sampleRate <= 0 ||
       !Number.isSafeInteger(message.channelCount) || message.channelCount < 1 ||
-      message.channelCount > 2 || !Number.isFinite(message.durationSec) ||
+      message.channelCount > ROLLING_PCM_MAX_SLAB_CHANNELS ||
+      !Number.isFinite(message.durationSec) ||
       message.durationSec < 0 || !Number.isSafeInteger(message.totalFrames) ||
       message.totalFrames < 0 || typeof message.containerMimeType !== 'string' ||
       message.containerMimeType.length === 0 || message.decoderConfigVerified !== true ||

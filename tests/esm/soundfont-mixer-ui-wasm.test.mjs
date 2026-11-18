@@ -16,7 +16,8 @@ function createPlayer(h, asset) {
   document.createElement = tag => {
     const element = create(tag);
     element.dataset = {};
-    element.append = (...children) => children.forEach(child => element.appendChild(child));
+    // Text children carry nothing these tests read.
+    element.append = (...children) => children.forEach(child => typeof child === 'string' || element.appendChild(child));
     element.replaceChildren = (...children) => { element.children.length = 0; element.append(...children); };
     element.removeAttribute = name => { delete element.attributes[name]; };
     return element;

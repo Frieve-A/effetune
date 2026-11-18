@@ -32,6 +32,11 @@ This type can intentionally generate output from zero input at an active setting
 | `previewMidi` | `preview_midi` | integer / 1 | `-1` | Not declared in catalog | -1 … 127 |
 | `previewChannel` | `preview_channel` | integer / 1 | `0` | Not declared in catalog | 0 … 15 |
 | `sf2Compatibility` | `sf2_compatibility` | integer / 1 | `0` | Not declared in catalog | 0 … 1 |
+| `respondGm` | `respond_gm` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
+| `respondGs` | `respond_gs` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
+| `respondXg` | `respond_xg` | boolean / 1 | `true` | Not declared in catalog | Not declared in catalog |
+| `transpose` | `transpose` | integer / 1 | `0` | Not declared in catalog | -12 … 12 |
+| `midiChannelsOff` | `midi_channels_off` | integer / 1 | `0` | Not declared in catalog | 0 … 65535 |
 
 ### Playing MIDI
 
@@ -49,8 +54,16 @@ renders a MIDI file.
 
 ### Parameter values
 
-- `midiChannel`: `0` (default) follows all 16 MIDI channels; `1` to `16`
-  follows only that channel.
+- Leave `midiChannel` at `0` (default) to receive all 16 MIDI channels, or set it
+  to `1` through `16` to select one channel. `midiChannelsOff` then excludes
+  channels from that selection. Each set bit disables one channel, starting with
+  bit 0 for channel 1. For example, `512` excludes channel 10 and the default
+  `0` excludes none.
+- `transpose` shifts melodic notes by −12 to +12 semitones. The default is
+  `0`. Drum parts keep their original keys.
+- `respondGm`, `respondGs` and `respondXg` each enable playback for the
+  corresponding MIDI system. All three default to `true`. The library starts
+  in GM mode and its MIDI API ignores system reset messages.
 - `sampleQuality`: `0` (default) is FIR (64 taps), `1` is FIR (32 taps), and `2`
   is Cubic (4 points). The library default is FIR (64 taps), unlike the app's
   FIR (32 taps) default described below.
@@ -77,7 +90,7 @@ SF3 (.sf3) uses compressed samples; import and select its sounds in the same way
 
 ### MIDI Mixer
 
-The **MIDI Mixer** tab has one row for each of the 16 MIDI channels. An SF2/SF3 collection can provide a different sound for each channel; Bank Select and Program Change messages choose the sounds, and channel 10 uses the drum bank by default. GS/XG drum-part messages can assign percussion to other channels or return a channel to melodic sounds. Program Change selects an available drum kit in the loaded SoundFont. An SFZ instrument uses its own mappings.
+The **MIDI Mixer** tab has one row for each of the 16 MIDI channels. An SF2/SF3 collection can provide a different sound for each channel; Bank Select and Program Change messages choose the sounds, and channel 10 uses the drum bank by default. GS/XG drum-part messages can assign percussion to other channels or return a channel to melodic sounds. Program Change selects an available drum kit in the loaded SoundFont. The song's GM, GS, or XG reset message decides how Bank Select is read: GM and GS songs choose the bank with CC0, while XG songs choose it with CC32 and use CC0 values 126 and 127 for drum kits. An SFZ instrument uses its own mappings.
 
 Before a Program Change, melodic channels use program 1 in bank 0 and channel 10 uses the standard drum kit, if those sounds are available. If the requested SF2/SF3 sound is missing, melodic channels try the same program in bank 0, then program 1 in bank 0; drum channels try the standard drum kit. **Patch** shows the sound actually used. If none of these sounds exists, or **Automatic Fallback** is off, the channel has no sound to play.
 
@@ -98,12 +111,16 @@ When incoming MIDI changes the displayed Patch or a knob value, that control bri
 
 The **Settings** tab contains the saved playback settings:
 
-- **MIDI Channel** plays **All** channels by default, or only the selected channel from **1–16**.
+- **MIDI Channel** turns each of the 16 MIDI channels on or off (all on by default); only the channels that are on are played. **All** turns every channel on or off at once.
+- **Respond to** chooses which kinds of MIDI songs this player plays: **GM**, **GS**, and **XG** (all on by default). A song selects its standard with a GM, GS, or XG reset message; a song without one is treated as GM. While the current song uses a standard that is turned off, the player stays silent and its status shows which standard the song uses. Playing the keys in the **MIDI Mixer** still sounds.
+- **Transpose** shifts the pitch of melodic parts from -12 to +12 semitones (default 0). Drum parts are detected automatically and are not shifted, so each percussion sound stays the same. **Notes** in the **MIDI Mixer** keeps showing the notes as written in the song. A note shifted beyond the MIDI note range is not played.
 - **Instrument Level** adjusts the generated sound from -60 to +12 dB (default 0 dB), without changing incoming audio.
 - **Max Voices** limits simultaneous sample voices, including releases, to 1–1024 (default 256). Higher values preserve more overlapping sounds and use more processing.
 - **Automatic Fallback** (on by default) replaces a missing SF2/SF3 sound with a similar available one, as described above. Turn it off to keep channels that request a missing sound silent, which makes gaps in the SoundFont easy to notice.
 - **Interpolation** chooses how the instrument's samples are resampled. **FIR (64 taps)** uses the standard SF2/SF3 filter or the SFZ instrument's own quality setting. **FIR (32 taps)** (default) uses less processing for SF2/SF3; it uses 32 taps when no downsampling is needed, while FIR filters grow when playback requires downsampling to limit aliasing. **Cubic (4 points)** uses light interpolation, but lacks an anti-alias low-pass filter, so strongly raised notes or samples rich in high harmonics can produce aliasing. FIR and Cubic override an SFZ instrument's quality setting.
 - **SF2 Compatibility** chooses how SF2/SF3 sounds are interpreted; SFZ instruments are not affected. **Standard** (default) behaves like common SoundFont synthesizers and the original SoundFont hardware, which most SoundFonts are tuned for: each sound's attenuation setting is applied at 40% strength, and the specification's default velocity-to-filter rule is ignored, so softer notes are not automatically darker. **SF2.04 Strict** follows the SoundFont 2.04 specification literally: attenuation is applied in full, so sounds that use attenuation play quieter than their authors likely intended, and softer notes sound darker. Use it to hear how a SoundFont sounds when the specification is followed to the letter.
+
+To play GS and XG songs with a SoundFont made for each standard, add two SoundFont Players. For example, load a GS SoundFont in the first and turn off **XG** under **Respond to**, then load an XG SoundFont in the second and turn off **GM** and **GS**. Each song then plays through the matching player while the other stands by. Leave each standard on in only one player; otherwise both play the song at once.
 
 The selected instrument and these settings are saved normally. The Music Player’s volume and mute also control the MIDI instrument. Presets, shared links, and backups store the instrument reference, not its samples; keep the original files available in the desktop app and for use on another device.
 

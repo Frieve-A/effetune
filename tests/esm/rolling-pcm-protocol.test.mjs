@@ -75,6 +75,9 @@ test('protocol envelopes reject stale generations and malformed slabs', () => {
   });
   assert.equal(validateRollingPcmSlab(slab, { ...ids, maxFrames: 2 }), true);
   assert.equal(validateRollingPcmSlab({ ...slab, frameCount: 3 }, { ...ids, maxFrames: 3 }), false);
+  const planes = count => Array.from({ length: count }, () => new Float32Array(2).buffer);
+  assert.equal(validateRollingPcmSlab({ ...slab, channelCount: 6, planes: planes(6) }, { ...ids, maxFrames: 2 }), true);
+  assert.equal(validateRollingPcmSlab({ ...slab, channelCount: 7, planes: planes(7) }, { ...ids, maxFrames: 2 }), false);
 });
 
 test('fragment envelopes bind exact source, crop, and output ranges to one token', () => {
