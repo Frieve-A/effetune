@@ -352,9 +352,10 @@ test('Headphone EQ loads named text into the measurement and its target', async 
 test('Headphone EQ downloads the index once and loads a picked headphone', async () => {
   const requests = [];
   const index = '- [HD 650](./oratory1990/over-ear/HD%20650) by oratory1990 on GRAS 43AG-7';
+  const missingUrl = 'https://example.com/missing.csv';
   const fetch = async url => {
     requests.push(url);
-    if (url.includes('example.com')) return { ok: false, status: 404 };
+    if (url === missingUrl) return { ok: false, status: 404 };
     return { ok: true, text: async () => (url.endsWith('INDEX.md') ? index : 'frequency,raw\n20,80\n20000,80') };
   };
   const created = [];
@@ -379,11 +380,11 @@ test('Headphone EQ downloads the index once and loads a picked headphone', async
   assert.deepEqual(plain([plugin.mn, plugin.mr[0], search.value]), ['HD 650 (oratory1990)', 80, '']);
 
   // A failed download keeps the curves and the input.
-  search.value = 'https://example.com/missing.csv';
+  search.value = missingUrl;
   await search.listeners.change();
   assert.equal(plugin._statusState, 'error');
   assert.match(plugin._statusMessage, /could not be downloaded/);
-  assert.deepEqual(plain([plugin.mn, search.value]), ['HD 650 (oratory1990)', 'https://example.com/missing.csv']);
+  assert.deepEqual(plain([plugin.mn, search.value]), ['HD 650 (oratory1990)', missingUrl]);
 });
 
 test('Headphone EQ keeps the measurement started last when an earlier download finishes after it', async () => {

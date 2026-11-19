@@ -29,10 +29,11 @@ get_filename_component(ET_DSP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(BUILD_TESTING OFF CACHE BOOL "Do not build DSP core tests for the Python wheel" FORCE)
 add_subdirectory("${ET_DSP_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/dsp-core")
 
+# Treat nanobind and Python headers as system headers while keeping strict warnings for the binding.
 if(ET_PYTHON_STABLE_ABI)
-  nanobind_add_module(_native STABLE_ABI NB_STATIC native/module.cpp)
+  nanobind_add_module(_native STABLE_ABI NB_STATIC NB_SUPPRESS_WARNINGS native/module.cpp)
 else()
-  nanobind_add_module(_native NB_STATIC native/module.cpp)
+  nanobind_add_module(_native NB_STATIC NB_SUPPRESS_WARNINGS native/module.cpp)
 endif()
 
 foreach(

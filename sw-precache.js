@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.19.0-af7ecef2018fe268";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.19.0-d23cbd2f284fe545";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -1288,7 +1288,7 @@ self.EFFECTUNE_PRECACHE_INTEGRITY = {
   "./plugins/delay/delay.js": "sha256-UPk1EK3eLjd3xHjfZCJGRtVzisZHj+xOLZ4EOwO1JT0=",
   "./plugins/delay/time_alignment.js": "sha256-rK+j4Kh33SD5hNZOhZIKyw6V0xp5y0EKyK7hcfXpKiE=",
   "./plugins/dsp/NOTICE.txt": "sha256-OmBuU9te3J7wcn/C4afkZScKBKY1Ho3+TVTE95LT+Jc=",
-  "./plugins/dsp/effetune-dsp.meta.json": "sha256-/XCfdAVlcldQ3E/tQwUSYuuh2Hev7O+KZE10/nSt/d0=",
+  "./plugins/dsp/effetune-dsp.meta.json": "sha256-AomMJSEe0ANBRFhWXp8nYLSSxw9/NN7S2Hvy1PKIl6o=",
   "./plugins/dsp/effetune-dsp.simd.wasm": "sha256-wrwzFd7NQ0nHVUcjZIUlHwVn2yfDRsj5r+iFG6Wh/3k=",
   "./plugins/dsp/effetune-dsp.wasm": "sha256-AZ5sCdSKBpdxQPwDxIR+G6A4U9MtXeZTzmxXLg5+Ac8=",
   "./plugins/dynamics/attack_tonal_balance.js": "sha256-WcU6H57lF5AVkHNfI7F4S7O7LVmKwIsSe0SLFPJ0t9o=",
