@@ -105,6 +105,7 @@ export async function updateApplicationMenu(isElectron) {
       'view.effectPipeline': { label: t('menu.view.effectPipeline') },
       'view.musicLibrary': { label: t('menu.view.musicLibrary') },
       'view.visualizer': { label: t('menu.view.visualizer'), enabled: !dbtActive },
+      'view.browser': { label: t('dialog.config.browser.title') },
       'view.pipelineAnalyzer': {
         label: t('menu.view.pipelineAnalyzer'),
         checked: (window.uiManager.isPipelineAnalyzerOpen?.() ??

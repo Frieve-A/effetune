@@ -167,6 +167,7 @@ function createMenuState() {
     'edit.undo': { label: 'Undo X', enabled: false },
     'menu.view': { label: 'View X' },
     'view.visualizer': { label: 'Visualizer X', enabled: false },
+    'view.browser': { label: 'Browser X' },
     'view.pipelineAnalyzer': { label: 'Analyzer X', checked: true },
     'view.visualizerFeed': { label: 'Feed X' },
     'menu.settings': { label: 'Settings X' },
@@ -1176,8 +1177,8 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(translatedMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
     assert.equal(translatedMenu.template[2].submenu[8].accelerator, 'CommandOrControl+Shift+V');
     assert.equal(translatedMenu.template[2].submenu[8].enabled, false);
-    assert.equal(translatedMenu.template[2].submenu[9].type, 'checkbox');
-    assert.equal(translatedMenu.template[2].submenu[9].checked, true);
+    assert.equal(translatedMenu.getMenuItemById('view.pipelineAnalyzer').type, 'checkbox');
+    assert.equal(translatedMenu.getMenuItemById('view.pipelineAnalyzer').checked, true);
     assert.equal(translatedMenu.getMenuItemById('file.save').label, 'Save X');
     assert.equal(translatedMenu.getMenuItemById('file.save').enabled, false);
     assert.equal(translatedMenu.getMenuItemById('file.saveAs').label, 'Save As...');
@@ -1213,7 +1214,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
           submenu: [
             'view.reload', 'separator', 'view.resetZoom', 'view.zoomIn',
             'view.zoomOut', 'separator', 'view.effectPipeline',
-            'view.musicLibrary', 'view.visualizer', 'view.pipelineAnalyzer',
+            'view.musicLibrary', 'view.visualizer', 'view.browser', 'view.pipelineAnalyzer',
             'view.visualizerFeed', 'separator', 'toggle-fullscreen', 'view.miniPlayer'
           ]
         },
@@ -1233,6 +1234,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(translatedMenu.getMenuItemById('file.quit').role, 'quit');
     assert.equal(translatedMenu.getMenuItemById('toggle-fullscreen').role, 'togglefullscreen');
     assert.equal(translatedMenu.getMenuItemById('view.reload').accelerator, 'CommandOrControl+R');
+    assert.equal(translatedMenu.getMenuItemById('view.browser').label, 'Browser X');
     assert.equal(translatedMenu.getMenuItemById('view.miniPlayer').accelerator, 'CommandOrControl+Shift+M');
     assert.equal(translatedMenu.getMenuItemById('view.visualizerFeed').label, 'Feed X');
     // A single display cannot host a clean feed.
@@ -1256,7 +1258,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
       'edit.delete', 'edit.selectAll',
       'menu.view',
       'view.reload', 'view.resetZoom', 'view.zoomIn', 'view.zoomOut',
-      'view.effectPipeline', 'view.musicLibrary', 'view.visualizer', 'view.pipelineAnalyzer',
+      'view.effectPipeline', 'view.musicLibrary', 'view.visualizer', 'view.browser', 'view.pipelineAnalyzer',
       'view.visualizerFeed', 'view.visualizerFeedOff', 'view.visualizerFeedShowWhileInactive',
       'toggle-fullscreen', 'view.miniPlayer',
       'menu.settings',
@@ -1286,8 +1288,9 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(restoredMenu.template[2].submenu[6].accelerator, 'CommandOrControl+E');
     assert.equal(restoredMenu.template[2].submenu[7].accelerator, 'CommandOrControl+L');
     assert.equal(restoredMenu.template[2].submenu[8].accelerator, 'CommandOrControl+Shift+V');
-    assert.equal(restoredMenu.template[2].submenu[9].type, 'checkbox');
-    assert.equal(restoredMenu.template[2].submenu[9].checked, true);
+    assert.equal(restoredMenu.getMenuItemById('view.browser').accelerator, 'CommandOrControl+Shift+B');
+    assert.equal(restoredMenu.getMenuItemById('view.pipelineAnalyzer').type, 'checkbox');
+    assert.equal(restoredMenu.getMenuItemById('view.pipelineAnalyzer').checked, true);
     assert.equal(restoredMenu.getMenuItemById('settings.audioDevices').label, 'Audio Configuration...');
     assert.equal(restoredMenu.getMenuItemById('file.doubleBlindTest').enabled, false);
     clickMenu(restoredMenu);

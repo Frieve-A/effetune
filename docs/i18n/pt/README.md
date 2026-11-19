@@ -67,7 +67,7 @@ Escolha abaixo o método de configuração adequado à fonte de áudio que você
 
 No aplicativo desktop, **Navegador** reproduz o áudio de sites com os efeitos atuais, sem precisar de um dispositivo de áudio virtual.
 
-1. Clique em **Navegador** no cabeçalho. O processamento do áudio do navegador é iniciado.
+1. Clique em **Navegador** no cabeçalho, selecione **Visualizar > Navegador** ou pressione **Ctrl+Shift+B** (**Cmd+Shift+B** no macOS). O processamento do áudio do navegador é iniciado.
 2. Digite um endereço HTTP ou HTTPS, entre na sua conta e reproduza a música pelos controles do site. Se você omitir o protocolo, será usado HTTPS.
 3. Mude para **Effect Pipeline** para ajustar o som. A troca de visualização mantém o áudio do navegador tocando.
 

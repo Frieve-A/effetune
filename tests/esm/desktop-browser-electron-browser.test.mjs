@@ -450,7 +450,7 @@ test('Double Blind Test survives Browser playback controls and returns to the sa
     inputDeviceId: '__effetune_no_audio_input__', sampleRate: 48000, outputDeviceId: 'default'
   }));
   ({ application, page } = await launch(profile, fixture.origin));
-  await page.locator('#browserButton').click();
+  await application.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('view.browser').click());
   await page.waitForFunction(url => window.uiManager.browserView?.input.active &&
     window.uiManager.browserView.state.url === url && !window.uiManager.browserView.state.loading,
   `${fixture.origin}/source?default-start-page=1`);

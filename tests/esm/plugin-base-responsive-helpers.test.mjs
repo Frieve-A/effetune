@@ -391,6 +391,31 @@ test('PluginBase syncUIControls pushes model changes into modelKey-wired control
   assert.deepEqual(setterCalls, []);
 });
 
+test('Loudness Equalizer displays relative volume to tenths without changing the stored value', () => {
+  const { context } = loadPluginBase();
+  vm.runInContext(fs.readFileSync(new URL('../../plugins/eq/loudness_equalizer.js', import.meta.url), 'utf8'), context);
+  const plugin = new context.window.LoudnessEqualizerPlugin();
+  plugin.drawGraph = () => {};
+  const initial = -23.874015748031496;
+  plugin.setParameters({ rv: initial });
+  const input = plugin.createUI().querySelectorAll('input[type="number"]')
+    .find(element => element.id.endsWith('-relative-volume-value'));
+  assert.equal(Number(input.value), -23.9);
+  input.dispatch('blur');
+  assert.equal(plugin.getParameters().rv, initial);
+
+  const updated = -23.799999999999997;
+  plugin.setParameters({ rv: updated });
+  plugin.syncUIControls();
+  assert.equal(input.value, '-23.8');
+  input.dispatch('blur');
+  assert.equal(plugin.getParameters().rv, updated);
+  input.value = '-21.375';
+  input.dispatch('input');
+  input.dispatch('blur');
+  assert.equal(plugin.getParameters().rv, -21.375);
+});
+
 test('PluginBase shows the same numeric text for model sync, slider input, and committed typing', () => {
   const { PluginBase } = loadPluginBase();
   const plugin = new PluginBase('Number Test', 'Numeric display');

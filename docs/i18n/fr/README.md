@@ -67,7 +67,7 @@ Choisissez la méthode de configuration adaptée à la source audio que vous sou
 
 Dans l’application de bureau, **Navigateur** permet d’écouter le son des sites web avec vos effets actuels, sans périphérique audio virtuel.
 
-1. Cliquez sur **Navigateur** dans l’en-tête. Le traitement du son du navigateur démarre.
+1. Cliquez sur **Navigateur** dans l’en-tête, sélectionnez **Affichage > Navigateur** ou appuyez sur **Ctrl+Shift+B** (**Cmd+Shift+B** sur macOS). Le traitement du son du navigateur démarre.
 2. Saisissez une adresse HTTP ou HTTPS, puis connectez-vous et lancez la musique depuis le site. Si vous omettez le protocole, HTTPS est utilisé.
 3. Passez à **Effect Pipeline** pour régler le son. Le changement de vue n’interrompt pas le son du navigateur.
 

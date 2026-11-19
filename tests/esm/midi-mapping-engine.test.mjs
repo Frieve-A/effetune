@@ -156,7 +156,7 @@ test('absolute mappings use real parameter values for their configured range', (
   };
   const item = mapping('real-range', { kind: 'cc', channel: 0, number: 7, mode: 'abs' });
   item.target.type = 'RangePlugin';
-  item.map = { ...item.map, lo: -6, hi: 9 };
+  item.map = { ...item.map, lo: -6.125, hi: 9.125 };
   const { engine } = harness([item], [target]);
   engine.adapter.catalog.RangePlugin = [{
     ...descriptor,
@@ -166,10 +166,10 @@ test('absolute mappings use real parameter values for their configured range', (
   }];
   engine.onSourceEvent('Device', item.source, 127);
   engine.applyFrame();
-  assert.equal(target.gn, 9);
+  assert.equal(target.gn, 9.125);
   engine.onSourceEvent('Device', item.source, 0);
   engine.applyFrame();
-  assert.equal(target.gn, -6);
+  assert.equal(target.gn, -6.125);
 });
 
 test('integer endpoints use the same canonical grid at runtime as persisted mappings', () => {
@@ -371,6 +371,19 @@ test('timer automation applies direct, random, and random-walk actions without U
   engine.applyFrame();
   assert.equal(target.gn, 0.5);
   assert.deepEqual(calls, { worklet: 4, url: 0, history: 0 });
+});
+
+test('timer changes smaller than a float control step accumulate on every tick', () => {
+  const target = plugin(1, 0.5);
+  const timer = mapping('sub-step', { kind: 'timer', intervalMs: 1000 });
+  timer.device = '';
+  timer.map = { ...timer.map, behavior: 'direct', amount: 0.001 };
+  const { engine } = harness([timer], [target]);
+  for (const expected of [0.501, 0.502, 0.503]) {
+    engine.onAutomationEvent(timer.id, { kind: 'timer' });
+    engine.applyFrame();
+    assert.equal(target.gn, expected);
+  }
 });
 
 test('timer random-walk uses AM Radio Static Rate public values and refreshes its runtime target', () => {

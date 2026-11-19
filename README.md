@@ -69,7 +69,7 @@ Choose the setup below that matches the audio source you want to listen to.
 
 The desktop app's **Browser** plays audio from websites through your current effects without a virtual audio device.
 
-1. Click **Browser** in the header. This starts browser audio processing.
+1. Click **Browser** in the header, choose **View > Browser**, or press **Ctrl+Shift+B** (**Cmd+Shift+B** on macOS). This starts browser audio processing.
 2. Enter an HTTP or HTTPS address, then sign in and play music using the website's controls. An address without a scheme opens with HTTPS.
 3. Switch to **Effect Pipeline** to adjust the sound. Switching views keeps browser audio playing.
 

@@ -526,6 +526,17 @@ function createApplicationMenuTemplate(menuState = {}) {
           accelerator: 'CommandOrControl+Shift+V',
           click: () => sendToRenderer('open-visualizer-view')
         }),
+        item('view.browser', {
+          label: 'Browser',
+          accelerator: 'CommandOrControl+Shift+B',
+          click: () => {
+            const mainWin = constants.getMainWindow();
+            if (!mainWin) return;
+            // Browser audio capture requires a user gesture in the renderer.
+            return mainWin.webContents.executeJavaScript('window.uiManager?.showBrowserView()', true)
+              .catch(error => console.error('Error opening Browser view:', error));
+          }
+        }),
         item('view.pipelineAnalyzer', {
           label: 'Pipeline Analyzer',
           type: 'checkbox',

@@ -357,9 +357,10 @@ class LoudnessEqualizerPlugin extends PluginBase {
             'Average SPL', 60.0, 96.0, 0.1, this.sp,
             createOnChangeHandler(v => this.setParameters({ sp: v })), 'dB', 'sp'
         ));
+        const displayRelativeVolume = value => Number(value.toFixed(1));
         container.appendChild(this.createParameterControl(
-            'Relative Volume', -30.0, 12.0, 0.1, this.rv,
-            createOnChangeHandler(v => this.setParameters({ rv: v })), 'dB', 'rv'
+            'Relative Volume', -30.0, 12.0, 0.1, displayRelativeVolume(this.rv),
+            createOnChangeHandler(v => this.setParameters({ rv: v })), 'dB', 'rv', displayRelativeVolume
         ));
         container.appendChild(this.createParameterControl(
             'Low Freq', 100, 300, 1, this.lf,
