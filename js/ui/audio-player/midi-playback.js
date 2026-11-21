@@ -305,6 +305,20 @@ export const midiPlaybackMethods = {
       position: this.midiPosition, draining: this.midiNaturalTail === true };
   },
 
+  async restoreMidiAfterDeviceReset(isCurrent) {
+    const timeline = this.midiTimeline, source = this.midiSource, token = this.stopRequestToken;
+    const current = () => isCurrent() && this.midiTimeline === timeline &&
+      this.midiSource === source && this.stopRequestToken === token;
+    const playing = this.midiPlaying, position = this.getCurrentMidiTime();
+    // The retired Engine cannot supply a fresh checkpoint. Recreate instrument
+    // state from the score up to the last position reported by its render clock.
+    this.midiCheckpointAvailable = false;
+    const ready = await this.prepareMidiTransport(position,current,timeline,{preservePresentation:true});
+    if (!current()) return true;
+    if (ready && playing && this.midiPlaying) this.startPreparedMidiTransport(position);
+    return ready;
+  },
+
   prepareMidiTransport(position, isCurrent = null, timeline = this.midiTimeline, { preservePresentation = false } = {}) {
     this.midiOutput?.stop();
     this.midiPreparation?.finish(false);
@@ -434,7 +448,7 @@ export const midiPlaybackMethods = {
   // performance.now() milliseconds at which render context time zero is heard.
   getMidiOutputClockOffset(now) {
     const context = this.audioPlayer.audioContext;
-    const heard = audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
+    const heard = this.audioManager.getAudibleContextMs?.() ?? audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
       currentTime: context.currentTime, outputLatency: context.outputLatency,
       baseLatency: context.baseLatency, performanceTime: now });
     return now - heard + (this.audioManager.getTotalPipelineLatencySamples?.() ?? 0) / context.sampleRate * 1000;

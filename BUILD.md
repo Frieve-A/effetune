@@ -705,7 +705,8 @@ npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v45.2.1+wvcus-win32
 
 For an already prepared application snapshot with its own installed dependencies,
 `node scripts/pack-ecs.mjs --runtime-zip '<ZIP>' --app-dir '<snapshot>'`
-packs that snapshot. Prepare its assets and sidecar before invoking the runner directly;
+packs that snapshot. Prepare its assets and sidecars, including the native audio engine
+with `npm run build:audio-engine`, before invoking the runner directly;
 keep the development-only `build` configuration in the root package, not the snapshot's
 `package.json`.
 
@@ -740,7 +741,8 @@ after extracting or installing the resulting package. VMP and OS code signing
 are separate: Windows requires VMP **after** OS signing; macOS requires VMP
 **before** OS signing. Linux does not use VMP. See the [official EVS signing order](https://github.com/castlabs/electron-releases/wiki/EVS#signing-an-ecs-application-package).
 
-On Linux x64 and macOS x64/arm64, prepare the assets and native sidecar, then use
+On Linux x64 and macOS x64/arm64, prepare the assets and sidecars, including the
+native audio engine with `npm run build:audio-engine`, then use
 `node scripts/prepare-ecs.mjs` to download and check the matching runtime and
 `node scripts/pack-ecs.mjs --output '<directory>'` to package it. Both helpers
 select the host architecture. Linux produces an AppImage; macOS produces a
@@ -902,6 +904,25 @@ do not require Python. To regenerate them after editing their geometry, install
 the optional authoring tools with
 `python -m pip install "fonttools[woff]==4.57.0" "brotli==1.0.9"`, then run
 `python scripts/generate-numeric-fonts.py` and include the regenerated fonts.
+
+### Native Audio Engine
+
+The desktop native audio engine requires Node.js, Python 3.10 or newer, CMake 3.24 or newer, and Ninja. Use clang-cl with the Visual Studio C++ tools on Windows x64, Xcode clang on macOS, or clang on Linux x64. Build each architecture on a matching host. Add the LLVM `bin` directory to `PATH` if Visual Studio provides the C++ tools separately from clang-cl.
+
+```bash
+npm run build:audio-engine
+npm run test:audio-engine
+```
+
+The build produces release executables in `out/native/audio-engine/<platform>-<arch>/`. x64 builds include baseline SSE2 and an AVX2/FMA `-v3` variant. The sidecar checks instruction support before starting the v3 engine, and the desktop host selects the baseline executable if the CPU cannot run v3. Set `EFFETUNE_AUDIO_ENGINE_FORCE_BASELINE=1` to exercise that fallback. `test:audio-engine` verifies Debug and Release for every variant on the host. On Linux or WSL, also run `npm run test:audio-engine -- --gcc` for the GCC Debug warning build.
+
+The native build uses the DSP Core with the PFFFT SIMD path and enables equivalent floating-point transformations in its own build tree. The native test build uses an independent output tree so it can check allocation guards without replacing packaged executables. To isolate numerical differences, configure the sidecar CMake project with `-DET_AUDIO_ENGINE_OPTIMIZE_FP=OFF` and use a separate output directory.
+
+The sidecar’s `--backend null` mode allows tests to run without hardware. Set `EFFETUNE_AUDIO_ENGINE_REQUIRED=1` when running the Node integration, parity, or Electron tests in an environment that already built the engine, so a missing executable fails verification. Run `npm run smoke:audio-engine:device` on Windows or with an existing WSLg PulseAudio connection. Run `npm run smoke:audio-engine:app` and `npm run bench:audio-engine` on the Windows development machine. The device and app checks mute the final samples written to the device. The benchmark compares 128-frame processing against the production SIMD worklet and records the device-period measurements alongside that comparison.
+
+On the first Windows build, confirm the two engine executables and the native test executable remain in `out/native/audio-engine/win32-x64/` after several minutes and run successfully when spawned from Node. If antivirus removes them, ask the machine owner to allow the audio-engine output directory before rerunning the Windows execution checks.
+
+Desktop packaging copies the platform executables and their notices. `npm run smoke:audio-engine-package` checks the unpacked resources and opens a null session through each compatible executable. The macOS release also verifies their signatures. When updating miniaudio, follow its [pinned source and verification notes](native/audio-engine/vendor/miniaudio/README.md).
 
 ### OpenHome Sidecar
 

@@ -135,6 +135,16 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
    * Processamento: Efeitos em tempo real através do EffeTune
    * Saída: Áudio processado para seu amplificador ou alto-falantes
 
+### Drivers de áudio do aplicativo desktop
+
+Abra **Configurações > Configuração de Áudio** e escolha o **Driver**. A opção inicial é **Padrão**. Para reduzir a carga de processamento ou usar uma entrada com três ou mais canais, experimente **WASAPI** no Windows, **Core Audio** no macOS ou **PulseAudio** no Linux (**ALSA** quando o PulseAudio não está disponível). O driver muda como o EffeTune se conecta aos dispositivos de áudio. Os efeitos, predefinições e controles do player funcionam da mesma forma.
+
+Ajuste a **Taxa de Amostragem** dos efeitos normalmente. Se a saída usar outra taxa, o EffeTune converte o áudio após o processamento. Pequenas diferenças de arredondamento podem alterar os valores exatos das amostras em comparação com o driver **Padrão**.
+
+O EffeTune usa os canais que o sistema operacional reconhece no dispositivo de entrada selecionado. Para capturar até 16 canais juntos, escolha uma interface que apareça no sistema como um único dispositivo multicanal. Ative **Entrada de áudio mesmo ao usar o Player** para misturar a entrada com o som do player. No Windows, **System Audio (som de outros aplicativos)** exige um dispositivo de saída diferente do padrão do Windows.
+
+Se o áudio não iniciar, escolha **Redefinir Áudio** ou volte ao driver **Padrão**. No macOS, permita que o EffeTune acesse o microfone quando solicitado se você quiser usar um dispositivo de entrada.
+
 ## Uso
 
 O aplicativo desktop abre com a janela maximizada na primeira execução. Nas próximas vezes, restaura o tamanho, a posição e o estado de maximização anteriores da janela.

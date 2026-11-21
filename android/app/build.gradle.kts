@@ -8,8 +8,8 @@ android {
         applicationId = "com.frieve.effetune"
         minSdk = 29
         targetSdk = 37
-        versionCode = 21900
-        versionName = "2.19.0"
+        versionCode = 22000
+        versionName = "2.20.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON", "-DANDROID_STL=c++_shared") } }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

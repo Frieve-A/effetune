@@ -236,7 +236,8 @@ function buildMinimalWindowsCodec(toolchain, codecSource) {
     run(bash, ['--noprofile', '--norc', './configure', ...configuration], { cwd: codecRoot, env: environment });
     writeFileSync(markerPath, marker);
   }
-  run(bash, ['--noprofile', '--norc', '-c', 'mingw32-make -j4 && mingw32-make install'],
+  // FFmpeg's quiet install repeats the full destination for every header and exceeds the Windows command limit.
+  run(bash, ['--noprofile', '--norc', '-c', 'mingw32-make -j4 && mingw32-make V=1 install'],
     { cwd: codecRoot, env: environment });
   return codecRoot;
 }

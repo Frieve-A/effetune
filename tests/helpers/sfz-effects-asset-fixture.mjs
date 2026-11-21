@@ -23,7 +23,7 @@ export function sfzEffectsFixtureSamples() {
     ]);
 }
 
-export async function createSfzEffectsAsset(name) {
+export async function createSfzEffectsAsset(name, streamed = name === 'Paged') {
     const source = SFZ_EFFECT_ASSET_SOURCES[name];
     assert.equal(typeof source, 'string');
     const parsed = await parseSfz({ selectedPath: 'fixture.sfz', readText: async () => source,
@@ -31,7 +31,7 @@ export async function createSfzEffectsAsset(name) {
     assert.deepEqual(parsed.unsupportedOpcodes, [], `${name}: unsupported fixture`);
     if (name !== 'Dry') assert.ok(parsed.effects, `${name}: normal parser must produce the effect plan`);
     const options = { modulation: parsed.modulation, effects: parsed.effects };
-    const asset = name === 'Paged' ? packStreamedSfzAsset(parsed.regions,
+    const asset = streamed ? packStreamedSfzAsset(parsed.regions,
         new Map([['constant.wav', { frames: 16384, channels: 1, sampleRate: 48000, revision: 'a'.repeat(64) }]]),
         { ...options, cacheSlots: 4 }) : packSfzAsset(parsed.regions, sfzEffectsFixtureSamples(), options);
     return { ...asset, source, parsed };

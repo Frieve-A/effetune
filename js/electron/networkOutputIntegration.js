@@ -29,10 +29,11 @@ export class NetworkOutputIntegration {
         this.applyStatus(status);
       });
     }
-    audioManager.setNetworkOutputPortRequester?.(() => {
-      void Promise.resolve().then(() => bridge.rendererReady())
-        .catch(error => console.warn('[Network Output] Renderer registration failed.', error));
-    });
+    audioManager.setNetworkOutputPortRequester?.(() => Promise.resolve().then(() => bridge.rendererReady())
+      .then(() => true).catch(error => {
+        console.warn('[Network Output] Renderer registration failed.', error);
+        return false;
+      }));
     void Promise.resolve().then(() => bridge.getStatus?.()).then(status => {
       if (!receivedStatus) this.applyStatus(status);
     })
@@ -52,7 +53,7 @@ export class NetworkOutputIntegration {
     const route = manager.networkRoute;
     const paths = manager.networkPaths;
     const context = manager.contextManager?.audioContext;
-    const physical = context?.outputLatency || context?.baseLatency;
+    const physical = manager.getOutputLatencySeconds?.() ?? (context?.outputLatency || context?.baseLatency);
     const physicalOutputMs = Number.isFinite(physical) && physical > 0 ? physical * 1000 : null;
     if (!route || route.sendId == null) {
       await this.bridge.updateRoute({ active: false, physicalOutputMs });
@@ -64,13 +65,15 @@ export class NetworkOutputIntegration {
     const after = performance.now();
     if (manager.networkRoute !== route || manager.networkPaths !== paths || !Number.isFinite(hostClock)) return;
     const localSamples = paths.send?.localSamples;
+    const clock = manager.getEngineClock?.();
+    if (manager.getEngineClock && !clock) return;
     await this.bridge.updateRoute({ active: route.sendId != null, revision: paths.tapRevision,
       localReachable: Number.isFinite(localSamples),
       dspMs: Number.isFinite(localSamples) ? localSamples * 1000 / context.sampleRate : null,
       softwareOutputMs: Number.isFinite(paths.outputDelaySamples) ? paths.outputDelaySamples * 1000 / context.sampleRate : null,
       physicalOutputMs,
-      contextFrame: context.currentTime * context.sampleRate,
-      frameTimeMs: performance.now() + hostClock - (before + after) / 2,
+      contextFrame: clock?.frame ?? context.currentTime * context.sampleRate,
+      frameTimeMs: (clock?.time ?? performance.now()) + hostClock - (before + after) / 2,
       clockUncertaintyMs: (after - before) / 2 + 20 });
   }
 

@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           languages: ${{ inputs.language }}
           build-mode: ${{ inputs.language == 'c-cpp' && 'manual' || 'none' }}
@@ -32,8 +32,10 @@ jobs:
         run: |
           cmake -S dsp -B out/dsp/codeql -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
           cmake --build out/dsp/codeql --parallel
+          cmake -S native/audio-engine -B out/native/audio-engine/codeql -G Ninja -DCMAKE_BUILD_TYPE=Debug -DET_AUDIO_ENGINE_X64_V3=OFF
+          cmake --build out/native/audio-engine/codeql --parallel
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           category: "/language:${{ inputs.language }}"

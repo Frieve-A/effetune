@@ -659,6 +659,7 @@ export class PlaybackManager {
     play,
     userInitiated,
     reason,
+    resumePaused,
     isCurrent = () => true,
     state = this.audioPlayer.stateManager?.getStateSnapshot?.()
   }) {
@@ -668,9 +669,15 @@ export class PlaybackManager {
     }
     if (!contextManager?.loadTrack) return false;
 
+    const resumePosition = resumePaused && this.#isCurrentTrackPaused(state, ordinal) &&
+      samePlaybackEntry(track, state.currentTrack) ? state.currentTrackPosition : 0;
     const loaded = await contextManager.loadTrack(track, ordinal, null, { preserveVideoTail: reason === 'ended' });
     if (!isCurrent()) return false;
     if (play && loaded !== false && contextManager.play) {
+      if (Number.isFinite(resumePosition) && resumePosition > 0) {
+        await contextManager.seek(resumePosition);
+        if (!isCurrent()) return false;
+      }
       return contextManager.play(false, userInitiated, isCurrent);
     }
     return loaded;
@@ -694,6 +701,7 @@ export class PlaybackManager {
     resolutionScope = createPlaybackSourceResolutionScope(),
     skipUnavailable = false,
     playbackReady = null,
+    resumePaused = false,
     isCurrent = () => true
   } = {}) {
     const sequence = this.sequence;
@@ -733,6 +741,7 @@ export class PlaybackManager {
         userInitiated,
         commandKind,
         reason,
+        resumePaused,
         transportRollback,
         preserveQueueWindow,
         resolutionScope: activeResolutionScope,
@@ -770,6 +779,7 @@ export class PlaybackManager {
     userInitiated,
     commandKind,
     reason,
+    resumePaused,
     transportRollback,
     preserveQueueWindow,
     resolutionScope,
@@ -815,11 +825,10 @@ export class PlaybackManager {
     }
     if (resolution?.resumeFailed) return { accepted: false, reason: 'audio-resume-failed' };
     if (!resolution?.committed) return { accepted: false, reason: 'stale' };
+    const isCurrent = () => this.pendingTransport.isGenerationCurrent(result.generation) &&
+      sequence === this.sequence && isRequestCurrent();
     const mediaOperation = async () => {
-      if (
-        !this.pendingTransport.isGenerationCurrent(result.generation) ||
-        sequence !== this.sequence || !isRequestCurrent()
-      ) {
+      if (!isCurrent()) {
         return { accepted: false, reason: 'stale' };
       }
       const track = createResolvedSequenceTrack(resolution.entry, resolution.source);
@@ -827,19 +836,14 @@ export class PlaybackManager {
       const previousOrdinal = state?.currentTrackIndex ?? 0;
       const previousTrack = state?.currentTrack ?? this.resolvedCatalogEntries.get(previousOrdinal) ?? null;
       const changedTransport = previousOrdinal !== ordinal || Boolean(transportRollback?.shuffleChanged);
-      if (
-        !this.pendingTransport.isGenerationCurrent(result.generation) ||
-        sequence !== this.sequence || !isRequestCurrent()
-      ) {
-        return { accepted: false, reason: 'stale' };
-      }
       let played = true;
       try {
         played = await this.#activateQueueTrack(track, ordinal, {
           play: resolution.play,
           userInitiated,
           reason,
-          isCurrent: isRequestCurrent,
+          resumePaused,
+          isCurrent,
           state
         });
       } catch (error) {
@@ -1597,12 +1601,11 @@ export class PlaybackManager {
     this.activePlayRequest = null;
   }
 
-  canResumeCurrentTrack(state, currentOrdinal) {
+  #isCurrentTrackPaused(state, currentOrdinal) {
     const sequence = this.sequence;
-    const contextManager = this.audioPlayer.contextManager;
     const currentTrack = state?.currentTrack;
-    if (!sequence || !contextManager ||
-        state.isPaused !== true || state.isStopped === true ||
+    if (!sequence ||
+        state?.isPaused !== true || state.isStopped === true ||
         !Number.isSafeInteger(currentOrdinal) ||
         currentOrdinal !== state.currentTrackIndex ||
         currentOrdinal < 0 || currentOrdinal >= sequence.itemCount ||
@@ -1622,7 +1625,13 @@ export class PlaybackManager {
       const entry = sequence.peekEntry?.(currentOrdinal);
       if (entry && !samePlaybackEntry(entry, currentTrack)) return false;
     }
+    return true;
+  }
 
+  canResumeCurrentTrack(state, currentOrdinal) {
+    const contextManager = this.audioPlayer.contextManager;
+    if (!contextManager || !this.#isCurrentTrackPaused(state, currentOrdinal)) return false;
+    const currentTrack = state.currentTrack;
     if (state.playbackMode === 'midi') return !!contextManager.getMidiPresentation?.().hasMidi;
     if (state.playbackMode === 'bufferSource') {
       return contextManager.hasCurrentBuffer?.() === true;
@@ -1669,6 +1678,7 @@ export class PlaybackManager {
       play: true,
       userInitiated,
       skipUnavailable: false,
+      resumePaused: true,
       isCurrent
     });
     return this.isActivePlayRequest(request) && result?.accepted !== false;

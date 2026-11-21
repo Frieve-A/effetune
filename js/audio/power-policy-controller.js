@@ -3240,7 +3240,7 @@ export class PowerPolicyController {
                 inputAtStop?.state === InputResourceState.ACQUIRING ||
                 inputAtStop?.trackState === 'live' ||
                 !!this.audioManager.ioManager?.inputSourceNode;
-            const releaseResult = releasableInputPresent
+            let releaseResult = releasableInputPresent
                 ? this.audioManager.ioManager?.releaseAudioInput?.({
                     reason: releaseCause,
                     disconnect: disconnectInputDuringRelease
@@ -3251,6 +3251,7 @@ export class PowerPolicyController {
                     before: inputAtStop ? { ...inputAtStop } : null,
                     after: inputAtStop ? { ...inputAtStop } : null
                 };
+            if (typeof releaseResult?.then === 'function') releaseResult = await releaseResult;
             const stopped = releaseResult?.stoppedTrackCount > 0;
             const beforeState = releaseResult?.before?.state ?? null;
             const alreadyAbsent = releaseResult?.stoppedTrackCount === 0 &&

@@ -132,7 +132,7 @@ export class NetworkLivePcm {
           const context = this.player.audioContext;
           const worklet = manager?._getPrimaryWorkletNode?.();
           if (position?.started && generation === this.generation && context?.sampleRate) {
-            const physical = context.outputLatency || context.baseLatency;
+            const physical = manager.getOutputLatencySeconds?.(true) ?? (context.outputLatency || context.baseLatency);
             const paths = manager.networkPaths;
             const currentPaths = paths?.revision === manager.networkRoute?.revision ? paths : null;
             const suffix = manager.networkRoute?.receiveId != null

@@ -657,6 +657,15 @@
 
   // 音频配置对话框
   "dialog.audioConfig.title": "音频设置",
+  "dialog.audioConfig.driver": "驱动程序",
+  "dialog.audioConfig.driver.standard": "标准",
+  "dialog.audioConfig.driver.defaultDevice": "系统默认",
+  "dialog.audioConfig.driver.startFailed": "无法启动音频输出。请重新启动音频，或在音频设置中选择“标准”驱动程序。",
+  "dialog.audioConfig.driver.unavailable": "未找到音频输出设备。请连接设备，然后重新启动音频。",
+  "dialog.audioConfig.driver.busy": "其他应用可能正在使用输出设备。请关闭该应用，然后重新启动音频。",
+  "dialog.audioConfig.driver.format": "输出设备不支持这些设置。请选择其他设备或更改音频设置。",
+  "dialog.audioConfig.driver.permission": "无法访问输出设备。请检查系统权限，然后重新启动音频。",
+  "dialog.audioConfig.driver.stopped": "音频输出已停止。请重新启动音频，或在音频设置中选择“标准”驱动程序。",
   "dialog.audioConfig.inputDevice": "输入设备：",
   "dialog.audioConfig.inputDevice.none": "无（仅音乐文件播放器）",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio（其他应用的声音）",

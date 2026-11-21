@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:b49e4479578872c1e7f3b46403319f3018299f055fa559bc3f4476cd8094d6ee",
+  "sourceDigest": "sha256:7925a158092280e9c0d01b486696e17b81da85f7ec0957885f1c6c8b48b1d50d",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:7aedb5aba043f41611402e087a896d0025aabe1f24074acd00883f68dfcdb860",
+    "digest": "sha256:67b0a6fac6ff5373c61b489dc6fac061dc1d4a58a6d6fd22e0d557b19a67747e",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:7133410b25c694fd5b7b2b9c7ae3dc3a5d636a58475460970b8e7c512288da84"
+        "sha256": "sha256:2b83e78cac30c3de1108cf7e33f25f7b1db29bf206beeefad01763dc9cc46529"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:bccee6568d4882062b343c60f16349a20a6c16a40ebb59a224c3adbec01e0d27"
+        "sha256": "sha256:2004183f1e614d212bc28ef50ed44cee50848174c05d7372b3dbe750d2d29377"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -140,7 +140,7 @@
       {
         "id": "production-build#g726-source-authority",
         "kind": "derived",
-        "sha256": "sha256:6c5b51dbc61f13448e2a6fe5f30b71c52c64cb7bf5d78cc8240dd857db58bd92"
+        "sha256": "sha256:206bf76aa6564f7b6c1173df1d6c7ec94f1cab616a813c46dbf844e06c6efdd3"
       },
       {
         "id": "tools/dsp-parity/cases.mjs",
@@ -182,8 +182,8 @@
           "target_link_libraries(pffft PUBLIC m)",
           "target_include_directories( effetune_dsp_core PUBLIC include bindings/generated PRIVATE core generated/cpp)",
           "target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_tree_models)",
-          "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
-          "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)",
+          "target_compile_definitions( effetune_dsp_core PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1> $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1> $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1> $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1> $<$<AND:$<CONFIG:Debug>,$<BOOL:${ET_SUPPORTS_WRAP_MALLOC}>>:ET_WRAP_MALLOC=1> $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)",
+          "target_link_options( effetune_dsp_core INTERFACE $<$<AND:$<CONFIG:Debug>,$<BOOL:${ET_SUPPORTS_WRAP_MALLOC}>>:-Wl,--wrap=malloc>)",
           "target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)",
           "target_compile_definitions( effetune_dsp_core PRIVATE ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY=1)",
           "target_compile_options( effetune_dsp_core PRIVATE -Wall -Wextra -Wpedantic -Werror -fwasm-exceptions -fno-rtti)",
@@ -222,7 +222,7 @@
             "-DBUILD_TESTING=OFF"
           ]
         },
-        "digest": "sha256:460447c4cdabeecadd3b29d983ae33184ca15bfb32b54d4d542f5bc358cb5c47"
+        "digest": "sha256:fd796c408fbf396410b811933451de784e21bd768507e436b182f3360fcd9ab5"
       },
       "resolved": {
         "source": "configured CMake Ninja compile/link edges",
@@ -1179,7 +1179,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4924759,
-    "simd": 5153823
+    "baseline": 4924818,
+    "simd": 5153896
   }
 }

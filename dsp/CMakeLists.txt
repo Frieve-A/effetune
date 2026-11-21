@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(effetune_dsp VERSION 1.16.0 LANGUAGES C CXX)
+project(effetune_dsp VERSION 1.20.0 LANGUAGES C CXX)
 
 include(CTest)
 
@@ -139,18 +139,21 @@ target_include_directories(
   PUBLIC include bindings/generated
   PRIVATE core generated/cpp)
 target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_tree_models)
+if(NOT MSVC AND NOT APPLE)
+  set(ET_SUPPORTS_WRAP_MALLOC ON)
+endif()
 target_compile_definitions(
   effetune_dsp_core
   PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1>
           $<$<BOOL:${ET_DEBUG_STATE}>:ET_DEBUG_STATE=1>
           $<$<CONFIG:Debug>:ET_DEBUG_BUILD=1>
           $<$<CONFIG:Debug>:ET_ALLOCATION_GUARD=1>
-          $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:ET_WRAP_MALLOC=1>
+          $<$<AND:$<CONFIG:Debug>,$<BOOL:${ET_SUPPORTS_WRAP_MALLOC}>>:ET_WRAP_MALLOC=1>
           $<$<BOOL:${BUILD_TESTING}>:ET_ENABLE_TEST_KERNEL=1>)
 target_link_options(
   effetune_dsp_core
   INTERFACE
-    $<$<AND:$<CONFIG:Debug>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wl,--wrap=malloc>)
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${ET_SUPPORTS_WRAP_MALLOC}>>:-Wl,--wrap=malloc>)
 
 if(MSVC)
   target_compile_options(effetune_dsp_core PRIVATE /W4 /WX /GR-)
@@ -239,7 +242,7 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
       if(ET_NATIVE_TEST_WARNING_CHECK)
         target_compile_options(
           ${NAME} PRIVATE -Wunused-but-set-variable -fwasm-exceptions)
-      elseif(ET_TEST_WRAP_MALLOC)
+      elseif(ET_TEST_WRAP_MALLOC AND ET_SUPPORTS_WRAP_MALLOC)
         target_link_options(${NAME} PRIVATE $<$<CONFIG:Debug>:-Wl,--wrap=malloc>)
       endif()
     endif()
@@ -262,6 +265,9 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES test/graph_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_pipeline_topology_tests SOURCES test/pipeline_topology_test.cpp
+    INCLUDE_DIRS core WRAP_MALLOC)
   et_add_dsp_test(
     effetune-dsp-parity-runner
     SOURCES test/parity_runner.cpp
@@ -788,7 +794,7 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     add_executable(effetune_dsp_allocation_guard_probe test/allocation_guard_probe.cpp)
     target_include_directories(effetune_dsp_allocation_guard_probe PRIVATE core)
     target_link_libraries(effetune_dsp_allocation_guard_probe PRIVATE effetune_dsp_core)
-    if(NOT MSVC)
+    if(ET_SUPPORTS_WRAP_MALLOC)
       target_link_options(
         effetune_dsp_allocation_guard_probe PRIVATE -Wl,--wrap=malloc)
     endif()

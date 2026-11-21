@@ -657,6 +657,15 @@
 
   // ऑडियो विन्यास संवाद
   "dialog.audioConfig.title": "ऑडियो विन्यास",
+  "dialog.audioConfig.driver": "ड्राइवर",
+  "dialog.audioConfig.driver.standard": "मानक",
+  "dialog.audioConfig.driver.defaultDevice": "सिस्टम डिफ़ॉल्ट",
+  "dialog.audioConfig.driver.startFailed": "ऑडियो आउटपुट शुरू नहीं हो सका। ऑडियो फिर से शुरू करें या ऑडियो सेटिंग में मानक चुनें।",
+  "dialog.audioConfig.driver.unavailable": "कोई ऑडियो आउटपुट डिवाइस नहीं मिला। डिवाइस कनेक्ट करके ऑडियो फिर से शुरू करें।",
+  "dialog.audioConfig.driver.busy": "कोई दूसरा ऐप आउटपुट डिवाइस का इस्तेमाल कर रहा हो सकता है। उस ऐप को बंद करके ऑडियो फिर से शुरू करें।",
+  "dialog.audioConfig.driver.format": "आउटपुट डिवाइस इन सेटिंग्स का समर्थन नहीं करता। दूसरा डिवाइस चुनें या ऑडियो सेटिंग्स बदलें।",
+  "dialog.audioConfig.driver.permission": "आउटपुट डिवाइस इस्तेमाल करने की अनुमति नहीं मिली। सिस्टम की अनुमतियाँ जाँचकर ऑडियो फिर से शुरू करें।",
+  "dialog.audioConfig.driver.stopped": "ऑडियो आउटपुट बंद हो गया है। ऑडियो फिर से शुरू करें या ऑडियो सेटिंग में मानक चुनें।",
   "dialog.audioConfig.inputDevice": "इनपुट डिवाइस:",
   "dialog.audioConfig.inputDevice.none": "कोई नहीं (केवल संगीत फ़ाइल प्लेयर)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (दूसरे ऐप्स की आवाज़)",

@@ -13,6 +13,8 @@ import { normalizeOfflineOutputSettings } from '../audio/offline-output-settings
 export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
 export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
 export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
+  audioDriver: 'standard',
+  audioDriverDeviceMemory: '',
   inputDeviceId: 'default',
   midiInputDeviceKey: '',
   midiOutputDeviceKey: '',

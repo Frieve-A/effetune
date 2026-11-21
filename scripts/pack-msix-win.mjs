@@ -14,6 +14,9 @@ const msixDirectory = join(root, 'build', 'msix');
 const require = createRequire(import.meta.url);
 const requiredFiles = [
   'EffeTune.exe', 'EffeTune.exe.sig', 'resources/app.asar',
+  'resources/audio-engine/effetune-audio-engine.exe',
+  'resources/audio-engine/effetune-audio-engine-v3.exe',
+  'resources/audio-engine/THIRD_PARTY_NOTICES.txt',
   'resources/openhome/effetune-openhome-sidecar.exe',
   'resources/renderer-power/effetune-renderer-power.exe',
   'resources/openhome/THIRD_PARTY_NOTICES.txt',

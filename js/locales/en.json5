@@ -664,6 +664,15 @@
 
   // Audio Configuration Dialog
   "dialog.audioConfig.title": "Audio Configuration",
+  "dialog.audioConfig.driver": "Driver",
+  "dialog.audioConfig.driver.standard": "Standard",
+  "dialog.audioConfig.driver.defaultDevice": "System default",
+  "dialog.audioConfig.driver.startFailed": "Audio output could not start. Restart audio or choose Standard in Audio Configuration.",
+  "dialog.audioConfig.driver.unavailable": "No audio output device was found. Connect a device and restart audio.",
+  "dialog.audioConfig.driver.busy": "Another app may be using the output device. Close it and restart audio.",
+  "dialog.audioConfig.driver.format": "The output device cannot use these settings. Choose another device or change the audio settings.",
+  "dialog.audioConfig.driver.permission": "Access to the audio output device was denied. Check your system permissions and restart audio.",
+  "dialog.audioConfig.driver.stopped": "Audio output stopped. Restart audio or choose Standard in Audio Configuration.",
   "dialog.audioConfig.inputDevice": "Input Device:",
   "dialog.audioConfig.inputDevice.none": "None (music file player only)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (sound from other apps)",

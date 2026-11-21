@@ -778,7 +778,7 @@ class CrosstalkCancellationPlugin extends PluginBase {
         const ids = this._slotIds().filter(Boolean);
         if (!ids.length) return null;
         return {
-            missing: !this._lastDesign,
+            missing: !this._designPending && !this._lastDesign,
             pending: this._designPending,
             ids,
             names: ids,

@@ -713,6 +713,8 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(await handlers.get('load-audio-preferences')(), {
       success: true,
       preferences: {
+        audioDriver: 'standard',
+        audioDriverDeviceMemory: '',
         inputDeviceId: '__effetune_no_audio_input__',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
@@ -1694,6 +1696,8 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       JSON.parse(fs.readFileSync(path.join(tempDir, 'audio-preferences.json'), 'utf8')),
       {
         ...silentPreferences,
+        audioDriver: 'standard',
+        audioDriverDeviceMemory: '',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',
@@ -1764,6 +1768,8 @@ test('audio preference IPC persists a verified output-device fallback without re
       JSON.parse(fs.readFileSync(preferencesPath, 'utf8')),
       {
         ...defaultOutputPreferences,
+        audioDriver: 'standard',
+        audioDriverDeviceMemory: '',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',

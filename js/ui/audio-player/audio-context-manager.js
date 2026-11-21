@@ -250,7 +250,14 @@ export class AudioContextManager {
     if (typeof this[method] !== 'function') {
       throw new Error(`Unsupported playback backend operation: ${operation}`);
     }
-    return this[method](...args);
+    const result = this[method](...args);
+    if (this.audioManager?.flushFeed && ['pause','stop','seek'].includes(operation)) {
+      return Promise.resolve(result).then(value => {
+        this.audioManager.flushFeed();
+        return value;
+      });
+    }
+    return result;
   }
 
   async playNetworkLive(_stopToken, isCurrent) {
@@ -3094,7 +3101,7 @@ export class AudioContextManager {
    * Pause buffer source
    */
   async pauseBufferSource() {
-    let currentPosition = 0;
+    let currentPosition = this.getCurrentState()?.currentTrackPosition ?? 0;
     if (this.currentBufferSource && this.audioPlayer.audioContext) {
       const currentTime = this.audioPlayer.audioContext.currentTime;
       const elapsedTime = currentTime - this.bufferStartTime;
@@ -4359,6 +4366,15 @@ export class AudioContextManager {
       };
     } catch (error) {
       await this.disposeRollingTransport(transport);
+      if (error?.code === 'wav-partial-decode-ineligible' && record.committedMode === 'media') {
+        // A WAV filename qualifies for probing before its PCM layout is known.
+        // Keep the playable media decision when the worker rules out this profile.
+        return {
+          ...record,
+          decision: Object.freeze({ ...record.decision, rollingCandidate: false, rollingRejection: error.code }),
+          deferRollingFallbackUntilBoundary: reservationRole === 'next'
+        };
+      }
       console.warn('[AudioContextManager] Rolling PCM candidate preparation failed:', error);
       return this.createPartialDecodeFallbackRecord(
         record,
@@ -5067,7 +5083,11 @@ export class AudioContextManager {
 
   // Start reservations and finite ends are independent: cancelling the next track
   // must not cancel the current track's final analyzer delivery.
-  notifyStreamBoundary(time = this.audioPlayer.audioContext?.currentTime) {
+  notifyStreamBoundary(time) {
+    if (time === undefined) {
+      this.audioManager.flushFeed?.();
+      time = this.audioPlayer.audioContext?.currentTime;
+    }
     const sampleRate = this.audioPlayer.audioContext?.sampleRate;
     if (!sampleRate) return;
     this.audioManager.broadcastToActiveWorklets({
@@ -5881,7 +5901,6 @@ export class AudioContextManager {
       return false;
     }
 
-    let candidatePublished = false;
     if (candidate.mode === 'rollingPcm') {
       const previousRolling = this.rollingTransport;
       if (startPlayback && !candidate.transport.activate({
@@ -5891,30 +5910,19 @@ export class AudioContextManager {
         this.rollbackPlayerSourceOwnership(preflight.ownership);
         return false;
       }
-      if (!this.setPrivatePipelineSourceMuted(candidate.source, false)) {
-        this.rollbackPlayerSourceOwnership(preflight.ownership);
-        return false;
-      }
-      candidatePublished = true;
       if (!candidate.transport.promoteReservation(previousRolling)) {
-        this.setPrivatePipelineSourceMuted(candidate.source, true);
         this.rollbackPlayerSourceOwnership(preflight.ownership);
         return false;
       }
       this.clearRollingNextAliases(candidate.transport);
     }
 
-    if (candidatePublished) {
-      this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
-      this.teardownCommittedBackendForTransition(candidate);
-    } else {
-      this.teardownCommittedBackendForTransition(candidate);
-      if (!this.setPrivatePipelineSourceMuted(candidate.source, false)) {
-        this.rollbackPlayerSourceOwnership(preflight.ownership);
-        return false;
-      }
-      this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
+    this.teardownCommittedBackendForTransition(candidate);
+    if (!this.setPrivatePipelineSourceMuted(candidate.source, false)) {
+      this.rollbackPlayerSourceOwnership(preflight.ownership);
+      return false;
     }
+    this.commitPlayerSourceOwnership(preflight.managedSource, preflight.ownership);
     this.currentPlaybackDecision = prepared.decisionRecord;
     this.activeSourceGeneration = candidate.sourceGeneration;
     if (candidate.mode === 'midi') {

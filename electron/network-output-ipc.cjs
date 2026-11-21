@@ -6,7 +6,7 @@ const CHANNEL_PREFIX = 'network-output-v1:';
 
 // Main-process IPC surface for the renderer `networkOutputV1` bridge (§6).
 // Every channel is restricted to the main frame of the main window.
-function registerNetworkOutputIpc({ ipcMain, MessageChannelMain, host, getMainWindow, config, constants }) {
+function registerNetworkOutputIpc({ ipcMain, MessageChannelMain, host, getMainWindow, config, constants, nativeAudio }) {
   async function updateConfiguration(makePatch) {
     const loaded = config.loadConfig();
     const current = sanitizeConfiguration(loaded.networkOutput, host.onDiagnostic);
@@ -41,6 +41,11 @@ function registerNetworkOutputIpc({ ipcMain, MessageChannelMain, host, getMainWi
       });
     }],
     ['renderer-ready', async () => {
+      const enginePort = nativeAudio?.attachNetwork();
+      if (enginePort) {
+        await host.attachRendererPort(enginePort);
+        return host.getStatus();
+      }
       const { port1, port2 } = new MessageChannelMain();
       try {
         await host.attachRendererPort(port1);

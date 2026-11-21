@@ -295,6 +295,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
     outputChannels: 2,
     latencyHint: 'interactive'
   };
+  const normalizedPreferences = { ...storedPreferences, audioDriver: 'standard', audioDriverDeviceMemory: '' };
 
   try {
     await fs.writeFile(preferencesPath, JSON.stringify(storedPreferences));
@@ -314,7 +315,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
       assert.equal(mainWindow.reloadCalls, 0);
       assert.deepEqual(
         JSON.parse(await fs.readFile(preferencesPath, 'utf8')),
-        { ...storedPreferences, gaplessPlayback: false }
+        { ...normalizedPreferences, gaplessPlayback: false }
       );
 
       // A full mirror snapshot that drifted from the stored file is refused
@@ -331,7 +332,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
       assert.equal(mainWindow.reloadCalls, 0);
       assert.deepEqual(
         JSON.parse(await fs.readFile(preferencesPath, 'utf8')),
-        { ...storedPreferences, gaplessPlayback: false }
+        { ...normalizedPreferences, gaplessPlayback: false }
       );
 
       // Refreshed device labels alone do not block the in-place save, and only
@@ -346,7 +347,7 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
       assert.equal(mainWindow.reloadCalls, 0);
       assert.deepEqual(
         JSON.parse(await fs.readFile(preferencesPath, 'utf8')),
-        storedPreferences
+        normalizedPreferences
       );
     });
   } finally {

@@ -118,3 +118,56 @@ test('central CI changes do not select unrelated product builds', () => {
   assert.match(pagesBuild, /verify_dsp:.*outputs\.dsp_docs != 'true'/);
   assert.match(requiredGate, /SELECT_DSP_LIBRARY_PREFLIGHT:.*outputs\.dsp_docs == 'true'/);
 });
+
+test('native audio engine CI selects its full matrix and requires selected builds', () => {
+  const scope = jobBlock(ci, 'scope');
+  const filter = scope.slice(scope.indexOf('            audio_engine:'));
+  assert.match(scope, /audio_engine: .*steps\.changes\.outputs\.audio_engine == 'true'/);
+  assert.match(scope, /any: .*steps\.changes\.outputs\.audio_engine == 'true'/);
+  for (const path of ['native/audio-engine/**', 'dsp/**', 'scripts/build-audio-engine.mjs',
+    'electron/audio-engine-*.cjs', 'tests/esm/native-audio-*.test.mjs',
+    'tests/helpers/native-sampler-worklet.mjs', 'tests/helpers/sfz-effects-asset-fixture.mjs',
+    'tests/helpers/sfz-native-acceptance.mjs', 'js/audio/dsp-pipeline-descriptor.js',
+    'js/audio/dsp-params.generated.js', 'tools/dsp-parity/cases.mjs', 'tools/dsp-parity/tolerance.mjs', 'package.json',
+    '.github/workflows/build.yml', '.github/workflows/desktop-release.yml']) {
+    assert.ok(filter.includes(`- '${path}'`), `missing native audio engine filter ${path}`);
+  }
+  assert.doesNotMatch(filter, /\.github\/workflows\/ci\.yml/);
+
+  const matrix = jobBlock(ci, 'audio-engine-native');
+  assert.match(matrix, /needs: \[scope, common\]/);
+  assert.match(matrix, /always\(\) && !cancelled\(\) &&\s+needs\.scope\.outputs\.audio_engine == 'true' &&\s+needs\.common\.result == 'success'/);
+  for (const runner of ['windows-latest', 'ubuntu-latest', 'macos-15-intel', 'macos-15']) {
+    assert.ok(matrix.split('\n').some(line => line.trim() === `runner: ${runner}`));
+  }
+  assert.match(matrix, /EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'/);
+  assert.match(matrix, /test:audio-engine -- --gcc/);
+  const common = jobBlock(ci, 'common');
+  assert.match(common, /Check native audio engine C\+\+ formatting\n.+outputs\.audio_engine == 'true'/);
+  assert.match(common, /find native\/audio-engine -path native\/audio-engine\/vendor -prune/);
+
+  const gate = jobBlock(ci, 'required-gate');
+  assert.match(gate, /^\s+- audio-engine-native$/m);
+  assert.match(gate, /SELECT_AUDIO_ENGINE: .*needs\.scope\.outputs\.audio_engine/);
+  assert.match(gate, /AUDIO_ENGINE_NATIVE_RESULT: .*needs\.audio-engine-native\.result/);
+  assert.match(gate, /check_result "\$SELECT_AUDIO_ENGINE" audio-engine-native "\$AUDIO_ENGINE_NATIVE_RESULT"/);
+});
+
+test('required CI gate accepts intentional native audio skips and requires selected results', {
+  skip: process.platform === 'win32' ? 'Workflow Bash runs on Linux' : false,
+}, () => {
+  const gate = jobBlock(ci, 'required-gate');
+  const script = gate.split('        run: |\n')[1];
+  assert.ok(script);
+  const variables = Object.fromEntries([...gate.matchAll(/^          ([A-Z_]+):/gm)].map(([, key]) =>
+    [key, key.startsWith('SELECT_') ? 'false' : 'skipped']));
+  const env = { ...process.env, ...variables, SCOPE_RESULT: 'success', COMMON_RESULT: 'success', SELECT_ANY: 'true' };
+  const run = (selected, result) => spawnSync('bash', ['-c', script], {
+    env: { ...env, SELECT_AUDIO_ENGINE: String(selected), AUDIO_ENGINE_NATIVE_RESULT: result }, encoding: 'utf8',
+  });
+  for (const [selected, result, status] of [[false, 'skipped', 0], [true, 'success', 0], [true, 'skipped', 1]]) {
+    const execution = run(selected, result);
+    assert.equal(execution.status, status, execution.stderr);
+    if (status !== 0) assert.match(execution.stderr, /audio-engine-native: expected success, got skipped/);
+  }
+});

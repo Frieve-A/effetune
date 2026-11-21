@@ -32,10 +32,11 @@ jobs:
       dsp_library: ${{ github.event_name == 'workflow_dispatch' || ((github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_library == 'true') }}
       dsp_docs: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.dsp_docs == 'true' }}
       openhome: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.openhome == 'true' }}
+      audio_engine: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && steps.changes.outputs.audio_engine == 'true' }}
       pages: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) }}
       codeql: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
       power_browser: ${{ github.event_name == 'pull_request' }}
-      any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true' || steps.changes.outputs.dsp_docs == 'true' || steps.changes.outputs.openhome == 'true')) }}
+      any: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feature/') || steps.changes.outputs.dsp_core == 'true' || steps.changes.outputs.dsp_library == 'true' || steps.changes.outputs.dsp_docs == 'true' || steps.changes.outputs.openhome == 'true' || steps.changes.outputs.audio_engine == 'true')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,6 +132,31 @@ jobs:
               - 'package.json'
               - '.github/workflows/build.yml'
               - '.github/workflows/desktop-release.yml'
+            audio_engine:
+              - 'native/audio-engine/**'
+              - 'native/openhome-sidecar/src/protocol.cpp'
+              - 'native/openhome-sidecar/src/protocol.h'
+              - 'dsp/**'
+              - 'plugins/audio-processor.js'
+              - 'plugins/dsp/**'
+              - 'scripts/build-audio-engine.mjs'
+              - 'electron/audio-engine-*.cjs'
+              - 'js/native/**'
+              - 'js/audio/dsp-pipeline-descriptor.js'
+              - 'js/audio/dsp-params.generated.js'
+              - 'tests/cjs/*audio-engine*.test.cjs'
+              - 'tests/esm/native-audio-*.test.mjs'
+              - 'tests/helpers/native-audio-engine-parity.mjs'
+              - 'tests/helpers/native-sampler-worklet.mjs'
+              - 'tests/helpers/sfz-effects-asset-fixture.mjs'
+              - 'tests/helpers/sfz-native-acceptance.mjs'
+              - 'tests/helpers/audio-worklet-artifacts.mjs'
+              - 'tools/*audio-engine*.mjs'
+              - 'tools/dsp-parity/cases.mjs'
+              - 'tools/dsp-parity/tolerance.mjs'
+              - 'package.json'
+              - '.github/workflows/build.yml'
+              - '.github/workflows/desktop-release.yml'
 
   dsp-library-preflight:
     name: DSP Library preflight
@@ -180,6 +206,12 @@ jobs:
         if: needs.scope.outputs.dsp_core == 'true' || needs.scope.outputs.dsp_library == 'true'
         shell: bash
         run: find dsp -path dsp/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
+      - name: Check native audio engine C++ formatting
+        if: needs.scope.outputs.audio_engine == 'true'
+        shell: bash
+        run: >-
+          find native/audio-engine -path native/audio-engine/vendor -prune -o \( -name '*.cpp' -o -name '*.h' \) -print0 |
+          xargs -0 clang-format --style=file:dsp/.clang-format --dry-run --Werror
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -344,6 +376,68 @@ jobs:
           grep -F 'Library runpath: [$ORIGIN]' <<<"$dependencies"
           ldd "$sidecar" | grep -F "$PWD/out/native/openhome-sidecar/linux-x64/libnl-3.so."
           ldd "$sidecar" | grep -F "$PWD/out/native/openhome-sidecar/linux-x64/libnl-genl-3.so."
+
+  audio-engine-native:
+    name: Native audio engine (${{ matrix.label }})
+    needs: [scope, common]
+    if: >-
+      always() && !cancelled() &&
+      needs.scope.outputs.audio_engine == 'true' &&
+      needs.common.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            runner: windows-latest
+            architecture: x64
+          - label: Linux x64
+            runner: ubuntu-latest
+            architecture: x64
+          - label: macOS x64
+            runner: macos-15-intel
+            architecture: x64
+          - label: macOS arm64
+            runner: macos-15
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build native audio engine
+        run: npm run build:audio-engine -- --arch ${{ matrix.architecture }}
+      - name: Verify native audio engine C++ tests
+        run: npm run test:audio-engine -- --arch ${{ matrix.architecture }}
+      - name: Verify native audio engine integration and worklet parity
+        env:
+          EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'
+        run: >-
+          node --test tests/cjs/audio-engine-process.test.cjs
+          tests/esm/native-audio-engine-parity.test.mjs
+          tests/esm/native-audio-engine-instruments.test.mjs
+      - name: Verify native audio device enumeration
+        run: node tools/smoke-audio-engine-device.mjs --list-only
+      - name: Verify Linux GCC Debug build and tests
+        if: runner.os == 'Linux'
+        run: npm run test:audio-engine -- --gcc
+      - name: Verify Linux audio engine loader contract
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for executable in out/native/audio-engine/linux-x64/effetune-audio-engine{,-v3}; do
+            dependencies="$(readelf -d "$executable")"
+            if grep -E 'Shared library: \[lib(pulse|asound|stdc\+\+|gcc_s)' <<<"$dependencies"; then
+              exit 1
+            fi
+          done
 
   codeql-javascript:
     name: CodeQL JavaScript
@@ -513,6 +607,7 @@ jobs:
       - pages-build
       - power-browser
       - openhome-native
+      - audio-engine-native
       - codeql-javascript
       - codeql-cpp
       - dsp-windows
@@ -539,6 +634,7 @@ jobs:
           SELECT_PAGES: ${{ needs.scope.outputs.pages }}
           SELECT_POWER_BROWSER: ${{ needs.scope.outputs.power_browser }}
           SELECT_OPENHOME: ${{ needs.scope.outputs.openhome }}
+          SELECT_AUDIO_ENGINE: ${{ needs.scope.outputs.audio_engine }}
           COMMON_RESULT: ${{ needs.common.result }}
           DSP_LIBRARY_PREFLIGHT_RESULT: ${{ needs.dsp-library-preflight.result }}
           CODEQL_ACTIONS_RESULT: ${{ needs.codeql-actions.result }}
@@ -548,6 +644,7 @@ jobs:
           PAGES_BUILD_RESULT: ${{ needs.pages-build.result }}
           POWER_BROWSER_RESULT: ${{ needs.power-browser.result }}
           OPENHOME_NATIVE_RESULT: ${{ needs.openhome-native.result }}
+          AUDIO_ENGINE_NATIVE_RESULT: ${{ needs.audio-engine-native.result }}
           CODEQL_JAVASCRIPT_RESULT: ${{ needs.codeql-javascript.result }}
           CODEQL_CPP_RESULT: ${{ needs.codeql-cpp.result }}
           DSP_WINDOWS_RESULT: ${{ needs.dsp-windows.result }}
@@ -593,6 +690,7 @@ jobs:
           check_result "$SELECT_PAGES" pages-deploy "$PAGES_DEPLOY_RESULT"
           check_result "$SELECT_POWER_BROWSER" power-browser "$POWER_BROWSER_RESULT"
           check_result "$SELECT_OPENHOME" openhome-native "$OPENHOME_NATIVE_RESULT"
+          check_result "$SELECT_AUDIO_ENGINE" audio-engine-native "$AUDIO_ENGINE_NATIVE_RESULT"
 
           if (( ${#failures[@]} != 0 )); then
             printf '%s\n' "${failures[@]}" >&2

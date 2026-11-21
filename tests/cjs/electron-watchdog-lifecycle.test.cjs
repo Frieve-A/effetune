@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const { registerAudioEngineIpc } = require('../../electron/audio-engine-ipc.cjs');
 const { CHANNELS, PANEL_CHANNELS, registerRemoteControlIpc } = require('../../electron/remote-control-host.cjs');
 
 const mainPath = path.resolve(__dirname, '../../electron/main.js');
@@ -51,6 +52,7 @@ function createMainHarness() {
     disposeAirPlayIpc: null,
     networkOutputHost: null,
     disposeNetworkOutputIpc: null,
+    disposeAudioEngineIpc: null,
     disposeOpenHomeIpc: null,
     networkMusicHost: null,
     disposeNetworkMusicIpc: null,
@@ -161,6 +163,37 @@ test('service shutdown releases the Network Output IPC and disposes its host onc
   assert.deepEqual(events, ['ipc', 'dispose']);
   assert.equal(context.networkOutputHost, null);
   assert.equal(context.disposeNetworkOutputIpc, null);
+});
+
+test('application quit waits for the native audio process after removing its IPC', async () => {
+  const { context, app, ipcMain, handlers, lifecycle } = createMainHarness();
+  context.libraryCatalogRecovery = null;
+  let finishExit;
+  const exited = new Promise(resolve => { finishExit = resolve; });
+  let stopRequests = 0;
+  context.disposeAudioEngineIpc = registerAudioEngineIpc({
+    ipcMain,
+    host: { stop() { stopRequests++; return exited; } }
+  });
+  assert.equal(handlers.has('audio-engine:start'), true);
+  let deferredQuits = 0;
+  const event = { preventDefault() { deferredQuits++; } };
+  try {
+    app.emit('before-quit', event);
+    assert.equal(deferredQuits, 1);
+    assert.equal(handlers.has('audio-engine:start'), false);
+    assert.equal(ipcMain.listenerCount('audio-engine:startup-driver'), 0);
+    app.emit('before-quit', event);
+    assert.equal(deferredQuits, 2);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(stopRequests, 1);
+    assert.equal(lifecycle.includes('quit'), false);
+  } finally {
+    finishExit();
+  }
+  await context.closeApplicationServices();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(lifecycle.filter(event => event === 'quit'), ['quit']);
 });
 
 test('service shutdown closes the catalog and waits for every service even when a disposal fails', async () => {

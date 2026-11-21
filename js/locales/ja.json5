@@ -664,6 +664,15 @@
 
   // オーディオ設定ダイアログ
   "dialog.audioConfig.title": "オーディオ設定",
+  "dialog.audioConfig.driver": "ドライバー",
+  "dialog.audioConfig.driver.standard": "標準",
+  "dialog.audioConfig.driver.defaultDevice": "システムの既定",
+  "dialog.audioConfig.driver.startFailed": "音声出力を開始できません。オーディオを再起動するか、オーディオ設定のドライバーを「標準」に変更してください。",
+  "dialog.audioConfig.driver.unavailable": "出力デバイスが見つかりません。デバイスを接続して音声を再起動してください。",
+  "dialog.audioConfig.driver.busy": "他のアプリが出力デバイスを使用している可能性があります。そのアプリを閉じて音声を再起動してください。",
+  "dialog.audioConfig.driver.format": "出力デバイスがこの設定に対応していません。デバイスか音声設定を変更してください。",
+  "dialog.audioConfig.driver.permission": "出力デバイスへのアクセスが許可されていません。システムの権限を確認して音声を再起動してください。",
+  "dialog.audioConfig.driver.stopped": "音声出力が停止しました。オーディオを再起動するか、オーディオ設定のドライバーを「標準」に変更してください。",
   "dialog.audioConfig.inputDevice": "入力デバイス:",
   "dialog.audioConfig.inputDevice.none": "なし（音楽ファイルプレーヤー専用）",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio（他のアプリの音）",

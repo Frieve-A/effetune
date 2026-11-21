@@ -1742,6 +1742,24 @@ test('Web and Electron input None switch locally only while pipeline configurati
     inputDeviceLabel: '',
     outputDeviceLabel: 'Updated output label'
   };
+  const expectedDefaults = {
+    outputDeviceId: 'default',
+    audioDriver: 'standard',
+    audioDriverDeviceMemory: '',
+    midiInputDeviceKey: '',
+    midiOutputDeviceKey: '',
+    sampleRate: 96000,
+    useInputWithPlayer: false,
+    useWasmDsp: true,
+    gaplessPlayback: true,
+    replayGainMode: 'off',
+    replayGainPreampDb: 0,
+    replayGainPreventClipping: true,
+    outputChannels: 2,
+    latencyHint: 'interactive'
+  };
+  const expectedSilentPreferences = { ...expectedDefaults, ...silentWithEquivalentDefaults };
+  const expectedMicrophonePreferences = { ...expectedDefaults, ...storedMicrophone };
   const integration = { audioPreferences: storedMicrophone };
 
   await withAudioManager({
@@ -1770,21 +1788,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(await manager.reset(silentWithEquivalentDefaults), '');
     assert.deepEqual(selection.requestedRevisions, [42]);
     assert.deepEqual(preferencesAtRequest, {
-      stored: {
-        ...silentWithEquivalentDefaults,
-        midiInputDeviceKey: '',
-        midiOutputDeviceKey: '',
-        outputDeviceId: 'default',
-        sampleRate: 96000,
-        useInputWithPlayer: false,
-        useWasmDsp: true,
-        gaplessPlayback: true,
-        replayGainMode: 'off',
-        replayGainPreampDb: 0,
-        replayGainPreventClipping: true,
-        outputChannels: 2,
-        latencyHint: 'interactive'
-      },
+      stored: expectedSilentPreferences,
       window: silentWithEquivalentDefaults,
       integration: silentWithEquivalentDefaults
     });
@@ -1795,21 +1799,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(manager.ioManager.silentInputGainNode, selection.silentSource);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      {
-        ...silentWithEquivalentDefaults,
-        midiInputDeviceKey: '',
-        midiOutputDeviceKey: '',
-        outputDeviceId: 'default',
-        sampleRate: 96000,
-        useInputWithPlayer: false,
-        useWasmDsp: true,
-        gaplessPlayback: true,
-        replayGainMode: 'off',
-        replayGainPreampDb: 0,
-        replayGainPreventClipping: true,
-        outputChannels: 2,
-        latencyHint: 'interactive'
-      }
+      expectedSilentPreferences
     );
     assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
     assert.equal(windowObject.electronIntegration.audioPreferences, silentWithEquivalentDefaults);
@@ -1865,22 +1855,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      {
-        ...silentFromDefault,
-        midiInputDeviceKey: '',
-        midiOutputDeviceKey: '',
-        outputDeviceId: 'default',
-        outputDeviceLabel: '',
-        sampleRate: 96000,
-        useInputWithPlayer: false,
-        useWasmDsp: true,
-        gaplessPlayback: true,
-        replayGainMode: 'off',
-        replayGainPreampDb: 0,
-        replayGainPreventClipping: true,
-        outputChannels: 2,
-        latencyHint: 'interactive'
-      }
+      { ...expectedSilentPreferences, outputDeviceLabel: '' }
     );
   });
 
@@ -1907,64 +1882,11 @@ test('Web and Electron input None switch locally only while pipeline configurati
       /injected silent selection failure/
     );
     assert.deepEqual(selection.requestedRevisions, [11]);
-    assert.deepEqual(JSON.parse(storedAtRequest), {
-      ...silentWithEquivalentDefaults,
-      midiInputDeviceKey: '',
-      midiOutputDeviceKey: '',
-      outputDeviceId: 'default',
-      sampleRate: 96000,
-      useInputWithPlayer: false,
-      useWasmDsp: true,
-      gaplessPlayback: true,
-      replayGainMode: 'off',
-      replayGainPreampDb: 0,
-      replayGainPreventClipping: true,
-      outputChannels: 2,
-      latencyHint: 'interactive'
-    });
+    assert.deepEqual(JSON.parse(storedAtRequest), expectedSilentPreferences);
     assert.equal(calls.some(call => call[0] === 'manager._doReset'), false);
-    assert.equal(storageValues.get('effetune_audio_preferences'), JSON.stringify({
-      ...storedMicrophone,
-      midiInputDeviceKey: '',
-      midiOutputDeviceKey: '',
-      sampleRate: 96000,
-      useInputWithPlayer: false,
-      useWasmDsp: true,
-      gaplessPlayback: true,
-      replayGainMode: 'off',
-      replayGainPreampDb: 0,
-      replayGainPreventClipping: true,
-      outputChannels: 2,
-      latencyHint: 'interactive'
-    }));
-    assert.deepEqual(windowObject.audioPreferences, {
-      ...storedMicrophone,
-      midiInputDeviceKey: '',
-      midiOutputDeviceKey: '',
-      sampleRate: 96000,
-      useInputWithPlayer: false,
-      useWasmDsp: true,
-      gaplessPlayback: true,
-      replayGainMode: 'off',
-      replayGainPreampDb: 0,
-      replayGainPreventClipping: true,
-      outputChannels: 2,
-      latencyHint: 'interactive'
-    });
-    assert.deepEqual(windowObject.electronIntegration.audioPreferences, {
-      ...storedMicrophone,
-      midiInputDeviceKey: '',
-      midiOutputDeviceKey: '',
-      sampleRate: 96000,
-      useInputWithPlayer: false,
-      useWasmDsp: true,
-      gaplessPlayback: true,
-      replayGainMode: 'off',
-      replayGainPreampDb: 0,
-      replayGainPreventClipping: true,
-      outputChannels: 2,
-      latencyHint: 'interactive'
-    });
+    assert.deepEqual(JSON.parse(storageValues.get('effetune_audio_preferences')), expectedMicrophonePreferences);
+    assert.deepEqual(windowObject.audioPreferences, expectedMicrophonePreferences);
+    assert.deepEqual(windowObject.electronIntegration.audioPreferences, expectedMicrophonePreferences);
     assert.equal(manager.ioManager.inputSourceNode, selection.liveSource);
   });
 
@@ -1984,21 +1906,7 @@ test('Web and Electron input None switch locally only while pipeline configurati
     assert.deepEqual(selection.requestedRevisions, [11]);
     assert.deepEqual(
       JSON.parse(storageValues.get('effetune_audio_preferences')),
-      {
-        ...silentWithEquivalentDefaults,
-        midiInputDeviceKey: '',
-        midiOutputDeviceKey: '',
-        outputDeviceId: 'default',
-        sampleRate: 96000,
-        useInputWithPlayer: false,
-        useWasmDsp: true,
-        gaplessPlayback: true,
-        replayGainMode: 'off',
-        replayGainPreampDb: 0,
-        replayGainPreventClipping: true,
-        outputChannels: 2,
-        latencyHint: 'interactive'
-      }
+      expectedSilentPreferences
     );
     assert.equal(windowObject.audioPreferences, silentWithEquivalentDefaults);
     assert.equal(manager.ioManager.inputSourceNode, null);

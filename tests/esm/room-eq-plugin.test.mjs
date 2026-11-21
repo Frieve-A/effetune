@@ -1472,6 +1472,8 @@ test('restored Room EQ measurement reaches a missing terminal state when no stor
     const { Plugin, context } = loadPlugin();
     const plugin = new Plugin();
     plugin.setSerializedParameters({ ms: 'missing-id', mn: 'Saved listening seat' });
+    assert.equal(plugin.externalAssetInfo.pending, true);
+    assert.equal(plugin.externalAssetInfo.missing, false);
     clearTimeout(plugin._designTimer);
     plugin._designTimer = null;
     const generation = plugin._designGeneration;
@@ -2825,7 +2827,8 @@ test('Room EQ reports every assigned measurement as an external asset dependency
     const info = plugin.externalAssetInfo;
     assert.deepEqual(Array.from(info.ids), ['shared', 'left']);
     assert.deepEqual(Array.from(info.names), ['Shared seat', 'Left seat']);
-    assert.equal(info.missing, true);
+    assert.equal(info.pending, true);
+    assert.equal(info.missing, false);
     assert.equal(info.kind, 'Measurement');
     assert.match(info.assetSignature, /"left"/);
 

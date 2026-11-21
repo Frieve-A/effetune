@@ -657,6 +657,15 @@
 
   // Diálogo de configuración de audio
   "dialog.audioConfig.title": "Configuración de audio",
+  "dialog.audioConfig.driver": "Controlador",
+  "dialog.audioConfig.driver.standard": "Estándar",
+  "dialog.audioConfig.driver.defaultDevice": "Predeterminado del sistema",
+  "dialog.audioConfig.driver.startFailed": "No se pudo iniciar la salida de audio. Reinicia el audio o selecciona Estándar en la configuración de audio.",
+  "dialog.audioConfig.driver.unavailable": "No se encontró ningún dispositivo de salida. Conecta uno y reinicia el audio.",
+  "dialog.audioConfig.driver.busy": "Es posible que otra aplicación esté usando el dispositivo de salida. Ciérrala y reinicia el audio.",
+  "dialog.audioConfig.driver.format": "El dispositivo de salida no admite esta configuración. Elige otro dispositivo o cambia los ajustes de audio.",
+  "dialog.audioConfig.driver.permission": "Se denegó el acceso al dispositivo de salida. Comprueba los permisos del sistema y reinicia el audio.",
+  "dialog.audioConfig.driver.stopped": "La salida de audio se ha detenido. Reinicia el audio o selecciona Estándar en la configuración de audio.",
   "dialog.audioConfig.inputDevice": "Dispositivo de entrada:",
   "dialog.audioConfig.inputDevice.none": "Ninguno (solo reproductor de archivos de música)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (sonido de otras aplicaciones)",

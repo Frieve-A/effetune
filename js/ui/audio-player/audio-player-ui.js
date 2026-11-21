@@ -1954,7 +1954,7 @@ export class AudioPlayerUI {
    */
   updateTimeDisplay() {
     if (!this.timeDisplay || !this.seekBar) {
-      if (this.isDisposed) {
+      if (this.isDisposed || !this.container) {
         return;
       }
       console.warn('[AudioPlayerUI] Time display or seek bar not available');

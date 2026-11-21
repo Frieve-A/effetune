@@ -5338,6 +5338,8 @@ test('buffer source onended remains active after pause and resume', async () => 
     audioContext.currentTime = 14;
     await manager.pauseBufferSource();
     assert.equal(state.currentTrackPosition, 4);
+    await manager.pauseBufferSource();
+    assert.equal(state.currentTrackPosition, 4);
 
     audioContext.currentTime = 20;
     await manager.playBufferSource();
@@ -7389,6 +7391,67 @@ test('manual transition invalidates and never consumes the decoded automatic mov
   });
 });
 
+test('rolling PCM transition disconnects the old output before unmuting the next output', async () => {
+  await withAudioContextGlobals({}, async () => {
+    for (const canPromote of [true, false]) {
+      const { manager, playlist, state, calls } = createHarness({
+        playbackMode: 'rollingPcm',
+        isPlaying: true
+      });
+      const previous = {
+        sourceNode: createNode(calls, 'oldRollingSource'),
+        async dispose() {}
+      };
+      manager.rollingTransport = previous;
+      const source = createNode(calls, 'nextRollingSource');
+      manager.preparePlaybackSource(source, playlist[1]);
+      assert.equal(manager.connectPrivatePipelineSource(source), true);
+      const gate = manager.getPipelineSourceNode(source);
+      const transport = {
+        sourceNode: source,
+        prepared: true,
+        activate: () => true,
+        promoteReservation(previousTransport) {
+          assert.equal(previousTransport, previous);
+          calls.push(['promoteReservation']);
+          return canPromote;
+        }
+      };
+      const candidate = {
+        mode: 'rollingPcm',
+        metadata: { durationSec: 12, sampleRate: 48000 },
+        source,
+        transport,
+        sourceGeneration: 2
+      };
+      const setMuted = manager.setPrivatePipelineSourceMuted.bind(manager);
+      manager.setPrivatePipelineSourceMuted = (node, muted) => {
+        if (!muted) calls.push(['unmuteCandidate']);
+        return setMuted(node, muted);
+      };
+
+      assert.equal(manager.commitPreparedTrackCandidate(candidate, {
+        playableTrack: playlist[1],
+        decisionRecord: {},
+        targetIndex: 1
+      }, null, () => false, true), canPromote);
+
+      const handoff = calls.filter(call => call[0] === 'promoteReservation' ||
+        call[0] === 'unmuteCandidate' || (call[0] === 'disconnectSourceFromPipeline' &&
+          call[1] === 'oldRollingSource'));
+      assert.deepEqual(handoff, canPromote ? [
+        ['promoteReservation'],
+        ['disconnectSourceFromPipeline', 'oldRollingSource'],
+        ['unmuteCandidate']
+      ] : [['promoteReservation']]);
+      assert.equal(gate.gain.value, canPromote ? 1 : 0);
+      assert.equal(manager.rollingTransport, canPromote ? transport : previous);
+      assert.equal(state.currentTrackIndex, canPromote ? 1 : 0);
+      manager.clearBufferMonitoring();
+    }
+  });
+});
+
 test('buffer to media transition tears down the old backend before one state commit', async () => {
   await withAudioContextGlobals({
     electronIntegration: { audioPreferences: { useInputWithPlayer: true } }
@@ -8564,6 +8627,33 @@ test('catalog WAV pair prepares cross-rate rolling handoff without full decode',
         call[2] === 'PlaybackManager planned automatic move').length,
       1
     );
+  });
+});
+
+test('a WAV outside the fragment profile stays playable without a preparation warning', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const { manager } = createHarness();
+    const track = { name: 'export.wav', path: '/export.wav', byteLength: 4096 };
+    const descriptor = manager.createPlaybackSourceDescriptor(track);
+    const record = manager.createPlaybackDecisionRecord(track, descriptor);
+    assert.equal(record.committedMode, 'media');
+    for (const code of ['wav-partial-decode-ineligible', 'worker-crashed']) {
+      const error = Object.assign(new Error(code), { code });
+      let disposed = false;
+      manager.createRollingPcmTransport = () => ({
+        prepare: async () => { throw error; },
+        dispose: () => { disposed = true; }
+      });
+      const result = await manager.prepareRollingPlaybackDecisionRecord(record);
+      assert.equal(disposed, true);
+      assert.equal(result.committedMode, 'media');
+      const warned = calls.some(([type, , reason]) => type === 'console.warn' && reason === error);
+      assert.equal(warned, code === 'worker-crashed');
+      if (code === 'wav-partial-decode-ineligible') {
+        assert.equal(result.decision.rollingCandidate, false);
+        assert.equal(result.decision.rollingRejection, code);
+      }
+    }
   });
 });
 

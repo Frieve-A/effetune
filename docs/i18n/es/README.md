@@ -135,6 +135,16 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
    * Procesamiento: Efectos en tiempo real a través de EffeTune
    * Salida: Audio procesado hacia tu amplificador o altavoces
 
+### Controladores de audio de la aplicación de escritorio
+
+Abre **Configuración > Configuración de audio** y elige un **Controlador**. **Estándar** es el predeterminado. Para reducir la carga de procesamiento o utilizar una entrada de tres o más canales, prueba **WASAPI** en Windows, **Core Audio** en macOS, o **PulseAudio** en Linux (**ALSA** si PulseAudio no está disponible). El controlador cambia la forma en que EffeTune se conecta a los dispositivos de audio. Los efectos, los preajustes y el reproductor se usan de la misma forma.
+
+Ajusta la **Tasa de muestreo** de los efectos como siempre. Si el dispositivo de salida utiliza otra tasa, EffeTune convierte el audio después de procesarlo. Las diferencias de redondeo pueden cambiar ligeramente los valores de las muestras respecto al controlador **Estándar**.
+
+EffeTune utiliza los canales que el sistema operativo detecta en el dispositivo de entrada seleccionado. Para capturar hasta 16 canales a la vez, elige una interfaz que el sistema muestre como un único dispositivo multicanal. Activa **Entrada de audio incluso cuando se usa el reproductor** para mezclar la entrada con el reproductor. En Windows, **System Audio (sonido de otras aplicaciones)** requiere un dispositivo de salida distinto al predeterminado de Windows.
+
+Si el audio no se inicia, elige **Reiniciar audio** o vuelve al controlador **Estándar**. En macOS, si quieres usar un dispositivo de entrada, permite que EffeTune acceda al micrófono cuando se te solicite.
+
 ## Uso
 
 La aplicación de escritorio se abre con la ventana maximizada la primera vez. En los siguientes inicios, restaura el tamaño, la posición y el estado de maximización anteriores de la ventana.

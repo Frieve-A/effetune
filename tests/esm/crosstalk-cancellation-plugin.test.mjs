@@ -167,6 +167,10 @@ test('fewer than four assignments clear the resident asset without starting a de
   assert.equal(clears, 1);
   assert.equal(plugin._designPending, false);
   assert.equal(plugin._lastDesign, null);
+  Object.assign(plugin,{lr:'right::ch=left',rl:'left::ch=right',rr:'right::ch=right'});
+  plugin._scheduleDesign();
+  assert.equal(plugin.externalAssetInfo.pending,true);
+  assert.equal(plugin.externalAssetInfo.missing,false);
   plugin.cleanup();
 });
 

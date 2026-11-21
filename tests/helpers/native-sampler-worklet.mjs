@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { performance } from 'node:perf_hooks';
 import { AudioManager } from '../../js/audio-manager.js';
@@ -7,22 +6,13 @@ import { audioManagerSfzRuntimeMethods } from '../../js/audio/audio-manager-sfz-
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { instantiateDspBinding } from '../../js/audio/dsp-engine-binding.js';
 import { samplePlayerPreparationData } from '../../js/sfz/effect-cost.js';
+import { loadAudioWorkletArtifacts } from './audio-worklet-artifacts.mjs';
 import { materializeAcceptanceAsset } from './sfz-native-acceptance.mjs';
-
-let artifacts;
-function captureArtifacts() {
-  artifacts ??= Promise.all([
-    fs.readFile(new URL('../../plugins/audio-processor.js', import.meta.url), 'utf8'),
-    fs.readFile(new URL('../../plugins/dsp/effetune-dsp.wasm', import.meta.url)).then(bytes => WebAssembly.compile(bytes)),
-    fs.readFile(new URL('../../plugins/dsp/effetune-dsp.simd.wasm', import.meta.url)).then(bytes => WebAssembly.compile(bytes))
-  ]).then(([source, baseline, simd]) => ({ source, baseline, simd }));
-  return artifacts;
-}
 
 // Native-only harness: the shipped standalone worklet and main-side stream
 // lifecycle run unchanged. File readers/providers remain owned by the caller.
 export async function createNativeSamplerWorklet({ variant = 'baseline', sampleRate = 48000, channels = 2 } = {}) {
-  const captured = await captureArtifacts(), source = captured.source, module = captured[variant];
+  const { source, module } = await loadAudioWorkletArtifacts(variant);
   const messages = [], errors = [], listeners = new Set();
   let Processor, manager, frame = 0, voicesSeen = 0, closed = false;
   const context = { sampleRate, currentTime: 0 };

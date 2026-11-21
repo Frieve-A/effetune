@@ -2004,7 +2004,7 @@ class RoomEqPlugin extends PluginBase {
         const ids = this._assignedMeasurementIds();
         if (!ids.length) return null;
         return {
-            missing: !this.measurementResolved,
+            missing: !this._designPending && !this.measurementResolved,
             pending: this._designPending,
             ids,
             names: ids.map(id => this._measurementNameFor(id)),

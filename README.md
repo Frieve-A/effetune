@@ -137,6 +137,16 @@ To use EffeTune with CD players, network players, or other physical sources:
    * Processing: Real-time effects through EffeTune
    * Output: Processed audio to your amplifier or speakers
 
+### Desktop audio drivers
+
+In the desktop app, open **Settings > Audio Configuration** and choose a **Driver**. **Standard** is the default. Try **WASAPI** on Windows, **Core Audio** on macOS, or **PulseAudio** on Linux (**ALSA** if PulseAudio is unavailable) to reduce processing load or use an input with three or more channels. The choice changes how EffeTune connects to audio devices. Your effects, presets, and player controls work the same way.
+
+Set **Sample Rate** for your effects as usual. EffeTune converts the processed audio when your output device uses a different rate. Small rounding differences can change the exact sample values compared with **Standard**.
+
+EffeTune uses the channels that the operating system reports for the selected input device. To capture up to 16 channels together, choose an interface that your operating system lists as a single multichannel device. Enable **Audio input even when using Player** to mix the input with the music player. On Windows, **System Audio (sound from other apps)** requires an output device different from the Windows default.
+
+If audio does not start, choose **Reset Audio** or return to **Standard**. On macOS, allow microphone access for EffeTune when prompted if you want to use an input device.
+
 ## Usage
 
 The desktop app opens maximized on first launch. On subsequent launches, it restores the window's previous size, position, and maximized state.

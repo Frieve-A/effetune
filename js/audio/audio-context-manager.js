@@ -125,7 +125,7 @@ export class AudioContextManager {
      * @param {Object|null} audioPreferences - Preferences already selected for this reset
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async initAudioContext(audioPreferences = null) {
+    async initAudioContext(audioPreferences = null, { nativeFeed = false } = {}) {
         try {
             // Create audio context if not exists
             if (!this.audioContext) {
@@ -157,7 +157,9 @@ export class AudioContextManager {
                 }
 
                 // Try to set sinkId if available (experimental Chrome/Chromium feature)
-                if (preferences?.outputDeviceId && preferences.outputDeviceId !== 'default' &&
+                if (nativeFeed) {
+                    audioContextOptions.sinkId = {type:'none'};
+                } else if (preferences?.outputDeviceId && preferences.outputDeviceId !== 'default' &&
                     (this._isElectronEnvironment() || typeof AudioContext.prototype?.setSinkId === 'function')) {
                     audioContextOptions.sinkId = preferences.outputDeviceId;
                     console.log('Attempting to use sinkId in AudioContext:', preferences.outputDeviceId);
@@ -220,6 +222,7 @@ export class AudioContextManager {
                         }
                     }
                 };
+                if (nativeFeed) return '';
                 
                 // Set audio context destination channel count based on preferences
                 {

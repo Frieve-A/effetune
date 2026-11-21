@@ -258,6 +258,10 @@ ipcRenderer.on('network-output-v1:port', event => {
   }
 });
 
+ipcRenderer.on('audio-engine:ports', (event, token) => {
+  if (event.ports?.length === 2) window.postMessage({ type: 'effetune-audio-engine-ports', token }, '*', event.ports);
+});
+
 // LAN remote control (remote-v1). The WebSocket server lives in main; the
 // renderer only answers operations and publishes pipeline snapshots.
 const remoteV1 = Object.freeze({
@@ -467,6 +471,12 @@ contextBridge.exposeInMainWorld(
     openHomeV1,
     airPlayV1,
     networkOutputV1,
+    audioEngine: Object.freeze({
+      startupDriver: () => ipcRenderer.sendSync('audio-engine:startup-driver'),
+      start: (driver, token) => ipcRenderer.invoke('audio-engine:start', driver, token),
+      stop: () => ipcRenderer.invoke('audio-engine:stop'),
+      list: driver => ipcRenderer.invoke('audio-engine:list', driver)
+    }),
 
     networkMusicGetState: request => invokeNetworkMusic('GetState', request),
     networkMusicDiscover: () => invokeNetworkMusic('Discover'),

@@ -146,6 +146,17 @@ public:
                               std::uint32_t descriptor_bytes) noexcept;
   class PipelineLatencySnapshot;
   class PipelineLatencyUpdate;
+  class PipelineTopologySnapshot;
+  // Capture and publish on the owning thread between render blocks. Preparation
+  // reads only the captured values and may run while the current routing plays.
+  et_status capturePipelineTopology(const std::uint8_t *descriptor, std::uint32_t bytes,
+                                    PipelineTopologySnapshot &snapshot) const noexcept;
+  static et_status preparePipelineTopology(const PipelineTopologySnapshot &snapshot,
+                                           PipelineLatencyUpdate &update) noexcept;
+  et_status publishPipelineTopology(const PipelineTopologySnapshot &snapshot,
+                                    PipelineLatencyUpdate &update) noexcept;
+  [[nodiscard]] bool topologyNeedsGate(const PipelineTopologySnapshot &snapshot,
+                                       const PipelineLatencyUpdate &update) const noexcept;
   // Capture/apply run on the engine's owning thread between process calls. Preparation
   // uses only the copied snapshot and may run concurrently on a non-audio thread.
   et_status capturePipelineLatencySnapshot(PipelineLatencySnapshot &snapshot) const noexcept;
@@ -159,6 +170,8 @@ public:
   et_status reservePipelineLatency() noexcept;
   // Never allocates or frees. Requires reservation after every configuration.
   et_status refreshPipelineLatencyRealtime() noexcept;
+  enum class LatencyChange { None, Refresh, Gate };
+  [[nodiscard]] LatencyChange pipelineLatencyChange() const noexcept;
   et_status processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                             double time_seconds, std::uint32_t master_bypass) noexcept;
   [[nodiscard]] std::uint32_t pipelineLatency() const noexcept {
@@ -171,6 +184,15 @@ public:
   };
   [[nodiscard]] bool pipelineTapLatency(et_instance instance,
                                         PipelineTapLatency &latency) const noexcept;
+  struct RoutedDelay {
+    std::int64_t local = -1, network = -1;
+  };
+  struct RoutedTap {
+    et_instance instance = 0;
+    RoutedDelay input, output;
+  };
+  using RoutedTaps = std::array<RoutedTap, kMaxPipelineNodes>;
+  void tracePipelineOutputs(et_instance send, RoutedTaps &taps) const noexcept;
 
   et_status configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes,
                            bool offline_pipeline = false) noexcept;
@@ -284,6 +306,11 @@ private:
   void resetPipelineDelayHistory() noexcept;
   static et_status planPipelineLatency(const PipelineLatencySnapshot &snapshot,
                                        PipelineLatencyUpdate &update) noexcept;
+  et_status parsePipeline(const std::uint8_t *descriptor, std::uint32_t bytes,
+                          PipelineLatencySnapshot &snapshot) const noexcept;
+  static et_status reserveLatencyStorage(const PipelineLatencySnapshot &snapshot,
+                                         const std::array<LatencyRange, kMaxPipelineNodes> &ranges,
+                                         PipelineLatencyUpdate &update) noexcept;
   static void applyDelay(dsp::DelayLine &delay_line, std::uint32_t channel,
                          std::uint32_t delay_samples, float *audio,
                          std::uint32_t frame_count) noexcept;
@@ -387,6 +414,13 @@ private:
   dsp::DelayLine output_delay_line_;
   std::uint32_t latency_ = 0;
   bool ready_ = false;
+};
+
+class Engine::PipelineTopologySnapshot {
+  friend class Engine;
+  PipelineLatencySnapshot routing_;
+  std::array<LatencyRange, kMaxPipelineNodes> ranges_{};
+  std::array<std::uint32_t, kMaxPipelineNodes> previous_{};
 };
 
 } // namespace effetune

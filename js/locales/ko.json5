@@ -657,6 +657,15 @@
 
   // 오디오 설정 대화상자
   "dialog.audioConfig.title": "오디오 설정",
+  "dialog.audioConfig.driver": "드라이버",
+  "dialog.audioConfig.driver.standard": "표준",
+  "dialog.audioConfig.driver.defaultDevice": "시스템 기본값",
+  "dialog.audioConfig.driver.startFailed": "오디오 출력을 시작할 수 없습니다. 오디오를 다시 시작하거나 오디오 설정에서 표준을 선택하세요.",
+  "dialog.audioConfig.driver.unavailable": "오디오 출력 장치를 찾을 수 없습니다. 장치를 연결하고 오디오를 다시 시작하세요.",
+  "dialog.audioConfig.driver.busy": "다른 앱이 출력 장치를 사용 중일 수 있습니다. 해당 앱을 닫고 오디오를 다시 시작하세요.",
+  "dialog.audioConfig.driver.format": "출력 장치가 이 설정을 지원하지 않습니다. 다른 장치를 선택하거나 오디오 설정을 변경하세요.",
+  "dialog.audioConfig.driver.permission": "출력 장치에 접근할 권한이 없습니다. 시스템 권한을 확인하고 오디오를 다시 시작하세요.",
+  "dialog.audioConfig.driver.stopped": "오디오 출력이 중지되었습니다. 오디오를 다시 시작하거나 오디오 설정에서 표준을 선택하세요.",
   "dialog.audioConfig.inputDevice": "입력 장치:",
   "dialog.audioConfig.inputDevice.none": "없음(음악 파일 플레이어 전용)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio(다른 앱의 소리)",

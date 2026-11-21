@@ -657,6 +657,15 @@
 
   // حوار إعدادات الصوت
   "dialog.audioConfig.title": "إعدادات الصوت",
+  "dialog.audioConfig.driver": "برنامج التشغيل",
+  "dialog.audioConfig.driver.standard": "قياسي",
+  "dialog.audioConfig.driver.defaultDevice": "الإعداد الافتراضي للنظام",
+  "dialog.audioConfig.driver.startFailed": "تعذّر بدء إخراج الصوت. أعد تشغيل الصوت أو اختر «قياسي» في إعدادات الصوت.",
+  "dialog.audioConfig.driver.unavailable": "تعذّر العثور على جهاز إخراج صوتي. وصّل جهازًا وأعد تشغيل الصوت.",
+  "dialog.audioConfig.driver.busy": "قد يستخدم تطبيق آخر جهاز الإخراج. أغلق التطبيق وأعد تشغيل الصوت.",
+  "dialog.audioConfig.driver.format": "لا يدعم جهاز الإخراج هذه الإعدادات. اختر جهازًا آخر أو غيّر إعدادات الصوت.",
+  "dialog.audioConfig.driver.permission": "لم يُسمح بالوصول إلى جهاز الإخراج. تحقّق من أذونات النظام وأعد تشغيل الصوت.",
+  "dialog.audioConfig.driver.stopped": "توقف إخراج الصوت. أعد تشغيل الصوت أو اختر «قياسي» في إعدادات الصوت.",
   "dialog.audioConfig.inputDevice": "جهاز الإدخال:",
   "dialog.audioConfig.inputDevice.none": "لا شيء (مشغل ملفات الموسيقى فقط)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (صوت التطبيقات الأخرى)",

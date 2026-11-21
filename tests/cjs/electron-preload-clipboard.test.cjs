@@ -265,11 +265,12 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   harness.listeners.get('browser:focus-address')(event);
   assert.equal(focusRequests.length, 2);
   unsubscribeFocus();
-  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port', 'network-output-v1:port']);
+  const residentPortChannels = ['sfz-library-v1:range-port', 'airplay-v1:port', 'network-output-v1:port', 'audio-engine:ports'];
+  assert.deepEqual([...harness.listeners.keys()], residentPortChannels);
 
   assert.throws(() => browser.onState(null), TypeError);
   assert.throws(() => browser.onFocusAddress(null), TypeError);
-  assert.deepEqual([...harness.listeners.keys()], ['sfz-library-v1:range-port', 'airplay-v1:port', 'network-output-v1:port']);
+  assert.deepEqual([...harness.listeners.keys()], residentPortChannels);
 });
 
 test('SFZ library preload forwards file and folder selection modes', async () => {

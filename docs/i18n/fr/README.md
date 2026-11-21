@@ -135,6 +135,16 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
    * Traitement : Effets en temps réel via EffeTune
    * Sortie : Audio traité vers votre amplificateur ou vos enceintes
 
+### Pilotes audio de l’application de bureau
+
+Dans **Paramètres > Configuration audio**, choisissez un **Pilote**. Le pilote **Standard** est sélectionné par défaut. Pour alléger le traitement ou utiliser une entrée d’au moins trois canaux, essayez **WASAPI** sous Windows, **Core Audio** sous macOS, ou **PulseAudio** sous Linux (**ALSA** si PulseAudio est indisponible). Le pilote change la façon dont EffeTune se connecte aux périphériques audio. Les effets, les préréglages et le lecteur s’utilisent de la même manière.
+
+Réglez la **Fréquence d'échantillonnage** des effets comme d’habitude. Si le périphérique de sortie utilise une fréquence différente, EffeTune convertit le son après le traitement. Les arrondis de calcul peuvent légèrement modifier les valeurs des échantillons par rapport au pilote **Standard**.
+
+EffeTune utilise les canaux que le système d’exploitation reconnaît sur le périphérique d’entrée sélectionné. Pour capter jusqu’à 16 canaux ensemble, choisissez une interface que le système présente comme un seul périphérique multicanal. Activez **Entrée audio même lors de l'utilisation du lecteur** pour mélanger l’entrée et le son du lecteur. Sous Windows, **System Audio (son des autres applications)** nécessite une sortie différente de la sortie Windows par défaut.
+
+Si le son ne démarre pas, choisissez **Réinitialiser l'audio** ou revenez au pilote **Standard**. Sous macOS, autorisez EffeTune à accéder au micro à l’invite si vous souhaitez utiliser un périphérique d’entrée.
+
 ## Utilisation
 
 Au premier lancement, la fenêtre de l’application de bureau s’ouvre agrandie. Aux lancements suivants, l’application rétablit sa taille, sa position et son état d’agrandissement précédents.

@@ -1039,8 +1039,8 @@ et_status Engine::clearInstanceDebugDetectorObservation(et_instance instance) no
 }
 #endif
 
-et_status Engine::configurePipeline(const std::uint8_t *descriptor,
-                                    std::uint32_t descriptor_bytes) noexcept {
+et_status Engine::parsePipeline(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes,
+                                PipelineLatencySnapshot &snapshot) const noexcept {
   if (!prepared_) {
     return ET_ERR_STATE;
   }
@@ -1079,27 +1079,36 @@ et_status Engine::configurePipeline(const std::uint8_t *descriptor,
     parsed[index] = node;
   }
 
-  PipelineLatencySnapshot snapshot;
   snapshot.owner_ = this;
+  snapshot.revision_ = pipeline_revision_;
   snapshot.nodes_ = parsed;
   snapshot.node_count_ = node_count;
   snapshot.channel_count_ = max_channels_;
   for (std::uint32_t index = 0u; index < node_count; ++index) {
     snapshot.latencies_[index] = instanceLatency(parsed[index].instance);
   }
+  return ET_OK;
+}
+
+et_status Engine::configurePipeline(const std::uint8_t *descriptor,
+                                    std::uint32_t descriptor_bytes) noexcept {
+  PipelineLatencySnapshot snapshot;
+  const et_status parsed = parsePipeline(descriptor, descriptor_bytes, snapshot);
+  if (parsed != ET_OK)
+    return parsed;
   PipelineLatencyUpdate update;
   const et_status status = preparePipelineLatencyUpdate(snapshot, update);
   if (status != ET_OK) {
     return status;
   }
-  pipeline_ = parsed;
+  pipeline_ = snapshot.nodes_;
   pipeline_compensation_ = std::move(update.compensation_);
   pipeline_tap_latency_ = update.tap_latency_;
   pipeline_input_latency_ = update.input_latency_;
   pipeline_kernel_latencies_ = snapshot.latencies_;
   pipeline_output_delays_ = update.output_delays_;
   pipeline_output_delay_line_ = std::move(update.output_delay_line_);
-  pipeline_count_ = node_count;
+  pipeline_count_ = snapshot.node_count_;
   pipeline_latency_samples_ = update.latency_;
   ++pipeline_revision_;
   pipeline_configured_ = true;
@@ -1329,19 +1338,36 @@ et_status Engine::reservePipelineLatency() noexcept {
     return status;
 
   std::array<LatencyRange, kMaxPipelineNodes> ranges{};
+  for (std::uint32_t index = 0; index < pipeline_count_; ++index) {
+    const auto &node = pipeline_[index];
+    if (node.enabled && node.sectionGate)
+      ranges[index] = findInstance(node.instance)->kernel->latencyRange();
+  }
+  status = reserveLatencyStorage(snapshot, ranges, update);
+  if (status == ET_OK)
+    status = applyPipelineLatencyUpdate(update);
+  if (status == ET_OK) {
+    pipeline_latency_ranges_ = ranges;
+    pipeline_latency_reserved_ = true;
+  }
+  return status;
+}
+
+et_status Engine::reserveLatencyStorage(const PipelineLatencySnapshot &snapshot,
+                                        const std::array<LatencyRange, kMaxPipelineNodes> &ranges,
+                                        PipelineLatencyUpdate &update) noexcept {
   std::uint32_t variation = 0u;
   bool uniform_chain = true;
-  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
-    const auto &node = pipeline_[index];
+  for (std::uint32_t index = 0; index < snapshot.node_count_; ++index) {
+    const auto &node = snapshot.nodes_[index];
     if (!node.enabled || !node.sectionGate)
       continue;
-    const auto range = findInstance(node.instance)->kernel->latencyRange();
+    const auto range = ranges[index];
     const auto current = snapshot.latencies_[index];
     if (range.minimum > current || range.maximum < current ||
         range.maximum - range.minimum > std::numeric_limits<std::uint32_t>::max() - variation) {
       return ET_ERR_DESC;
     }
-    ranges[index] = range;
     variation += range.maximum - range.minimum;
     uniform_chain = uniform_chain && node.channelSpec == -2 && node.inputBus == node.outputBus;
   }
@@ -1352,35 +1378,182 @@ et_status Engine::reservePipelineLatency() noexcept {
     if (extra >= std::numeric_limits<std::uint32_t>::max() - current)
       return ET_ERR_DESC;
     const auto capacity = current + extra;
-    return capacity == 0u || line.prepareNothrow(max_channels_, capacity) ? ET_OK : ET_ERR_OOM;
+    return capacity == 0u || line.prepareNothrow(snapshot.channel_count_, capacity) ? ET_OK
+                                                                                    : ET_ERR_OOM;
   };
   update.ready_ = false;
-  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
-    const auto &node = pipeline_[index];
+  for (std::uint32_t index = 0u; index < snapshot.node_count_; ++index) {
+    const auto &node = snapshot.nodes_[index];
     if (!node.enabled || !node.sectionGate)
       continue;
     auto &compensation = update.compensation_[index];
     const bool multiple_channels = node.channelSpec == -2
-                                       ? max_channels_ > 1u
+                                       ? snapshot.channel_count_ > 1u
                                        : node.channelSpec == -1 || node.channelSpec >= 16;
-    status = reserve(compensation.inputDelayLine, compensation.inputDelays,
-                     multiple_channels && !uniform_chain);
+    auto status = reserve(compensation.inputDelayLine, compensation.inputDelays,
+                          multiple_channels && !uniform_chain);
     if (status != ET_OK)
       return status;
     status = reserve(compensation.delayLine, compensation.delays, node.inputBus != node.outputBus);
     if (status != ET_OK)
       return status;
   }
-  status = reserve(update.output_delay_line_, update.output_delays_, !uniform_chain);
+  const auto status = reserve(update.output_delay_line_, update.output_delays_, !uniform_chain);
   if (status != ET_OK)
     return status;
   update.ready_ = true;
-  status = applyPipelineLatencyUpdate(update);
-  if (status == ET_OK) {
-    pipeline_latency_ranges_ = ranges;
-    pipeline_latency_reserved_ = true;
+  return ET_OK;
+}
+
+et_status Engine::capturePipelineTopology(const std::uint8_t *descriptor, std::uint32_t bytes,
+                                          PipelineTopologySnapshot &snapshot) const noexcept {
+  snapshot = {};
+  const auto parsed = parsePipeline(descriptor, bytes, snapshot.routing_);
+  if (parsed != ET_OK)
+    return parsed;
+  snapshot.previous_.fill(kMaxPipelineNodes);
+  for (std::uint32_t i = 0; i < snapshot.routing_.node_count_; ++i) {
+    const auto &next = snapshot.routing_.nodes_[i];
+    const auto *nextInstance = findInstance(next.instance);
+    snapshot.ranges_[i] = nextInstance->kernel->latencyRange();
+    for (std::uint32_t j = 0; j < pipeline_count_; ++j) {
+      const auto &old = pipeline_[j];
+      const auto *oldInstance = findInstance(old.instance);
+      const bool sameNode =
+          old.instance == next.instance ||
+          (oldInstance && nextInstance->tapId != 0 && oldInstance->tapId == nextInstance->tapId);
+      if (sameNode && old.inputBus == next.inputBus && old.outputBus == next.outputBus &&
+          old.channelSpec == next.channelSpec && old.enabled && old.sectionGate && next.enabled &&
+          next.sectionGate) {
+        snapshot.previous_[i] = j;
+        break;
+      }
+    }
   }
-  return status;
+  return ET_OK;
+}
+
+et_status Engine::preparePipelineTopology(const PipelineTopologySnapshot &snapshot,
+                                          PipelineLatencyUpdate &update) noexcept {
+  update.compensation_ = {};
+  update.output_delay_line_ = {};
+  const auto status = planPipelineLatency(snapshot.routing_, update);
+  return status == ET_OK ? reserveLatencyStorage(snapshot.routing_, snapshot.ranges_, update)
+                         : status;
+}
+
+et_status Engine::publishPipelineTopology(const PipelineTopologySnapshot &snapshot,
+                                          PipelineLatencyUpdate &update) noexcept {
+  allocation_guard::Scope guard;
+  const auto &routing = snapshot.routing_;
+  if (!update.ready_ || routing.owner_ != this || update.snapshot_.owner_ != this ||
+      routing.revision_ != pipeline_revision_ || update.snapshot_.revision_ != pipeline_revision_ ||
+      update.snapshot_.node_count_ != routing.node_count_)
+    return ET_ERR_STATE;
+  for (std::uint32_t i = 0; i < routing.node_count_; ++i) {
+    const auto &node = routing.nodes_[i];
+    const auto &planned = update.snapshot_.nodes_[i];
+    if (planned.instance != node.instance || planned.inputBus != node.inputBus ||
+        planned.outputBus != node.outputBus || planned.enabled != node.enabled ||
+        planned.sectionGate != node.sectionGate || planned.channelSpec != node.channelSpec ||
+        update.snapshot_.latencies_[i] != routing.latencies_[i] || !findInstance(node.instance) ||
+        instanceLatency(node.instance) != routing.latencies_[i])
+      return ET_ERR_STATE;
+  }
+  const auto preserve = [](dsp::DelayLine &next, dsp::DelayLine &previous) noexcept {
+    if (!next.channelCount() || !previous.channelCount())
+      return;
+    if (next.maxDelaySamples() <= previous.maxDelaySamples())
+      next.swap(previous);
+    else
+      next.copyHistoryFrom(previous);
+  };
+  for (std::uint32_t i = 0; i < routing.node_count_; ++i) {
+    const auto j = snapshot.previous_[i];
+    if (j == kMaxPipelineNodes)
+      continue;
+    auto &next = update.compensation_[i];
+    auto &previous = pipeline_compensation_[j];
+    preserve(next.inputDelayLine, previous.inputDelayLine);
+    preserve(next.delayLine, previous.delayLine);
+    for (std::uint32_t ch = 0; ch < max_channels_; ++ch)
+      if (next.targets[ch] != previous.targets[ch])
+        next.delayLine.clearChannel(ch);
+  }
+  preserve(update.output_delay_line_, pipeline_output_delay_line_);
+  pipeline_compensation_.swap(update.compensation_);
+  pipeline_output_delay_line_.swap(update.output_delay_line_);
+  pipeline_ = routing.nodes_;
+  pipeline_count_ = routing.node_count_;
+  pipeline_tap_latency_ = update.tap_latency_;
+  pipeline_input_latency_ = update.input_latency_;
+  pipeline_kernel_latencies_ = routing.latencies_;
+  pipeline_latency_ranges_ = snapshot.ranges_;
+  pipeline_output_delays_ = update.output_delays_;
+  pipeline_latency_samples_ = update.latency_;
+  pipeline_latency_reserved_ = true;
+  pipeline_configured_ = true;
+  ++pipeline_revision_;
+  update.ready_ = false;
+  return ET_OK;
+}
+
+bool Engine::topologyNeedsGate(const PipelineTopologySnapshot &snapshot,
+                               const PipelineLatencyUpdate &update) const noexcept {
+  if (update.latency_ != pipeline_latency_samples_ ||
+      update.output_delays_ != pipeline_output_delays_)
+    return true;
+  std::array<bool, kMaxPipelineNodes> retained{};
+  const auto hasDelay = [](const auto &delays) {
+    return std::any_of(delays.begin(), delays.end(), [](auto delay) { return delay != 0; });
+  };
+  for (std::uint32_t i = 0; i < snapshot.routing_.node_count_; ++i) {
+    const auto j = snapshot.previous_[i];
+    const auto &next = update.compensation_[i];
+    if (j == kMaxPipelineNodes) {
+      if (snapshot.routing_.nodes_[i].enabled && snapshot.routing_.nodes_[i].sectionGate &&
+          snapshot.routing_.latencies_[i] != 0)
+        return true;
+      if (hasDelay(next.inputDelays) || std::find(next.targets.begin(), next.targets.end(),
+                                                  DelayTarget::Destination) != next.targets.end())
+        return true;
+    } else {
+      retained[j] = true;
+      const auto &prev = pipeline_compensation_[j];
+      if (prev.inputDelays != next.inputDelays || prev.targets != next.targets ||
+          prev.delays != next.delays)
+        return true;
+    }
+  }
+  for (std::uint32_t i = 0; i < pipeline_count_; ++i) {
+    if (!retained[i] && (hasDelay(pipeline_compensation_[i].inputDelays) ||
+                         hasDelay(pipeline_compensation_[i].delays)))
+      return true;
+  }
+  return false;
+}
+
+Engine::LatencyChange Engine::pipelineLatencyChange() const noexcept {
+  for (std::uint32_t i = 0; i < pipeline_count_; ++i) {
+    if (pipeline_kernel_latencies_[i] == instanceLatency(pipeline_[i].instance))
+      continue;
+    PipelineLatencySnapshot snapshot;
+    PipelineLatencyUpdate candidate;
+    if (capturePipelineLatencySnapshot(snapshot) != ET_OK ||
+        planPipelineLatency(snapshot, candidate) != ET_OK)
+      return LatencyChange::Gate;
+    if (candidate.latency_ != pipeline_latency_samples_ ||
+        candidate.output_delays_ != pipeline_output_delays_)
+      return LatencyChange::Gate;
+    for (std::uint32_t j = 0; j < pipeline_count_; ++j) {
+      const auto &before = pipeline_compensation_[j], &after = candidate.compensation_[j];
+      if (before.inputDelays != after.inputDelays || before.targets != after.targets ||
+          before.delays != after.delays)
+        return LatencyChange::Gate;
+    }
+    return LatencyChange::Refresh;
+  }
+  return LatencyChange::None;
 }
 
 et_status Engine::refreshPipelineLatencyRealtime() noexcept {
@@ -1430,6 +1603,60 @@ bool Engine::pipelineTapLatency(et_instance instance, PipelineTapLatency &latenc
     }
   }
   return false;
+}
+
+void Engine::tracePipelineOutputs(et_instance send, RoutedTaps &taps) const noexcept {
+  taps = {};
+  if (!pipeline_configured_)
+    return;
+  // Walk the actual compensated graph backwards. Each channel carries the
+  // longest remaining path to the local output and to the stereo send tap.
+  std::array<std::array<RoutedDelay, 16>, Arena::kBusCount> paths{};
+  for (unsigned ch = 0; ch < max_channels_; ++ch)
+    paths[0][ch].local = pipeline_output_delays_[ch];
+  const auto merge = [](RoutedDelay &to, const RoutedDelay &from, unsigned delay = 0) {
+    if (from.local >= 0)
+      to.local = std::max(to.local, from.local + delay);
+    if (from.network >= 0)
+      to.network = std::max(to.network, from.network + delay);
+  };
+  for (unsigned i = pipeline_count_; i-- > 0;) {
+    const auto &node = pipeline_[i];
+    if (!node.enabled || !node.sectionGate)
+      continue;
+    const int spec = node.channelSpec;
+    const unsigned first = spec >= 16  ? static_cast<unsigned>(spec - 16) * 2
+                           : spec >= 0 ? static_cast<unsigned>(spec)
+                                       : 0;
+    const unsigned count = spec == -2 ? max_channels_ : spec == -1 || spec >= 16 ? 2 : 1;
+    if (first + count > max_channels_)
+      continue;
+    auto &tap = taps[i];
+    tap.instance = node.instance;
+    const auto &action = pipeline_compensation_[i];
+    RoutedDelay incoming;
+    for (unsigned ch = first; ch < first + count; ++ch) {
+      auto &destination = paths[node.outputBus][ch];
+      merge(tap.output, destination);
+      const auto previous = destination;
+      merge(incoming, previous,
+            action.targets[ch] == DelayTarget::Incoming ? action.delays[ch] : 0);
+      destination = {};
+      if (node.inputBus != node.outputBus)
+        merge(destination, previous,
+              action.targets[ch] == DelayTarget::Destination ? action.delays[ch] : 0);
+    }
+    for (unsigned ch = first; ch < first + count; ++ch) {
+      auto &source = paths[node.inputBus][ch];
+      merge(source, incoming, pipeline_kernel_latencies_[i] + action.inputDelays[ch]);
+    }
+    if (node.instance == send) {
+      for (unsigned ch = 0; ch < std::min(max_channels_, 2u); ++ch)
+        paths[0][ch].network = 0;
+    }
+    for (unsigned ch = first; ch < first + count; ++ch)
+      merge(tap.input, paths[node.inputBus][ch]);
+  }
 }
 
 et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,

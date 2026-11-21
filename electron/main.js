@@ -70,6 +70,8 @@ const { createAirPlayReceiverHost } = require('./airplay-receiver.cjs');
 const { registerAirPlayIpc } = require('./airplay-ipc.cjs');
 const { NetworkOutputHost, sanitizeConfiguration: sanitizeNetworkOutputConfiguration } = require('./network-output-host.cjs');
 const { registerNetworkOutputIpc } = require('./network-output-ipc.cjs');
+const { AudioEngineHost, validDriver } = require('./audio-engine-host.cjs');
+const { registerAudioEngineIpc } = require('./audio-engine-ipc.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
 const { NetworkMusicHost, registerNetworkMusicIpc, logNetworkMusicDiagnostic, supportsProtocol, routeAddress } = require('./network-music-host.cjs');
@@ -170,6 +172,7 @@ let airPlayReceiverHost = null;
 let disposeAirPlayIpc = null;
 let networkOutputHost = null;
 let disposeNetworkOutputIpc = null;
+let disposeAudioEngineIpc = null;
 let networkMusicHost = null;
 let disposeNetworkMusicIpc = null;
 let disposeIntegratedRemoteClientIpc = null;
@@ -304,6 +307,8 @@ async function closeApplicationServices() {
   disposeAirPlayIpc = null;
   disposeNetworkOutputIpc?.();
   disposeNetworkOutputIpc = null;
+  const audioEngineClosed = disposeAudioEngineIpc?.();
+  disposeAudioEngineIpc = null;
   disposeNetworkMusicIpc?.();
   disposeNetworkMusicIpc = null;
   disposeIntegratedRemoteClientIpc?.();
@@ -327,6 +332,7 @@ async function closeApplicationServices() {
     openHomeHost?.dispose(),
     airPlayHost?.dispose(),
     outputHost?.dispose(),
+    audioEngineClosed,
     remoteHost?.dispose(),
     playbackSource?.dispose()
   ]).then(results => {
@@ -1499,7 +1505,23 @@ async function initializeApp() {
       }
     }
   });
+  const nativeAudio = new AudioEngineHost({
+    root: path.resolve(__dirname, '..'), resources: app.isPackaged ? process.resourcesPath : null,
+    testBackend: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_NULL === '1' ? 'null' : undefined,
+    testMuteOutput: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_MUTE_OUTPUT === '1'
+  });
+  disposeAudioEngineIpc = registerAudioEngineIpc({
+    ipcMain, MessageChannelMain, host: nativeAudio, getMainWindow: () => constants.getMainWindow(),
+    loadDriver: () => {
+      const name = path.join(settingsProfile.getSettingsPath(fileHandlers.getUserDataPath()), 'audio-preferences.json');
+      try {
+        const { audioDriver } = JSON.parse(fs.readFileSync(name, 'utf8'));
+        return validDriver(audioDriver, process.platform) ? audioDriver : 'standard';
+      } catch { return 'standard'; }
+    }
+  });
   disposeNetworkOutputIpc = registerNetworkOutputIpc({
+    nativeAudio,
     ipcMain, MessageChannelMain, host: networkOutputHost,
     getMainWindow: () => constants.getMainWindow(),
     config: configModule, constants
@@ -1732,13 +1754,15 @@ app.on('before-quit', (event) => {
   void windowsRendererPower?.dispose();
   stopWatchdog();
   armQuitProtection();
-  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || airPlayReceiverHost || networkOutputHost || alacPlaybackSource)) {
+  if (!appServicesShutdownReady && (appServicesClosePromise || disposeAudioEngineIpc || libraryCatalogRecovery ||
+      openHomeControlHost || airPlayReceiverHost || networkOutputHost || alacPlaybackSource)) {
     event.preventDefault();
     closeApplicationServices()
       .catch(error => {
         console.error('Failed to close application services cleanly:', error?.code || error?.name || 'unknown');
       })
       .finally(() => {
+        if (appServicesShutdownReady) return;
         appServicesShutdownReady = true;
         app.quit();
       });

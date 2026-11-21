@@ -776,20 +776,22 @@ test('paused Electron catalog media resumes at its position without source resol
   });
 });
 
-test('catalog Play reloads stopped, missing, and stale paused sources', async () => {
+test('catalog Play restores a paused position only when reloading the same current entry', async () => {
   await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
     const descriptor = catalogDescriptor({ itemCount: 1 });
     await manager.loadCatalogSequence(descriptor, { currentOrdinal: 0, autoPlay: false });
     audioPlayer.contextManager.hasCurrentBuffer = () => false;
+    audioPlayer.contextManager.seek = async time => calls.push(['seek', time]);
     audioPlayer.stateManager.updateState({
       playbackMode: 'bufferSource',
       isPlaying: false,
       isPaused: true,
-      isStopped: false
+      isStopped: false,
+      currentTrackPosition: 37
     }, 'paused catalog track without source');
 
-    for (const { state, hasCurrentBuffer } of [
-      { state: {}, hasCurrentBuffer: false },
+    for (const { state, hasCurrentBuffer, expectedSeek } of [
+      { state: {}, hasCurrentBuffer: false, expectedSeek: [['seek', 37]] },
       { state: { isPaused: false, isStopped: true }, hasCurrentBuffer: true },
       {
         state: {
@@ -808,8 +810,11 @@ test('catalog Play reloads stopped, missing, and stale paused sources', async ()
       assert.equal(await manager.play(), true);
 
       assert.equal(descriptor.sourceCalls.length, 1);
-      assert.equal(calls.filter(call => call[0] === 'loadTrack').length, 1);
-      assert.equal(calls.filter(call => call[0] === 'play').length, 1);
+      assert.deepEqual(calls.filter(call => ['loadTrack', 'seek', 'play'].includes(call[0])), [
+        ['loadTrack', audioPlayer.stateManager.state.currentTrack.entryInstanceId, 0],
+        ...(expectedSeek ?? []),
+        ['play']
+      ]);
     }
   });
 });

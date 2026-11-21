@@ -17,6 +17,7 @@ import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from '../audio
 import { evaluateSystemAudioGuard } from '../audio/system-audio-guard.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 import { bindMidiDeviceSettings } from '../midi/device-settings.js';
+import { nativeDriverFor, driverName, listDriverDevices, readDriverMemory, selectDriverDevices } from './audio-drivers.js';
 export { isPlayerPreferenceOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
@@ -140,6 +141,7 @@ function getSelectedInputDeviceId(options, selectedValue, physicalInputs) {
 function audioPipelineConfigurationEqual(left, right) {
   if (!left || !right) return false;
   const defaults = {
+    audioDriver: 'standard',
     outputDeviceId: 'default',
     sampleRate: 96000,
     useInputWithPlayer: false,
@@ -188,11 +190,30 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     audioPreferences = normalizeWebAudioPreferences(audioPreferences || {});
 
     // Get available audio devices
-    const devices = await getAudioDevices(isElectron);
+    const driverBridge = isElectron && window.electronAPI?.audioEngine;
+    const platform = window.electronAPI?.platform;
+    const nativeDriver = nativeDriverFor(platform);
+    let driver = driverBridge && audioPreferences.audioDriver === nativeDriver ? nativeDriver : 'standard';
+    const originalDriver = driver;
+    const memory = readDriverMemory(audioPreferences.audioDriverDeviceMemory);
+    const translate = key => window.uiManager?.t(key);
+    const defaultDeviceLabel = translate('dialog.audioConfig.driver.defaultDevice');
+    const queryNativeDevices = async () => {
+      const listing = await listDriverDevices(nativeDriver,defaultDeviceLabel);
+      if (!listing.ok) throw new Error('Native audio device enumeration failed');
+      return listing;
+    };
+    const nativeListing = driverBridge && (driver !== 'standard' || platform === 'linux') ?
+      queryNativeDevices().catch(error => {
+        console.warn('Audio driver device enumeration failed:',error);
+        return null;
+      }) : null;
+    const initialNative = driver !== 'standard' ? await nativeListing : null;
+    const devices = driver === 'standard' ? await getAudioDevices(isElectron) : initialNative?.devices || [];
     
     // Group devices by kind
-    const inputDevices = devices.filter(device => device.kind === 'audioinput');
-    const outputDevices = devices.filter(device => device.kind === 'audiooutput');
+    let inputDevices = devices.filter(device => device.kind === 'audioinput');
+    let outputDevices = devices.filter(device => device.kind === 'audiooutput');
     
     // Ensure we have at least one default device in each category
     if (inputDevices.length === 0) {
@@ -201,6 +222,17 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     
     if (outputDevices.length === 0) {
       outputDevices.push({ deviceId: 'default', kind: 'audiooutput', label: 'Default Speaker' });
+    }
+
+    if (driver !== 'standard' && !initialNative) {
+      // A failed query provides no evidence that a saved device disappeared.
+      for (const [key,kind,options] of [['input','audioinput',inputDevices],['output','audiooutput',outputDevices]]) {
+        const deviceId = audioPreferences[`${key}DeviceId`];
+        if (deviceId && !['default',NO_AUDIO_INPUT_DEVICE_ID,SYSTEM_AUDIO_INPUT_DEVICE_ID].includes(deviceId)) {
+          options.push({deviceId,kind,label:audioPreferences[`${key}DeviceLabel`] ||
+            translate(`dialog.audioConfig.${key}Device`)});
+        }
+      }
     }
     
     console.log('Available input devices:', inputDevices);
@@ -224,7 +256,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     const t = window.uiManager.t.bind(window.uiManager);
     // System Audio captures the Windows default output through the desktop app.
     const systemAudioOffered = isElectron && window.electronAPI?.platform === 'win32';
-    const inputDeviceOptions = [
+    const inputExtras = [
       {
         deviceId: NO_AUDIO_INPUT_DEVICE_ID,
         kind: 'audioinput',
@@ -235,8 +267,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         kind: 'audioinput',
         label: t('dialog.audioConfig.inputDevice.systemAudio')
       }] : []),
-      ...inputDevices
     ];
+    let inputDeviceOptions = [...inputExtras, ...inputDevices];
     
     // Create dialog HTML
     const dialogHTML = `
@@ -254,6 +286,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
               </div>
             </div>
             <div class="device-section">
+              ${driverBridge ? `<label for="audio-driver">${t('dialog.audioConfig.driver')}</label>
+              <select id="audio-driver"></select>` : ''}
               <label for="output-device">${t('dialog.audioConfig.outputDevice')}</label>
               <select id="output-device"></select>
               <div class="device-help" id="output-device-support-message"></div>
@@ -507,13 +541,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       outputSelect.value = 'default';
       supportMessage.textContent = outputSupport.reasonKey ? t(outputSupport.reasonKey) : '';
     }
+    let updateSystemAudioAvailability = () => {};
     if (systemAudioOffered) {
-      const systemAudioOption = Array.from(inputSelect.children)
-        .find(option => option.value === SYSTEM_AUDIO_INPUT_DEVICE_ID);
       const inputHelp = document.getElementById('input-device-help');
       // Capturing the output EffeTune plays through would mute it, so the
       // option stays unavailable until another output device is selected.
-      const updateSystemAudioAvailability = () => {
+      updateSystemAudioAvailability = () => {
+        const systemAudioOption = Array.from(inputSelect.children)
+          .find(option => option.value === SYSTEM_AUDIO_INPUT_DEVICE_ID);
         const outputDeviceId = outputSelect.disabled ? 'default' : outputSelect.value;
         const { allowed } = evaluateSystemAudioGuard(outputDeviceId, outputDevices);
         systemAudioOption.disabled = !allowed;
@@ -528,6 +563,51 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
 
     let dialogClosed = false;
     let applyInProgress = true;
+    let loadingDriver = false, refreshRevision = 0;
+    const driverSelect = driverBridge && document.getElementById('audio-driver');
+    if (driverSelect) {
+      replaceValueOptions(driverSelect, ['standard',nativeDriver], driver,
+        value => value === 'standard' ? t('dialog.audioConfig.driver.standard') : driverName(platform, initialNative?.backend));
+      if (driver === 'standard' && nativeListing) void nativeListing.then(listing => {
+        if (!dialogClosed && refreshRevision === 0 && listing?.backend)
+          driverSelect.children[1].textContent = driverName(platform, listing.backend);
+      });
+    }
+    const selectedDevices = () => ({
+      inputDeviceId: inputSelect.value, outputDeviceId: outputSelect.value,
+      inputDeviceLabel: inputDeviceOptions.find(d => d.deviceId === inputSelect.value)?.label || '',
+      outputDeviceLabel: outputDevices.find(d => d.deviceId === outputSelect.value)?.label || ''
+    });
+    const refreshDevices = async () => {
+      if (!driverSelect) return;
+      const revision = ++refreshRevision, next = driverSelect.value;
+      const previous = selectedDevices();
+      if (driver !== next) memory[driver] = previous;
+      loadingDriver = true;
+      applyButton.disabled = true;
+      try {
+        const listing = next === 'standard' ? { devices: await getAudioDevices(isElectron) } :
+          await queryNativeDevices();
+        if (dialogClosed || revision !== refreshRevision) return;
+        if (listing.backend) driverSelect.children[1].textContent = driverName(platform, listing.backend);
+        inputDevices = listing.devices.filter(device => device.kind === 'audioinput');
+        outputDevices = listing.devices.filter(device => device.kind === 'audiooutput');
+        inputDeviceOptions = [...inputExtras, ...inputDevices];
+        const saved = driver === next ? previous : memory[next];
+        const selected = selectDriverDevices(inputDeviceOptions, outputDevices, previous, saved);
+        replaceOptions(inputSelect, inputDeviceOptions, selected.input);
+        replaceOptions(outputSelect, outputDevices, selected.output);
+        driver = next;
+        updateSystemAudioAvailability();
+      } catch (error) {
+        console.warn('Audio driver device enumeration failed:',error);
+        driverSelect.value = driver;
+      } finally {
+        if (revision === refreshRevision) { loadingDriver = false; applyButton.disabled = false; }
+      }
+    };
+    driverSelect?.addEventListener?.('change', refreshDevices);
+    if (driverSelect) navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices);
     let cleanupMidiSettings;
     cancelButton.addEventListener('click', closeDialog);
     document.addEventListener('keydown', handleKeydown);
@@ -548,6 +628,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     function closeDialog() {
       if (dialogClosed) return;
       dialogClosed = true;
+      if (driverSelect) navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices);
       cleanupMidiSettings?.();
       if (dialogElement.parentNode) {
         dialogElement.parentNode.removeChild(dialogElement);
@@ -578,7 +659,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     
     // Apply button
     async function applyPreferences() {
-      if (dialogClosed || applyInProgress) return;
+      if (dialogClosed || applyInProgress || loadingDriver) return;
       applyInProgress = true;
       try {
       // Get selected values
@@ -624,6 +705,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       // Save preferences
       const preferences = {
+        ...(driverBridge && driver !== originalDriver ? {
+          audioDriver: driver,
+          audioDriverDeviceMemory: JSON.stringify(Object.fromEntries(Object.entries(memory).filter(([key]) => key !== driver)))
+        } : {}),
         ...(!androidHost ? {
           midiInputDeviceKey: document.getElementById('midi-input-device').value,
           midiOutputDeviceKey: document.getElementById('midi-output-device').value,
@@ -644,6 +729,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       };
       
       const effectivePreferences = mergeWebAudioPreferences(audioPreferences, preferences);
+      const appliedPreferences = driverBridge ? effectivePreferences : preferences;
       if (!androidHost && isMidiDeviceOnlyChange(audioPreferences, effectivePreferences)) {
         const saved = await saveAudioPreferences(isElectron, {
           midiInputDeviceKey: effectivePreferences.midiInputDeviceKey,
@@ -697,13 +783,13 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       }
 
       const applyThroughAudioManager = !isElectron ||
-        canApplySilentInputWithoutReload(audioPreferences, preferences);
+        canApplySilentInputWithoutReload(audioPreferences, appliedPreferences);
       if (applyThroughAudioManager &&
           window.audioManager && typeof window.audioManager.reset === 'function') {
         closeDialog();
         let resetResult = '';
         try {
-          resetResult = await window.audioManager.reset(preferences);
+          resetResult = await window.audioManager.reset(appliedPreferences);
           if (resetResult) {
             console.error('Failed to apply audio preferences:', resetResult);
           }
@@ -715,9 +801,9 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
           window.uiManager.setError('error.audioResetFailed', true);
         }
         if (callback) {
-          callback(preferences);
+          callback(appliedPreferences);
         }
-        if (!resetResult && !androidHost) await applyMidiDevicePreferences(preferences);
+        if (!resetResult && !androidHost) await applyMidiDevicePreferences(appliedPreferences);
         return;
       }
 
@@ -727,8 +813,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         window.uiManager?.setError?.('error.audioSettingsSaveFailed', true);
         return;
       }
-      window.audioPreferences = preferences;
-      if (window.electronIntegration) window.electronIntegration.audioPreferences = preferences;
+      window.audioPreferences = appliedPreferences;
+      if (window.electronIntegration) window.electronIntegration.audioPreferences = appliedPreferences;
 
       // The main process reloads the window with the saved devices; silence
       // the output before that teardown.
@@ -736,7 +822,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
 
       // Update AudioWorklet with the new channel configuration
       if (isElectron && window.audioManager && window.audioManager.updateAudioConfig) {
-        window.audioManager.updateAudioConfig(preferences);
+        window.audioManager.updateAudioConfig(appliedPreferences);
       } else if (isElectron && window.workletNode) {
         // Fallback if audioManager is not available
         window.workletNode.port.postMessage({
@@ -750,7 +836,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       // Call callback if provided
       if (callback) {
-        callback(preferences);
+        callback(appliedPreferences);
       }
       
       if (!isElectron) {

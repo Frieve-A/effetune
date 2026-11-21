@@ -379,6 +379,75 @@ test('getAudioDevices falls back through browser and default devices', async () 
   });
 });
 
+test('Linux Standard settings stay usable while the native backend name is detected or unavailable', async () => {
+  for (const backend of ['ALSA','PulseAudio',null]) {
+    const document = createFakeDocument(), harness = createAudioHarness();
+    let finish;
+    Object.assign(harness.window.electronAPI,{platform:'linux',audioEngine:{
+      list:() => new Promise((resolve,reject) => { finish = () => backend ?
+        resolve({ok:true,backend}) : reject(new Error('Device unavailable')); })
+    }});
+    await withGlobals({window:harness.window,document,navigator:{}},async () => {
+      await withMutedConsole('log',() => showAudioConfigDialog(true,{audioDriver:'standard',outputDeviceId:'out1'}));
+      const select = document.getElementById('audio-driver');
+      assert.equal(select.value,'standard');
+      assert.equal(document.getElementById('output-device').value,'out1');
+      assert.ok(!document.getElementById('apply-button').disabled);
+      await withMutedConsole('warn',async () => { finish(); await flushMicrotasks(); });
+      assert.equal(select.children[1].textContent,backend || 'PulseAudio / ALSA');
+      assert.equal(select.value,'standard');
+    });
+  }
+});
+
+test('WASAPI settings preserve explicit output when the device query fails and restore it when switching drivers', async () => {
+  const document = createFakeDocument();
+  const harness = createAudioHarness({saveResult:{success:false}});
+  const mediaDevices = createWindowEventTarget();
+  const preferences = {audioDriver:'wasapi',inputDeviceId:NO_AUDIO_INPUT_DEVICE_ID,
+    outputDeviceId:'native-out',outputDeviceLabel:'Out One'};
+  let available = false;
+  Object.assign(harness.window.electronAPI,{platform:'win32',audioEngine:{
+    async list() {
+      return available ? {ok:true,backend:'wasapi',inputs:[],outputs:[{id:'native-out',name:'Out One'}]} :
+        {ok:false,inputs:[],outputs:[]};
+    }
+  }});
+  await withGlobals({window:harness.window,document,navigator:{mediaDevices}},async () => {
+    await withMutedConsole('warn',() => withMutedConsole('log',async () => {
+      await showAudioConfigDialog(true,preferences);
+      const output = document.getElementById('output-device');
+      const driver = document.getElementById('audio-driver');
+      const apply = document.getElementById('apply-button');
+      assert.equal(output.value,'native-out');
+      assert.equal(output.children.find(option => option.value === 'native-out').textContent,'Out One');
+
+      await apply.dispatchEvent('click');
+      assert.equal(harness.calls.find(call => call[0] === 'saveAudioPreferences')[1].outputDeviceId,'native-out');
+
+      driver.value = 'standard';
+      await driver.dispatchEvent('change');
+      assert.equal(output.value,'out1');
+
+      driver.value = 'wasapi';
+      await driver.dispatchEvent('change');
+      assert.equal(driver.value,'standard');
+      assert.equal(output.value,'out1');
+
+      available = true;
+      driver.value = 'wasapi';
+      await driver.dispatchEvent('change');
+      assert.equal(output.value,'native-out');
+
+      available = false;
+      await mediaDevices.dispatchEvent('devicechange');
+      assert.equal(output.value,'native-out');
+      assert.equal(apply.disabled,false);
+      await document.getElementById('cancel-button').dispatchEvent('click');
+    }));
+  });
+});
+
 test('showAudioConfigDialog opens without reporting configuration progress and handles a missing UI manager', async () => {
   const document = createFakeDocument();
   const nonElectron = createAudioHarness();

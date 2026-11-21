@@ -4,6 +4,7 @@ import { PluginManager } from './plugin-manager.js';
 import { AudioManager } from './audio-manager.js';
 import { NetworkOutputIntegration } from './electron/networkOutputIntegration.js';
 import { AndroidAudioManager } from './android/audio-manager.js';
+import { NativeAudioManager } from './native/audio-manager.js';
 import { isAndroidHost } from './android/bridge.js';
 import { UIManager } from './ui-manager.js';
 import { electronIntegration } from './electron-integration.js';
@@ -352,7 +353,8 @@ class App {
     constructor(dependencies = {}) {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
         const AudioManagerClass = dependencies.AudioManagerClass ||
-            (isAndroidHost() ? AndroidAudioManager : AudioManager);
+            (isAndroidHost() ? AndroidAudioManager :
+                ['wasapi','miniaudio'].includes(window.electronAPI?.audioEngine?.startupDriver?.()) ? NativeAudioManager : AudioManager);
         const UIManagerClass = dependencies.UIManagerClass || UIManager;
         // Freeze the launch-time query string before the pipeline starts reflecting itself into it
         captureInitialStartupSearch(window);
@@ -1531,6 +1533,10 @@ class App {
      * Handle and display any errors
      */
     handleErrors() {
+        if (this.audioManager.outputErrorKey || this.audioManager.inputWarning) {
+            this.uiManager.setError(this.audioManager.outputErrorKey || this.audioManager.inputWarning,true);
+            return;
+        }
         // Check sample rate after initialization
         if (this.audioManager.audioContext && this.audioManager.audioContext.sampleRate < 88200) {
             this.uiManager.setError('error.lowSampleRate', true, { sampleRate: this.audioManager.audioContext.sampleRate });
@@ -1582,7 +1588,7 @@ class App {
     }
 
     async _handleOutputDeviceChangeImpl() {
-        await this._reconcileOutputDevice();
+        if (!(this.audioManager instanceof NativeAudioManager)) await this._reconcileOutputDevice();
         // A moved Windows default output changes what System Audio captures
         // and mutes; the controller swaps the capture only when it is selected.
         await this.audioManager?.powerPolicyController?.handleSystemAudioOutputChange?.();

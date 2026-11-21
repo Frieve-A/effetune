@@ -6,6 +6,48 @@ const path = require('node:path');
 const { getMainWindow } = require('../../electron/constants.js');
 const { installTestWindowPolicy } = require('./electron-test-display.cjs');
 
+if (process.env.EFFETUNE_AUDIO_ENGINE_NULL === '1') {
+  const { AudioEngineHost } = require('../../electron/audio-engine-host.cjs');
+  if (process.platform === 'darwin') {
+    // The deterministic input is generated in the null backend and has no microphone.
+    const {systemPreferences} = require('electron');
+    const status = systemPreferences.getMediaAccessStatus.bind(systemPreferences);
+    systemPreferences.getMediaAccessStatus = type => type === 'microphone' ? 'granted' : status(type);
+  }
+  const start = AudioEngineHost.prototype.start;
+  const attach = AudioEngineHost.prototype.attachNetwork;
+  let manualClock = process.env.EFFETUNE_BROWSER_TEST_MANUAL_AUDIO_CLOCK === '1';
+  AudioEngineHost.prototype.attachNetwork = function () {
+    const port = attach.call(this);
+    if (port && !port.fixtureCounts) {
+      port.fixtureCounts = {registration:(globalThis.fixtureAudioNetwork?.registration || 0) + 1,
+        packets:0,acknowledged:0,nonSilent:0};
+      port.on('message',({data}) => {
+        if (data.type !== 'pcm') return;
+        ++port.fixtureCounts.packets;
+        if (new Int16Array(data.data).some(sample => Math.abs(sample) > 8)) ++port.fixtureCounts.nonSilent;
+      });
+      const post = port.postMessage;
+      port.postMessage = message => {
+        if (message.type === 'pcm-ack') ++port.fixtureCounts.acknowledged;
+        post(message);
+      };
+      globalThis.fixtureAudioNetwork = port.fixtureCounts;
+    }
+    return port;
+  };
+  AudioEngineHost.prototype.start = async function (...args) {
+    if (manualClock && !this.fixtureFactory) {
+      this.fixtureFactory = this.processFactory;
+      this.processFactory = (exe,argv,options) => this.fixtureFactory(exe,argv,manualClock ?
+        {...options,env:{...process.env,EFFETUNE_AUDIO_ENGINE_NULL:'0'}} : options);
+    }
+    await start.apply(this,args);
+    const child = this.active.proc.child;
+    globalThis.closeFixtureAudioEngine = () => { manualClock = false; return child.kill(); };
+  };
+}
+
 // Native input and tab capture require a visible window on the test display.
 installTestWindowPolicy({ visible: true, focusable: process.env.EFFETUNE_BROWSER_TEST_NATIVE_INPUT === '1' });
 

@@ -657,6 +657,15 @@
 
   // Dialogue de configuration audio
   "dialog.audioConfig.title": "Configuration audio",
+  "dialog.audioConfig.driver": "Pilote",
+  "dialog.audioConfig.driver.standard": "Standard",
+  "dialog.audioConfig.driver.defaultDevice": "Par défaut du système",
+  "dialog.audioConfig.driver.startFailed": "La sortie audio n’a pas pu démarrer. Redémarrez l’audio ou choisissez Standard dans les réglages audio.",
+  "dialog.audioConfig.driver.unavailable": "Aucun périphérique de sortie audio détecté. Branchez un périphérique et redémarrez l’audio.",
+  "dialog.audioConfig.driver.busy": "Une autre application utilise peut-être le périphérique de sortie. Fermez-la et redémarrez l’audio.",
+  "dialog.audioConfig.driver.format": "Le périphérique de sortie ne prend pas en charge ces réglages. Choisissez un autre périphérique ou modifiez les réglages audio.",
+  "dialog.audioConfig.driver.permission": "L’accès au périphérique de sortie a été refusé. Vérifiez les autorisations du système et redémarrez l’audio.",
+  "dialog.audioConfig.driver.stopped": "La sortie audio s’est arrêtée. Redémarrez l’audio ou choisissez Standard dans les réglages audio.",
   "dialog.audioConfig.inputDevice": "Périphérique d'entrée :",
   "dialog.audioConfig.inputDevice.none": "Aucun (lecteur de fichiers musicaux uniquement)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (son des autres applications)",

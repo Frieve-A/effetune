@@ -45,8 +45,8 @@ export function isValidEncodedChannelSpec(value) {
         (Number.isInteger(value) && value >= 16 && value <= 23);
 }
 
-export function encodeDspChannelSpec(channel) {
-    if (channel === null || channel === undefined) return -1;
+export function encodeDspChannelSpec(channel, channelCount = 2) {
+    if (channel === null || channel === undefined) return channelCount === 1 ? 0 : -1;
     if (channel === 'A') return -2;
     if (channel === 'L') return 0;
     if (channel === 'R') return 1;
@@ -76,12 +76,12 @@ export function decodeDspChannelSpec(channelSpec) {
     return String(channelSpec + 1);
 }
 
-function normalizeNode(node, index) {
+function normalizeNode(node, index, channelCount = 2) {
     if (!node || typeof node !== 'object') {
         throw new DspPipelineDescriptorError(`Pipeline node ${index} must be an object`);
     }
     const channelSpec = node.channelSpec === undefined
-        ? encodeDspChannelSpec(node.channel)
+        ? encodeDspChannelSpec(node.channel, channelCount)
         : node.channelSpec;
     if (!isValidEncodedChannelSpec(channelSpec)) {
         throw new DspPipelineDescriptorError(`Pipeline node ${index} has an invalid channel specifier`);
@@ -96,13 +96,13 @@ function normalizeNode(node, index) {
     };
 }
 
-export function encodeDspPipelineDescriptor(nodes) {
+export function encodeDspPipelineDescriptor(nodes, channelCount = 2) {
     if (!Array.isArray(nodes)) throw new DspPipelineDescriptorError('Pipeline nodes must be an array');
     if (nodes.length > DSP_PIPELINE_MAX_NODES) {
         throw new DspPipelineDescriptorError(`Pipeline exceeds ${DSP_PIPELINE_MAX_NODES} nodes`);
     }
 
-    const normalized = nodes.map(normalizeNode);
+    const normalized = nodes.map((node,index) => normalizeNode(node,index,channelCount));
     const seenInstances = new Set();
     for (const node of normalized) {
         if (seenInstances.has(node.instanceId)) {
@@ -174,7 +174,7 @@ export function decodeDspPipelineDescriptor(descriptor) {
 }
 
 function isSectionPlugin(plugin) {
-    return plugin?.constructor?.name === 'SectionPlugin';
+    return plugin?.constructor?.name === 'SectionPlugin' || plugin?.type === 'SectionPlugin';
 }
 
 export function buildDspPipelineNodes(pipeline, {

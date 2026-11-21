@@ -529,6 +529,8 @@ test('Electron constructor defers preferences and config while callbacks dispatc
     await instance.loadAudioPreferences();
     await instance.loadConfig();
     assert.deepEqual(instance.audioPreferences, {
+      audioDriver: 'standard',
+      audioDriverDeviceMemory: '',
       inputDeviceId: 'default',
       outputDeviceId: 'default',
       inputDeviceLabel: '',
@@ -545,23 +547,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       outputChannels: 2,
       latencyHint: 'interactive'
     });
-    assert.deepEqual(windowRef.audioPreferences, {
-      inputDeviceId: 'default',
-      outputDeviceId: 'default',
-      inputDeviceLabel: '',
-      outputDeviceLabel: '',
-      sampleRate: 44100,
-      useInputWithPlayer: true,
-      useWasmDsp: true,
-      gaplessPlayback: true,
-      replayGainMode: 'off',
-      replayGainPreampDb: 0,
-      replayGainPreventClipping: true,
-      midiInputDeviceKey: '',
-      midiOutputDeviceKey: '',
-      outputChannels: 2,
-      latencyHint: 'interactive'
-    });
+    assert.deepEqual(windowRef.audioPreferences, instance.audioPreferences);
     assert.deepEqual(instance.config, {
       language: 'fr',
       autoLaunch: true,

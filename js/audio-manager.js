@@ -132,6 +132,7 @@ async function applyPlayerPreferenceChanges(previousPreferences, nextPreferences
 function audioPipelineConfigurationEqual(left, right) {
     if (!left || !right) return false;
     const defaults = {
+        audioDriver: 'standard',
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
@@ -2638,7 +2639,7 @@ export class AudioManager {
             this._updateWasmAssetRejection(workletNode, data);
         } else if (data.type === 'powerStateAck' || data.type === 'powerObservation' ||
             data.type === 'powerFirstRender' || data.type === 'powerHeartbeat' ||
-            data.type === 'temporalStatePrepared') {
+            data.type === 'temporalStatePrepared' || data.type === 'temporalStateResumed') {
             if (!this._isActivePowerWorklet(workletNode)) return;
             this.audioActivationCoordinator?.recordWorkletEvent?.(data, workletNode);
             this.powerPolicyController?.handleWorkletPowerEvent?.(data, workletNode);
@@ -3919,6 +3920,26 @@ export class AudioManager {
         return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 2;
     }
 
+    // Branch B's instrument and power protocols are live while its analyzers are hidden.
+    _handleParallelWorkletMessage(event, node) {
+        const data = event?.data;
+        const type = typeof data?.type === 'string' ? data.type : '';
+        if (type === 'dspTelemetry' && data.recycle !== false && data.packet instanceof ArrayBuffer) {
+            node.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
+        } else if (type.startsWith('sfz') || type.startsWith('midiInput') ||
+            type === 'soundFontMixerActionApplied' ||
+            data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
+            data?.type === 'dspReady' || data?.type === 'dspFailed' ||
+            data?.type === 'dspExecutionState' || data?.type === 'dspCleanupNeeded' ||
+            data?.type === 'dspLatencyResponse' || data?.type === 'outputDelaySet' ||
+            data?.type === 'jsFallbackBudgetState' || data?.type === 'powerStateAck' ||
+            data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
+            data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared' ||
+            data?.type === 'temporalStateResumed') {
+            this.handleWorkletMessage(event, node);
+        }
+    }
+
     /** Post the processor code for the given pipelines onto a worklet node. */
     _registerProcessorsOnWorklet(workletNode, pipelines) {
         if (!workletNode?.port) return;
@@ -4273,27 +4294,7 @@ export class AudioManager {
             const wB = this.contextManager.createPluginProcessorNode(ctx, {
                 channelCount: ch
             });
-            // The parallel branch's analyzers are hidden during the test, so we
-            // simply drop any messages it posts back to the main thread. The
-            // instrument runtime (SFZ/SoundFont streaming, preparation and live
-            // MIDI) is tracked per worklet, so its messages are forwarded too.
-            wB.port.onmessage = event => {
-                const data = event?.data;
-                const type = typeof data?.type === 'string' ? data.type : '';
-                if (type === 'dspTelemetry' && data.recycle !== false && data.packet instanceof ArrayBuffer) {
-                    wB.port.postMessage({ type: 'dspTelemetryReturn', packet: data.packet }, [data.packet]);
-                } else if (type.startsWith('sfz') || type.startsWith('midiInput') ||
-                    type === 'soundFontMixerActionApplied' ||
-                    data?.type === 'assetState' || data?.type === 'assetLoadRejected' ||
-                    data?.type === 'dspReady' || data?.type === 'dspFailed' ||
-                    data?.type === 'dspExecutionState' || data?.type === 'dspCleanupNeeded' ||
-                    data?.type === 'dspLatencyResponse' || data?.type === 'outputDelaySet' ||
-                    data?.type === 'jsFallbackBudgetState' || data?.type === 'powerStateAck' ||
-                    data?.type === 'powerObservation' || data?.type === 'powerFirstRender' ||
-                    data?.type === 'powerHeartbeat' || data?.type === 'temporalStatePrepared') {
-                    this.handleWorkletMessage(event, wB);
-                }
-            };
+            wB.port.onmessage = event => this._handleParallelWorkletMessage(event, wB);
             if (this.visualSyncEnabled) wB.port.postMessage({ type: 'setVisualSync', enabled: true });
             // Both branches keep the L0 stage; only the primary sends, and it pauses now.
             this._postNetworkOutputLocalDelay(wB);

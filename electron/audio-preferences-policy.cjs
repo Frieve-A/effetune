@@ -1,6 +1,8 @@
 'use strict';
 
 const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
+  audioDriver: 'standard',
+  audioDriverDeviceMemory: '',
   inputDeviceId: '__effetune_no_audio_input__',
   midiInputDeviceKey: '',
   midiOutputDeviceKey: '',
@@ -30,6 +32,7 @@ const REPLAY_GAIN_MODES = Object.freeze(['off', 'track', 'album']);
 const REPLAY_GAIN_PREAMP_LIMIT_DB = 15;
 
 const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
+  audioDriver: AUDIO_PREFERENCE_DEFAULTS.audioDriver,
   outputDeviceId: AUDIO_PREFERENCE_DEFAULTS.outputDeviceId,
   sampleRate: AUDIO_PREFERENCE_DEFAULTS.sampleRate,
   useInputWithPlayer: AUDIO_PREFERENCE_DEFAULTS.useInputWithPlayer,

@@ -120,6 +120,28 @@ test('every desktop release builds its matching AirPlay runtime before packaging
   assert.match(macos, /brew --prefix "\$tool"\)\/bin" >> "\$GITHUB_PATH"/);
 });
 
+test('every desktop release builds and verifies its packaged native audio engine', () => {
+  for (const platform of ['linux', 'windows', 'macos']) {
+    const block = jobBlock(workflows.build, `build-${platform}`);
+    const steps = block.split(/\n      - name: /).slice(1);
+    const native = steps.findIndex(step => step.includes('npm run build:audio-engine'));
+    const pack = steps.findIndex(step => step.includes('node scripts/pack-ecs.mjs'));
+    const smoke = steps.findIndex(step => step.includes('npm run smoke:audio-engine-package'));
+    const upload = steps.findIndex(step =>
+      step.startsWith(`Upload ${{ linux: 'Linux', windows: 'Windows', macos: 'macOS' }[platform]} artifacts`));
+    assert.ok(native >= 0 && native <= pack && pack < smoke && smoke < upload, platform);
+    assert.doesNotMatch(steps[native], /\n        if:|continue-on-error:/);
+    assert.doesNotMatch(steps[smoke], /\n        if:|continue-on-error:/);
+    if (platform === 'windows') {
+      const e2e = steps.findIndex(step => step.includes('npm run test:rolling-pcm:electron'));
+      assert.ok(native < e2e && e2e < pack);
+      assert.match(steps[e2e], /EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'/);
+      assert.match(block, /audio-engine\/effetune-audio-engine\.exe/);
+      assert.match(block, /audio-engine\/effetune-audio-engine-v3\.exe/);
+    }
+  }
+});
+
 test('OpenHome native CI builds Windows x64, Linux x64, and both macOS architectures', () => {
   const openHomeNative = jobBlock(workflows.ci, 'openhome-native');
   for (const expected of [
@@ -250,10 +272,17 @@ test('all desktop packages include native runtimes and their tracked notices', (
     const destinations = resources.map(resource => resource.to).sort();
     const expectedDestinations = [
       'airplay',
+      'audio-engine/THIRD_PARTY_NOTICES.txt',
       'openhome/THIRD_PARTY_NOTICES.txt',
       `openhome/effetune-openhome-sidecar${platform === 'win' ? '.exe' : ''}`,
     ];
-    if (platform === 'win') expectedDestinations.push('renderer-power/effetune-renderer-power.exe');
+    if (platform === 'win') expectedDestinations.push('renderer-power/effetune-renderer-power.exe',
+      'audio-engine/effetune-audio-engine.exe', 'audio-engine/effetune-audio-engine-v3.exe');
+    else {
+      expectedDestinations.push('audio-engine');
+      assert.deepEqual(resources.find(resource => resource.to === 'audio-engine').filter,
+        ['effetune-audio-engine', 'effetune-audio-engine-v3']);
+    }
     if (platform === 'linux') {
       expectedDestinations.push(
         'openhome',

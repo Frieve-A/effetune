@@ -208,8 +208,9 @@ export const audioManagerLiveMidiMethods = {
     _liveMidiFrames(live, events) {
         const context = this.audioContext, rate = context?.sampleRate ?? 48000;
         const now = performance.now(), currentTime = context?.currentTime ?? 0;
-        const heard = context ? audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(), currentTime,
-            outputLatency: context.outputLatency, baseLatency: context.baseLatency, performanceTime: now }) / 1000 : currentTime;
+        const heard = context ? (this.getAudibleContextMs?.() ?? audibleContextTime({
+            outputTimestamp: context.getOutputTimestamp?.(), currentTime, outputLatency: context.outputLatency,
+            baseLatency: context.baseLatency, performanceTime: now })) / 1000 : currentTime;
         if (live.clock?.context !== context) live.clock = { context, lead: 0, slack: 0 };
         const clock = live.clock, gap = currentTime - heard;
         if (gap > clock.lead) clock.lead = gap;

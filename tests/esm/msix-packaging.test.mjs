@@ -50,6 +50,8 @@ test('MSIX payload rejects Portable data and missing VMP signatures', async t =>
   executable.write('PE\0\0', 128, 'binary');
   executable.writeUInt16LE(0x8664, 132);
   for (const name of ['EffeTune.exe', 'EffeTune.exe.sig', 'resources/app.asar',
+    'resources/audio-engine/effetune-audio-engine.exe', 'resources/audio-engine/effetune-audio-engine-v3.exe',
+    'resources/audio-engine/THIRD_PARTY_NOTICES.txt',
     'resources/openhome/effetune-openhome-sidecar.exe', 'resources/openhome/THIRD_PARTY_NOTICES.txt',
     'resources/renderer-power/effetune-renderer-power.exe',
     'LICENSE.electron.txt', 'LICENSES.chromium.html']) {

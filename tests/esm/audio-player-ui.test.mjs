@@ -2443,6 +2443,9 @@ test('display updates handle fallbacks, invalid values, and warning paths', asyn
     ui.updatePlayPauseButton();
     ui.updateTrackDisplay();
     ui.updateTimeDisplay();
+    assert.ok(!calls.some(call => call[0] === 'warn' && call[1].includes('Time display')));
+    ui.container = createControlElement(calls, 'audio-player');
+    ui.updateTimeDisplay();
     assert.ok(calls.some(call => call[0] === 'warn' && call[1].includes('Time display')));
 
     ui.playPauseButton = createControlElement(calls, 'play-pause-button');

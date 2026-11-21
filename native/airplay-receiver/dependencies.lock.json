@@ -19,9 +19,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-binutils",
       "base": "mingw-w64-binutils",
-      "version": "2.47-4",
-      "file": "mingw-w64-ucrt-x86_64-binutils-2.47-4-any.pkg.tar.zst",
-      "sha256": "c18a40b871bfddb5da030f015003479ca85625afde1cb89f7313945e6151397d",
+      "version": "2.47-5",
+      "file": "mingw-w64-ucrt-x86_64-binutils-2.47-5-any.pkg.tar.zst",
+      "sha256": "5a7d1127df76c2a06e37659cee57b18a3e4a59b2714e71469aa90049831a667d",
       "license": "spdx:GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-3.0-or-later AND LGPL-2.0-or-later"
     },
     {
@@ -43,9 +43,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-ffmpeg",
       "base": "mingw-w64-ffmpeg",
-      "version": "9.0.2-4",
-      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.0.2-4-any.pkg.tar.zst",
-      "sha256": "22928bcab225fba6de842204d9e89998a8549ebca615c1de3fe8add560ef1cf0",
+      "version": "9.1-1",
+      "file": "mingw-w64-ucrt-x86_64-ffmpeg-9.1-1-any.pkg.tar.zst",
+      "sha256": "be092dd7cd544c4e235d90926888e31dde3321081a6113675a9c91e00ef07f82",
       "license": "spdx:GPL-3.0-or-later",
       "sourceOnly": true
     },
@@ -290,9 +290,9 @@
   ],
   "windowsSources": [
     {
-      "name": "mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
-      "sha256": "360d495057cbe6b93bbc739d94b2e465454d618a9b1d2c3dca5296b487ffcfed"
+      "name": "mingw-w64-ffmpeg-9.1-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-ffmpeg-9.1-1.src.tar.zst",
+      "sha256": "5973ec869cfbd790eb8ab37eb5c6cf0137f70fabe900e2dfb7489f55b2265c74"
     },
     {
       "name": "mingw-w64-gcc-16.2.0-7.src.tar.zst",
@@ -376,10 +376,10 @@
     }
   ],
   "codec": {
-    "version": "9.0.2",
-    "sourceArchive": "mingw-w64-ffmpeg-9.0.2-4.src.tar.zst",
+    "version": "9.1",
+    "sourceArchive": "mingw-w64-ffmpeg-9.1-1.src.tar.zst",
     "sourceDirectory": "mingw-w64-ffmpeg",
-    "sourceTar": "ffmpeg-9.0.2.tar.xz",
+    "sourceTar": "ffmpeg-9.1.tar.xz",
     "configure": [
       "--disable-everything",
       "--disable-programs",

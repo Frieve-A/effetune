@@ -6,6 +6,9 @@ lang: en
 
 # Version History
 
+### Version 2.20.0 (Nov 27, 2026)
+- Various minor improvements
+
 ### Version 2.19.0 (Nov 20, 2026)
 - Added Headphone EQ effect that corrects headphones from a measurement curve toward a target curve
 - Added detailed distortion measurement function and Distortion Correction effect

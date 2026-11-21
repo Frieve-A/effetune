@@ -449,7 +449,7 @@ export const audioManagerSfzRuntimeMethods = {
                     return current() && answer?.ok === true;
                 } });
             if (!current()) { this._stopSfzSampleStream(node, data.pluginId, data.generation); return; }
-            if (stream.provider?.startSupply && typeof MessageChannel === 'function') {
+            if (node.port.directSampleSupply !== false && stream.provider?.startSupply && typeof MessageChannel === 'function') {
                 const { port1, port2 } = new MessageChannel();
                 try {
                     stream.provider.worker.onSupplyError = fail;

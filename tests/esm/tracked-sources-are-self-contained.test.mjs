@@ -36,7 +36,15 @@ const nativePackageBuildContracts = [
     output: path.posix.join('out/native/renderer-power/win32-x64', 'effetune-renderer-power.exe'),
     producer: 'scripts/build-renderer-power.mjs',
     inputs: ['native/renderer-power/renderer-power.cpp']
-  }
+  },
+  ...['effetune-audio-engine.exe', 'effetune-audio-engine-v3.exe'].map(executable => ({
+    name: executable,
+    script: 'build:audio-engine',
+    output: path.posix.join('out/native/audio-engine/win32-x64', executable),
+    producer: 'scripts/build-audio-engine.mjs',
+    inputs: ['native/audio-engine/CMakeLists.txt', 'native/audio-engine/app/entry.cpp',
+      'native/audio-engine/THIRD_PARTY_NOTICES.txt', 'tools/verify-audio-engine-package.mjs']
+  }))
 ];
 
 const assetCopyContracts = [{

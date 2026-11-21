@@ -1,6 +1,6 @@
 {
   "name": "effetune",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "private": true,
   "description": "Desktop Audio Effect Processor",
   "main": "electron/main.js",
@@ -13,17 +13,20 @@
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
     "build:dsd": "node scripts/build-dsd-wasm.mjs",
+    "build:audio-engine": "node scripts/build-audio-engine.mjs",
     "build:openhome-sidecar": "node scripts/build-openhome-sidecar.mjs",
     "build:airplay-receiver": "node scripts/build-airplay-receiver.mjs",
     "build:renderer-power": "node scripts/build-renderer-power.mjs",
     "collect:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs",
     "verify:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs --verify",
+    "test:audio-engine": "node scripts/build-audio-engine.mjs --native-tests",
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
     "test:dsp:automation": "node tools/verify-dsp-automation.mjs",
     "test:dsp:warnings": "node scripts/build-dsp-wasm.mjs --native-test-warning-check",
     "test:dsp:parity": "npm --prefix dsp/bindings/js run build && node tools/dsp-parity/graph-v1.mjs && node tools/dsp-parity/run.mjs --wasm && node tools/dsp-parity/run.mjs --wasm --simd",
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "bench:score-reference": "node tools/benchmark-score-reference.mjs",
+    "bench:audio-engine": "node tools/benchmark-audio-engine.mjs",
     "test:browser": "node tools/run-tests.mjs --browser",
     "test:desktop-browser": "node --test --test-concurrency=1 tests/esm/desktop-browser-electron-browser.test.mjs",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",
@@ -32,6 +35,9 @@
     "smoke:rolling-pcm-distribution": "node tools/run-rolling-pcm-distribution-smoke.mjs dist",
     "smoke:rolling-pcm-package": "node tools/verify-rolling-pcm-package.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
+    "smoke:audio-engine-package": "node tools/verify-audio-engine-package.mjs dist",
+    "smoke:audio-engine:device": "node tools/smoke-audio-engine-device.mjs",
+    "smoke:audio-engine:app": "node tools/smoke-audio-engine-app.mjs",
     "smoke:openhome-package": "node tools/verify-openhome-package.mjs dist",
     "smoke:airplay-package": "node tools/verify-airplay-package.mjs dist",
     "docs:dsp": "node examples/dsp-library/generate-docs.mjs",
@@ -54,19 +60,19 @@
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
     "verify:npm-signatures": "npm exec --yes --ignore-scripts -- npm@12.2.2 audit signatures",
     "clean": "rimraf dist node_modules/.cache",
-    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win --publish never",
-    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win portable --publish never",
-    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win nsis --publish never",
-    "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && npm run build:airplay-receiver -- --arch arm64 && electron-builder --mac --arm64 --publish never",
-    "build:mac:x64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && npm run build:airplay-receiver -- --arch x64 && electron-builder --mac --x64 --publish never",
-    "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --linux --publish never",
-    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir",
-    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir --win --publish never && npm run smoke:openhome-package && npm run smoke:airplay-package",
-    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && node scripts/pack-ecs.mjs",
+    "build": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win --publish never",
+    "build:portable": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win portable --publish never",
+    "build:installer": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win nsis --publish never",
+    "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:audio-engine -- --arch arm64 && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && npm run build:airplay-receiver -- --arch arm64 && electron-builder --mac --arm64 --publish never",
+    "build:mac:x64": "npm run assets:web && npm run clean && npm run build:audio-engine -- --arch x64 && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && npm run build:airplay-receiver -- --arch x64 && electron-builder --mac --x64 --publish never",
+    "build:linux": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --linux --publish never",
+    "pack": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir",
+    "pack:win": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --dir --win --publish never && npm run smoke:openhome-package && npm run smoke:airplay-package && npm run smoke:audio-engine-package",
+    "pack:ecs:win": "npm run assets:web && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && node scripts/pack-ecs.mjs",
     "pack:msix:win": "node scripts/pack-msix-win.mjs",
     "test:msix:installed": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-msix-installed.ps1",
     "publish:msstore": "node scripts/publish-msstore.mjs",
-    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder"
+    "dist": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
@@ -250,6 +256,18 @@
     "win": {
       "extraResources": [
         {
+          "from": "out/native/audio-engine/win32-x64/effetune-audio-engine.exe",
+          "to": "audio-engine/effetune-audio-engine.exe"
+        },
+        {
+          "from": "out/native/audio-engine/win32-x64/effetune-audio-engine-v3.exe",
+          "to": "audio-engine/effetune-audio-engine-v3.exe"
+        },
+        {
+          "from": "native/audio-engine/THIRD_PARTY_NOTICES.txt",
+          "to": "audio-engine/THIRD_PARTY_NOTICES.txt"
+        },
+        {
           "from": "out/native/airplay-receiver/win32-x64",
           "to": "airplay",
           "filter": ["**/*", "!source{,/**/*}"]
@@ -298,7 +316,19 @@
       "artifactName": "${productName}-${version}-Portable.${ext}"
     },
     "mac": {
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "EffeTune uses microphone access to process audio from your selected input device."
+      },
       "extraResources": [
+        {
+          "from": "out/native/audio-engine/darwin-${arch}",
+          "to": "audio-engine",
+          "filter": ["effetune-audio-engine", "effetune-audio-engine-v3"]
+        },
+        {
+          "from": "native/audio-engine/THIRD_PARTY_NOTICES.txt",
+          "to": "audio-engine/THIRD_PARTY_NOTICES.txt"
+        },
         {
           "from": "out/native/airplay-receiver/darwin-${arch}",
           "to": "airplay",
@@ -321,6 +351,15 @@
     "dmg": {},
     "linux": {
       "extraResources": [
+        {
+          "from": "out/native/audio-engine/linux-${arch}",
+          "to": "audio-engine",
+          "filter": ["effetune-audio-engine", "effetune-audio-engine-v3"]
+        },
+        {
+          "from": "native/audio-engine/THIRD_PARTY_NOTICES.txt",
+          "to": "audio-engine/THIRD_PARTY_NOTICES.txt"
+        },
         {
           "from": "out/native/airplay-receiver/linux-${arch}",
           "to": "airplay",
@@ -367,10 +406,10 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.66.1",
+    "@mediabunny/flac-encoder": "1.66.2",
     "bonjour-service": "1.4.4",
     "electron-updater": "6.8.11",
-    "mediabunny": "1.66.1",
+    "mediabunny": "1.66.2",
     "music-metadata": "^12.4.0",
     "qrcode-generator": "^2.0.4",
     "strtok3": "^10.7.0",

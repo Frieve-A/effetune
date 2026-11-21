@@ -657,6 +657,15 @@
 
   // Диалог настройки аудио
   "dialog.audioConfig.title": "Настройка аудио",
+  "dialog.audioConfig.driver": "Драйвер",
+  "dialog.audioConfig.driver.standard": "Стандартный",
+  "dialog.audioConfig.driver.defaultDevice": "По умолчанию в системе",
+  "dialog.audioConfig.driver.startFailed": "Не удалось запустить вывод звука. Перезапустите звук или выберите стандартный драйвер в настройках звука.",
+  "dialog.audioConfig.driver.unavailable": "Устройство вывода звука не найдено. Подключите устройство и перезапустите звук.",
+  "dialog.audioConfig.driver.busy": "Возможно, устройство вывода занято другим приложением. Закройте его и перезапустите звук.",
+  "dialog.audioConfig.driver.format": "Устройство вывода не поддерживает эти настройки. Выберите другое устройство или измените настройки звука.",
+  "dialog.audioConfig.driver.permission": "Доступ к устройству вывода запрещён. Проверьте разрешения системы и перезапустите звук.",
+  "dialog.audioConfig.driver.stopped": "Вывод звука остановлен. Перезапустите звук или выберите стандартный драйвер в настройках звука.",
   "dialog.audioConfig.inputDevice": "Входное устройство:",
   "dialog.audioConfig.inputDevice.none": "Нет (только проигрыватель музыкальных файлов)",
   "dialog.audioConfig.inputDevice.systemAudio": "System Audio (звук других приложений)",
