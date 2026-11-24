@@ -101,6 +101,15 @@ JNIEXPORT jintArray JNICALL JNI_METHOD(runtimeEvents)(JNIEnv *env, jclass,
     return result;
   });
 }
+JNIEXPORT jintArray JNICALL JNI_METHOD(assetNotices)(JNIEnv *env, jclass, jlong handle) {
+  return checked(env, static_cast<jintArray>(nullptr), [&] {
+    const auto notices = engine(handle).assetNotices();
+    auto result = env->NewIntArray(static_cast<jsize>(notices.size()));
+    if (result)
+      env->SetIntArrayRegion(result, 0, static_cast<jsize>(notices.size()), notices.data());
+    return result;
+  });
+}
 JNIEXPORT jint JNICALL JNI_METHOD(inputDevice)(JNIEnv *env, jclass,
                                                jlong handle, jint id) {
   return checked(env, jint{-1},
@@ -129,22 +138,23 @@ JNIEXPORT void JNICALL JNI_METHOD(stopMeasurementNoise)(JNIEnv *env, jclass,
 JNIEXPORT jintArray JNICALL
 JNI_METHOD(configure)(JNIEnv *env, jclass, jlong handle, jobjectArray names,
                       jobjectArray parameterArrays, jintArray hashArray,
-                      jbyteArray descriptor, jobjectArray structuredArrays) {
+                      jintArray pluginIds, jbyteArray descriptor, jobjectArray structuredArrays) {
   return checked(env, static_cast<jintArray>(nullptr), [&] {
-    if (!names || !parameterArrays || !hashArray)
+    if (!names || !parameterArrays || !hashArray || !pluginIds)
       throw std::invalid_argument("Missing pipeline");
     const auto count = env->GetArrayLength(names);
     if (count > 128 || env->GetArrayLength(parameterArrays) != count ||
-        env->GetArrayLength(hashArray) != count)
+        env->GetArrayLength(hashArray) != count || env->GetArrayLength(pluginIds) != count)
       throw std::invalid_argument("Invalid pipeline count");
     std::vector<std::string> types;
     std::vector<std::vector<float>> parameters;
     std::vector<std::vector<std::uint8_t>> structured;
     if (!structuredArrays || env->GetArrayLength(structuredArrays) != count)
       throw std::invalid_argument("Invalid structured parameter count");
-    std::vector<std::uint32_t> hashes(count);
+    std::vector<std::uint32_t> hashes(count), ids(count);
     env->GetIntArrayRegion(hashArray, 0, count,
                            reinterpret_cast<jint *>(hashes.data()));
+    env->GetIntArrayRegion(pluginIds, 0, count, reinterpret_cast<jint *>(ids.data()));
     for (int i = 0; i < count; ++i) {
       auto name = static_cast<jstring>(env->GetObjectArrayElement(names, i));
       if (!name || env->GetStringUTFLength(name) > 128)
@@ -165,7 +175,7 @@ JNI_METHOD(configure)(JNIEnv *env, jclass, jlong handle, jobjectArray names,
       env->DeleteLocalRef(packed);
     }
     const auto result = engine(handle).configure(
-        types, parameters, hashes, bytes(env, descriptor), structured);
+        types, parameters, hashes, ids, bytes(env, descriptor), structured);
     auto output = env->NewIntArray(static_cast<jsize>(result.size()));
     if (output)
       env->SetIntArrayRegion(output, 0, static_cast<jsize>(result.size()),
@@ -191,15 +201,16 @@ JNIEXPORT jint JNICALL JNI_METHOD(parameterBytes)(JNIEnv *env, jclass,
 JNIEXPORT jint JNICALL JNI_METHOD(asset)(JNIEnv *env, jclass, jlong handle,
                                          jint instance, jint slot,
                                          jintArray metadata, jbyteArray data,
-                                         jint format) {
+                                         jint format, jlong revision) {
   return checked(env, jint{-1}, [&] {
-    if (!metadata || env->GetArrayLength(metadata) != 10)
+    if (!metadata || env->GetArrayLength(metadata) != 10 || revision < -1 || revision > UINT32_MAX)
       throw std::invalid_argument("Invalid asset metadata");
     effetune::AssetBeginInfo info{};
     static_assert(sizeof(info) == 10 * sizeof(jint));
     env->GetIntArrayRegion(metadata, 0, 10, reinterpret_cast<jint *>(&info));
     return engine(handle).setAsset(instance, slot, info, bytes(env, data),
-                                   format);
+                                   format, revision < 0 ? std::nullopt :
+                                       std::optional(static_cast<std::uint32_t>(revision)));
   });
 }
 JNIEXPORT jbyteArray JNICALL JNI_METHOD(telemetry)(JNIEnv *env, jclass,
@@ -216,15 +227,16 @@ JNIEXPORT jbyteArray JNICALL JNI_METHOD(telemetry)(JNIEnv *env, jclass,
 JNIEXPORT jint JNICALL JNI_METHOD(assetFile)(JNIEnv *env, jclass, jlong handle,
                                              jint instance, jint slot,
                                              jintArray metadata, jint fd,
-                                             jlong byteSize, jint format) {
+                                             jlong byteSize, jint format, jlong revision) {
   return checked(env, jint{-1}, [&] {
     if (!metadata || env->GetArrayLength(metadata) != 10 || byteSize <= 0 ||
-        byteSize > 1024LL * 1024 * 1024)
+        byteSize > 1024LL * 1024 * 1024 || revision < -1 || revision > UINT32_MAX)
       throw std::invalid_argument("Invalid asset metadata");
     effetune::AssetBeginInfo info{};
     env->GetIntArrayRegion(metadata, 0, 10, reinterpret_cast<jint *>(&info));
     return engine(handle).setAssetFile(
-        instance, slot, info, fd, static_cast<std::uint32_t>(byteSize), format);
+        instance, slot, info, fd, static_cast<std::uint32_t>(byteSize), format,
+        revision < 0 ? std::nullopt : std::optional(static_cast<std::uint32_t>(revision)));
   });
 }
 JNIEXPORT void JNICALL JNI_METHOD(bypass)(JNIEnv *env, jclass, jlong handle,

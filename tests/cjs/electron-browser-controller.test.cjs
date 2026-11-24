@@ -6,7 +6,7 @@ const { createSystemAudioCapture } = require('../../electron/system-audio-captur
 const RUNTIME_USER_AGENT = 'Mozilla/5.0 EffeTune/2.15.0 Chrome/152.0.0.0 Electron/44.5.1 Safari/537.36';
 const DEFAULT_USER_AGENT = RUNTIME_USER_AGENT.replace(/\sElectron\/\S+/g, '');
 
-function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, themePreset, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT, beforeMusicOpen } = {}) {
+function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, themePreset, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT, beforeMusicOpen, recordDiagnosticEvent } = {}) {
   const ipc = new EventEmitter();
   const handlers = new Map();
   ipc.handle = (name, fn) => handlers.set(name, fn);
@@ -81,7 +81,7 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   mainWindow.once('closed', systemAudioCapture.dispose);
   t.after(() => systemAudioCapture.dispose());
   const controller = createBrowserController({
-    mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset, systemAudioCapture,
+    mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset, systemAudioCapture, recordDiagnosticEvent,
     async openMusicFiles(paths, canOpen) {
       await beforeMusicOpen?.(paths);
       if (!canOpen()) return false;
@@ -444,6 +444,14 @@ test('Browser lazily isolates remote pages and rejects foreign/subframe IPC and 
   assert.equal(streams.video, wc.mainFrame);
   assert.equal(streams.enableLocalEcho, false);
   assert.deepEqual(await h.capture(), {});
+});
+
+test('Browser records a capture preparation failure when reserving capture throws', t => {
+  const events = [];
+  const h = harness(t, { recordDiagnosticEvent: (...event) => events.push(event) });
+  h.partition.setUserAgent = () => { throw new Error('Unable to initialize browser partition'); };
+  assert.deepEqual(h.prepare(), { ok: false, error: 'captureFailed' });
+  assert.deepEqual(events, [['browserCapture', { decision: 'prepareFailed' }]]);
 });
 
 test('Capture commits only its generation, mutes on release, and stale cleanup cannot mute a new input', async t => {

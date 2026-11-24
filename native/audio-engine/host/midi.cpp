@@ -3,13 +3,22 @@
 #include <cmath>
 
 namespace effetune::audio {
+namespace {
+// Seek history the kernel has yet to apply; a failed script is never awaited.
+bool historyPending(Engine &engine, unsigned instance) noexcept {
+  return (engine.instanceMidiState(instance) &
+          (ET_MIDI_STATE_HISTORY_PENDING | ET_MIDI_STATE_SCRIPT_ERROR)) ==
+         ET_MIDI_STATE_HISTORY_PENDING;
+}
+} // namespace
 void MidiScheduler::reset() noexcept {
   states_ = {};
   liveCount_ = 0;
   pending_ = false;
   prepared_.store(0);
+  preparedNotified_ = false;
   ended_.store(0);
-  pausing_ = pauseComplete_ = false;
+  pausing_ = pauseComplete_ = endingBlock_ = false;
   paused_.store(false, std::memory_order_release);
   pauseReady_.store(0);
   nextReport_ = 0;
@@ -24,6 +33,7 @@ bool MidiScheduler::configureInput(unsigned generation, bool enabled,
   reset();
   transport_.playing = enabled;
   transport_.preparing = false;
+  transport_.draining = false;
   transport_.anchor = anchor;
   transport_.gain = 1;
   return true;
@@ -47,6 +57,11 @@ bool MidiScheduler::configure(Transport &next) noexcept {
     next.events.swap(transport_.events);
     next.points.swap(transport_.points);
     next.duration = transport_.duration;
+  } else {
+    const auto firstNote = std::find_if(next.events.begin(), next.events.end(), [](const Event &e) {
+      return (e.data.message & 0xf0) == 0x90 && (e.data.message & 0x7f0000) != 0;
+    });
+    firstNoteSeconds_ = firstNote == next.events.end() ? 0 : firstNote->seconds;
   }
   transport_.events.swap(next.events);
   transport_.hasTimeline = next.hasTimeline || transport_.hasTimeline;
@@ -60,6 +75,7 @@ bool MidiScheduler::configure(Transport &next) noexcept {
   transport_.playing = next.playing;
   transport_.preparing = next.preparing;
   transport_.preserveRelease = next.preserveRelease;
+  transport_.draining = next.draining;
   live_ = false;
   reset();
   return true;
@@ -97,56 +113,102 @@ bool MidiScheduler::installMap(Engine &engine, unsigned instance) const {
                                             static_cast<unsigned>(transport_.points.size())) ==
          ET_OK;
 }
-void MidiScheduler::prepare(Engine &engine, std::span<const Instrument> targets, unsigned rate) {
+void MidiScheduler::resumeInput(unsigned instance) noexcept {
+  auto &s = states_[(instance & 0xffffu) - 1];
+  if (live_ && s.instance == instance && s.initialized)
+    s.resumeInput = true;
+}
+bool MidiScheduler::prepare(Engine &engine, std::span<const Instrument> targets) {
   if (live_)
-    return;
+    return true;
+  bool ok = true;
   for (const auto &t : targets) {
     auto &s = state(t);
-    if (!installMap(engine, t.instance) || s.initialized || !t.enabled)
+    if (transport_.draining) {
+      if (t.enabled && t.ready) {
+        s.clockBase = engine.instanceMidiClock(t.instance);
+        s.clockAnchor = transport_.anchor;
+        s.initialized = s.ended = true;
+        s.cursor = transport_.events.size();
+        ok &= engine.setInstanceMidiEvents(t.instance, nullptr, 0, generation(),
+                                           ET_MIDI_NATURAL_END) == ET_OK;
+      }
+      continue;
+    }
+    const bool mapped = installMap(engine, t.instance);
+    if (t.enabled && t.ready && !mapped)
+      ok = false;
+    if (s.initialized || !t.enabled)
       continue;
     const auto gen = transport_.generation;
     if (engine.setInstanceMidiEvents(
             t.instance, nullptr, 0, gen,
-            ET_MIDI_RESET | (transport_.preserveRelease ? ET_MIDI_PRESERVE_RELEASE : 0)) != ET_OK)
+            ET_MIDI_RESET | (transport_.preserveRelease ? ET_MIDI_PRESERVE_RELEASE : 0)) != ET_OK) {
+      if (t.ready)
+        ok = false;
       continue;
-    std::size_t count = 0;
-    while (s.cursor < transport_.events.size() &&
-           transport_.events[s.cursor].seconds < transport_.position) {
-      const auto &e = transport_.events[s.cursor++];
-      auto data = e.data;
-      if (!(data.flags & (ET_MIDI_SYSTEM_RESET | ET_MIDI_DRUM_MODE))) {
-        const auto pos =
-            static_cast<std::uint64_t>(std::round(e.seconds * rate / transport_.speed));
-        data.render_frame_low = static_cast<unsigned>(pos);
-        data.render_frame_high = static_cast<unsigned>(pos >> 32);
-      }
-      batch_[count++] = data;
-      if (count == batch_.size()) {
-        engine.setInstanceMidiEvents(t.instance, batch_.data(), static_cast<unsigned>(count), gen,
-                                     ET_MIDI_STATE_ONLY);
-        count = 0;
-      }
     }
-    if (count)
-      engine.setInstanceMidiEvents(t.instance, batch_.data(), static_cast<unsigned>(count), gen,
-                                   ET_MIDI_STATE_ONLY);
-    s.initialized = true;
-    s.clockBase =
-        static_cast<std::uint64_t>(std::round(transport_.position * rate / transport_.speed));
-    s.activation = ET_MIDI_REATTACK;
+    if (mapped)
+      s.initialized = s.restoring = true;
   }
-  if (transport_.preparing && std::none_of(targets.begin(), targets.end(), [](const auto &t) {
-        return t.enabled && t.streaming;
-      })) {
-    prepared_ = transport_.generation;
-    transport_.preparing = false;
-  }
+  if (!ok)
+    transport_.preparing = transport_.playing = false;
+  return ok;
 }
-void MidiScheduler::start(unsigned generation, std::uint64_t anchor) noexcept {
-  if (generation == transport_.generation) {
-    transport_.playing = true;
-    transport_.anchor = anchor;
+bool MidiScheduler::restore(Engine &engine, const Instrument &target, State &s, std::uint64_t frame,
+                            unsigned rate) noexcept {
+  // Match the worklet: restore seek history in bounded slices on successive
+  // blocks and let the kernel advance script time after each slice, so a long
+  // song never stalls the audio callback.
+  const auto pending = [&] { return historyPending(engine, target.instance); };
+  if (pending())
+    return false;
+  // History belongs to the generation the kernel was reset to; a pause that
+  // arrives mid-restore switches generations at the activation marker.
+  const auto gen = engine.instanceMidiGeneration(target.instance);
+  const auto &events = transport_.events;
+  const auto at = pausing_ ? std::min(frame, pauseFrame_) : frame;
+  const auto seconds = position(at - std::min<std::uint64_t>(at, target.inputLatency), rate);
+  const auto songFrame = [&](double t) {
+    return static_cast<std::uint64_t>(std::round(t * rate / transport_.speed));
+  };
+  unsigned count = 0;
+  while (count < 256 && s.cursor < events.size() && events[s.cursor].seconds < seconds) {
+    const auto &e = events[s.cursor++];
+    auto data = e.data;
+    if (!(data.flags & (ET_MIDI_SYSTEM_RESET | ET_MIDI_DRUM_MODE))) {
+      const auto eventFrame = songFrame(e.seconds);
+      data.render_frame_low = static_cast<unsigned>(eventFrame);
+      data.render_frame_high = static_cast<unsigned>(eventFrame >> 32);
+    }
+    batch_[count++] = data;
   }
+  if (count) {
+    engine.setInstanceMidiEvents(target.instance, batch_.data(), count, gen, ET_MIDI_STATE_ONLY);
+    engine.setInstanceMidiClock(target.instance, songFrame(events[s.cursor - 1].seconds), gen,
+                                ET_MIDI_CLOCK_HISTORY);
+  }
+  if (pending() || (s.cursor < events.size() && events[s.cursor].seconds < seconds))
+    return false;
+  const auto seekFrame = songFrame(seconds);
+  if (!s.historyRequested) {
+    engine.setInstanceMidiClock(target.instance, seekFrame, gen, ET_MIDI_CLOCK_HISTORY);
+    s.historyRequested = true;
+    if (pending())
+      return false;
+  }
+  s.restoring = false;
+  s.clockBase = seekFrame;
+  s.activation = ET_MIDI_REATTACK;
+  return true;
+}
+bool MidiScheduler::start(unsigned generation, std::uint64_t anchor) noexcept {
+  if (generation != transport_.generation)
+    return false;
+  transport_.playing = true;
+  transport_.preparing = false;
+  transport_.anchor = anchor;
+  return true;
 }
 void MidiScheduler::speed(double value, std::uint64_t frame, unsigned rate) noexcept {
   if (value <= 0)
@@ -199,8 +261,18 @@ void MidiScheduler::finishedBlock(std::uint64_t frame, unsigned rate) noexcept {
     paused_.store(true, std::memory_order_release);
     reportedPosition_.store(pausePosition_);
     pauseReady_.store(transport_.generation, std::memory_order_release);
+  } else if (endingBlock_) {
+    transport_.position = transport_.duration;
+    transport_.playing = false;
+    transport_.draining = true;
+    endingBlock_ = false;
+    reportedPosition_.store(transport_.duration);
+    positionFrame_.store(frame);
+    positionGen_.store(transport_.generation);
+    ended_.store(transport_.generation, std::memory_order_release);
   } else if (!live_ && transport_.playing && frame >= nextReport_) {
-    nextReport_ = frame + rate / 5;
+    // Match the worklet midiPosition cadence (ceil(rate / 30)) for visual readers.
+    nextReport_ = frame + (rate + 29) / 30;
     reportedPosition_.store(position(frame, rate));
     positionFrame_.store(frame);
     positionGen_.store(transport_.generation);
@@ -250,10 +322,15 @@ void MidiScheduler::forecast(Engine &e, const Instrument &t, Forecast &f, std::u
     f.began = false;
     f.window = f.attempt == 0 ? (3 * rate + 1) / 2 : f.attempt == 1 ? rate : rate / 4;
     f.start = position(frame > t.inputLatency ? frame - t.inputLatency : 0, rate);
+    // A silent lead-in needs no sample pages. Admit the opening notes before Play,
+    // retaining earlier bank/program changes at offset zero for sample selection.
+    if (known)
+      f.start = std::max(f.start, firstNoteSeconds_);
     f.cursor = cursor(t.instance);
   }
   std::array<et_midi_event, 256> events{};
   unsigned count = 0, visited = 0;
+  bool scanned = !known;
   const auto horizon = f.start + f.window * f.speed / rate;
   while (known && f.cursor < transport_.events.size() &&
          transport_.events[f.cursor].seconds < horizon && visited++ < events.size()) {
@@ -264,8 +341,11 @@ void MidiScheduler::forecast(Engine &e, const Instrument &t, Forecast &f, std::u
     auto event = entry.data;
     event.offset_frames =
         static_cast<unsigned>(std::max(0., std::round((entry.seconds - f.start) * rate / f.speed)));
+    // Rounding can place an event inside `horizon` yet on the window end; it
+    // completes the scan exactly like an event past the horizon.
     if (event.offset_frames >= f.window) {
       --f.cursor;
+      scanned = true;
       break;
     }
     event.note_id = (event.flags & ET_MIDI_SYSTEM_RESET) ? event.note_id : 0;
@@ -278,7 +358,7 @@ void MidiScheduler::forecast(Engine &e, const Instrument &t, Forecast &f, std::u
     status = e.prefetchInstanceSamples(t.instance, events.data(), count, gen, f.window, flags);
     f.began = status == ET_OK;
   }
-  if (status == ET_OK && (!known || f.cursor == transport_.events.size() ||
+  if (status == ET_OK && (scanned || f.cursor == transport_.events.size() ||
                           transport_.events[f.cursor].seconds >= horizon)) {
     status = e.prefetchInstanceSamples(t.instance, nullptr, 0, gen, f.window,
                                        ET_STREAM_FORECAST_ADMIT | ET_STREAM_FORECAST_COMMIT);
@@ -288,7 +368,9 @@ void MidiScheduler::forecast(Engine &e, const Instrument &t, Forecast &f, std::u
           r.scope != ET_STREAM_SCOPE_NONE && !r.pending_pages && (!known || r.ready_ahead_frames);
       f.limited = f.attempt != 0;
       f.scanning = false;
-      f.next = frame + rate / 2;
+      // A known score refills when half of its admitted audio remains. Even a
+      // reduced window was admitted and must be refilled before its notes start.
+      f.next = known ? frame : frame + rate / 2;
     }
   }
   if (status == ET_ERR_OOM) {
@@ -348,6 +430,7 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
   if (!transport_.generation)
     return;
   unsigned maxDelay = 0;
+  auto retryFrom = liveCount_;
   bool prepared = true;
   bool active = false, allEnded = true, allPaused = true;
   for (const auto &t : targets) {
@@ -362,6 +445,12 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
     if (!s.initialized &&
         (live_ || !transport_.playing || !joinPlaying(engine, t, s, frame, frames, rate))) {
       allPaused = false;
+      continue;
+    }
+    if (s.restoring && (transport_.playing || transport_.preparing) &&
+        !restore(engine, t, s, frame, rate)) {
+      prepared = allEnded = allPaused = false;
+      active = true;
       continue;
     }
     if (t.streaming && transport_.preparing) {
@@ -383,11 +472,24 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
     engine.setInstanceMidiGain(t.instance, static_cast<float>(transport_.gain));
     if (s.paused)
       continue;
-    engine.setInstanceMidiClock(
-        t.instance, clock, gen,
-        transport_.playing && t.ready && !s.activation ? ET_MIDI_CLOCK_RUNNING : 0);
+    engine.setInstanceMidiClock(t.instance, clock, gen,
+                                (transport_.playing || transport_.draining) && t.ready &&
+                                        !s.activation
+                                    ? ET_MIDI_CLOCK_RUNNING
+                                    : 0);
     std::size_t count = 0;
     if (live_) {
+      if (s.resumeInput) {
+        // The marker and the first incoming notes must share a kernel batch.
+        engine.setInstanceMidiEvents(t.instance, nullptr, 0, gen, ET_MIDI_RESUME);
+        batch_[count++] = {0,
+                           0,
+                           0,
+                           ET_MIDI_RESUME,
+                           static_cast<unsigned>(clock),
+                           static_cast<unsigned>(clock >> 32)};
+        s.resumeInput = false;
+      }
       for (std::size_t i = 0; i < liveCount_; ++i) {
         auto &e = liveEvents_[i];
         if (e.frame + t.inputLatency >= frame + frames)
@@ -399,6 +501,10 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
             target->delivered)
           continue;
         const auto at = e.frame + t.inputLatency;
+        if (count == batch_.size()) {
+          retryFrom = std::min(retryFrom, i);
+          break;
+        }
         target->delivered = true;
         if (!t.ready && (e.data.message & 0xe0) == 0x80)
           continue;
@@ -480,12 +586,14 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
     }
     if (count)
       engine.setInstanceMidiEvents(t.instance, batch_.data(), static_cast<unsigned>(count), gen, 0);
-    active |= (engine.instanceMidiState(t.instance) & 7) != 0;
+    active |= (engine.instanceMidiState(t.instance) &
+               (ET_MIDI_STATE_VOICES | ET_MIDI_STATE_CALLBACKS | ET_MIDI_STATE_GENERATED)) ||
+              historyPending(engine, t.instance);
   }
   if (live_) {
     std::size_t kept = 0;
     for (std::size_t i = 0; i < liveCount_; ++i)
-      if (liveEvents_[i].frame + maxDelay >= frame + frames)
+      if (i >= retryFrom || liveEvents_[i].frame + maxDelay >= frame + frames)
         liveEvents_[kept++] = liveEvents_[i];
     liveCount_ = kept;
     blockDelivered_ = batchSerial_;
@@ -494,16 +602,15 @@ void MidiScheduler::render(Engine &engine, std::span<const Instrument> targets, 
   } else if (pausing_ && allPaused && frame + frames > pauseFrame_) {
     pauseComplete_ = true;
   } else if (!pausing_ && transport_.playing && allEnded &&
-             frame >= transport_.anchor + maxDelay +
-                          std::max(0., (transport_.duration - transport_.position) * rate /
-                                           transport_.speed)) {
-    ended_ = transport_.generation;
-    transport_.playing = false;
+             frame + frames >= transport_.anchor + maxDelay +
+                                   std::max(0., (transport_.duration - transport_.position) * rate /
+                                                    transport_.speed)) {
+    endingBlock_ = true;
   }
   pending_ = active || liveCount_ || (!live_ && transport_.playing);
-  if (!live_ && transport_.preparing && prepared) {
+  if (!live_ && transport_.preparing && prepared && !preparedNotified_) {
     prepared_ = transport_.generation;
-    transport_.preparing = false;
+    preparedNotified_ = true;
   }
 }
 } // namespace effetune::audio

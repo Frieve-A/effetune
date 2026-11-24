@@ -179,9 +179,9 @@ export const playlistIoMethods = {
         relative: this.shouldExportRelativePaths(),
         sink
       });
-      if (Number.isSafeInteger(result?.skippedCueCount) && result.skippedCueCount > 0) {
-        const message = this.t('library.paged.exportSkippedCueTracks', {
-          count: result.skippedCueCount
+      if (Number.isSafeInteger(result?.skippedTrackCount) && result.skippedTrackCount > 0) {
+        const message = this.t('library.paged.exportSkippedTracks', {
+          count: result.skippedTrackCount
         });
         this.uiManager?.setError?.(message, false);
         this.announcePagedStatus(message);

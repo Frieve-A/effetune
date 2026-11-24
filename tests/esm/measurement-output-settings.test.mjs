@@ -37,6 +37,7 @@ test('device channel count bounds channel choices and survives settings restorat
         ? inputs.filter(input => input.checked) : inputs
     },
     ANDROID_MEASUREMENT_OUTPUT_CHANNELS, INDIVIDUAL_CHANNELS, SUPPORTED_OUTPUT_CHANNEL_COUNTS, normalizeOutputChannelSelection,
+    audioUtils: {},
     isAndroidHost: () => android,
     syncMultichannelControls: selection => { downstreamSelection = selection; },
     getSweepBandConfiguration: () => ({ mode: 'off' }),

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
 import { midiPlaybackMethods } from '../../js/ui/audio-player/midi-playback.js';
 import { MidiFrameScheduler } from '../../js/midi/smf-scheduler.js';
 import { audioManagerSfzRuntimeMethods } from '../../js/audio/audio-manager-sfz-runtime.js';
@@ -335,6 +336,7 @@ test('manual next and natural repeat commit prepared MIDI without resetting its 
     const oldSource = {}, source = {}, track = { name: 'MIDI' };
     owner.midiSource = oldSource;
     owner.midiNaturalTail = repeat;
+    owner.midiPosition = .5;
     const prepared = { playableTrack: track, targetIndex: repeat ? 0 : 1, decisionRecord: {} };
     const candidate = { mode: 'midi', backend: 'midi', timeline: next, source, sourceGeneration: 2 };
     const plan = repeat ? {} : null;
@@ -343,6 +345,7 @@ test('manual next and natural repeat commit prepared MIDI without resetting its 
       activatePreparedTrackTransition: AudioContextManager.prototype.activatePreparedTrackTransition,
       commitPreparedTrackCandidate: AudioContextManager.prototype.commitPreparedTrackCandidate,
       teardownCommittedBackendForTransition: AudioContextManager.prototype.teardownCommittedBackendForTransition,
+      commitPlaybackDecision: AudioContextManager.prototype.commitPlaybackDecision,
       isActiveTransitionRequest: () => true, resumePlaybackAudioContext: async () => true,
       prepareTransitionCandidate: () => candidate, prepareMidiInstruments: async () => true,
       stagePlaybackActivation: async () => null,
@@ -367,6 +370,7 @@ test('manual next and natural repeat commit prepared MIDI without resetting its 
     assert.equal(transport.timeline, next);
     assert.equal(transport.preserveRelease, repeat);
     assert.equal(owner.midiTimeline, previous);
+    assert.equal(owner.getMidiPresentation().position, .5, 'the previous song stays presented during preparation');
     await waitForPreparationTransport(h);
     h.render(40); h.deliver('midiPrepared');
     assert.equal(await result, true);
@@ -378,6 +382,7 @@ test('manual next and natural repeat commit prepared MIDI without resetting its 
     assert.equal(h.sent.at(-1).generation, transport.generation);
     assert.equal(h.state.currentTrackPosition, 0);
     assert.equal(h.state.isPlaying, true);
+    assert.equal(owner.getMidiPresentation().position, 0, 'the next song is presented from its own start');
     await owner.stopMidi();
   });
 });
@@ -439,6 +444,136 @@ test('live preflight distinguishes a runtime-retired source from an unavailable 
   revisions.set(failed, 3);
   failed._error = 'prepare';
   assert.equal(await owner.prepareMidiInstruments(), true, 'Initial load errors remain nonfatal for valid MIDI playback');
+});
+
+test('new-score preflight waits for a selected bank through loading and initial sample preparation',
+  { timeout: 1500 }, async t => {
+    const h = harness(), manager = h.owner.audioManager;
+    const states = manager._wasmAssetStatesByNode.get(h.node);
+    const library = Promise.withResolvers(), samples = Promise.withResolvers();
+    h.plugin._pending = library.promise;
+    states.set('1:0', 0);
+    let current = true;
+    let settled = false;
+    const preparing = h.owner.prepareMidiInstruments(() => current, { waitForSelectedBank: true })
+      .then(result => { settled = true; return result; });
+    t.after(async () => { current = false; await preparing; await h.owner.stopMidi(); });
+    await delay(0);
+    assert.equal(settled, false, 'The selected bank is still being read');
+
+    h.plugin._pending = null;
+    states.set('1:0', 2);
+    library.resolve();
+    await delay(40);
+    assert.equal(settled, false, 'The decoded bank is still activating');
+
+    states.set('1:0', 3);
+    manager.getSfzSamplePreparation = () => samples.promise;
+    await delay(40);
+    assert.equal(settled, false, 'The bank still needs its initial sample pages');
+
+    manager.getSfzSamplePreparation = () => null;
+    samples.resolve(true);
+    assert.equal(await preparing, true);
+    assert.equal(h.owner.midiHasInstruments, true);
+  });
+
+test('selected-bank waiting yields to a usable output, removal, or bank rejection', { timeout: 1500 }, async t => {
+  const h = harness(), membership = h.owner.audioManager._wasmAssetMembershipByNode.get(h.node);
+  let current = true;
+  t.after(async () => { current = false; await h.owner.stopMidi(); });
+  h.plugin._pending = new Promise(() => {});
+  const prepare = () => h.owner.prepareMidiInstruments(() => current, { waitForSelectedBank: true });
+  const descriptor = h.plugin.getWasmAssetRevisionDescriptor;
+  h.plugin.getWasmAssetRevisionDescriptor = () => ({ ...descriptor(), externalAssetSignature: h.plugin.sf });
+  assert.equal(await prepare(), true, 'Opening the chooser does not block the same already-active bank');
+  assert.equal(h.owner.midiHasInstruments, true);
+  h.plugin.getWasmAssetRevisionDescriptor = descriptor;
+  class SoundFontPlayerPlugin {}
+  const ready = Object.assign(new SoundFontPlayerPlugin(), { id: 2, sf: 'ready-bank', enabled: true,
+    getWasmAssetRevisionDescriptor: h.plugin.getWasmAssetRevisionDescriptor });
+  membership.set(ready.id, ready);
+  h.owner.audioManager._wasmAssetStatesByNode.get(h.node).set('2:0', 3);
+  h.owner.audioManager._wasmAssetExpectedRevisionsByNode.get(h.node).set('2:0', 1);
+  assert.equal(await prepare(), true);
+  assert.equal(h.owner.midiHasInstruments, true);
+  membership.delete(ready.id);
+
+  await withGlobals({ window: { midiControllerManager: { getSelectedOutput: () => ({ send() {} }) } } }, async () => {
+    assert.equal(await prepare(), true);
+    assert.equal(h.owner.midiHasInstruments, false);
+  });
+
+  const removed = prepare();
+  membership.delete(h.plugin.id);
+  assert.equal(await removed, true);
+  membership.set(h.plugin.id, h.plugin);
+  const rejected = prepare();
+  h.plugin._error = 'prepare';
+  assert.equal(await rejected, true);
+  assert.equal(h.owner.midiHasInstruments, false);
+});
+
+test('Stop supersedes first Play after a saved-position seek without starting MIDI', { timeout: 1500 }, async t => {
+  const h = harness();
+  t.after(() => h.owner.stopMidi());
+  await h.owner.stopMidi();
+  h.owner.midiSource = {};
+  await h.owner.seekMidi(.25);
+  assert.equal(h.state.isPaused, true);
+  assert.equal(h.state.isStopped, false);
+  const bank = Promise.withResolvers();
+  h.plugin._pending = bank.promise;
+  h.owner.stagePlaybackActivation = () => assert.fail('A stopped song cannot activate');
+  const playing = h.owner.playMidi();
+  await delay(0);
+  await h.owner.stopMidi();
+  assert.equal(await playing, false);
+  h.plugin._pending = null;
+  bank.resolve();
+  assert.equal(h.sent.some(message => message.type === 'midiStart'), false);
+});
+
+test('first Play at a saved MIDI position waits for the bank and a later resume stays live', { timeout: 1500 }, async t => {
+  const h = harness(), owner = h.owner;
+  t.after(() => owner.stopMidi());
+  await owner.stopMidi();
+  owner.midiSource = {};
+  await owner.seekMidi(.25);
+  const positions = [];
+  const staged = Promise.withResolvers();
+  Object.assign(owner, {
+    stagePlaybackActivation(_mode, _generation, position) { positions.push(position); staged.resolve(); },
+    ensurePipelineSourceConnected: () => true, setPrivatePipelineSourceMuted: () => true,
+    getUseInputWithPlayer: () => true, releasePlaybackActivationStage() {},
+    setupBufferMonitoring() {}, rearmPreparedAutomaticMove() {}
+  });
+  h.plugin._pending = new Promise(() => {});
+  const first = owner.playMidi();
+  await delay(0);
+  assert.deepEqual(positions, []);
+  h.plugin._pending = null;
+  await staged.promise;
+  await Promise.resolve();
+  await waitForPreparationTransport(h);
+  h.render(40); h.deliver('midiPrepared');
+  assert.equal(await first, true);
+  assert.deepEqual(positions, [.25]);
+  h.render(56); h.render(72);
+  h.context.currentTime = .088;
+  const pause = owner.pauseMidi();
+  for (const frame of [88, 104, 120, 136]) h.render(frame);
+  h.deliver('midiPauseReady'); h.deliver('midiCheckpoints');
+  await pause;
+  // Seeking discards the checkpoint but the same score has already started.
+  await owner.seekMidi(.5);
+  h.plugin._pending = new Promise(() => {});
+  const resume = owner.playMidi();
+  await delay(0);
+  await waitForPreparationTransport(h);
+  h.render(152); h.deliver('midiPrepared');
+  assert.equal(await resume, true);
+  assert.deepEqual(positions, [.25, .5]);
 });
 
 test('production pause/checkpoint messages retain the worklet-frozen cursor and clock after delayed delivery', async t => {
@@ -568,6 +703,25 @@ test('prepared resume restores the captured cursor and activates once at the new
   assert.notEqual(seekEpoch, presentation.presentationEpoch);
   await h.owner.stopMidi();
   assert.notEqual(h.owner.getMidiPresentation().presentationEpoch, seekEpoch);
+});
+
+test('the Rhythm Analyzer beat clock follows the score and keeps its source until another song begins', () => {
+  const score = timeline => ({ duration: 4, division: 480, secondsPerTick: null,
+    tempoMap: [{ seconds: 0, tick: 0, quarter: 0, microsecondsPerQuarter: 500000 }],
+    timeSignatures: [{ seconds: 0, quarter: 0, numerator: 4, denominator: 4 }], ...timeline });
+  const state = { playbackMode: 'midi', playbackSpeed: 1.5, isPaused: false };
+  const owner = Object.assign(Object.create(midiPlaybackMethods), { audioManager: {}, getCurrentState: () => state,
+    midiTimeline: score(), midiPosition: 1.25, midiPlaying: true, midiGeneration: 1, midiPresentationEpoch: 1 });
+  const clock = owner.getMidiBeatClock();
+  assert.deepEqual([clock.position, clock.speed, clock.beat.quarter, clock.beat.bpm, clock.beatAt(.5).quarter],
+    [1.25, 1.5, 2.5, 120, 1]);
+  owner.midiGeneration = 2;
+  assert.equal(owner.getMidiBeatClock().source, clock.source, 'a checkpoint keeps the beat history');
+  owner.midiTimeline = score();
+  owner.midiPosition = 0;
+  assert.notEqual(owner.getMidiBeatClock().source, clock.source, 'the next song starts a new beat history');
+  state.playbackMode = 'audio';
+  assert.equal(owner.getMidiBeatClock(), null);
 });
 
 test('SoundFont Player live preflight stays nonblocking and resumes exact captured bytes while clearing only main-player checkpoints', async t => {

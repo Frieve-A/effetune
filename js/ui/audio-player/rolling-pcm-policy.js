@@ -399,25 +399,27 @@ export function evaluateRollingEligibility({
   chromiumMajorVersion = runtime.chromiumMajorVersion,
   lifecycle = detectRollingLifecycle(audioContext),
   workerAvailable = typeof Worker === 'function',
-  audioDecoderAvailable = typeof AudioDecoder === 'function'
+  audioDecoderAvailable = typeof AudioDecoder === 'function',
+  directFile = false
 }) {
   if (!gaplessPlayback) return rejection('gapless-disabled');
-  if (normalizeRollingPolicyMode(policyMode) !== RollingPolicyMode.LIMITED_ROLLING) {
+  if (!directFile && normalizeRollingPolicyMode(policyMode) !== RollingPolicyMode.LIMITED_ROLLING) {
     return rejection('rollout-disabled');
   }
   if (snapshot?.mediaSource === null || snapshot?.mediaSource === undefined) {
     return rejection('media-fallback-unavailable');
   }
   if (snapshot.hasPlaybackRegion === true) return rejection('playback-region-ineligible');
-  const sourceKind = getRollingMatrixSourceKind(snapshot);
+  const sourceKind = directFile && (snapshot.createRangeReader || snapshot.sourceKind === 'blob')
+    ? (snapshot.createRangeReader ? 'path' : 'blob') : getRollingMatrixSourceKind(snapshot);
   if (!sourceKind) {
     return rejection('canonical-source-ineligible');
   }
   if (!workerAvailable) return rejection('worker-unavailable');
-  if (!(Array.isArray(enabledMatrix) && enabledMatrix.some(cell => cell?.enabled === true))) {
+  if (!directFile && !(Array.isArray(enabledMatrix) && enabledMatrix.some(cell => cell?.enabled === true))) {
     return rejection('matrix-disabled');
   }
-  const selectedProfileId = getEnabledMatrixProfileId(enabledMatrix);
+  const selectedProfileId = directFile ? DEFAULT_ROLLING_PCM_PROFILE_ID : getEnabledMatrixProfileId(enabledMatrix);
   if (selectedProfileId === null) {
     return rejection('memory-profile-unselected');
   }
@@ -434,12 +436,21 @@ export function evaluateRollingEligibility({
       !Number.isSafeInteger(channelCount)) {
     return rejection('metadata-incomplete');
   }
-  if (channelCount < 1 || channelCount > 2) return rejection('channel-count-unsupported');
-  if (!audioContext || audioContext.sampleRate !== outputSampleRate) {
+  if (channelCount < 1 || channelCount > (directFile ? ROLLING_PCM_MAX_SLAB_CHANNELS : 2)) {
+    return rejection('channel-count-unsupported');
+  }
+  if (!audioContext || !directFile && audioContext.sampleRate !== outputSampleRate) {
     return rejection('sample-rate-mismatch');
   }
   const decodedBytes = estimateDecodedPcmBytes(metadata);
   if (decodedBytes === null) return rejection('decoded-size-unknown');
+  if (directFile) {
+    if (!['path', 'blob'].includes(sourceKind)) return rejection('canonical-source-ineligible');
+    const profile = getRollingPcmProfile(outputSampleRate, channelCount, selectedProfileId);
+    return profile && outputSampleRate >= 8000 && outputSampleRate <= 384000
+      ? Object.freeze({ eligible: true, reason: 'native-file', decodedBytes, profile })
+      : rejection('memory-profile-unavailable');
+  }
   if (!Number.isSafeInteger(snapshot.byteLength) || snapshot.byteLength < 0 ||
       snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP) {
     return rejection('compressed-source-budget');
@@ -500,9 +511,9 @@ export function selectPlaybackBackend({
   if (!gaplessPlayback) {
     return chooseResourceSafeFallback(snapshot, metadata, { preferMedia: true });
   }
-  if (normalizedMode === RollingPolicyMode.LEGACY_BASELINE) return snapshot.legacyDecision;
+  if (!capability.directFile && normalizedMode === RollingPolicyMode.LEGACY_BASELINE) return snapshot.legacyDecision;
   const fallback = chooseResourceSafeFallback(snapshot, metadata);
-  if (normalizedMode === RollingPolicyMode.RESOURCE_SAFE_LEGACY) return fallback;
+  if (!capability.directFile && normalizedMode === RollingPolicyMode.RESOURCE_SAFE_LEGACY) return fallback;
   const eligibility = evaluateRollingEligibility({
     snapshot,
     metadata,

@@ -14,52 +14,35 @@ std::uint32_t field(const std::vector<std::uint8_t> &payload, std::size_t offset
 } // namespace
 
 bool Pipeline::applyAsset(std::uint32_t id, std::uint32_t kernel, std::uint32_t slot,
-                          const AssetData *asset) {
+                          const AssetData &asset, bool sampler) {
   Engine::InstanceAssetSnapshot snapshot;
-  AssetBeginInfo info{};
-  if (asset) {
-    const auto &bytes = asset->payload;
-    info = {field(bytes, 4),       field(bytes, 8),
-            field(bytes, 16),      asset->headBlock,
-            asset->rateDivider,    asset->pathCount,
-            asset->inputCount,     asset->processingChannels,
-            asset->footprintBytes, static_cast<std::uint32_t>(bytes.size())};
-  }
-  const auto minimum = asset ? asset->minimumPhysicalBpm : std::nullopt;
-  const auto captured = engine_.captureInstanceAssetSnapshot(kernel, slot, snapshot, minimum);
-  if (captured == ET_OK) {
-    Engine::InstanceAssetUpdate update;
-    const auto prepared =
-        asset ? Engine::prepareInstanceAssetUpdate(snapshot, info, asset->payload.data(),
-                                                   info.byteSize, asset->formatTag, update)
-              : Engine::prepareInstanceAssetClear(snapshot, update);
-    if (prepared != ET_OK || engine_.applyInstanceAssetUpdate(update) != ET_OK)
-      return false;
-  } else if (captured != ET_ERR_UNSUPPORTED) {
+  const auto &bytes = asset.payload;
+  const AssetBeginInfo info{field(bytes, 4),      field(bytes, 8),
+                            field(bytes, 16),     asset.headBlock,
+                            asset.rateDivider,    asset.pathCount,
+                            asset.inputCount,     asset.processingChannels,
+                            asset.footprintBytes, static_cast<std::uint32_t>(bytes.size())};
+  const auto captured =
+      engine_.captureInstanceAssetSnapshot(kernel, slot, snapshot, asset.minimumPhysicalBpm);
+  if (captured != ET_OK)
     return false;
-  } else if (asset) {
-    auto *destination = engine_.beginInstanceAsset(kernel, slot, info, minimum);
-    if (!destination)
-      return false;
-    std::memcpy(destination, asset->payload.data(), info.byteSize);
-    if (engine_.commitInstanceAsset(kernel, slot, info.byteSize, asset->formatTag) != ET_OK)
-      return false;
-  } else {
-    engine_.abortInstanceAsset(kernel, slot);
-  }
-  if (!slot && (captured == ET_OK ||
-                (asset && asset->payload.size() >= 96 && field(asset->payload, 32) == 0x53465a))) {
+  Engine::InstanceAssetUpdate update;
+  const auto prepared = Engine::prepareInstanceAssetUpdate(snapshot, info, bytes.data(),
+                                                           info.byteSize, asset.formatTag, update);
+  if (prepared != ET_OK || engine_.applyInstanceAssetUpdate(update) != ET_OK)
+    return false;
+  if (sampler && !slot) {
     streams_.erase(id);
-    if (asset && asset->payload.size() >= 96 && field(asset->payload, 32) == 0x53465a) {
-      const auto version = field(asset->payload, 36);
+    if (bytes.size() >= 96 && field(bytes, 32) == 0x53465a) {
+      const auto version = field(bytes, 36);
       if ((version == 8 || version == 9 || version == 10) &&
-          (field(asset->payload, 92) & (version == 10 ? 2 : 1))) {
+          (field(bytes, 92) & (version == 10 ? 2 : 1))) {
         const auto generation = ++streamGeneration_;
         if (engine_.configureInstanceSampleStream(kernel, generation) != ET_OK) {
           engine_.abortInstanceAsset(kernel, slot);
           return false;
         }
-        streams_[id] = {generation, 0, asset->operationRevision, asset->replayEpoch};
+        streams_[id] = {generation, 0, asset.operationRevision, asset.replayEpoch};
       }
     }
   }
@@ -107,60 +90,6 @@ bool Pipeline::materializeInstrument(bool soundfont, AssetData &asset) const {
   asset.footprintBytes = size + static_cast<unsigned>(additional);
   return true;
 }
-bool Pipeline::setAsset(std::uint32_t id, std::uint32_t slot, AssetData candidate) {
-  if (!validAsset(id, slot, candidate))
-    return false;
-  const auto found = slots_.find(id);
-  constexpr std::string_view firTypes[]{"BassManagementPlugin", "FIRCrossoverPlugin",
-                                        "FiveBandFIRPEQPlugin", "GroupDelayEqPlugin",
-                                        "GroupDelayPEQPlugin",  "CrosstalkCancellationPlugin",
-                                        "HeadphoneEQPlugin",    "RoomEqPlugin"};
-  if (!candidate.replayEpoch && found != slots_.end() && !slot && assets_.contains({id, slot}) &&
-      (assetState(id, slot) & 255u) == ET_ASSET_STATE_ACTIVE &&
-      std::find(std::begin(firTypes), std::end(firTypes), found->second.settings.type) !=
-          std::end(firTypes)) {
-    auto &entry = found->second;
-    if (entry.settings.params.empty())
-      return false;
-    entry.dryParameters = entry.settings.params;
-    entry.dryParameters[0] = -1;
-    if (engine_.setInstanceParams(entry.kernel, entry.dryParameters.data(),
-                                  static_cast<unsigned>(entry.dryParameters.size()),
-                                  entry.settings.layoutHash, 0) != ET_OK)
-      return false;
-    pendingAssets_.insert_or_assign({id, slot}, std::move(candidate));
-    hasPendingAssets_.store(true, std::memory_order_release);
-    return true;
-  }
-  pendingAssets_.erase({id, slot});
-  hasPendingAssets_.store(!pendingAssets_.empty(), std::memory_order_release);
-  return commitAsset(id, slot, candidate);
-}
-bool Pipeline::commitAsset(std::uint32_t id, std::uint32_t slot, AssetData &candidate) {
-  const auto kernel = instance(id);
-  if (kernel && !applyAsset(id, kernel, slot, &candidate))
-    return false;
-  assets_.insert_or_assign({id, slot}, std::move(candidate));
-  return !kernel ||
-         (engine_.refreshPipelineLatency() == ET_OK && engine_.reservePipelineLatency() == ET_OK);
-}
-
-bool Pipeline::clearAsset(std::uint32_t id, std::uint32_t slot) {
-  if (pendingAssets_.erase({id, slot}) && slots_.contains(id)) {
-    auto &entry = slots_.at(id);
-    engine_.setInstanceParams(entry.kernel, entry.settings.params.data(),
-                              static_cast<unsigned>(entry.settings.params.size()),
-                              entry.settings.layoutHash, 0);
-  }
-  const auto kernel = instance(id);
-  if (kernel && !applyAsset(id, kernel, slot, nullptr))
-    return false;
-  assets_.erase({id, slot});
-  hasPendingAssets_.store(!pendingAssets_.empty(), std::memory_order_release);
-  return !kernel ||
-         (engine_.refreshPipelineLatency() == ET_OK && engine_.reservePipelineLatency() == ET_OK);
-}
-
 bool Pipeline::publishNotice(const AssetNotice &notice) noexcept {
   const auto w = noticeWrite_.load(std::memory_order_relaxed);
   if (w - noticeRead_.load(std::memory_order_acquire) == notices_.size())
@@ -171,6 +100,8 @@ bool Pipeline::publishNotice(const AssetNotice &notice) noexcept {
 }
 bool Pipeline::takeNotice(AssetNotice &notice) noexcept {
   const auto r = noticeRead_.load(std::memory_order_relaxed);
+  if (takeBankNotice(notice))
+    return true;
   if (r == noticeWrite_.load(std::memory_order_acquire))
     return false;
   notice = notices_[r % notices_.size()];
@@ -178,24 +109,7 @@ bool Pipeline::takeNotice(AssetNotice &notice) noexcept {
   return true;
 }
 void Pipeline::serviceAssets() {
-  for (auto it = pendingAssets_.begin(); it != pendingAssets_.end();) {
-    const auto [id, slot] = it->first;
-    if (!(assetState(id, slot) & (1u << 16))) {
-      ++it;
-      continue;
-    }
-    auto &asset = it->second;
-    AssetNotice notice{id, slot, 0, asset.operationRevision, asset.replayEpoch, false};
-    if (!commitAsset(id, slot, asset)) {
-      notice.rejected = true;
-      publishNotice(notice);
-    }
-    auto &entry = slots_.at(id);
-    engine_.setInstanceParams(entry.kernel, entry.settings.params.data(),
-                              static_cast<unsigned>(entry.settings.params.size()),
-                              entry.settings.layoutHash, 0);
-    it = pendingAssets_.erase(it);
-  }
+  serviceBanks();
   for (auto &[key, asset] : assets_) {
     const auto state = assetState(key.first, key.second);
     if (state != asset.reportedState &&
@@ -216,7 +130,6 @@ void Pipeline::serviceAssets() {
       slot.announcedToken = token;
     }
   }
-  hasPendingAssets_.store(!pendingAssets_.empty(), std::memory_order_release);
 }
 
 std::uint32_t Pipeline::assetState(std::uint32_t id, std::uint32_t slot) const noexcept {
@@ -268,46 +181,67 @@ bool Pipeline::publishPage(std::uint32_t id, std::uint64_t generation, std::uint
 // The owner captures and exchanges an instrument bank only between render
 // callbacks. The large payload, bank preparation, and retired storage stay with
 // this control-owned request until the final acknowledgement.
-class Pipeline::Bank final : public Pipeline::AssetChange {
+class Pipeline::Bank final : public Pipeline::AssetChange,
+                             public std::enable_shared_from_this<Bank> {
+  friend class Pipeline;
+
 public:
   Bank(Pipeline &p, unsigned id, unsigned slot, std::optional<AssetData> asset)
       : p_(p), id_(id), slot_(slot) {
-    if (asset)
+    if (asset) {
+      notice_.revision = asset->operationRevision;
+      notice_.epoch = asset->replayEpoch;
       staged_.emplace(std::pair{id, slot}, std::move(*asset));
+    }
+    notice_.id = id;
+    notice_.slot = slot;
+    notice_.completed = this;
   }
   ~Bank() override {
     if (detached_)
       p_.engine_.destroyInstance(detached_);
   }
-  Progress capture() override {
-    auto *asset = staged_.empty() ? nullptr : &staged_.begin()->second;
+  bool capture() override {
+    if (stale_ && p_.instance(id_) != kernel_)
+      return false;
+    stale_ = false;
+    deferred_ = false;
+    const auto *asset = staged_.empty() ? nullptr : &staged_.begin()->second;
     if (asset && !p_.validAsset(id_, slot_, *asset))
-      return Progress::Failed;
+      return false;
     kernel_ = p_.instance(id_);
+    if (!kernel_)
+      return true;
     failure_ = "snapshot";
-    if (kernel_) {
-      const auto status = p_.engine_.captureInstanceAssetSnapshot(
-          kernel_, slot_, snapshot_, asset ? asset->minimumPhysicalBpm : std::nullopt);
-      if (status == ET_OK) {
-        soundfont_ = p_.slots_.at(id_).settings.type == "SoundFontPlayerPlugin";
-        budget_ = p_.availableAssetBytes(id_, slot_);
-        return Progress::Prepare;
-      }
-      if (status != ET_ERR_UNSUPPORTED)
-        return Progress::Failed;
-    }
-    if (!(asset ? p_.setAsset(id_, slot_, std::move(*asset)) : p_.clearAsset(id_, slot_)))
-      return Progress::Failed;
-    deferred_ = p_.deferred(id_, slot_);
-    state_ = p_.assetState(id_, slot_);
-    return Progress::Direct;
+    if (p_.engine_.captureInstanceAssetSnapshot(
+            kernel_, slot_, snapshot_, asset ? asset->minimumPhysicalBpm : std::nullopt) != ET_OK)
+      return false;
+    const auto &settings = p_.slots_.at(id_).settings;
+    soundfont_ = settings.type == "SoundFontPlayerPlugin";
+    sampler_ = soundfont_ || settings.type == "SFZNotePlayerPlugin";
+    budget_ = p_.availableAssetBytes(id_, slot_);
+    constexpr std::string_view firTypes[]{"BassManagementPlugin", "FIRCrossoverPlugin",
+                                          "FiveBandFIRPEQPlugin", "GroupDelayEqPlugin",
+                                          "GroupDelayPEQPlugin",  "CrosstalkCancellationPlugin",
+                                          "HeadphoneEQPlugin",    "RoomEqPlugin"};
+    dryCount_ = asset && !asset->replayEpoch && !slot_ && routed() &&
+                        (p_.assetState(id_, slot_) & 255u) == ET_ASSET_STATE_ACTIVE &&
+                        std::find(std::begin(firTypes), std::end(firTypes), settings.type) !=
+                            std::end(firTypes)
+                    ? settings.params.size()
+                    : 0;
+    return true;
   }
   bool prepare() override {
     failure_ = "preparation";
+    if (!kernel_)
+      return true;
     if (staged_.empty())
       return Engine::prepareInstanceAssetClear(snapshot_, update_) == ET_OK;
+    dry_.resize(dryCount_);
     auto &asset = staged_.begin()->second;
-    if (!p_.materializeInstrument(soundfont_, asset) || asset.footprintBytes > budget_)
+    if ((sampler_ && !p_.materializeInstrument(soundfont_, asset)) ||
+        asset.footprintBytes > budget_)
       return false;
     const auto &bytes = asset.payload;
     const AssetBeginInfo info{field(bytes, 4),      field(bytes, 8),
@@ -316,7 +250,7 @@ public:
                               asset.inputCount,     asset.processingChannels,
                               asset.footprintBytes, static_cast<unsigned>(bytes.size())};
     bool streamed = false;
-    if (slot_ == 0 && bytes.size() >= 96 && field(bytes, 32) == 0x53465a) {
+    if (sampler_ && slot_ == 0 && bytes.size() >= 96 && field(bytes, 32) == 0x53465a) {
       const auto version = field(bytes, 36);
       streamed = (version == 8 || version == 9 || version == 10) &&
                  (field(bytes, 92) & (version == 10 ? 2 : 1));
@@ -343,6 +277,8 @@ public:
       stream_ = SampleStream{gen, 0, asset.operationRevision, asset.replayEpoch};
       return activateDetached();
     }
+    if (dryCount_)
+      p_.pendingBanks_.insert_or_assign(this, shared_from_this());
     return true;
   }
   bool activateDetached() {
@@ -377,6 +313,33 @@ public:
                           Engine::preparePipelineTopology(route_, routing_) == ET_OK);
   }
   bool apply() noexcept override {
+    p_.cancelBanks(id_, slot_);
+    // Some kernels publish a legacy ERROR state by exchanging even a failed preparation.
+    // A rejected host replacement must keep the bank that its committed reference identifies.
+    if (update_.hasPreparationError() && p_.assets_.contains({id_, slot_})) {
+      if (!dryCount_)
+        return false;
+      deferred_ = true;
+      notify(false);
+      return true;
+    }
+    if (dryCount_ && routed()) {
+      auto &slot = p_.slots_.at(id_);
+      std::copy(slot.settings.params.begin(), slot.settings.params.end(), dry_.begin());
+      dry_[0] = -1;
+      if (p_.engine_.setInstanceParams(kernel_, dry_.data(), static_cast<unsigned>(dry_.size()),
+                                       slot.settings.layoutHash, 0) != ET_OK)
+        return false;
+      slot.dryParameters.swap(dry_);
+      next_ = p_.waitingBanks_;
+      p_.waitingBanks_ = this;
+      p_.hasPendingAssets_.store(true, std::memory_order_release);
+      deferred_ = true;
+      return true;
+    }
+    return exchange();
+  }
+  bool exchange() noexcept {
     failure_ = "publication";
     if (detached_) {
       if (p_.instance(id_) != kernel_ ||
@@ -387,22 +350,29 @@ public:
       p_.activeDescriptor_.swap(active_);
       std::swap(detached_, kernel_);
       p_.connectAnalysisSources();
-    } else if (p_.engine_.applyInstanceAssetUpdate(update_) != ET_OK)
-      return false;
-    ++p_.runtimeRevision_;
-    auto &slot = p_.slots_.at(id_);
-    slot.streaming = bool(stream_);
-    slot.forecast = {};
-    slot.frozen.reset();
+    } else if (kernel_) {
+      const auto status =
+          p_.engine_.applyInstanceAssetUpdate(update_, p_.assets_.contains({id_, slot_}));
+      stale_ = status == ET_ERR_STATE;
+      if (status != ET_OK)
+        return false;
+    }
+    if (sampler_) {
+      ++p_.runtimeRevision_;
+      auto &slot = p_.slots_.at(id_);
+      slot.streaming = bool(stream_);
+      slot.forecast = {};
+      slot.frozen.reset();
+    }
     retired_ = p_.assets_.extract({id_, slot_});
     if (!staged_.empty())
       p_.assets_.insert(staged_.extract(staged_.begin()));
     state_ = p_.assetState(id_, slot_);
-    failure_ = "latency reservation";
-    return p_.engine_.refreshPipelineLatencyRealtime() == ET_OK;
+    p_.assetLatencyChanged_ |= kernel_ != 0;
+    return true;
   }
   void finish() override {
-    if (slot_ == 0) {
+    if (sampler_ && slot_ == 0) {
       const bool retained = p_.pendingStreams_.erase(id_) != 0;
       if (!retained) {
         p_.streams_.erase(id_);
@@ -411,12 +381,14 @@ public:
       }
     }
     update_.reclaim();
+    p_.pendingBanks_.erase(this);
     if (detached_) {
       p_.engine_.destroyInstance(detached_);
       detached_ = 0;
     }
   }
   bool deferred() const noexcept override { return deferred_; }
+  bool stale() const noexcept override { return stale_ && !superseded_; }
   unsigned state() const noexcept override { return state_; }
   bool awaitsPages() const noexcept override { return awaiting_; }
   void retain(std::shared_ptr<AssetChange> self) override {
@@ -433,6 +405,35 @@ public:
   const char *failureStage() const noexcept override { return failure_; }
 
 private:
+  bool routed() const noexcept {
+    Engine::PipelineTapLatency latency;
+    return !p_.masterBypass_ && p_.engine_.pipelineTapLatency(kernel_, latency);
+  }
+  // Completion uses a separate intrusive queue: even a full telemetry queue must
+  // never drop the last reference to retired convolution storage on the audio thread.
+  void complete(bool applyNow) noexcept {
+    auto &slot = p_.slots_.at(id_);
+    const bool ok = applyNow && exchange();
+    dry_.swap(slot.dryParameters);
+    p_.engine_.setInstanceParams(slot.kernel, slot.settings.params.data(),
+                                 static_cast<unsigned>(slot.settings.params.size()),
+                                 slot.settings.layoutHash, 0);
+    notify(ok);
+  }
+  void notify(bool ok) noexcept {
+    notice_.state = state_;
+    notice_.rejected = !ok;
+    next_ = p_.completedBanks_.load(std::memory_order_relaxed);
+    while (!p_.completedBanks_.compare_exchange_weak(next_, this, std::memory_order_release,
+                                                     std::memory_order_relaxed)) {
+    }
+  }
+  Bank *next_ = nullptr;
+  AssetNotice notice_{};
+  bool stale_ = false, sampler_ = false;
+  bool superseded_ = false; // Read and written by the control owner.
+  std::size_t dryCount_ = 0;
+  std::vector<float> dry_;
   Pipeline &p_;
   unsigned id_, slot_, kernel_ = 0, state_ = 0;
   bool deferred_ = false;
@@ -449,8 +450,57 @@ private:
   Engine::InstanceAssetUpdate update_;
   std::optional<SampleStream> stream_;
 };
+void Pipeline::cancelBanks(unsigned id, std::optional<unsigned> slot) noexcept {
+  for (Bank **link = &waitingBanks_; *link;) {
+    auto *bank = *link;
+    if (bank->id_ != id || (slot && bank->slot_ != *slot)) {
+      link = &bank->next_;
+      continue;
+    }
+    *link = bank->next_;
+    bank->complete(false);
+  }
+  hasPendingAssets_.store(waitingBanks_ != nullptr, std::memory_order_release);
+}
+void Pipeline::serviceBanks() noexcept {
+  for (Bank **link = &waitingBanks_; *link;) {
+    auto *bank = *link;
+    if (!(assetState(bank->id_, bank->slot_) & (1u << 16)) && bank->routed()) {
+      link = &bank->next_;
+      continue;
+    }
+    *link = bank->next_;
+    bank->complete(true);
+  }
+  hasPendingAssets_.store(waitingBanks_ != nullptr, std::memory_order_release);
+}
+bool Pipeline::takeBankNotice(AssetNotice &notice) noexcept {
+  if (!collectedBanks_) {
+    auto *batch = completedBanks_.exchange(nullptr, std::memory_order_acquire);
+    while (batch) {
+      auto *next = batch->next_;
+      batch->next_ = collectedBanks_;
+      collectedBanks_ = batch;
+      batch = next;
+    }
+  }
+  if (!collectedBanks_)
+    return false;
+  notice = collectedBanks_->notice_;
+  collectedBanks_ = collectedBanks_->next_;
+  return true;
+}
+std::shared_ptr<Pipeline::AssetChange> Pipeline::releaseBank(AssetChange *bank) {
+  auto node = pendingBanks_.extract(bank);
+  return node.empty() ? nullptr : std::move(node.mapped());
+}
 std::shared_ptr<Pipeline::AssetChange> Pipeline::assetChange(unsigned id, unsigned slot,
                                                              std::optional<AssetData> asset) {
+  for (auto &[change, owned] : pendingBanks_) {
+    auto *bank = static_cast<Bank *>(change);
+    if (bank->id_ == id && bank->slot_ == slot)
+      bank->superseded_ = true;
+  }
   return std::make_shared<Bank>(*this, id, slot, std::move(asset));
 }
 } // namespace effetune::audio

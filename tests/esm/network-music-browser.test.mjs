@@ -60,17 +60,16 @@ test('real header and sole Player retain their geometry and destination ownershi
         const local = { playbackManager: {}, contextManager: {} };
         local.stateManager = new StateManager(local);
         local.stateManager.updateState({ currentTrackName: 'Local song' });
-        const uiManager = window.uiManager = {
+        const uiManager = window.uiManager = Object.assign(Object.create(UIManager.prototype), {
           audioPlayer: local, layoutMode: { isMobile: document.body.classList.contains('layout-mobile') },
           t: key => 'JA:' + key, setError: (...args) => notifications.push(args),
           showTransientMessage: (...args) => messages.push(args)
-        };
+        });
         window.electronAPI = { remoteClient: { getConnection: async () => ({ registered: false }) },
           openPlaybackSelection: async () => ({ accepted: true, kind: 'files', descriptors: [{ path: 'song.flac' }] }) };
         window.electronIntegration = { isElectronEnvironment: () => true, openMusicFile: () => openMusicFile(true) };
         uiManager.audioManager = { isAndroid: false };
         local.loadFiles = (files, append) => localFiles.push({ files, append });
-        uiManager.createAudioPlayer = UIManager.prototype.createAudioPlayer;
         local.ui = new AudioPlayerUI(local);
         local.ui.createPlayerUI();
         const container = local.ui.container;

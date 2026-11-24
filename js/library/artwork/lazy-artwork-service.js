@@ -55,7 +55,7 @@ export class LazyArtworkService {
     const source = await this.repository.getArtworkSource({ trackUid });
     if (!source) return ARTWORK_PLACEHOLDER;
     if (signal?.aborted) throw abortReason(signal);
-    const sourceKey = artworkSingleFlightKey(createArtworkSourceClaim(source));
+    const sourceKey = artworkSingleFlightKey(createArtworkSourceClaim(source), source);
     const memoryCached = this.#getMemoryCachedArtwork(sourceKey);
     if (memoryCached) return memoryCached;
     const existing = this.inFlight.get(sourceKey);
@@ -157,7 +157,7 @@ export class LazyArtworkService {
         }
         await this.repository.scheduleArtworkStagingGc({ claim, reason: 'memory-only-complete' });
         return this.#cacheMemoryArtwork(
-          artworkSingleFlightKey(claim),
+          artworkSingleFlightKey(claim, source),
           Object.freeze({ kind: 'thumbnail', ...thumbnail })
         );
       }
@@ -356,10 +356,11 @@ function createSharedAbortError() {
   return new DOMException('Artwork extraction has no active requests', 'AbortError');
 }
 
-function artworkSingleFlightKey(claim) {
+function artworkSingleFlightKey(claim, source) {
   const stat = claim.externalArtworkStat;
   return [
     claim.folderId,
+    source.trackSourceKind === 'archive-entry' ? source.entryKey : '',
     claim.lifecycleVersion,
     claim.sourceKind,
     claim.canonicalSourceIdentity,

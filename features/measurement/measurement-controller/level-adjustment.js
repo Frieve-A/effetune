@@ -45,7 +45,8 @@ const LevelAdjustment = {
             }
             
             // Start input monitoring
-            await audioUtils.startMicrophoneInput(this.measurementConfig.audioInputId, this.measurementConfig.inputChannel);
+            await audioUtils.startMicrophoneInput(this.measurementConfig.audioInputId, this.measurementConfig.inputChannel,
+                { outputDeviceId: this.measurementConfig.audioOutputId, outputChannelCount: this.measurementConfig.outputChannelCount });
             if (isAndroidHost()) {
                 let notice = document.getElementById('androidInputProcessing');
                 if (!notice) {
@@ -91,6 +92,7 @@ const LevelAdjustment = {
         levelWarning.classList.remove('warning-visible');
         
         this.levelMeterInterval = setInterval(() => {
+            if (audioUtils.nativeMeasurement) void audioUtils.refreshNativeInputLevel();
             const inputLevel = audioUtils.getInputLevel();
 
             // Update level meter (convert dB to percentage)

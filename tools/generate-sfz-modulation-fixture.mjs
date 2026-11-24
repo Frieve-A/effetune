@@ -43,7 +43,8 @@ export const SFZ_MODULATION_FIXTURES = Object.freeze({
   VariableAddControl: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_release=.01 volume_oncc84=-3 volume_oncc85=-6 volume_oncc86=-3',
   VariableCurve: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_release=.01 var65535_mod=mult var65535_volume=-12 var65535_oncc84=1 var65535_curvecc84=2',
   VariableCurveControl: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_release=.01 volume_oncc84=-12 volume_curvecc84=2',
-  Paged: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_attack=.01 ampeg_release=.03 lfo1_freq=17 lfo1_pitch=37 lfo1_pan=20 fil_type=comb cutoff=220 resonance=6 fil2_type=lpf_2p_sv cutoff2=4000'
+  Paged: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_attack=.01 ampeg_release=.03 lfo1_freq=17 lfo1_pitch=37 lfo1_pan=20 fil_type=comb cutoff=220 resonance=6 fil2_type=lpf_2p_sv cutoff2=4000',
+  ControllerFx: '<region> sample=constant.wav key=60 loop_mode=loop_continuous amp_veltrack=0 ampeg_release=.01 <effect> type=gain gain_oncc1=-12 gain_oncc129=-12'
 });
 
 export async function generateSfzModulationFixture({ check = false } = {}) {
@@ -70,7 +71,7 @@ export async function generateSfzModulationFixture({ check = false } = {}) {
       ? packStreamedSfzAsset(parsed.regions, new Map([['constant.wav', {
         frames: 16384, channels: 1, sampleRate: 48000, revision: 'a'.repeat(64)
       }]]), { cacheSlots: 4, modulation: parsed.modulation })
-      : packSfzAsset(parsed.regions, samples, { modulation: parsed.modulation, effects: name === 'VariableFx' ? parsed.effects : null });
+      : packSfzAsset(parsed.regions, samples, { modulation: parsed.modulation, effects: name.endsWith('Fx') ? parsed.effects : null });
     fixtures.push({ name, source, bytes: new Uint8Array(asset.payload), footprint: asset.footprintBytes });
   }
   const declarations = fixtures.map(({ name, source, bytes, footprint }) => {

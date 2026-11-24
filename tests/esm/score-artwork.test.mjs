@@ -1,3 +1,4 @@
+import { zip } from '../helpers/archive-fixtures.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, realpath, writeFile, rm, open } from 'node:fs/promises';
@@ -63,4 +64,25 @@ test('native score artwork reads actual sibling files in priority order and reje
     const handle = await open(path.join(root, 'folder.jpg'), 'r+');
     try { await handle.truncate(20 * 1024 * 1024 + 1); } finally { await handle.close(); }
     assert.equal(await ingress.readScoreCover(source), null);
+});
+
+test('archive artwork prefers the score directory before the folder beside the archive', async () => {
+    for (const inside of [true, false]) {
+        const archive = new File([zip([['inner/song.mid', 'song'], [inside ? 'inner/cover.jpg' : 'other/cover.jpg', 'inner']])], 'set.zip');
+        const session = new WebSessionFileSource({ entries: [
+            { relativePath: 'Album/set.zip', file: archive },
+            { relativePath: 'Album/folder.jpg', file: new File(['outer'], 'folder.jpg') }
+        ] });
+        const source = { trackSourceKind: 'archive-entry', canonicalSourceIdentity: 'Album/set.zip',
+            sourceKind: 'embedded-file', entryKey: 'archive:Album/set.zip#inner/song.mid' };
+        const extractor = new WebArtworkExtractor({ filesystem: session.createAdapter(),
+            createBitmap: async blob => {
+                assert.equal(await blob.text(), inside ? 'inner' : 'outer');
+                return { width: 1, height: 1, close() {} };
+            } });
+        const resolved = await extractor.resolveSource({ source, maxRawBytes: 1024 });
+        assert.equal(resolved.canonicalSourceIdentity, inside ? 'Album/set.zip' : 'Album/folder.jpg');
+        if (!inside) assert.equal(isTrackCoverRelativePath(null, 'Album/set.zip', resolved.canonicalSourceIdentity, 'song.mid'), true);
+        extractor.discard({ claim: resolved });
+    }
 });

@@ -11,6 +11,7 @@ import { compileSfzScript } from '../../js/sfz/script-compiler.js';
 import { compileAcceptanceInstrument } from '../helpers/sfz-native-acceptance.mjs';
 import { createNativeSamplerWorklet } from '../helpers/native-sampler-worklet.mjs';
 import { createNativeMidiPlaybackOwner } from '../helpers/midi-native-playback.mjs';
+import { createSf2RuntimeFixture } from '../helpers/sf2-runtime-fixture.mjs';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 test('bounded input hydration preserves sixteen-channel bank latch, RPN, pressure and current controllers without notes', () => {
@@ -86,6 +87,35 @@ async function setup(variant, source = '<region> sample=tone.wav key=60 loop_mod
         async close() { input.dispose(); manager._cancelLiveMidiInput(); await pump(2); await h.close(); }
     };
 }
+
+test('the first live note can wake a SoundFont checkpointed before MIDI was selected', async () => {
+    const h = await createNativeSamplerWorklet();
+    const bank = await createSf2RuntimeFixture({ resident: true });
+    try {
+        await h.initialize('SoundFontPlayerPlugin', bank.descriptor);
+        await h.waitForJoinReady();
+        assert.equal(h.processor.midiScheduler.generation, 0);
+        await h.send({ type: 'sfzCaptureCheckpoints', requestId: 1, reason: 'power' });
+        assert.equal(h.messages.findLast(message => message.type === 'sfzCheckpoints')?.ok, true);
+        const manager = h.manager;
+        manager.audioContext.state = 'running';
+        h.node.port.addEventListener('message', ({ data }) => manager._handleLiveMidiInputMessage(h.node, data));
+        manager.setLiveMidiInputSource('first-input');
+        assert.equal(h.processor._resetTemporalPlugin(7), true, 'A ready SoundFont must pass the guarded wake');
+        await h.send({ type: 'sfzResumeRuntime' });
+        assert.equal(manager.enqueueLiveMidiInput({ data: [0x90, 60, 100], sourceKey: 'first-input' }), true);
+        let peak = 0;
+        for (let block = 0; block < 24; block++) {
+            for (const sample of h.render()[0]) peak = Math.max(peak, Math.abs(sample));
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+        assert.ok(peak > .001, 'The first live note should reach the worklet output');
+        assert.equal(h.messages.findLast(message => message.type === 'midiInputAccepted')?.accepted, true);
+    } finally {
+        await h.close();
+        await bank.close();
+    }
+});
 
 function createLiveInputManager({ rejectNoteOff = false, holdAcks = false } = {}) {
     let held = false;

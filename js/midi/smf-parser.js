@@ -6,10 +6,16 @@ export const SMF_MAX_EVENTS = 250000;
 const MAX_TICKS = 0xffffffff;
 const MAX_SECONDS = 24 * 60 * 60;
 
-export function isMidiFile(value) {
+export function scoreFileExtension(value) {
     const name = typeof value === 'string' ? value : value?.name ?? value?.fileName ?? value?.path ?? '';
-    const path = /^[a-z][a-z\d+.-]*:\/\//i.test(name) ? name.split(/[?#]/, 1)[0] : name;
-    return /\.(?:mid|midi|kar)$/i.test(path) || /\.(?:mid|midi|kar)$/i.test(path.split(/[?#]/, 1)[0]);
+    const extension = path => /\.([a-z0-9]+)$/i.exec(path)?.[1].toLowerCase();
+    const path = name.split(/[?#]/, 1)[0];
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(name)) return extension(path);
+    return extension(name) ?? extension(path);
+}
+
+export function isMidiFile(value) {
+    return ['mid', 'midi', 'kar'].includes(scoreFileExtension(value));
 }
 
 function fail(code, message) {
@@ -44,7 +50,7 @@ function decodeMetadata(bytes, hints, encoding = null) {
 }
 
 /** Parse one bounded SMF sequence. Channel events retain their original same-tick order. */
-export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
+export function parseSmf(input, { fileName = '', fallbackTitle, languageHints = null } = {}) {
     const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
     if (bytes.byteLength > SMF_MAX_BYTES) fail('midi-too-large', 'This MIDI file is too large to open.');
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -265,7 +271,7 @@ export function parseSmf(input, { fileName = '', languageHints = null } = {}) {
     const cues = useLyric ? lyricCues : karaokeCues.some(cue => /\S/.test(cue.text.replace(/^[\\/]/, '')))
         ? karaokeCues.map(cue => ({ ...cue, part: String(cue.track), verse: '1' })) : [];
     return { format, division, secondsPerTick, durationTicks, duration,
-        title: karaokeTitle || names.find(name => name.track === 0 && name.title)?.title || names.find(name => name.title)?.title || fileName.replace(/\.(?:mid|midi|kar)$/i, ''),
+        title: karaokeTitle || names.find(name => name.track === 0 && name.title)?.title || names.find(name => name.title)?.title || fallbackTitle || fileName.replace(/\.(?:mid|midi|kar)$/i, ''),
         events, tempoMap, timeSignatures, displayEvents: allEvents, ...(sysex.length ? { sysex } : {}),
         ...(cues.length ? { lyrics: { source: useLyric ? 'midi' : 'kar',
             ...(karaokeLanguage ? { language: karaokeLanguage } : {}), cues: cues.map((cue, index) => ({ ...cue,

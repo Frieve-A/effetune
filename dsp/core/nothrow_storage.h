@@ -5,6 +5,7 @@
 #include <cstring>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 namespace effetune {
 
@@ -14,6 +15,10 @@ public:
   ~NothrowStorage() { delete[] data_; }
   NothrowStorage(const NothrowStorage &) = delete;
   NothrowStorage &operator=(const NothrowStorage &) = delete;
+  void swap(NothrowStorage &other) noexcept {
+    std::swap(data_, other.data_);
+    std::swap(count_, other.count_);
+  }
 
   bool allocate(std::size_t count) noexcept {
     release();

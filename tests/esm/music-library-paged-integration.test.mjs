@@ -5284,11 +5284,12 @@ test('paged media card Play starts playback without competing with an entity pag
 
 test('paged card Play uses a scoped session selection and releases its context', async () => {
   const calls = [];
+  const context = Promise.withResolvers();
   const manager = createPagedManager();
   manager.createOperationRequestId = () => 'request-1';
   manager.createContext = async request => {
     calls.push(['createContext', request]);
-    return 'album-context';
+    return context.promise;
   };
   manager.performSelectionAction = async (operationKind, selectionDescriptor, request) => {
     calls.push(['performSelectionAction', operationKind, selectionDescriptor, request]);
@@ -5299,7 +5300,10 @@ test('paged card Play uses a scoped session selection and releases its context',
   };
   const view = new LibraryView({
     manager,
-    uiManager: { beginPlaybackSelectionGestureResume: () => calls.push(['resume']) }
+    uiManager: {
+      invalidatePlaybackSessionRestore: () => calls.push(['supersede']),
+      beginPlaybackSelectionGestureResume: () => calls.push(['resume'])
+    }
   });
   view.pagedActionController = {
     track: async request => {
@@ -5308,12 +5312,16 @@ test('paged card Play uses a scoped session selection and releases its context',
     }
   };
 
-  assert.deepEqual(await view.startPagedEntityPlay('album', { albumKey: 'album-1', name: 'Album One' }), {
+  const playback = view.startPagedEntityPlay('album', { albumKey: 'album-1', name: 'Album One' });
+  assert.deepEqual(calls.map(([action]) => action), ['track', 'supersede', 'resume', 'createContext']);
+  context.resolve('album-context');
+  assert.deepEqual(await playback, {
     kind: 'started',
     operationId: 'operation-1'
   });
   assert.deepEqual(calls, [
     ['track', undefined, 'play', 'Album One'],
+    ['supersede'],
     ['resume'],
     ['createContext', {
       endpoint: 'tracks', query: '', sort: 'album', direction: 'asc', scope: { albumKey: 'album-1' }

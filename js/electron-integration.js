@@ -4,6 +4,7 @@
  */
 
 import { getAudioMimeType } from './audio/audio-mime.js';
+import { isArchivePlaybackInput } from './ui/audio-player/archive-playback-selection.js';
 import {
   loadAudioPreferences,
   mergeWebAudioPreferences,
@@ -166,10 +167,12 @@ export class ElectronIntegration {
     // Listen for open music files request from main process (for command line arguments)
     window.electronAPI.onOpenMusicFiles((filePaths) => {
       if (filePaths && filePaths.length > 0) {
+        window.uiManager?.invalidatePlaybackSessionRestore?.();
         
-        // Check if the app is already initialized and not in first launch
-        if (window.app && window.app.audioManager && window.app.audioManager.workletNode &&
-            window.isFirstLaunch !== true) {
+        const archiveSelection = filePaths.some(isArchivePlaybackInput);
+        const ready = archiveSelection ? window.app?.initialized :
+          window.app?.audioManager?.workletNode && window.isFirstLaunch !== true;
+        if (ready) {
           // If the app is already initialized and not in first launch, create audio player directly
           
           // Create audio player with the music files
@@ -185,9 +188,8 @@ export class ElectronIntegration {
           // If the app is not yet initialized or in first launch, store file paths for later use
           window.pendingMusicFiles = filePaths;
           
-          // Set useInputWithPlayer to false immediately, even during first launch
-          // This ensures the same behavior as drag and drop
-          if (window.electronIntegration && window.electronIntegration.audioPreferences) {
+          // Archive selection may be canceled, so wait to apply its preference when playback starts.
+          if (!archiveSelection && window.electronIntegration?.audioPreferences) {
             window.electronIntegration.audioPreferences.useInputWithPlayer = false;
           }
           
@@ -227,6 +229,9 @@ export class ElectronIntegration {
 
     window.electronAPI.onBackupRestore(() => {
       window.uiManager?.stateManager?.openBackupRestore?.();
+    });
+    window.electronAPI.onShowDiagnostics(() => {
+      window.uiManager?.stateManager?.openDiagnostics?.();
     });
 
     window.electronAPI.onLoadUserPreset((name) => {

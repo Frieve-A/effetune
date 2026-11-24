@@ -17,6 +17,7 @@ const {
   powerMonitor,
   powerSaveBlocker,
   shell,
+  systemPreferences,
   utilityProcess
 } = require('electron');
 const path = require('path');
@@ -40,6 +41,10 @@ try {
   app.exit(1);
 }
 const constants = require('./constants');
+const { createMainDiagnostics } = require('./diagnostics.cjs');
+const mainDiagnostics = createMainDiagnostics();
+const autoRestart = process.argv.includes(constants.AUTO_RESTART_FLAG);
+mainDiagnostics.record('startup', { autoRestart });
 const configModule = require('./config');
 const windowState = require('./window-state');
 const { createStartupPresentation } = require('./startup-presentation.cjs');
@@ -70,8 +75,9 @@ const { createAirPlayReceiverHost } = require('./airplay-receiver.cjs');
 const { registerAirPlayIpc } = require('./airplay-ipc.cjs');
 const { NetworkOutputHost, sanitizeConfiguration: sanitizeNetworkOutputConfiguration } = require('./network-output-host.cjs');
 const { registerNetworkOutputIpc } = require('./network-output-ipc.cjs');
-const { AudioEngineHost, validDriver } = require('./audio-engine-host.cjs');
+const { AudioEngineHost, nativeDriverFor, validDriver } = require('./audio-engine-host.cjs');
 const { registerAudioEngineIpc } = require('./audio-engine-ipc.cjs');
+const { initializeAudioPreferences } = require('./audio-preferences-policy.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
 const { NetworkMusicHost, registerNetworkMusicIpc, logNetworkMusicDiagnostic, supportsProtocol, routeAddress } = require('./network-music-host.cjs');
@@ -110,7 +116,7 @@ let appServicesShutdownReady = false;
 let instanceRegistry = null;
 let quitProtectionArmed = false;
 const macPlaybackPower = process.platform === 'darwin'
-  ? createMacPlaybackPower({ powerSaveBlocker, getConfig: () => constants.getAppConfig() })
+  ? createMacPlaybackPower({ powerSaveBlocker, getConfig: () => constants.getAppConfig(), recordDiagnosticEvent: mainDiagnostics.record })
   : null;
 const windowsRendererPower = process.platform === 'win32'
   ? createWindowsRendererPower({
@@ -124,7 +130,7 @@ const windowsRendererPower = process.platform === 'win32'
   : null;
 
 function stopDesktopAudioPower() {
-  macPlaybackPower?.stop();
+  macPlaybackPower?.stop('rendererUnavailable');
   void windowsRendererPower?.stop();
 }
 // A predecessor that is still shutting down gets the quit deadline plus a
@@ -173,6 +179,7 @@ let disposeAirPlayIpc = null;
 let networkOutputHost = null;
 let disposeNetworkOutputIpc = null;
 let disposeAudioEngineIpc = null;
+let windowSystemAudioCapture = null;
 let networkMusicHost = null;
 let disposeNetworkMusicIpc = null;
 let disposeIntegratedRemoteClientIpc = null;
@@ -253,6 +260,7 @@ async function openLibraryCatalogServices({ catalogDirectory, catalogPath }) {
     disposeControlIpc = registerLibraryCatalogControlIpc({
       ipcMain,
       runtime: utilityHost.runtime,
+      repository: utilityHost.repository,
       shell,
       getMainWindow: () => constants.getMainWindow()
     });
@@ -347,7 +355,7 @@ let pendingMainWindowShow = false;
 let splashWindow = null;
 let splashCloseTimer = null;
 const SPLASH_DURATION_MS = 3000;
-let startupUpdateCheckPending = !process.argv.includes(constants.AUTO_RESTART_FLAG);
+let startupUpdateCheckPending = !autoRestart;
 
 function closeSplashScreen() {
   clearTimeout(splashCloseTimer);
@@ -398,6 +406,7 @@ function rendererPingReceived() {
   }
   const now = Date.now();
   if (watchdogStallReported) {
+    mainDiagnostics.record('watchdog', { state: 'responsive', elapsedMs: now - lastRendererPing });
     console.log(`[watchdog] Renderer responsive again after ${now - lastRendererPing}ms`);
     watchdogStallReported = false;
   }
@@ -412,6 +421,7 @@ function startWatchdog() {
     if (elapsed <= WATCHDOG_THRESHOLD_MS) return;
 
     watchdogStallReported = true;
+    mainDiagnostics.record('watchdog', { state: 'delayed', elapsedMs: elapsed });
     console.warn(`[watchdog] Renderer heartbeat delayed by ${elapsed}ms; waiting for recovery`);
   }, WATCHDOG_PING_INTERVAL_MS);
 }
@@ -444,6 +454,7 @@ function updateOpenHomeEnvironmentAvailability(available) {
 }
 
 function handleSystemSuspendForWatchdog() {
+  mainDiagnostics.record('systemPower', { state: 'suspend' });
   watchdogArmedBeforeSystemSuspend = watchdogArmedBeforeSystemSuspend || watchdogArmed;
   watchdogSystemSuspended = true;
   disarmRendererWatchdog('system-suspend');
@@ -451,6 +462,7 @@ function handleSystemSuspendForWatchdog() {
 }
 
 function handleSystemResumeForWatchdog() {
+  mainDiagnostics.record('systemPower', { state: 'resume' });
   const shouldRearm = watchdogArmedBeforeSystemSuspend || watchdogArmed;
   watchdogArmedBeforeSystemSuspend = false;
   watchdogSystemSuspended = false;
@@ -628,7 +640,11 @@ function createWindow() {
   ipcHandlers.setMainWindow(mainWindow);
   fileHandlers.setMainWindow(mainWindow);
   const systemAudioCapture = createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer });
-  mainWindow.once('closed', systemAudioCapture.dispose);
+  windowSystemAudioCapture = systemAudioCapture;
+  mainWindow.once('closed', () => {
+    systemAudioCapture.dispose();
+    if (windowSystemAudioCapture === systemAudioCapture) windowSystemAudioCapture = null;
+  });
 
   // Allow renderer to access microphone via getUserMedia on file:// origin.
   // Without both handlers, Chromium falls back to its default content-settings
@@ -652,6 +668,7 @@ function createWindow() {
 
   browserController = createBrowserController({
     mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, components, systemAudioCapture,
+    recordDiagnosticEvent: mainDiagnostics.record,
     translate: createLibraryDialogTranslator({
       getLanguagePreference: () => constants.getAppConfig()?.language,
       getSystemLocale: () => app.getLocale()
@@ -681,7 +698,8 @@ function createWindow() {
       remoteControlHost?.setRendererUnavailable();
     }
   });
-  mainWindow.webContents.on('render-process-gone', () => {
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    mainDiagnostics.processGone('renderProcessGone', details);
     stopDesktopAudioPower();
     void openHomeControlHost?.setRendererUnavailable();
     void airPlayReceiverHost?.setRendererUnavailable();
@@ -1350,6 +1368,21 @@ async function initializeApp() {
   }
 
   themeRegistry = await import(pathToFileURL(path.join(__dirname, '../js/theme-registry.mjs')).href);
+  const { redactDiagnosticText } = await import('../js/diagnostics/diagnostic-redaction.js');
+  const nativeAudio = new AudioEngineHost({
+    onSessionExit: () => windowSystemAudioCapture?.endNativeCapture(),
+    recordDiagnosticEvent: mainDiagnostics.record, redactDiagnosticText,
+    root: path.resolve(__dirname, '..'), resources: app.isPackaged ? process.resourcesPath : null,
+    testBackend: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_NULL === '1' ? 'null' : undefined,
+    testMuteOutput: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_MUTE_OUTPUT === '1'
+  });
+  mainDiagnostics.registerIpc({ ipcMain, getMainWindow: () => constants.getMainWindow(), app,
+    systemPreferences, nativeAudio, redactDiagnosticText });
+  const configPath = configModule.getConfigPath();
+  const audioPreferencesPath = path.join(path.dirname(configPath), 'audio-preferences.json');
+  if (nativeAudio.available()) {
+    initializeAudioPreferences(configPath, audioPreferencesPath, nativeDriverFor(process.platform));
+  }
   const cfgDefaults = {
     autoLaunch: false,
     allowMultipleInstances: false,
@@ -1384,7 +1417,7 @@ async function initializeApp() {
     constants.setShouldLoadPipelineState(false);
   }
   // Show the splash as soon as its theme is known, before service and window setup.
-  if (!process.argv.includes(constants.AUTO_RESTART_FLAG) && !cfg.startMinimized) {
+  if (!autoRestart && !cfg.startMinimized) {
     createSplashScreen();
   }
 
@@ -1505,17 +1538,11 @@ async function initializeApp() {
       }
     }
   });
-  const nativeAudio = new AudioEngineHost({
-    root: path.resolve(__dirname, '..'), resources: app.isPackaged ? process.resourcesPath : null,
-    testBackend: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_NULL === '1' ? 'null' : undefined,
-    testMuteOutput: !app.isPackaged && process.env.EFFETUNE_AUDIO_ENGINE_MUTE_OUTPUT === '1'
-  });
   disposeAudioEngineIpc = registerAudioEngineIpc({
     ipcMain, MessageChannelMain, host: nativeAudio, getMainWindow: () => constants.getMainWindow(),
     loadDriver: () => {
-      const name = path.join(settingsProfile.getSettingsPath(fileHandlers.getUserDataPath()), 'audio-preferences.json');
       try {
-        const { audioDriver } = JSON.parse(fs.readFileSync(name, 'utf8'));
+        const { audioDriver } = JSON.parse(fs.readFileSync(audioPreferencesPath, 'utf8'));
         return validDriver(audioDriver, process.platform) ? audioDriver : 'standard';
       } catch { return 'standard'; }
     }
@@ -1591,6 +1618,7 @@ fileHandlers.processCommandLineArgs(process.argv);
 // the next launch to software rendering; the user can retry from Config.
 const graphicsStartup = initializeGpuAcceleration({
   app,
+  onChildProcessGone: details => mainDiagnostics.processGone('childProcessGone', details),
   config: configModule,
   queueRestart: queueAutoRestart,
   isQuitting: () => isAppQuitting
@@ -1671,7 +1699,7 @@ app.on('open-file', async (event, path) => {
     } catch (error) {
       console.error('Error checking preset file:', error);
     }
-  } else if (fileHandlers.isSupportedPlaybackAudioPath(path)) {
+  } else if (fileHandlers.isSupportedPlaybackAudioPath(path) || fileHandlers.isSupportedPlaybackArchivePath(path)) {
     try {
       // Check if file exists
       if (fs.existsSync(path)) {
@@ -1750,7 +1778,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   isAppQuitting = true;
   windowState.flushScheduledSave();
-  macPlaybackPower?.stop();
+  macPlaybackPower?.stop('quit');
   void windowsRendererPower?.dispose();
   stopWatchdog();
   armQuitProtection();

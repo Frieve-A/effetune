@@ -166,3 +166,20 @@ test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', as
   assert.equal(result.album, 'Alternate Album');
   assert.equal(result.year, 2021);
 });
+
+test('metadata pool extracts the requested score from an archive and validates its path', async t => {
+  const { zip } = await import('../helpers/archive-fixtures.mjs');
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'archive-score-metadata-')));
+  const filePath = path.join(directory, 'scores.zip');
+  const entry = 'Set/Song.mid';
+  const score = Buffer.from('4d546864000000060000000101e04d54726b0000000400ff2f00', 'hex');
+  const pool = new MetadataWorkerPool({ workerCount: 2 });
+  t.after(async () => {
+    await pool.close();
+    await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  await fs.writeFile(filePath, zip([[entry, score]]));
+  const request = { path: filePath, relativePath: 'scores.zip', skipCovers: true };
+  assert.equal((await pool.parse({ ...request, archiveEntryPath: entry })).codec, 'MIDI');
+  await assert.rejects(pool.parse({ ...request, archiveEntryPath: '../Song.mid' }), { code: 'invalid-metadata-request' });
+});

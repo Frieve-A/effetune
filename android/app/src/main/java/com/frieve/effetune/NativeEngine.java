@@ -18,21 +18,26 @@ public final class NativeEngine implements AutoCloseable {
     public void setMeasurementNoiseFile(int fd, int frames) { measurementNoiseFile(handle, fd, frames); }
     public void stopMeasurementNoise() { stopMeasurementNoise(handle); }
     public int setInputDevice(int deviceId) { return inputDevice(handle, deviceId); }
-    public int[] configurePipeline(String[] types, float[][] parameters, int[] hashes, byte[] descriptor, byte[][] structured) {
-        return configure(handle, types, parameters, hashes, descriptor, structured);
+    public int[] configurePipeline(String[] types, float[][] parameters, int[] hashes, int[] ids, byte[] descriptor, byte[][] structured) {
+        return configure(handle, types, parameters, hashes, ids, descriptor, structured);
     }
     public int setParameters(int instance, float[] values, int hash) { return parameters(handle, instance, values, hash); }
     public int setParameterBytes(int instance, byte[] values, int hash) { return parameterBytes(handle, instance, values, hash); }
     public int setAsset(int instance, int slot, int[] info, byte[] bytes, int format) {
-        return asset(handle, instance, slot, info, bytes, format);
+        return asset(handle, instance, slot, info, bytes, format, -1);
     }
     public int setAssetFile(int instance, int slot, int[] info, int fd, long byteSize, int format) {
-        return assetFile(handle, instance, slot, info, fd, byteSize, format);
+        return setAssetFile(instance, slot, info, fd, byteSize, format, -1);
+    }
+    public int setAssetFile(int instance, int slot, int[] info, int fd, long byteSize, int format, long token) {
+        return assetFile(handle, instance, slot, info, fd, byteSize, format, token);
     }
     public int clearAsset(int instance, int slot) { return setAsset(instance, slot, new int[10], new byte[0], 0); }
     public byte[] readTelemetry() { return telemetry(handle); }
-    /** Repeated instance handle, generation, latched flag, cause code. */
+    /** Repeated plugin ID, generation, latched flag, cause code. */
     public int[] readRuntimeEvents() { return runtimeEvents(handle); }
+    /** Repeated plugin ID, slot, asset state, rejected flag, request token, and completion flag. */
+    public int[] readAssetNotices() { return assetNotices(handle); }
     public void setMasterBypass(boolean value) { bypass(handle, value); }
     public long beginSource() { return beginSource(handle); }
     public int writePcm(float[] data, int frames, long generation) { return writePcm(handle, data, frames, generation); }
@@ -68,13 +73,14 @@ public final class NativeEngine implements AutoCloseable {
     private static native void measurementNoiseFile(long handle, int fd, int frames);
     private static native void stopMeasurementNoise(long handle);
     private static native int inputDevice(long handle, int deviceId);
-    private static native int[] configure(long handle, String[] types, float[][] parameters, int[] hashes, byte[] descriptor, byte[][] structured);
+    private static native int[] configure(long handle, String[] types, float[][] parameters, int[] hashes, int[] ids, byte[] descriptor, byte[][] structured);
     private static native int parameters(long handle, int instance, float[] values, int hash);
     private static native int parameterBytes(long handle, int instance, byte[] values, int hash);
-    private static native int asset(long handle, int instance, int slot, int[] info, byte[] bytes, int format);
-    private static native int assetFile(long handle, int instance, int slot, int[] info, int fd, long byteSize, int format);
+    private static native int asset(long handle, int instance, int slot, int[] info, byte[] bytes, int format, long operationRevision);
+    private static native int assetFile(long handle, int instance, int slot, int[] info, int fd, long byteSize, int format, long token);
     private static native byte[] telemetry(long handle);
     private static native int[] runtimeEvents(long handle);
+    private static native int[] assetNotices(long handle);
     private static native void bypass(long handle, boolean value);
     private static native long beginSource(long handle);
     private static native int writePcm(long handle, float[] data, int frames, long generation);

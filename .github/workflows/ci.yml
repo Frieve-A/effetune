@@ -142,10 +142,28 @@ jobs:
               - 'scripts/build-audio-engine.mjs'
               - 'electron/audio-engine-*.cjs'
               - 'js/native/**'
+              - 'js/audio-manager.js'
+              - 'js/audio/power-policy-controller.js'
+              - 'js/audio/browser-input-controller.js'
+              - 'js/audio/offline-processor.js'
+              - 'js/audio/audio-manager-live-midi.js'
+              - 'js/audio/audio-manager-sfz-runtime.js'
+              - 'js/ui/audio-player/{airplay-playback,live-pcm-*,midi-playback,network-live-pcm,openhome-playback-adapter,state-manager}.js'
+              - 'js/pipeline-analyzer/**'
+              - 'js/ui-manager.js'
+              - 'js/visualizer/**'
+              - 'features/effetune-benchmark.js'
+              - 'features/measurement/audio-utils/native-measurement.js'
               - 'js/audio/dsp-pipeline-descriptor.js'
               - 'js/audio/dsp-params.generated.js'
               - 'tests/cjs/*audio-engine*.test.cjs'
               - 'tests/esm/native-audio-*.test.mjs'
+              - 'tests/esm/native-*-electron-browser.test.mjs'
+              - 'tests/esm/effetune-benchmark-native.test.mjs'
+              - 'tests/helpers/desktop-browser-electron-main.cjs'
+              - 'tests/helpers/native-audio-electron.mjs'
+              - 'tests/helpers/sf2-fixture.mjs'
+              - 'tests/helpers/sf2-runtime-fixture.mjs'
               - 'tests/helpers/native-audio-engine-parity.mjs'
               - 'tests/helpers/native-sampler-worklet.mjs'
               - 'tests/helpers/sfz-effects-asset-fixture.mjs'
@@ -422,6 +440,32 @@ jobs:
           node --test tests/cjs/audio-engine-process.test.cjs
           tests/esm/native-audio-engine-parity.test.mjs
           tests/esm/native-audio-engine-instruments.test.mjs
+          tests/esm/native-audio-engine-soundfont-stream.test.mjs
+      - name: Verify native audio measurement and benchmarking
+        env:
+          EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'
+        run: >-
+          node --test --test-concurrency=1
+          tests/esm/native-audio-engine-measurement.test.mjs
+          tests/esm/effetune-benchmark-native.test.mjs
+      - name: Install the project Electron runtime
+        run: node node_modules/electron/install.js
+      - name: Prepare virtual display and audio for Linux Electron
+        if: runner.os == 'Linux'
+        run: |
+          npx playwright install-deps chromium
+          sudo apt-get install -y pulseaudio xvfb
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=effetune
+          pactl set-default-sink effetune
+      - name: Verify native driver in the Electron application
+        env:
+          EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'
+        run: >-
+          ${{ runner.os == 'Linux' && 'xvfb-run -a' || '' }} node --test --test-concurrency=1
+          tests/esm/native-audio-driver-electron-browser.test.mjs
+          tests/esm/native-external-sources-electron-browser.test.mjs
+          tests/esm/native-offline-features-electron-browser.test.mjs
       - name: Verify native audio device enumeration
         run: node tools/smoke-audio-engine-device.mjs --list-only
       - name: Verify Linux GCC Debug build and tests

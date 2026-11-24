@@ -271,6 +271,57 @@
     margin-top: 12px;
 }
 
+.diagnostic-dialog {
+    width: min(680px, 100%);
+}
+
+.diagnostic-summary {
+    max-height: 35vh;
+    margin-top: 14px;
+    padding: 10px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-size: 13px;
+    line-height: 1.5;
+    user-select: text;
+    border-radius: 5px;
+    background: var(--et-surface-8);
+}
+
+.diagnostic-summary:focus-visible {
+    outline: none;
+    box-shadow: var(--et-focus-ring);
+}
+
+.diagnostic-file h3 {
+    margin: 18px 0 0;
+    font-size: 15px;
+}
+
+.diagnostic-file p {
+    margin: 5px 0 0;
+    color: var(--et-text-secondary);
+    font-size: 13px;
+}
+
+.diagnostic-dialog details {
+    margin-top: 12px;
+}
+
+.diagnostic-dialog summary {
+    cursor: pointer;
+}
+
+.diagnostic-dialog pre {
+    max-height: 45vh;
+    overflow: auto;
+    padding: 10px;
+    direction: ltr;
+    text-align: left;
+    user-select: text;
+    background: var(--et-surface-8);
+}
+
 @media (max-width: 600px) {
     .backup-restore-overlay {
         align-items: start;

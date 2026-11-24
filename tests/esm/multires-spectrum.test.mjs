@@ -72,6 +72,19 @@ test('HQ resolves low close tones and rejects full-scale energy in the decimator
     assert.ok(Math.max(...alias.current.subarray(0, lowEnd)) < -144);
 });
 
+test('HQ short and long windows describe the same instant', () => {
+    // A burst with one tone in each band peaks in the frame whose shared window centre is nearest it.
+    const burst = sample => sample >= 20000 && sample < 20256
+        ? Math.sin(2 * Math.PI * 93.75 * sample / 48000) + Math.sin(2 * Math.PI * 6000 * sample / 48000) : 0;
+    const { frames } = render(5, { points: 10, length: 36000, signal: burst });
+    // Spectrogram cells run from high to low frequency.
+    const cell = frequency => 255 - Math.round(Math.log(frequency / 20) / Math.log(2000) * 255);
+    const loudest = frequency => frames.reduce((best, frame, index) =>
+        frame.intensities[cell(frequency)] > frames[best].intensities[cell(frequency)] ? index : best, 0);
+    assert.ok(frames[loudest(6000)].intensities[cell(6000)] > 0);
+    assert.equal(loudest(6000), loudest(93.75));
+});
+
 test('HQ keeps completed frame ownership finite and warms anew on Points or mode changes', () => {
     const analyzer = new Analyzer(48000, 4);
     const input = new Float32Array(128);

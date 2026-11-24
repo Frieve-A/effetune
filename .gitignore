@@ -9,6 +9,7 @@ __pycache__/
 dist/
 dist-locked-backup-*/
 /out/
+/dsp/build/
 /.emsdk/
 _site/
 .jekyll-cache/

@@ -57,8 +57,10 @@ test('normal local playback admission returns canonical scalar descriptors witho
   t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const first = writeFixture(root, 'first.wav', 'small');
   const second = writeFixture(root, 'second.flac', 'larger');
+  const archives = ['collection.ZIP', 'collection.lzh', 'collection.lha', 'collection.tar', 'collection.tgz', 'collection.tar.gz', 'song.mid.gz'];
+  const archivePaths = archives.map(name => writeFixture(root, name, 'archive'));
 
-  const descriptors = await admitLocalPlaybackPaths([first, second]);
+  const descriptors = await admitLocalPlaybackPaths([first, second, ...archivePaths]);
 
   assert.deepEqual(descriptors.map(item => ({
     path: item.path,
@@ -66,7 +68,8 @@ test('normal local playback admission returns canonical scalar descriptors witho
     name: item.name
   })), [
     { path: fs.realpathSync.native(first), byteLength: 5, name: 'first.wav' },
-    { path: fs.realpathSync.native(second), byteLength: 6, name: 'second.flac' }
+    { path: fs.realpathSync.native(second), byteLength: 6, name: 'second.flac' },
+    ...archivePaths.map((archivePath, index) => ({ path: fs.realpathSync.native(archivePath), byteLength: 7, name: archives[index] }))
   ]);
 });
 

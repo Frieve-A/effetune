@@ -485,14 +485,14 @@
             const dspModeSelect = document.getElementById('dsp-mode');
             document.getElementById('run-benchmarks').disabled = running;
             document.getElementById('run-score').disabled = running ||
-                dspModeSelect.value === BENCHMARK_DSP_MODES.JAVASCRIPT || scoreSimdAvailable === false;
+                dspModeSelect.value !== BENCHMARK_DSP_MODES.WEBASSEMBLY || scoreSimdAvailable === false;
             document.getElementById('sample-rate').disabled = running;
             dspModeSelect.disabled = running;
         }
 
         function updateScoreAvailability() {
             benchmarkScore = null;
-            if (document.getElementById('dsp-mode').value === BENCHMARK_DSP_MODES.JAVASCRIPT ||
+            if (document.getElementById('dsp-mode').value !== BENCHMARK_DSP_MODES.WEBASSEMBLY ||
                 scoreSimdAvailable === false) {
                 renderScoreUnavailable();
             } else {
@@ -754,6 +754,9 @@
             assets = new Map(),
             warmupFrames = blockSize
         ) {
+            if (runtime.benchmarkPlugin) {
+                return runtime.benchmarkPlugin(plugin, audioBuffer, { channelCount, assets, warmupFrames });
+            }
             const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
             let processCount = 0;
             let blockIndex = 0;
@@ -835,7 +838,7 @@
 
         async function runScorePass({ dspMode, preference, manager }) {
             benchmarkScore = null;
-            if (dspMode === BENCHMARK_DSP_MODES.JAVASCRIPT) {
+            if (dspMode !== BENCHMARK_DSP_MODES.WEBASSEMBLY) {
                 renderScoreUnavailable();
                 return;
             }
@@ -995,7 +998,7 @@
                             plugin,
                             sampleRate: SAMPLE_RATE,
                             blockSize: BUFFER_SIZE,
-                            usesWasm: runtime.usesWasm
+                            usesWasm: runtime.supportsAssets
                         });
                         if (firWorkload) {
                             channelCount = firWorkload.channelCount;
@@ -1003,7 +1006,7 @@
                             warmupFrames = firWorkload.warmupFrames;
                             note = firWorkload.note;
                             requiresWasmAssets = firWorkload.requiresWasmAssets;
-                            if (runtime.usesWasm && channelCount !== CHANNEL_COUNT) {
+                            if (runtime.supportsAssets && channelCount !== CHANNEL_COUNT) {
                                 pluginAudioBuffer = createRandomAudioBuffer(
                                     SAMPLE_RATE,
                                     BUFFER_DURATION,
@@ -1056,7 +1059,7 @@
                             requiresWasmAssets = true;
                             plugin.setParameters({ cm: 'true' });
                             note = BENCHMARK_IR_REVERB_NOTE;
-                            if (runtime.usesWasm) {
+                            if (runtime.supportsAssets) {
                                 const parameters = plugin.getParameters({
                                     sampleRate: SAMPLE_RATE,
                                     outputChannelCount: channelCount
@@ -1076,7 +1079,7 @@
                             });
                             note = `Deterministic mono IR, ${parameters.tp.toLocaleString()} samples ` +
                                 '(IR load/preparation excluded from timing)';
-                            if (runtime.usesWasm) {
+                            if (runtime.supportsAssets) {
                                 assets = createRoomEqBenchmarkAssets({
                                     sampleRate: SAMPLE_RATE,
                                     channelCount,
@@ -1101,7 +1104,7 @@
 
                         let result;
                         if (runtime.supportsPlugin(plugin, { channelCount }) &&
-                            (!requiresWasmAssets || runtime.usesWasm)) {
+                            (!requiresWasmAssets || runtime.supportsAssets)) {
                             result = await benchmarkPlugin(
                                 runtime,
                                 plugin,
@@ -1121,7 +1124,7 @@
                                 speedupFactor: null,
                                 skipped: true
                             };
-                            const reason = requiresWasmAssets && !runtime.usesWasm
+                            const reason = requiresWasmAssets && !runtime.supportsAssets
                                 ? 'requires WebAssembly DSP'
                                 : runtime.getPluginUnsupportedReason(plugin, { channelCount });
                             note = note ? `${note}; ${reason}` : reason;
@@ -1130,7 +1133,7 @@
                         // Retrieve category from pluginDefinitions
                         const def = pluginDefinitions.get(name);
                         result.category = def.category;
-                        result.note = note;
+                        result.note = [note, result.note].filter(Boolean).join('; ');
 
                         results.push(result);
                         completedCount++;
@@ -1173,11 +1176,23 @@
                 console.error('Benchmark error:', error);
             } finally {
                 try {
-                    runtime?.close();
+                    await runtime?.close();
                 } finally {
                     setBenchmarkRunning(false);
                     progressContainer.style.display = 'none';
                 }
+            }
+        }
+
+        async function addNativeBenchmarkOption(select) {
+            try {
+                if (await window.electronAPI?.audioEngine?.available?.() !== true) return;
+                const option = document.createElement('option');
+                option.value = BENCHMARK_DSP_MODES.NATIVE;
+                option.textContent = 'Native';
+                select.appendChild(option);
+            } catch (error) {
+                console.error('Could not check native benchmark availability:', error);
             }
         }
 
@@ -1190,6 +1205,7 @@
             dspModeSelect.addEventListener('change', updateScoreAvailability);
             setBenchmarkRunning(true);
             try {
+                await addNativeBenchmarkOption(dspModeSelect);
                 benchmarkAudioPreferences = await loadAudioPreferences(Boolean(window.electronAPI)) || {};
                 dspModeSelect.value = benchmarkAudioPreferences.useWasmDsp === false
                     ? BENCHMARK_DSP_MODES.JAVASCRIPT

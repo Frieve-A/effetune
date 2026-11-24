@@ -1,6 +1,6 @@
-// System Audio capture uses Windows loopback with the default output endpoint
-// muted, so EffeTune must play through a different device than that endpoint.
-// This pure guard decides whether the selected output allows the capture.
+// Both Chromium and the native WASAPI driver capture System Audio from the
+// Windows default output and mute it during capture. The guard allows capture
+// only when EffeTune plays through a different output device.
 
 const DEFAULT_OUTPUT_DEVICE_ID = 'default';
 

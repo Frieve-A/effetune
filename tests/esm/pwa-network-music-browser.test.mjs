@@ -89,7 +89,7 @@ async function publicPage(browser, { permission = true, width = 390, pageOrigin 
     const url = new URL(route.request().url());
     if (url.pathname === '/pwa-volume-worklet.js') return route.fulfill({ contentType: 'text/javascript', body: volumeWorklet });
     if (url.pathname !== '/pwa-test') return route.fulfill({ status: 404, body: '' });
-    return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html class="layout-mobile"><head>${csp}<style>${css}</style></head><body class="layout-mobile">${header}<main class="main-container"></main><script>${bundle.outputFiles[0].text}</script></body></html>` });
+    return route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<!doctype html><html class="layout-mobile"><head>${csp}<style>${css}</style></head><body class="layout-mobile">${header}<main class="main-container"></main><script>${bundle.outputFiles[0].text}</script></body></html>` });
   });
   const page = await context.newPage();
   page.setDefaultTimeout(5000);

@@ -701,8 +701,10 @@ test('rejected desktop sinks persist the default without reloading and retain de
     context: { audioContext: { contextSetSinkId: true } },
     window: { electron: true, preferences: { outputDeviceId: 'missing', outputChannels: 2 } }
   }, async ({ manager, contextManager, windowRef, calls, intervals }) => {
+    contextManager.diagnosticRequestedOutputId = 'missing';
+    let connected = false;
     contextManager.audioContext.setSinkId = async id => {
-      if (id === 'missing') throw new Error('Device not found');
+      if (id === 'missing' && !connected) throw new Error('Device not found');
       contextManager.audioContext.sinkId = id;
     };
     assert.equal(await manager.initAudioOutput(), '');
@@ -716,6 +718,14 @@ test('rejected desktop sinks persist the default without reloading and retain de
     assert.equal(intervals.size, 1);
     await intervals.values().next().value.callbackFn();
     assert.equal(calls.some(call => call[0] === 'audioManager.reset'), false);
+    assert.equal(manager.getDiagnosticDeviceStatus({}).outputMatch, 'fellBackToDefault');
+    connected = true;
+    assert.equal(await manager.reapplyOutputDevice('missing'), true);
+    assert.equal(manager.getDiagnosticDeviceStatus({}).outputMatch, 'matched');
+    contextManager.diagnosticRequest = {nativeFeed:true};
+    contextManager.audioContext.sinkId = {type:'none'};
+    assert.equal(manager.getDiagnosticDeviceStatus({}).outputMatch, 'unknown');
+    assert.equal(manager.getDiagnosticDeviceStatus({}).route, 'nativeFeed');
   });
 });
 
@@ -1009,6 +1019,12 @@ test('poll tick handles preference, enumeration, mismatch, reconnect, and play r
     });
     await flushMicrotasks();
     assert.equal(windowRef.lastResetPrefs.outputDeviceId, 'new-id');
+    // A saved native-driver device is left for the reload instead of being reconciled here.
+    windowRef.lastResetPrefs = null;
+    await manager._pollTick(async () => ({ audioDriver: 'wasapi', outputDeviceId: 'native-id', outputDeviceLabel: 'HDMI' }), async prefs => {
+      windowRef.lastResetPrefs = prefs;
+    });
+    assert.equal(windowRef.lastResetPrefs, null);
   });
 
   await withAudioIO({

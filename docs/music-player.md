@@ -35,7 +35,11 @@ To show lyrics in **Lyrics** in Visualizer, use lyrics embedded in the MIDI file
 
 For MIDI and MusicXML cover artwork, place `cover.jpg` (preferred) or `folder.jpg` in the same folder. On the web, select or drop the image with the music file unless the folder is accessible through Music Library.
 
-If SoundFont Player is missing, or no instrument is loaded or it is still loading, and no [external MIDI output device](#midi-output-device) is connected, the player shows guidance and continues sending MIDI in time, silently, without skipping to the next song. The song still ends normally. You can add SoundFont Player or load an instrument during playback: once ready, it responds to subsequent MIDI events, using the song's current channel sounds and controller settings. Earlier notes are not replayed, even if the song still holds them.
+Use **Open music files** or drag and drop a ZIP, LZH/LHA, tar, gzip, or gzip-compressed tar archive to play the MIDI, KAR, and MusicXML files inside it. This works with the Music Library settings off. When the selection contains two or more playable files inside archives, choose which ones to open. If the files are too large to open together, choose fewer. The player uses matching `.wrd` lyrics and cover artwork in the track’s folder inside the archive.
+
+When you start a song while its selected instrument is still loading, playback waits so you hear the opening notes. If another instrument or a connected MIDI output can already play, the song starts immediately.
+
+If SoundFont Player is missing or no instrument is selected, and no [external MIDI output device](#midi-output-device) is connected, the player shows guidance and continues sending MIDI in time, silently, without skipping to the next song. The song still ends normally. You can add SoundFont Player or load an instrument during playback: once ready, it responds to subsequent MIDI events, using the song's current channel sounds and controller settings. Earlier notes are not replayed, even if the song still holds them.
 
 Use the usual play, pause, seek, repeat, shuffle, speed, volume, and mute controls. Speed changes MIDI timing without changing note pitches; **Preserve Pitch** is unavailable for MIDI. With an SF2/SF3 collection, one SoundFont Player follows Bank Select and Program Change independently on all 16 channels, with channel 10 using the drum bank by default. Use **MIDI Mixer** to adjust a channel’s **Patch**, level, or other performance controls. These changes are temporary, follow subsequent MIDI messages, and reset for the next song. SFZ instruments keep their own sound mappings.
 
@@ -68,21 +72,35 @@ Use the volume slider and mute button to adjust the Player’s sound before it e
 
 When the built-in Player starts or resumes playback, including track changes and remote commands, the mute button briefly blinks if muted, and the volume slider and value blink if the volume is zero.
 
+## Resuming Where You Left Off
+
+When you reopen the desktop or web app, the Player restores your queue and pauses at the last saved position in the current track. Playback speed starts at 1x. The position is saved about every 10 seconds during playback, so recent changes just before you quit may be lost.
+
+Library tracks are restored on both platforms, along with local files opened in the desktop app. On the web, your browser may ask you to select your music folder again when you press Play. Add any files opened directly on the web and any network tracks again.
+
+To restore tracks from an archive, play them from the library. If you opened the archive directly, reopen it.
+
+To discard the saved queue, close the Player with **×**. If a receiver or remote control feature keeps the Player open, turn that feature off first, then close the visible Player with **×**.
+
 ## Gapless Playback
 
 **Gapless Playback** in **Audio Configuration** is on by default and plays compatible local tracks without a gap; support is limited by the file format and the browser or app environment. Unsupported formats and some mobile environments use a memory-safe fallback, so a short gap may remain. Turning it off prioritizes lower memory use and stability, at the cost of a possible short gap; the change does not interrupt the current track. Gapless playback works only at 1x speed; changing speed during gapless playback restarts the track from the same position with a brief interruption.
 
+Multichannel WAV and FLAC files with up to six channels play gaplessly in the desktop app when **Driver** in **Audio Configuration** is set to anything other than **Standard**. Their channels reach the effects in file channel order. If that order differs from your speaker outputs, place [**Matrix**](plugins/basics.md#matrix) first in the effect chain, as with [multichannel DSD](#dsd-files).
+
 ## ReplayGain
 
-Many music files carry ReplayGain tags, written by a tagging tool after measuring each song's loudness. Set **ReplayGain** in **Audio Configuration** to follow these tags so that songs from different albums play at a similar volume. EffeTune only reads the tags; it does not measure loudness or write tags. Files without ReplayGain tags play at their original level. In Opus files, the `R128_TRACK_GAIN` and `R128_ALBUM_GAIN` tags are also used.
+In **Audio Configuration**, use **ReplayGain** to even out volume differences between recordings. The player uses [Music Library measurements](music-library.md#loudness-analysis) first, then embedded ReplayGain tags, including `R128_TRACK_GAIN` and `R128_ALBUM_GAIN` in Opus files. Songs with neither play at their original level.
 
-- **Off** (default): Tags are ignored.
+- **Off** (default) plays each song at its original level.
 - **Track**: Brings every song to a similar level. Use this for shuffle and playlists that mix albums.
 - **Album**: Adjusts each album as a whole, keeping the level differences between its songs, such as a quiet intro. Use this when listening to albums from start to finish.
 
-If a file has only a track value or only an album value, that value is used in either mode. CUE sheet tracks use the tags in the referenced audio file.
+If only one track or album value is available, the player uses it in either mode. Each measured CUE track has its own value. Otherwise, CUE tracks share the tags in their audio file.
 
-**ReplayGain Preamp** (-15 to +15 dB, default 0 dB) raises or lowers the level of tagged files only. ReplayGain often turns modern recordings down by several dB, so if tagged songs sound quieter than untagged ones, raise it. **Prevent Clipping** (on by default) uses the peak values in the tags to limit the gain so that boosted songs do not exceed full scale. These two settings are available when **ReplayGain** is **Track** or **Album**. Changes take effect immediately without interrupting playback.
+With **Target** set to **Manual** (default), the target is −18 LUFS. **ReplayGain Preamp** (−15 to +15 dB, default 0 dB) raises or lowers that target. Choose **Auto** to see the highest target that **Auto Coverage (%)** of measured tracks or albums can reach within the **Peak Ceiling (dB)**. The default coverage is 95%. Increase it for more tracks to reach the target, or reduce it for a potentially louder target. Until the first measurements are available, Auto uses −18 LUFS.
+
+**Prevent Clipping** (on by default) reduces gain when the measured true peak or tagged peak would exceed **Peak Ceiling (dB)**. Lower the ceiling from its default of 0 dB to leave room for effects that boost the signal. Auto also uses the ceiling to choose its target when **Prevent Clipping** is off. Changes take effect during playback.
 
 The adjustment is applied to the Player's sound before it enters the effect chain; the volume slider position does not change. ReplayGain does not apply to MIDI or MusicXML playback, network music, AirPlay reception, playback on OpenHome or UPnP AV / DLNA players, or offline file processing. ReplayGain is available in the desktop app and web/PWA player, but not the Android app.
 

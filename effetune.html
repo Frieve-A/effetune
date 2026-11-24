@@ -251,6 +251,7 @@
                     <button class="settings-menu-item" id="measurementSettingsButton">Acoustic Measurement</button>
                     <button class="settings-menu-item" id="backupRestoreSettingsButton">Backup / Restore</button>
                     <button class="settings-menu-item" id="resetAudioSettingsButton">Reset Audio</button>
+                    <button type="button" class="settings-menu-item" id="diagnosticsSettingsButton">Save Diagnostic Information…</button>
                     <button type="button" class="settings-menu-item" id="webUpdateSettingsButton" hidden>Check for updates</button>
                     <install class="settings-menu-install" id="installAppElement" hidden></install>
                     <button type="button" class="settings-menu-item" id="installAppButton" hidden>Install App</button>
@@ -404,6 +405,11 @@
     <link rel="modulepreload" href="js/browser/browser-view.js">
     <link rel="modulepreload" href="js/browser/shortcuts.js">
     <link rel="modulepreload" href="js/browser/url-rules.js">
+    <link rel="modulepreload" href="js/diagnostics/diagnostic-bundle.js">
+    <link rel="modulepreload" href="js/diagnostics/diagnostic-dialog.js">
+    <link rel="modulepreload" href="js/diagnostics/diagnostic-log.js">
+    <link rel="modulepreload" href="js/diagnostics/diagnostic-redaction.js">
+    <link rel="modulepreload" href="js/diagnostics/diagnostic-summary.js">
     <link rel="modulepreload" href="js/electron-integration.js">
     <link rel="modulepreload" href="js/electron-watchdog.js">
     <link rel="modulepreload" href="js/electron/audio-drivers.js">
@@ -427,8 +433,16 @@
     <link rel="modulepreload" href="js/ir-library/opfs-ir-library-backend.js">
     <link rel="modulepreload" href="js/ir-library/service.js">
     <link rel="modulepreload" href="js/language-options.js">
+    <link rel="modulepreload" href="js/library/archive/archive-binary.js">
+    <link rel="modulepreload" href="js/library/archive/archive-reader.js">
+    <link rel="modulepreload" href="js/library/archive/lzh.js">
+    <link rel="modulepreload" href="js/library/archive/score-entries.js">
     <link rel="modulepreload" href="js/library/constants.js">
+    <link rel="modulepreload" href="js/library/metadata/cue-cover.js">
+    <link rel="modulepreload" href="js/library/metadata/metadata-mapper.js">
+    <link rel="modulepreload" href="js/library/metadata/riff-info.js">
     <link rel="modulepreload" href="js/library/metadata/text-encoding.js">
+    <link rel="modulepreload" href="js/library/repository/transport-shuffle.js">
     <link rel="modulepreload" href="js/midi/live-input.js">
     <link rel="modulepreload" href="js/midi/lyrics-timeline.js">
     <link rel="modulepreload" href="js/midi/musicxml-parser.js">
@@ -439,7 +453,9 @@
     <link rel="modulepreload" href="js/midi/system-reset.js">
     <link rel="modulepreload" href="js/midi/wrd-parser.js">
     <link rel="modulepreload" href="js/native/audio-manager.js">
+    <link rel="modulepreload" href="js/native/engine-connection.js">
     <link rel="modulepreload" href="js/native/engine-endpoint.js">
+    <link rel="modulepreload" href="js/native/file-playback.js">
     <link rel="modulepreload" href="js/native/input-adapter.js">
     <link rel="modulepreload" href="js/native/instrument-transport.js">
     <link rel="modulepreload" href="js/plugin-manager.js">
@@ -458,8 +474,15 @@
     <link rel="modulepreload" href="js/sfz/schema.js">
     <link rel="modulepreload" href="js/theme-registry.mjs">
     <link rel="modulepreload" href="js/ui-manager.js">
+    <link rel="modulepreload" href="js/ui/audio-player/archive-playback-selection.js">
+    <link rel="modulepreload" href="js/ui/audio-player/audio-context-manager-metadata.js">
     <link rel="modulepreload" href="js/ui/audio-player/dsd-source.js">
     <link rel="modulepreload" href="js/ui/audio-player/lyrics-file-links.js">
+    <link rel="modulepreload" href="js/ui/audio-player/playback-sequence.js">
+    <link rel="modulepreload" href="js/ui/audio-player/playback-session-marker.js">
+    <link rel="modulepreload" href="js/ui/audio-player/playback-speed.js">
+    <link rel="modulepreload" href="js/ui/audio-player/replay-gain.js">
+    <link rel="modulepreload" href="js/ui/audio-player/state-manager.js">
     <link rel="modulepreload" href="js/ui/double-blind-test/pipeline-availability.js">
     <link rel="modulepreload" href="js/ui/layout-mode-manager.js">
     <link rel="modulepreload" href="js/ui/mobile-menu.js">

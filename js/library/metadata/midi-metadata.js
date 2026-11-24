@@ -11,11 +11,28 @@ export async function createScoreTrackMetadata(candidate, bytes, now = Date.now(
       durationSec: timeline.duration, codec: isMusicXmlFile(candidate.fileName) ? 'MusicXML' : 'MIDI' };
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
-    const mapped = new Error('The score file could not be read.', { cause: error });
-    mapped.code = error.code?.endsWith('-too-large') ? 'metadata-too-large'
-      : error.code?.endsWith('-unsupported') ? 'unsupported-container' : 'corrupt-container';
-    throw mapped;
+    throw scoreMetadataError(error);
   }
+}
+
+export async function createArchiveEntryTrackMetadata(candidate, archive, entryPath, now, languageHints, signal) {
+  let bytes;
+  try {
+    bytes = await archive.read(entryPath, { signal });
+  } catch (error) {
+    if (error?.code?.startsWith?.('archive-')) throw scoreMetadataError(error);
+    throw error;
+  }
+  const fileName = entryPath.split('/').at(-1);
+  return createScoreTrackMetadata({ ...candidate, fileName, ext: fileName.split('.').at(-1).toLowerCase() },
+    bytes, now, languageHints, signal);
+}
+
+export function scoreMetadataError(error) {
+  const mapped = new Error('The score file could not be read.', { cause: error });
+  mapped.code = error.code?.endsWith('-too-large') ? 'metadata-too-large'
+    : error.code?.endsWith('-unsupported') ? 'unsupported-container' : 'corrupt-container';
+  return mapped;
 }
 
 export function createMidiTrackMetadata(candidate, bytes, now = Date.now(), languageHints = null) {

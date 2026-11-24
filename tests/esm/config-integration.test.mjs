@@ -71,6 +71,7 @@ test('Android config omits musical MIDI registration and retains Controller Mapp
   await withGlobals({ window: harness.window, document: harness.document }, async () => {
     await showConfigDialog(true, {});
     assert.equal(harness.document.getElementById('library-include-midi'), null);
+    assert.equal(harness.document.getElementById('library-include-midi-archives'), null);
     assert.ok(harness.document.getElementById('library-include-video'));
     assert.ok(harness.document.getElementById('controller-mapping-btn'));
     await harness.document.getElementById('close-btn').dispatchEvent('click');
@@ -1233,10 +1234,21 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     await libraryIncludeVideo.dispatchEvent('change');
     assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeVideo, true);
     const libraryIncludeMidi = harness.document.getElementById('library-include-midi');
+    const libraryIncludeMidiArchives = harness.document.getElementById('library-include-midi-archives');
     assert.equal(libraryIncludeMidi.checked, false);
+    assert.equal(libraryIncludeMidiArchives.checked, false);
+    assert.equal(libraryIncludeMidiArchives.disabled, true);
     libraryIncludeMidi.checked = true;
     await libraryIncludeMidi.dispatchEvent('change');
     assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeMidi, true);
+    assert.equal(libraryIncludeMidiArchives.disabled, false);
+    libraryIncludeMidiArchives.checked = true;
+    await libraryIncludeMidiArchives.dispatchEvent('change');
+    libraryIncludeMidi.checked = false;
+    await libraryIncludeMidi.dispatchEvent('change');
+    assert.equal(libraryIncludeMidiArchives.disabled, true);
+    assert.equal(libraryIncludeMidiArchives.checked, true);
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeMidiArchives, true);
     const visualSync = harness.document.getElementById('visual-sync');
     assert.equal(visualSync.checked, true);
     visualSync.checked = false;
@@ -1728,6 +1740,11 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     libraryIncludeMidi.checked = true;
     await libraryIncludeMidi.dispatchEvent('change');
     assert.equal(harness.window.appConfig.libraryIncludeMidi, true);
+    const libraryIncludeMidiArchives = harness.document.getElementById('library-include-midi-archives');
+    assert.equal(libraryIncludeMidiArchives.disabled, false);
+    libraryIncludeMidiArchives.checked = true;
+    await libraryIncludeMidiArchives.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.libraryIncludeMidiArchives, true);
 
     const pipelineDefault = harness.document.getElementById('pl-default');
     await pipelineDefault.dispatchEvent('change');

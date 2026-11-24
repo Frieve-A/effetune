@@ -140,7 +140,7 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
   assert.equal(noFilters.calls[0][2], null);
 });
 
-test('openPlaybackSelection owns its CUE-aware dialog without changing generic dialog normalization', async () => {
+test('openPlaybackSelection accepts CUE and archives without changing generic dialog normalization', async () => {
   const harness = createHarness({ openDialogResult: { canceled: true, filePaths: [] } });
 
   assert.deepEqual(await harness.module.openPlaybackSelection(), { canceled: true });
@@ -148,8 +148,8 @@ test('openPlaybackSelection owns its CUE-aware dialog without changing generic d
   assert.equal(dialogOptions.title, 'Open Music');
   assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
   assert.deepEqual(dialogOptions.filters[0], {
-    name: 'Music and CUE Files',
-    extensions: ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl', 'cue']
+    name: 'Music, CUE and Archive Files',
+    extensions: ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl', 'cue', 'zip', 'lzh', 'lha', 'tar', 'tgz', 'gz']
   });
 });
 
@@ -313,7 +313,7 @@ test('processCommandLineArgs leaves queued OS file-open events intact when there
   assert.deepEqual(harness.calls, []);
 });
 
-test('processCommandLineArgs stores existing music, DSD and MusicXML files in packaged mode', t => {
+test('processCommandLineArgs stores existing music, DSD, MusicXML and archive files in packaged mode', t => {
   const dir = fs.realpathSync(createTempDir('effetune-cli'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const musicPath = path.join(dir, 'song.OPUS');
@@ -324,7 +324,7 @@ test('processCommandLineArgs stores existing music, DSD and MusicXML files in pa
   fs.writeFileSync(mp4Path, 'media');
   fs.writeFileSync(dsfPath, 'DSD');
   fs.writeFileSync(dffPath, 'DSD');
-  const scorePaths = ['score.musicxml', 'legacy.XML', 'compressed.mxl'].map(name => path.join(dir, name));
+  const scorePaths = ['score.musicxml', 'legacy.XML', 'compressed.mxl', 'scores.ZIP', 'collection.tar.gz'].map(name => path.join(dir, name));
   for (const scorePath of scorePaths) fs.writeFileSync(scorePath, 'score');
   const harness = createHarness({ mainWindow: null });
 

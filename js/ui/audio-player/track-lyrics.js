@@ -8,6 +8,7 @@ import {
 import { TEXT_FILE_MAX_BYTES } from '../../library/metadata/text-encoding.js';
 import { getLyricsFiles } from './lyrics-file-links.js';
 import { getPlaybackRegion, getRegionEndTime, getRegionStartTime } from './playback-region.js';
+import { getPlaybackFilePath } from './playback-source-policy.js';
 
 export class TrackLyrics {
     constructor(player) {
@@ -43,7 +44,7 @@ export class TrackLyrics {
         const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
         let path = track.path;
         if (!path && track.file && electronAPI?.getPathForFile) {
-            try { path = electronAPI.getPathForFile(track.file); }
+            try { path = getPlaybackFilePath(track, electronAPI); }
             catch (error) { console.debug('Track lyrics path could not be resolved:', error); }
         }
         if (path) return electronAPI?.readTrackLyrics?.({ path, names, region }) ?? null;

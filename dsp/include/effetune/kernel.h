@@ -19,6 +19,7 @@ struct PrepareInfo {
   std::uint32_t maxFrames;
   // Optional CONTROL preparation envelope, already in physical beats/minute.
   double minimumPhysicalBpm = 0.0;
+  std::uint32_t sliceOffset = 0;
 };
 
 // Musical transport reported by the application embedding the engine, such as a
@@ -98,6 +99,9 @@ struct AssetBeginInfo {
 class PreparedAsset {
 public:
   virtual ~PreparedAsset() = default;
+  // Native hosts keep the last committed bank when a replacement fails live validation.
+  bool preserveResidentOnError = false;
+  [[nodiscard]] virtual bool hasPreparationError() const noexcept { return false; }
   [[nodiscard]] virtual bool sampleStreamReady() const noexcept { return true; }
   virtual et_status configureSampleStream(std::uint64_t) noexcept { return ET_ERR_UNSUPPORTED; }
   virtual et_status publishSamplePage(std::uint64_t, std::uint32_t, std::uint64_t, const float *,
@@ -107,6 +111,7 @@ public:
 };
 
 // Copies and fully prepares the payload without accessing a live kernel.
+// A null payload requests an empty replacement that can receive retired storage.
 using AssetPreparer = et_status (*)(const PrepareInfo &prepare, const AssetBeginInfo &info,
                                     const std::uint8_t *payload, std::uint32_t format_tag,
                                     std::unique_ptr<PreparedAsset> &asset) noexcept;
@@ -229,7 +234,8 @@ public:
   [[nodiscard]] virtual AssetPreparer assetPreparer(std::uint32_t) const noexcept {
     return nullptr;
   }
-  // Engine supplies only storage from this slot's preparer, or nullptr for clear.
+  [[nodiscard]] virtual std::uint32_t assetSliceOffset() const noexcept { return 0; }
+  // Engine supplies only storage from this slot's preparer.
   // Swap ownership into asset; never allocate, free, or traverse the bank here.
   virtual et_status exchangePreparedAsset(std::uint32_t,
                                           std::unique_ptr<PreparedAsset> &) noexcept {

@@ -28,21 +28,28 @@ function registerAudioEngineIpc({ipcMain, MessageChannelMain, host, getMainWindo
       for (const [name, listener] of listeners) owner.on(name, listener);
       await closed;
       if (serial !== generation) return {ok:false};
-      const control = new MessageChannelMain(), feed = new MessageChannelMain();
+      const control = new MessageChannelMain(), feed = new MessageChannelMain(), file = new MessageChannelMain();
+      let attempt;
       try {
-        await host.start(driver, control.port1, feed.port1);
+        const started = host.start(driver, control.port1, feed.port1, file.port1);
+        // start installs its session before awaiting the handshake. Bind failure evidence to this attempt.
+        attempt = host.active;
+        const variant = await started;
         if (serial !== generation || frame !== owner?.mainFrame) throw new Error('Audio engine owner changed');
-        owner.postMessage('audio-engine:ports', token, [control.port2, feed.port2]);
+        owner.postMessage('audio-engine:ports', {token,variant}, [control.port2, feed.port2, file.port2]);
         return {ok:true};
       } catch (error) {
         control.port2.close();
         feed.port2.close();
+        file.port2.close();
         if (serial === generation) await clearOwner();
         host.diagnostic('Could not start audio engine:', error);
-        return {ok:false,reason:'unavailable'};
+        const variant = attempt?.exitInfo?.variant;
+        return {ok:false,reason:'unavailable', ...(variant && {variant})};
       }
     },
     stop: clearOwner,
+    available: () => host.available(),
     async list(_event, driver) {
       try { return {ok:true,...await host.list(driver)}; }
       catch { return {ok:false,inputs:[],outputs:[]}; }

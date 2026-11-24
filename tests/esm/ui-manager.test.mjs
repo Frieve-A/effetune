@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { diagnosticDictionary, startDiagnosticRecording } from '../../js/diagnostics/diagnostic-log.js';
 import { UIManager } from '../../js/ui-manager.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
@@ -1563,7 +1564,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file' && element.parentNode);
-      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,.mid,.midi,.kar,.musicxml,.xml,.mxl,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png');
+      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,.mid,.midi,.kar,.musicxml,.xml,.mxl,.zip,.lzh,.lha,.tar,.tgz,.gz,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
       await flushMicrotasks();
@@ -1580,6 +1581,8 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       isElectron: false,
       async showOpenFilePicker(options) {
         assert.equal(options.multiple, true);
+        assert.deepEqual(options.types[0].accept['application/x-lzh-compressed'], ['.lzh', '.lha']);
+        assert.deepEqual(options.types[0].accept['application/gzip'], ['.gz', '.tgz']);
         return [cueHandle];
       }
     }, async ({ calls, document, manager }) => {
@@ -1640,6 +1643,20 @@ test('initializing network playback preserves local player creation while a chan
   } finally {
     AudioPlayer.prototype.loadFiles = originalLoadFiles;
   }
+});
+
+test('a background player load retains every selected filename until the load settles', async t => {
+  t.after(startDiagnosticRecording({}));
+  let finish;
+  const player = { loadFiles: () => new Promise(resolve => { finish = resolve; }) };
+  const manager = Object.assign(Object.create(UIManager.prototype), { audioPlayer: player });
+  const files = Array.from({ length: 205 }, (_, i) => ({ name: `Family recording ${i}.wav` }));
+  assert.equal(await manager.createAudioPlayer(files), player);
+  assert.equal(diagnosticDictionary().get(files[0].name), '<track>');
+  finish();
+  await Promise.resolve();
+  assert.equal(diagnosticDictionary().has(files[0].name), false);
+  assert.equal(diagnosticDictionary().get(files.at(-1).name), '<track>');
 });
 
 test('web selection survives network initialization but cancels real target changes across both waits', async () => {

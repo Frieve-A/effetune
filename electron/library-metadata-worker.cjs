@@ -29,6 +29,20 @@ parentPort?.on('message', async message => {
     }
     const candidate = createCandidate(message);
     const midi = await import(pathToFileURL(path.join(__dirname, '../js/library/metadata/midi-metadata.js')).href);
+    if (message.archiveEntryPath) {
+      const { withFileArchive } = require('./library-archive.cjs');
+      const stat = await fs.stat(message.filePath);
+      let track;
+      try {
+        track = await withFileArchive(message.filePath, stat.size, stat.mtimeMs, archive =>
+          midi.createArchiveEntryTrackMetadata(candidate, archive, message.archiveEntryPath, Date.now(), message.languageHints));
+      } catch (error) {
+        if (error?.code?.startsWith?.('archive-')) throw midi.scoreMetadataError(error);
+        throw error;
+      }
+      parentPort.postMessage({ type: 'result', requestId: message.requestId, result: normalizeMetadata(track) });
+      return;
+    }
     if (midi.isScoreFile(candidate.fileName)) {
       const stat = await fs.stat(message.filePath);
       if (stat.size > midi.SCORE_MAX_BYTES) throw typedError('metadata-too-large', 'Score file exceeds the byte limit');
@@ -38,7 +52,7 @@ parentPort?.on('message', async message => {
       return;
     }
     const riffInfoTagsPromise = candidate.ext === 'wav'
-      ? readRiffInfoTagsFromFile(message.filePath, support.readRiffInfoTagsFromReader).catch(() => [])
+      ? readRiffInfoTagsFromFile(message.filePath, support).catch(() => [])
       : Promise.resolve([]);
     let parsed = await metadata.parseFile(message.filePath, { duration: false, skipCovers: true });
     if (support.shouldRetryDuration(candidate, parsed)) {
@@ -61,6 +75,14 @@ parentPort?.on('message', async message => {
 
 function validateParseMessage(message) {
   const expected = ['filePath', 'languageHints', 'lyrics', 'relativePath', 'replayGain', 'requestId', 'skipCovers', 'type'];
+  if ('archiveEntryPath' in message) {
+    const name = message.archiveEntryPath;
+    if (typeof name !== 'string' || name.length > 32768 || /[\\\0]/.test(name) || /^[A-Za-z]:/.test(name) ||
+        name.split('/').some(part => !part || part === '..' || part === '.')) {
+      throw typedError('invalidMetadataRequest', 'Archive entry path is invalid');
+    }
+    expected.unshift('archiveEntryPath');
+  }
   const actual = Object.keys(message).sort();
   if (actual.length !== expected.length || actual.some((field, index) => field !== expected[index])) {
     throw typedError('invalidMetadataRequest', 'Metadata parse request fields are invalid');
@@ -109,11 +131,12 @@ async function loadMetadataSupport() {
   const riffInfoPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/riff-info.js')).href;
   const lyricsPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/lyrics.js')).href;
   const textEncodingPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/text-encoding.js')).href;
-  const [mapper, riffInfo, lyrics, textEncoding] = await Promise.all([
-    import(mapperPath), import(riffInfoPath), import(lyricsPath), import(textEncodingPath)
+  const [mapper, riffInfo, lyrics, textEncoding, archiveReader] = await Promise.all([
+    import(mapperPath), import(riffInfoPath), import(lyricsPath), import(textEncodingPath), import('../js/library/archive/archive-reader.js')
   ]);
   return {
     ...lyrics,
+    createFileHandleSource: archiveReader.createFileHandleSource,
     TEXT_FILE_MAX_BYTES: textEncoding.TEXT_FILE_MAX_BYTES,
     createTrackFromMetadata: mapper.createTrackFromMetadata,
     getReplayGain: mapper.getReplayGain,
@@ -134,7 +157,7 @@ async function readTrackLyrics(message, metadata, support) {
     try {
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size > support.TEXT_FILE_MAX_BYTES) return null;
-      const bytes = await readFileBytes(handle, 0, Number(stat.size));
+      const bytes = await support.createFileHandleSource(handle, stat.size).read(0, stat.size);
       return { data: support.lyricsFromLrcBytes(bytes), index: match.index };
     } finally {
       await handle.close();
@@ -158,29 +181,15 @@ function createCandidate(message) {
   };
 }
 
-async function readRiffInfoTagsFromFile(filePath, readRiffInfoTagsFromReader) {
+async function readRiffInfoTagsFromFile(filePath, support) {
   const handle = await fs.open(filePath, 'r');
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) return [];
-    return await readRiffInfoTagsFromReader({
-      size: Number(stat.size),
-      read: (offset, length) => readFileBytes(handle, offset, length)
-    });
+    return await support.readRiffInfoTagsFromReader(support.createFileHandleSource(handle, stat.size));
   } finally {
     await handle.close();
   }
-}
-
-async function readFileBytes(handle, offset, length) {
-  const buffer = Buffer.allocUnsafe(length);
-  let bytesRead = 0;
-  while (bytesRead < length) {
-    const result = await handle.read(buffer, bytesRead, length - bytesRead, offset + bytesRead);
-    if (result.bytesRead === 0) break;
-    bytesRead += result.bytesRead;
-  }
-  return new Uint8Array(buffer.buffer, buffer.byteOffset, bytesRead);
 }
 
 function normalizeMetadata(track) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createTrackFromMetadata } from '../../js/library/metadata/metadata-mapper.js';
-import { computeReplayGainFactor, readReplayGain } from '../../js/ui/audio-player/replay-gain.js';
+import { computeAutoTarget, computeReplayGainFactor, readReplayGain } from '../../js/ui/audio-player/replay-gain.js';
 
 function mapReplayGain(native, common = {}) {
   return createTrackFromMetadata({ fileName: 'song.flac' }, { common, native, format: {} }).replayGain;
@@ -90,4 +90,18 @@ test('ReplayGain reads Electron paths once per file and skips non-local sources'
   } finally {
     delete globalThis.window;
   }
+});
+
+test('Auto chooses the mode percentile and peak ceiling, independently of preamp and clipping prevention', () => {
+  const stats = { trackPlr: 13, albumPlr: 16 };
+  const settings = { target: 'auto', mode: 'album', peakCeilingDb: -2, preampDb: 12 };
+  assert.equal(computeAutoTarget(settings, stats), -18);
+  assert.equal(computeAutoTarget(settings, null), -18);
+  settings.mode = 'track';
+  settings.autoTarget = computeAutoTarget(settings, stats);
+  assert.equal(settings.autoTarget, -15);
+  const tag = { trackGainDb: 0, trackPeak: 1 };
+  assert.equal(computeReplayGainFactor(tag, settings), 10 ** (3 / 20));
+  assert.equal(computeReplayGainFactor(tag, { ...settings, preventClipping: true }), 10 ** (-2 / 20));
+  assert.equal(computeReplayGainFactor(tag, { ...settings, autoTarget: -18 }), 1);
 });

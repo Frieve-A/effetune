@@ -1,4 +1,5 @@
 #include "native_engine.h"
+#include "engine.h"
 #include <aaudio/AAudio.h>
 #include <algorithm>
 #include <android/log.h>
@@ -14,21 +15,16 @@
 namespace effetune::android {
 
 NativeEngine::NativeEngine(std::int32_t sampleRate, std::int32_t maxFrames)
-    : engine_(std::make_unique<Engine>()), sampleRate_(sampleRate),
-      maxFrames_(maxFrames) {
+    : sampleRate_(sampleRate), maxFrames_(maxFrames) {
   if (sampleRate < 8000 || sampleRate > 192000 || maxFrames < 64 ||
       maxFrames > 4096) {
     throw std::invalid_argument("Invalid audio format");
   }
   microphone_.resize(static_cast<std::size_t>(maxFrames) * 2);
-  if (engine_->prepare(static_cast<float>(sampleRate), 2, maxFrames, 65536) !=
-      ET_OK) {
+  planarIn_.resize(microphone_.size());
+  planarOut_.resize(microphone_.size());
+  if (!session_.open({static_cast<unsigned>(sampleRate), 2, 2, static_cast<unsigned>(maxFrames)}))
     throw std::runtime_error("Engine prepare failed");
-  }
-  const std::uint8_t empty[] = {1, 0, 0, 0, 0, 0, 0, 0};
-  if (engine_->configurePipeline(empty, sizeof(empty)) != ET_OK) {
-    throw std::runtime_error("Empty pipeline failed");
-  }
 }
 
 NativeEngine::~NativeEngine() {
@@ -218,221 +214,274 @@ std::vector<int> NativeEngine::configure(
     const std::vector<std::string> &types,
     const std::vector<std::vector<float>> &parameters,
     const std::vector<std::uint32_t> &hashes,
+    const std::vector<std::uint32_t> &ids,
     std::vector<std::uint8_t> descriptor,
     const std::vector<std::vector<std::uint8_t>> &structured) {
   if (types.size() > 128 || types.size() != parameters.size() ||
-      types.size() != hashes.size() ||
+      types.size() != hashes.size() || types.size() != ids.size() ||
       descriptor.size() != 8 + types.size() * 12 ||
       (!structured.empty() && structured.size() != types.size()))
     throw std::invalid_argument("Invalid pipeline");
-  Command command(Command::Kind::Replace);
-  command.engine = std::make_unique<Engine>();
-  if (command.engine->prepare(static_cast<float>(sampleRate_), 2, maxFrames_,
-                              65536) != ET_OK) {
-    throw std::runtime_error("Pipeline prepare failed");
-  }
-  std::vector<int> instances;
+  std::vector<audio::PluginSettings> plugins;
+  std::map<std::uint32_t, audio::PluginSettings> nextSettings;
+  std::vector<std::uint32_t> nextInstruments;
   for (std::size_t i = 0; i < types.size(); ++i) {
-    const auto instance = command.engine->createInstance(types[i].c_str());
-    if (instance == 0 || command.engine->setInstanceParams(
-                             instance, parameters[i].data(),
-                             static_cast<std::uint32_t>(parameters[i].size()),
-                             hashes[i], 0) != ET_OK) {
-      throw std::invalid_argument("Invalid effect parameters");
+    audio::PluginSettings plugin;
+    plugin.id = ids[i];
+    plugin.type = types[i];
+    plugin.layoutHash = hashes[i];
+    plugin.params = parameters[i];
+    if (!structured.empty())
+      plugin.bytes = structured[i];
+    if (plugin.id == 0 || !nextSettings.emplace(plugin.id, plugin).second)
+      throw std::invalid_argument("Invalid effect ID");
+    if (plugin.type == "SFZNotePlayerPlugin" || plugin.type == "SoundFontPlayerPlugin")
+      nextInstruments.push_back(plugin.id);
+    plugins.push_back(std::move(plugin));
+  }
+  run([&]() noexcept {
+    for (auto &scheduled : scheduled_)
+      scheduled.active = false;
+    return ET_OK;
+  });
+  auto *pipeline = session_.pipeline();
+  const auto publishSettings = [&]() noexcept {
+    instruments_.swap(nextInstruments);
+    silenceFrames_ = 0;
+    monitoring_ = false;
+  };
+  bool configured = false;
+  if (outputStatus() == 1) {
+    auto change = pipeline->prepareChange(plugins, descriptor);
+    if (change && run([&]() noexcept { return change->capture() ? ET_OK : ET_ERR_STATE; }) == ET_OK &&
+        change->prepare()) {
+      configured = run([&]() noexcept {
+        if (!change->publish())
+          return ET_ERR_STATE;
+        publishSettings();
+        return ET_OK;
+      }) == ET_OK;
     }
-    command.engine->setInstanceTap(instance, static_cast<std::uint32_t>(i + 1));
-    if (!structured.empty() && !structured[i].empty() &&
-        command.engine->setInstanceParamBytes(
-            instance, structured[i].data(),
-            static_cast<std::uint32_t>(structured[i].size()), hashes[i],
-            0) != ET_OK)
-      throw std::invalid_argument("Invalid structured effect parameters");
-    instances.push_back(static_cast<int>(instance));
   }
-  for (std::size_t i = 0; i < types.size(); ++i) {
-    const auto offset = 8 + i * 12;
-    std::uint32_t index = 0;
-    std::memcpy(&index, descriptor.data() + offset, 4);
-    if (index == 0 || index > instances.size())
-      throw std::invalid_argument("Invalid effect index");
-    const auto handle = static_cast<std::uint32_t>(instances[index - 1]);
-    std::memcpy(descriptor.data() + offset, &handle, 4);
+  if (!configured) {
+    const bool restart = outputStatus() == 1;
+    if (restart)
+      closeOutput();
+    configured = pipeline->configure(std::move(plugins), std::move(descriptor));
+    if (configured)
+      publishSettings();
+    if (restart && start() != 0)
+      throw std::runtime_error("Pipeline output restart failed");
+    if (!configured)
+      throw std::invalid_argument("Invalid pipeline routing");
   }
-  if (command.engine->configurePipeline(
-          descriptor.data(), static_cast<std::uint32_t>(descriptor.size())) !=
-          ET_OK ||
-      command.engine->reservePipelineLatency() != ET_OK)
-    throw std::invalid_argument("Invalid pipeline routing");
-  if (submit(command) != ET_OK)
-    throw std::runtime_error("Pipeline apply failed");
-  contracts_.clear();
-  for (std::size_t i = 0; i < instances.size(); ++i)
-    contracts_.push_back({static_cast<std::uint32_t>(instances[i]), hashes[i],
-                          static_cast<std::uint32_t>(parameters[i].size())});
-  legacyAssetInstances_.clear();
-  samplePlayerInstances_.clear();
-  for (std::size_t i = 0; i < types.size(); ++i) {
-    if (types[i] == "IRReverbPlugin")
-      legacyAssetInstances_.push_back(instances[i]);
-    if (types[i] == "SFZNotePlayerPlugin" ||
-        types[i] == "SoundFontPlayerPlugin")
-      samplePlayerInstances_.emplace_back(instances[i],
-                                          types[i] == "SFZNotePlayerPlugin"
-                                              ? ET_SAMPLE_PLAYER_NOTE
-                                              : ET_SAMPLE_PLAYER_MAIN);
-  }
-  return instances;
+  settings_.swap(nextSettings);
+  return {ids.begin(), ids.end()};
 }
 
 int NativeEngine::setParameters(int instance, std::vector<float> values,
                                 std::uint32_t hash) {
-  Command command(Command::Kind::Parameters);
-  command.instance = instance;
-  command.hash = hash;
-  command.floats = std::move(values);
-  return submit(command);
+  const auto found = settings_.find(instance);
+  if (found == settings_.end() || found->second.layoutHash != hash ||
+      found->second.params.size() != values.size())
+    return ET_ERR_ARGS;
+  if (values.empty())
+    return ET_OK;
+  auto settings = found->second;
+  settings.params = values;
+  const auto status = run([&]() noexcept { return applyParameters(settings); });
+  if (status == ET_OK)
+    found->second.params = std::move(values);
+  return status;
 }
 
 int NativeEngine::setParameterBytes(int instance,
                                     std::vector<std::uint8_t> values,
                                     std::uint32_t hash) {
-  Command command(Command::Kind::Bytes);
-  command.instance = instance;
-  command.hash = hash;
-  command.bytes = std::move(values);
-  return submit(command);
+  const auto found = settings_.find(instance);
+  if (found == settings_.end() || found->second.layoutHash != hash)
+    return ET_ERR_ARGS;
+  auto settings = found->second;
+  settings.bytes = values;
+  const auto status = run([&]() noexcept { return applyParameters(settings); });
+  if (status == ET_OK)
+    found->second.bytes = std::move(values);
+  return status;
+}
+
+int NativeEngine::applyParameters(audio::PluginSettings &settings) noexcept {
+  silenceFrames_ = 0;
+  monitoring_ = false;
+  return session_.updateParameter(settings) ? ET_OK : ET_ERR_ARGS;
+}
+
+void NativeEngine::setBypass(bool bypass) {
+  if (session_.masterBypass() == bypass)
+    return;
+  const bool restart = outputStatus() == 1;
+  if (restart)
+    closeOutput();
+  session_.setMasterBypass(bypass);
+  if (restart)
+    lastOutputError_ = start();
 }
 
 int NativeEngine::setAsset(int instance, int slot, const AssetBeginInfo &info,
-                           const std::vector<std::uint8_t> &bytes,
-                           std::uint32_t format) {
+                           const std::vector<std::uint8_t> &bytes, std::uint32_t format,
+                           std::optional<std::uint32_t> revision) {
   return prepareAsset(instance, slot, info, bytes.data(),
-                      static_cast<std::uint32_t>(bytes.size()), format);
+                      static_cast<std::uint32_t>(bytes.size()), format, revision);
 }
 
-int NativeEngine::setAssetFile(int instance, int slot,
-                               const AssetBeginInfo &info, int fd,
-                               std::uint32_t byteSize, std::uint32_t format) {
+int NativeEngine::setAssetFile(int instance, int slot, const AssetBeginInfo &info, int fd,
+                               std::uint32_t byteSize, std::uint32_t format,
+                               std::optional<std::uint32_t> revision) {
   struct stat file{};
   if (fd < 0 || byteSize == 0 || byteSize > 1024u * 1024u * 1024u ||
-      fstat(fd, &file) != 0 || file.st_size < byteSize ||
-      !S_ISREG(file.st_mode))
+      fstat(fd, &file) != 0 || file.st_size < byteSize || !S_ISREG(file.st_mode))
     return ET_ERR_ARGS;
   void *mapped = mmap(nullptr, byteSize, PROT_READ, MAP_PRIVATE, fd, 0);
   if (mapped == MAP_FAILED)
     return ET_ERR_OOM;
-  const auto status =
-      prepareAsset(instance, slot, info,
-                   static_cast<const std::uint8_t *>(mapped), byteSize, format);
-  munmap(mapped, byteSize);
-  return status;
+  const auto unmap = [byteSize](void *address) { munmap(address, byteSize); };
+  const std::unique_ptr<void, decltype(unmap)> mapping(mapped, unmap);
+  return prepareAsset(instance, slot, info, static_cast<const std::uint8_t *>(mapping.get()),
+                      byteSize, format, revision);
 }
 
-int NativeEngine::prepareAsset(int instance, int slot,
-                               const AssetBeginInfo &info,
+int NativeEngine::prepareAsset(int instance, int slot, const AssetBeginInfo &info,
                                const std::uint8_t *data, std::uint32_t byteSize,
-                               std::uint32_t format) {
-  Command capture(Command::Kind::CaptureAsset);
-  capture.instance = instance;
-  capture.slot = slot;
-  auto status = submit(capture);
-  if (status == ET_ERR_UNSUPPORTED &&
-      std::find(legacyAssetInstances_.begin(), legacyAssetInstances_.end(),
-                instance) != legacyAssetInstances_.end()) {
-    if (byteSize != 0 && (!data || byteSize != info.byteSize))
-      return ET_ERR_ARGS;
-    // IR uses the core's begin/commit contract, which allocates during begin.
-    // Join output before handing its Engine to control, then restore only the
-    // previously running output. Input, source queue and other effects survive.
-    const bool restart = running_;
-    closeOutput();
-    if (capture_)
-      capture_->invalidate();
-    if (byteSize == 0) {
-      engine_->abortInstanceAsset(instance, slot);
-      status = ET_OK;
-    } else if (auto *staging =
-                   engine_->beginInstanceAsset(instance, slot, info)) {
-      std::memcpy(staging, data, byteSize);
-      status = engine_->commitInstanceAsset(instance, slot, byteSize, format);
-      if (status != ET_OK)
-        engine_->abortInstanceAsset(instance, slot);
-    } else
-      status = ET_ERR_ARGS;
-    const auto latency = engine_->refreshPipelineLatency();
-    const auto reserve =
-        latency == ET_OK ? engine_->reservePipelineLatency() : latency;
-    if (status == ET_OK)
-      status = reserve;
-    if (restart) {
-      const auto resumed = start();
-      if (status == ET_OK && resumed != 0)
-        status = ET_ERR_STATE;
+                               std::uint32_t format, std::optional<std::uint32_t> revision) {
+  const auto plugin = settings_.find(instance);
+  if (slot < 0 || (byteSize && (!data || byteSize != info.byteSize)))
+    return ET_ERR_ARGS;
+  auto *pipeline = session_.pipeline();
+  if (slot == 0)
+    pipeline->cancelStream(instance);
+  std::optional<audio::AssetData> asset;
+  if (byteSize) {
+    auto &candidate = asset.emplace();
+    candidate.headBlock = info.headBlock;
+    candidate.rateDivider = info.rateDivider;
+    candidate.pathCount = info.pathCount;
+    candidate.inputCount = info.inputCount;
+    candidate.processingChannels = info.processingChannels;
+    candidate.footprintBytes = info.footprintBytes;
+    candidate.formatTag = format;
+    candidate.operationRevision = revision;
+    if (slot == 0 && plugin != settings_.end()) {
+      const auto &type = plugin->second.type;
+      if (type == "SFZNotePlayerPlugin" || type == "SoundFontPlayerPlugin") {
+        std::uint64_t additional = 0;
+        const auto kind = type == "SFZNotePlayerPlugin" ? ET_SAMPLE_PLAYER_NOTE : ET_SAMPLE_PLAYER_MAIN;
+        const auto status = et_sample_player_preparation_bytes(
+            data, byteSize, byteSize, format, static_cast<float>(sampleRate_),
+            info.processingChannels, maxFrames_, 0, &additional, kind);
+        if (status != ET_OK)
+          return status;
+        const auto required = static_cast<std::uint64_t>(byteSize) + additional;
+        if (required > info.footprintBytes || required > UINT32_MAX)
+          return ET_ERR_OOM;
+        candidate.footprintBytes = static_cast<std::uint32_t>(required);
+      }
     }
-    return status;
+    candidate.payload.assign(data, data + byteSize);
   }
-  if (status != ET_OK)
-    return status;
-  auto preparedInfo = info;
-  if (byteSize != 0 && slot == 0) {
-    const auto player = std::find_if(
-        samplePlayerInstances_.begin(), samplePlayerInstances_.end(),
-        [instance](const auto &entry) { return entry.first == instance; });
-    if (player != samplePlayerInstances_.end()) {
-      if (!data || byteSize != info.byteSize)
-        return ET_ERR_ARGS;
-      std::uint64_t additional = 0;
-      // Android has no musical MIDI transport map; its native preparation
-      // uses the standalone tempo policy and this engine's actual geometry.
-      status = et_sample_player_preparation_bytes(
-          data, byteSize, byteSize, format, static_cast<float>(sampleRate_),
-          info.processingChannels, maxFrames_, 0, &additional, player->second);
-      if (status != ET_OK)
-        return status;
-      const auto required = static_cast<std::uint64_t>(byteSize) + additional;
-      if (required > info.footprintBytes || required > UINT32_MAX)
-        return ET_ERR_OOM;
-      preparedInfo.footprintBytes = static_cast<std::uint32_t>(required);
+  return submitAssetChange(pipeline->assetChange(instance, slot, std::move(asset)));
+}
+
+int NativeEngine::submitAssetChange(const std::shared_ptr<audio::Pipeline::AssetChange> &change) {
+  for (;;) {
+    int result = ET_ERR_ARGS;
+    if (run([&]() noexcept { return change->capture() ? ET_OK : ET_ERR_STATE; }) == ET_OK &&
+        change->prepare()) {
+      if (change->awaitsPages()) {
+        __android_log_write(ANDROID_LOG_WARN, "EffeTune", "Android requires resident instrument assets");
+        result = ET_ERR_UNSUPPORTED;
+      } else if (run([&]() noexcept { return change->captureRoute() ? ET_OK : ET_ERR_STATE; }) == ET_OK &&
+                 change->prepareRoute()) {
+        result = run([&]() noexcept {
+          silenceFrames_ = 0;
+          monitoring_ = false;
+          return change->apply() ? ET_OK : ET_ERR_ARGS;
+        });
+        if (result == ET_OK) {
+          if (change->deferred())
+            return 1;
+          change->finish();
+          return ET_OK;
+        }
+        if (change->stale())
+          continue;
+      }
     }
+    session_.pipeline()->releaseBank(change.get());
+    return result;
   }
-  Command update(Command::Kind::ApplyAsset);
-  status =
-      byteSize == 0
-          ? Engine::prepareInstanceAssetClear(capture.snapshot, update.asset)
-          : Engine::prepareInstanceAssetUpdate(capture.snapshot, preparedInfo,
-                                               data, byteSize, format,
-                                               update.asset);
-  if (status != ET_OK)
-    return status;
-  status = submit(update);
-  if (status != ET_OK)
-    return status;
-  Command captureLatency(Command::Kind::CaptureLatency);
-  status = submit(captureLatency);
-  if (status != ET_OK)
-    return status;
-  Command applyLatency(Command::Kind::ApplyLatency);
-  status = Engine::preparePipelineLatencyUpdate(captureLatency.latencySnapshot,
-                                                applyLatency.latencyUpdate);
-  return status == ET_OK ? submit(applyLatency) : status;
 }
 
 std::vector<std::uint8_t> NativeEngine::telemetry() {
-  Command command(Command::Kind::Telemetry);
-  command.bytes.resize(65536);
-  if (submit(command) != ET_OK)
-    return {};
-  return std::move(command.bytes);
+  auto *telemetry = session_.telemetry();
+  std::vector<std::uint8_t> data;
+  for (unsigned count = 0; count < 3; ++count) {
+    const auto *packet = telemetry->front();
+    if (!packet)
+      break;
+    data.insert(data.end(), packet->data.begin(), packet->data.begin() + packet->bytes);
+    telemetry->pop();
+  }
+  return data;
 }
 
 std::vector<int> NativeEngine::runtimeEvents() {
-  Command command(Command::Kind::RuntimeEvents);
-  command.bytes.resize(contracts_.size() * 16);
-  submit(command);
-  std::vector<int> result(command.slot * 4);
-  if (!result.empty())
-    std::memcpy(result.data(), command.bytes.data(),
-                result.size() * sizeof(int));
+  std::vector<int> result;
+  result.reserve(settings_.size() * 4);
+  run([&]() noexcept {
+    for (const auto id : session_.pipeline()->instrumentIds()) {
+      RuntimeEventState state{};
+      if (session_.pipeline()->readRuntimeEvent(id, state)) {
+        for (const auto field : {id, state.generation, state.latched, state.cause})
+          result.push_back(static_cast<int>(field));
+      }
+    }
+    return ET_OK;
+  });
+  return result;
+}
+
+std::vector<int> NativeEngine::assetNotices() {
+  auto *pipeline = session_.pipeline();
+  if (session_.needsLatencyReservation()) {
+    const bool restart = outputStatus() == 1;
+    if (restart)
+      closeOutput();
+    session_.reserveLatency();
+    if (restart)
+      lastOutputError_ = start();
+  }
+  std::vector<int> result;
+  audio::Pipeline::AssetNotice notice;
+  while (pipeline->takeNotice(notice)) {
+    if (notice.completed) {
+      if (auto bank = pipeline->releaseBank(notice.completed)) {
+        if (bank->stale()) {
+          const auto result = submitAssetChange(bank);
+          if (result == 1)
+            continue;
+          notice.rejected = result != ET_OK;
+          notice.state = bank->state();
+        } else if (!notice.rejected) {
+          bank->finish();
+        }
+      }
+    }
+    if (!notice.identity && notice.revision) {
+      for (const auto field : {notice.id, notice.slot, notice.state,
+                               static_cast<unsigned>(notice.rejected), *notice.revision,
+                               static_cast<unsigned>(notice.completed != nullptr)})
+        result.push_back(static_cast<int>(field));
+    }
+  }
   return result;
 }
 
@@ -479,21 +528,40 @@ std::vector<float> NativeEngine::powerObservation() {
 
 int NativeEngine::scheduleParameters(int instance, std::vector<float> values,
                                      std::uint32_t hash, std::uint64_t frame) {
-  if (values.size() > 1024)
+  const auto found = settings_.find(instance);
+  if (found == settings_.end() || found->second.layoutHash != hash ||
+      found->second.params.size() != values.size() || values.size() > 1024)
     return ET_ERR_ARGS;
-  const auto contract = std::find_if(
-      contracts_.begin(), contracts_.end(), [instance](const auto &entry) {
-        return entry[0] == static_cast<std::uint32_t>(instance);
-      });
-  if (contract == contracts_.end() || (*contract)[1] != hash ||
-      (*contract)[2] != values.size())
-    return ET_ERR_ARGS;
-  Command command(Command::Kind::ScheduleParameters);
-  command.instance = instance;
-  command.hash = hash;
-  command.floats = std::move(values);
-  command.frame = frame;
-  return submit(command);
+  // A byte-only effect has no float automation to schedule.
+  if (values.empty())
+    return ET_OK;
+  auto settings = found->second;
+  settings.params = std::move(values);
+  return run([&]() noexcept {
+    for (auto &scheduled : scheduled_) {
+      if (!scheduled.active) {
+        std::swap(scheduled.settings, settings);
+        scheduled.frame = frame;
+        scheduled.active = true;
+        return ET_OK;
+      }
+    }
+    return ET_ERR_STATE;
+  });
+}
+
+void NativeEngine::resetTemporal() noexcept {
+  auto *pipeline = session_.pipeline();
+  std::array<std::uint32_t, Engine::kMaxInstances> reset{};
+  std::size_t count = 0;
+  for (const auto id : pipeline->instrumentIds()) {
+    const bool protectedInstrument =
+        std::find(instruments_.begin(), instruments_.end(), id) != instruments_.end() &&
+        (pipeline->assetState(id, 0) & 255u) == ET_ASSET_STATE_ACTIVE;
+    if (!protectedInstrument)
+      reset[count++] = id;
+  }
+  pipeline->resetTemporal(std::span(reset).first(count));
 }
 
 std::uint64_t NativeEngine::audioFrameTime() {
@@ -532,17 +600,13 @@ void NativeEngine::applyPending() noexcept {
 
 void NativeEngine::apply(Command &command) noexcept {
   switch (command.kind) {
-  case Command::Kind::Resume:
-    command.result = engine_->reset();
-    silenceFrames_ = 0;
-    monitoring_ = false;
+  case Command::Kind::Run:
+    command.result = command.work(command.context);
     break;
-  case Command::Kind::Replace:
-    engine_.swap(command.engine);
+  case Command::Kind::Resume:
+    resetTemporal();
     silenceFrames_ = 0;
     monitoring_ = false;
-    for (auto &event : scheduled_)
-      event.active = false;
     break;
   case Command::Kind::Input:
     input_.swap(command.input);
@@ -550,29 +614,6 @@ void NativeEngine::apply(Command &command) noexcept {
     measurementNoise_.swap(command.floats);
     if (capture_)
       capture_->invalidate();
-    break;
-  case Command::Kind::Parameters:
-    command.result = engine_->setInstanceParams(
-        command.instance, command.floats.data(),
-        static_cast<std::uint32_t>(command.floats.size()), command.hash, 0);
-    silenceFrames_ = 0;
-    monitoring_ = false;
-    break;
-  case Command::Kind::Bytes:
-    command.result = engine_->setInstanceParamBytes(
-        command.instance, command.bytes.data(),
-        static_cast<std::uint32_t>(command.bytes.size()), command.hash, 0);
-    silenceFrames_ = 0;
-    monitoring_ = false;
-    break;
-  case Command::Kind::CaptureAsset:
-    command.result = engine_->captureInstanceAssetSnapshot(
-        command.instance, command.slot, command.snapshot);
-    break;
-  case Command::Kind::ApplyAsset:
-    command.result = engine_->applyInstanceAssetUpdate(command.asset);
-    silenceFrames_ = 0;
-    monitoring_ = false;
     break;
   case Command::Kind::MeasurementStart:
     if (!input_) {
@@ -614,50 +655,6 @@ void NativeEngine::apply(Command &command) noexcept {
   case Command::Kind::AudioFrameTime:
     command.frame = clockFrames_;
     break;
-  case Command::Kind::CaptureLatency:
-    command.result =
-        engine_->capturePipelineLatencySnapshot(command.latencySnapshot);
-    break;
-  case Command::Kind::ApplyLatency:
-    command.result = engine_->applyPipelineLatencyUpdate(command.latencyUpdate);
-    break;
-  case Command::Kind::ScheduleParameters: {
-    command.result = ET_ERR_STATE;
-    for (auto &event : scheduled_) {
-      if (event.active)
-        continue;
-      event.instance = command.instance;
-      event.hash = command.hash;
-      event.frame = command.frame;
-      event.count = static_cast<std::uint32_t>(command.floats.size());
-      std::copy(command.floats.begin(), command.floats.end(),
-                event.values.begin());
-      event.active = true;
-      command.result = ET_OK;
-      break;
-    }
-    break;
-  }
-  case Command::Kind::Telemetry: {
-    std::uint32_t dropped = 0;
-    command.bytes.resize(engine_->readTelemetry(
-        command.bytes.data(), static_cast<std::uint32_t>(command.bytes.size()),
-        &dropped));
-    break;
-  }
-  case Command::Kind::RuntimeEvents: {
-    for (const auto &contract : contracts_) {
-      RuntimeEventState state{};
-      if (engine_->readInstanceRuntimeEvent(contract[0], state) != ET_OK)
-        continue;
-      const std::uint32_t values[]{contract[0], state.generation, state.latched,
-                                   state.cause};
-      std::memcpy(command.bytes.data() + command.slot * sizeof(values), values,
-                  sizeof(values));
-      ++command.slot;
-    }
-    break;
-  }
   }
 }
 
@@ -673,17 +670,14 @@ oboe::DataCallbackResult NativeEngine::onAudioReady(oboe::AudioStream *,
       if (!event.active)
         continue;
       if (event.frame <= clockFrames_) {
-        engine_->setInstanceParams(event.instance, event.values.data(),
-                                   event.count, event.hash, 0);
+        applyParameters(event.settings);
         event.active = false;
-        silenceFrames_ = 0;
-        monitoring_ = false;
       } else if (event.frame - clockFrames_ <
                  static_cast<std::uint64_t>(frames)) {
         frames = static_cast<std::int32_t>(event.frame - clockFrames_);
       }
     }
-    auto *audio = engine_->combined();
+    auto *audio = planarIn_.data();
     std::fill_n(audio, frames * 2, 0.0F);
     int microphoneFrames = 0;
     bool inputReady = input_ != nullptr;
@@ -738,18 +732,17 @@ oboe::DataCallbackResult NativeEngine::onAudioReady(oboe::AudioStream *,
       inputPeak_ = microphonePeak;
     if (monitoring_ &&
         (inputPeak_ > silenceThreshold_ || mustProcess_ || measuring)) {
-      std::copy_n(audio, frames * 2, microphone_.data());
-      engine_->reset();
-      std::copy_n(microphone_.data(), frames * 2, audio);
+      resetTemporal();
       monitoring_ = false;
       silenceFrames_ = 0;
     }
-    et_status status = ET_OK;
     if (!monitoring_ && !measuring) {
-      status = engine_->processPipeline(
-          2, frames, static_cast<double>(clockFrames_) / sampleRate_,
-          bypass_.load(std::memory_order_relaxed));
-      engine_->refreshPipelineLatencyRealtime();
+      const auto samples = static_cast<std::size_t>(frames) * 2u;
+      const auto rendered = session_.renderDevice(std::span(planarOut_).first(samples), frames,
+                                       std::span(planarIn_).first(samples));
+      audio = planarOut_.data();
+      if (!rendered)
+        std::fill_n(audio, samples, 0.0F);
     }
     outputPeak_ = 0;
     for (int i = 0; i < frames * 2; ++i)
@@ -764,9 +757,9 @@ oboe::DataCallbackResult NativeEngine::onAudioReady(oboe::AudioStream *,
     clockFrames_ += frames;
     const auto gain = gain_.load(std::memory_order_relaxed);
     for (int i = 0; i < frames; ++i) {
-      output[(offset + i) * 2] = status == ET_OK ? audio[i] * gain : 0;
+      output[(offset + i) * 2] = audio[i] * gain;
       output[(offset + i) * 2 + 1] =
-          status == ET_OK ? audio[frames + i] * gain : 0;
+          audio[frames + i] * gain;
     }
     offset += frames;
   }

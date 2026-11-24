@@ -24,6 +24,8 @@ Pour inclure les fichiers MP4, WebM, M4V, MOV, MKV et 3GP, activez **Inclure les
 
 Pour inclure les fichiers MIDI/KAR (`.mid`, `.midi`, `.kar`) et MusicXML (`.musicxml`, `.xml`, `.mxl`), activez **Inclure les fichiers MIDI dans la Bibliothèque musicale** dans les mêmes paramètres, puis ajoutez un dossier ou relancez son analyse. Cette option est désactivée par défaut ; sa modification ne change pas immédiatement le catalogue existant. Pour écouter ces fichiers, ajoutez SoundFont Player et chargez un instrument, ou sélectionnez un appareil externe dans **Périphérique de sortie MIDI** ; consultez [Fichiers MIDI](music-player.md#fichiers-midi) et [Fichiers MusicXML](music-player.md#musicxml-files). La lecture MIDI et MusicXML et l’ajout de ces fichiers à la bibliothèque sont disponibles dans l’application de bureau et le lecteur web/PWA. Ces fonctions ne sont pas prises en charge dans l’application Android.
 
+Une fois **Inclure les fichiers MIDI dans la Bibliothèque musicale** activé, cochez **Inclure les fichiers MIDI contenus dans des archives (ZIP, LZH, etc.)** pour ajouter les fichiers MIDI, KAR et MusicXML contenus dans des archives ZIP, LZH/LHA, tar, gzip ou tar compressées avec gzip. Cette option est désactivée par défaut et s’applique à l’ajout ou à la nouvelle analyse d’un dossier. La bibliothèque ajoute jusqu’à 500 morceaux par archive et ignore les fichiers protégés par mot de passe ainsi que les archives RAR et 7z. Pour la pochette, elle cherche d’abord dans le dossier du morceau à l’intérieur de l’archive, puis dans le dossier où se trouve l’archive.
+
 Ces paramètres concernent uniquement la Bibliothèque musicale. Vous pouvez toujours ouvrir les fichiers compatibles directement dans le lecteur de musique.
 
 ## Ouvrir la Bibliothèque musicale
@@ -106,6 +108,14 @@ Si un morceau de la bibliothèque ne peut pas être ouvert parce que son dossier
 
 Choisir **Retirer** enlève uniquement le dossier du catalogue d’EffeTune ; vos fichiers sur le disque ne sont jamais supprimés.
 
+## Analyse de la sonie {#loudness-analysis}
+
+Sélectionnez **Analyser la sonie** en haut de la bibliothèque pour mesurer les morceaux nouveaux ou modifiés. Vous pouvez annuler, puis relancer l’analyse pour la poursuivre. Pour utiliser les mesures, choisissez **Piste** ou **Album** sous **ReplayGain** dans **Configuration audio**. Les **Propriétés** d’un morceau indiquent sa sonie globale (LUFS), sa crête vraie maximale (dBTP) et sa plage de sonie (LU). Une plage plus large indique un écart plus marqué entre passages doux et forts.
+
+Les versions de bureau et web peuvent mesurer les fichiers MP3, AAC, FLAC, WAV, Vorbis et Opus, les bandes-son vidéo compatibles et chaque piste d’une feuille CUE. Les formats disponibles dépendent du décodeur. L’application macOS mesure également les fichiers ALAC. L’analyse prend en charge le mono, la stéréo et le 5.1. Les fichiers DSD, MIDI et MusicXML et la musique en réseau en sont exclus. Si des fichiers sont inaccessibles, reconnectez leur dossier et relancez l’analyse.
+
+Dans l’application de bureau, **Écrire les balises ReplayGain** enregistre les mesures dans les fichiers FLAC, MP3 et M4A compatibles pour les utiliser dans d’autres lecteurs. La confirmation modifie les fichiers originaux et remplace leurs balises ReplayGain existantes. Les balises utilisent la référence standard de −18 LUFS, quelle que soit la cible de lecture. Les pistes CUE sont ignorées. Les mesures restent dans la bibliothèque tant que vous ne les écrivez pas dans les fichiers.
+
 ## Listes de lecture
 
 Les listes de lecture de la Bibliothèque musicale sont enregistrées dans EffeTune et peuvent regrouper des morceaux issus de n’importe quel dossier indexé :
@@ -127,7 +137,7 @@ Leur nom suit la langue de l’interface et ne peut pas être renommé, mais vou
 
 L’analyse d’un dossier importe automatiquement les fichiers de listes de lecture pris en charge trouvés dans vos dossiers de musique et les met à jour lors d’une nouvelle analyse si le fichier a changé sur le disque ; cette mise à jour remplace les modifications apportées à cette liste dans EffeTune. Les entrées sans correspondance sont conservées comme éléments non résolus afin d’être rattachées automatiquement lorsque le dossier correspondant est ajouté ou reconnecté.
 
-Lors de l’exportation d’une liste de lecture, activez **Chemins relatifs** si vous souhaitez déplacer le fichier M3U8 ou XSPF exporté avec votre dossier de musique. Comme les formats M3U8 et XSPF standard ne stockent pas les plages de sous-pistes CUE, les pistes CUE sont omises à l’exportation et EffeTune indique combien ont été ignorées.
+Lors de l’exportation d’une liste de lecture, activez **Chemins relatifs** si vous souhaitez déplacer le fichier M3U8 ou XSPF exporté avec votre dossier de musique. L’exportation en M3U8 ou XSPF omet les pistes CUE et les morceaux contenus dans des archives. EffeTune indique le nombre de morceaux ignorés.
 
 ## Sécurité et stockage
 

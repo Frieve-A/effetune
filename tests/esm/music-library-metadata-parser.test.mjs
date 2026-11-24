@@ -1,3 +1,4 @@
+import { zip } from '../helpers/archive-fixtures.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseBuffer } from 'music-metadata';
@@ -404,4 +405,17 @@ test('Web catalog metadata parsing preserves cancellation and bounds repository 
     genre: 4096,
     codec: 512
   });
+});
+
+test('Web archive parser chooses the member filename and preserves storage errors', async () => {
+  const name = 'Set/Fallback.mid';
+  const score = Buffer.from('4d546864000000060000000101e04d54726b0000000400ff2f00', 'hex');
+  const file = new File([zip([[name, score]])], 'scores.zip');
+  const parser = new WebMetadataParser({ filesystem: { getFile: async () => file } });
+  const track = await parser.parse({ relativePath: 'scores.zip', archiveEntryPath: name, skipCovers: true });
+  assert.equal(track.codec, 'MIDI');
+  assert.equal(track.title, 'Fallback');
+  const offline = Object.assign(new Error('offline'), { code: 'EIO' });
+  const unavailable = new WebMetadataParser({ filesystem: { getFile: async () => { throw offline; } } });
+  await assert.rejects(unavailable.parse({ relativePath: 'scores.zip', archiveEntryPath: name, skipCovers: true }), error => error === offline);
 });

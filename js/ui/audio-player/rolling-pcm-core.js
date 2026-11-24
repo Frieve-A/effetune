@@ -1,5 +1,10 @@
 import { parsePcmWaveFormatFromBytes } from '../../library/metadata/riff-info.js';
 
+export function pcmFramesForDuration(durationSec, sampleRate) {
+  const frames = Math.round(durationSec * sampleRate);
+  return Number.isSafeInteger(frames) && frames >= 0 ? frames : null;
+}
+
 export const PCM16_STEREO_44100_TO_96000_PROFILE = Object.freeze({
   id: 'pcm16le-stereo-native-fragment-v1',
   codec: 'native-decode-audio-data-pcm16le-stereo-v1',

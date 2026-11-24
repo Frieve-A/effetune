@@ -60,7 +60,7 @@ function runtime() {
     const subscribers = new Map();
     const sources = {
         subscribeItem(id, callback) { subscribers.set(id, callback); return () => subscribers.delete(id); },
-        getFrame: () => null, getModulators: () => ({ level: 0, bass: 0 })
+        getFrame: () => null, getModulators: () => ({ level: 0, bass: 0 }), getTelemetryLeadSeconds: () => 0
     };
     return { window, document, sources, subscribers, clock, counts: () => [constructions, registrations] };
 }

@@ -7,8 +7,10 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   canPersistAudioPreferencesWithoutReload,
+  initializeAudioPreferences,
   isPlayerPreferenceOnlyChange
 } = require('../../electron/audio-preferences-policy.cjs');
+const { nativeDriverFor } = require('../../electron/audio-engine-host.cjs');
 const {
   loadFreshModule,
   withModuleLoadStub,
@@ -16,6 +18,43 @@ const {
 } = require('../helpers/cjs-module-utils.cjs');
 
 const noInput = '__effetune_no_audio_input__';
+
+test('only fresh desktop profiles receive the native audio driver by default', async t => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-audio-default-')));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const driver = nativeDriverFor(process.platform);
+  const start = profile => initializeAudioPreferences(
+    path.join(profile, 'config.json'), path.join(profile, 'audio-preferences.json'), driver);
+
+  const fresh = path.join(root, 'fresh');
+  start(fresh);
+  const loadFresh = registerAudioPreferencesHandlers(fresh, null).get('load-audio-preferences');
+  assert.equal((await loadFresh()).preferences.audioDriver, driver);
+  assert.equal((await loadFresh()).preferences.inputDeviceId, noInput);
+  assert.equal((await loadFresh()).preferences.outputDeviceId, 'default');
+
+  const existing = path.join(root, 'existing');
+  await fs.mkdir(existing);
+  await fs.writeFile(path.join(existing, 'config.json'), '{}');
+  start(existing);
+  const loadExisting = registerAudioPreferencesHandlers(existing, null).get('load-audio-preferences');
+  assert.deepEqual(await loadExisting(), { success: true, preferences: null });
+
+  const preferencesPath = path.join(existing, 'audio-preferences.json');
+  await fs.unlink(path.join(existing, 'config.json'));
+  for (const savedDriver of [undefined, 'standard', driver]) {
+    const saved = { audioDriver: savedDriver, inputDeviceId: 'mic-1', outputDeviceId: 'speaker-1', useWasmDsp: false };
+    const content = JSON.stringify(saved);
+    await fs.writeFile(preferencesPath, content);
+    start(existing);
+    assert.equal(await fs.readFile(preferencesPath, 'utf8'), content);
+    const { preferences } = await loadExisting();
+    assert.equal(preferences.audioDriver, savedDriver ?? 'standard');
+    assert.equal(preferences.inputDeviceId, saved.inputDeviceId);
+    assert.equal(preferences.outputDeviceId, saved.outputDeviceId);
+    assert.equal(preferences.useWasmDsp, false);
+  }
+});
 
 test('MIDI-device-only IPC preserves audio preferences and never reloads, including rejected mixed changes', async () => {
   const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-midi-preferences-')));
@@ -159,7 +198,11 @@ function registerAudioPreferencesHandlers(userDataPath, mainWindow) {
     './clipboard-ipc': { registerClipboardIpcHandlers() {} },
     './ir-library-ipc': { registerIrLibraryIpc() {} },
     './bounded-file-reader': { readFileBytes() {} },
-    './file-handlers': { getUserDataPath: () => userDataPath }
+    './file-handlers': {
+      getUserDataPath: () => userDataPath,
+      savePipelineStateToFile: (state, options) =>
+        require('../../electron/file-utils.js').savePipelineStateToFile(state, userDataPath, options)
+    }
   }, () => {
     const ipcHandlers = loadFreshModule('../../electron/ipc-handlers.js');
     ipcHandlers.registerIpcHandlers();
@@ -184,6 +227,50 @@ test('registered Electron IPC defaults missing input selections to None and pres
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test('applying unchanged audio settings reloads with the latest edited pipeline only after saving it', async t => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-audio-reload-')));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const preferences = { sampleRate: 192000 };
+  await fs.writeFile(path.join(root, 'audio-preferences.json'), JSON.stringify(preferences));
+  const pipelineFile = path.join(root, 'pipeline-state.json');
+  const previous = { pipelineA: Array.from({ length: 9 }, () => ({ name: 'Volume' })), pipelineB: [], currentPipeline: 'A' };
+  await fs.writeFile(pipelineFile, JSON.stringify(previous));
+  const edited = { pipelineA: [], currentPipeline: 'B', pipelineB: [
+    { name: 'Room EQ', enabled: true, parameters: { ms: 'listening-position' } },
+    { name: 'Auto Leveler', enabled: false },
+    { name: 'Brickwall Limiter', enabled: true, parameters: { ig: 3 } },
+    { name: 'Volume', enabled: true }
+  ] };
+  let liveState = previous;
+  let reloadResult;
+  const restored = [];
+  const handlers = registerAudioPreferencesHandlers(root, {
+    webContents: { send(channel) {
+      if (channel === 'reload-with-pipeline-state') reloadResult = handlers.get('reload-window')(null, liveState);
+    } },
+    async loadFile(file, options) {
+      assert.equal(file, 'effetune.html');
+      assert.equal(options.query.restorePipeline, 'reload');
+      restored.push(JSON.parse(await fs.readFile(pipelineFile, 'utf8')));
+    }
+  });
+  let requestReload;
+  await withPatchedPropertyAsync(global, 'setTimeout', callback => { requestReload = callback; }, async () => {
+    assert.deepEqual(await handlers.get('save-audio-preferences')(null, preferences), { success: true });
+  });
+  liveState = edited;
+  requestReload();
+  assert.deepEqual(await reloadResult, { success: true });
+  assert.deepEqual(restored, [edited]);
+
+  // A directory at the file path makes the subsequent save fail even with elevated permissions.
+  await fs.unlink(pipelineFile);
+  await fs.mkdir(pipelineFile);
+  requestReload();
+  assert.equal((await reloadResult).success, false);
+  assert.equal(restored.length, 1);
 });
 
 test('registered Electron IPC persists canonical player changes without reload', async () => {
@@ -295,7 +382,8 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
     outputChannels: 2,
     latencyHint: 'interactive'
   };
-  const normalizedPreferences = { ...storedPreferences, audioDriver: 'standard', audioDriverDeviceMemory: '' };
+  const normalizedPreferences = { ...storedPreferences, audioDriver: 'standard',
+    replayGainTarget: 'manual', replayGainAutoCoverage: 95, replayGainPeakCeilingDb: 0 };
 
   try {
     await fs.writeFile(preferencesPath, JSON.stringify(storedPreferences));

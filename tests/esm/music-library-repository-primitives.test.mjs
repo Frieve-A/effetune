@@ -1,3 +1,7 @@
+import { getMusicLibraryV3InitializationSql, upgradeArchiveEntryTables } from '../../js/library/repository/schema-v3.js';
+import { readFileSync } from 'node:fs';
+import sqlite3InitModule from '../../js/vendor/sqlite/sqlite3.mjs';
+import { Oo1DatabaseSyncAdapter } from '../../js/library/repository/sqlite-oo1-adapter.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
@@ -567,3 +571,41 @@ test('SQLite v2 schema enforces operation, ownership, and playlist invariants', 
     database.close();
   }
 });
+
+for (const journalMode of ['wal', 'persist']) {
+  test('archive-entry migration preserves existing track, FTS rowid, and references in ' + journalMode, async () => {
+    let db;
+    if (journalMode === 'persist') {
+      const sqlite = await sqlite3InitModule({ instantiateWasm(imports, ready) {
+        const wasm = new WebAssembly.Module(readFileSync(new URL('../../js/vendor/sqlite/sqlite3.wasm', import.meta.url)));
+        const instance = new WebAssembly.Instance(wasm, imports);
+        ready(instance, wasm);
+        return instance.exports;
+      } });
+      db = new Oo1DatabaseSyncAdapter(new sqlite.oo1.DB('archive-test.sqlite', 'c'), sqlite);
+    } else {
+      db = new DatabaseSync(':memory:');
+    }
+    try {
+      const sql = getMusicLibraryV3InitializationSql({ journalMode });
+      db.exec(sql.replaceAll("'archive-entry'", "'unused-legacy-kind'"));
+      db.exec("INSERT INTO folders(id,kind,display_name,status,added_at) VALUES('f','local','Music','active',1)");
+      db.exec("INSERT INTO tracks(track_key,track_uid,folder_id,relative_path,file_name,title,metadata_parser_version,added_at,updated_at,search_text) VALUES(9,'t','f','a.mid','a.mid','hello','1',1,1,'hello')");
+      db.exec("CREATE TABLE saved_items(uid TEXT REFERENCES tracks(track_uid)); INSERT INTO saved_items VALUES('t')");
+      upgradeArchiveEntryTables(db);
+      db.exec(sql);
+      upgradeArchiveEntryTables(db);
+      assert.equal(db.prepare("SELECT track_key FROM tracks WHERE track_uid='t'").get().track_key, 9);
+      assert.equal(db.prepare("SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH 'hel'").get().rowid, 9);
+      assert.equal(db.prepare('SELECT uid FROM saved_items').get().uid, 't');
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+      const insert = db.prepare("INSERT INTO tracks(track_uid,folder_id,relative_path,source_kind,entry_key,file_name,title,metadata_parser_version,added_at,updated_at,search_text) VALUES(?,'f','set.zip','archive-entry',?,'a.mid','a','1',1,1,'a')");
+      insert.run('a', 'archive:set.zip#one/a.mid');
+      insert.run('b', 'archive:set.zip#two/a.mid');
+      assert.throws(() => insert.run('c', 'archive:set.zip#two/a.mid'), /UNIQUE/);
+    } finally {
+      db.close();
+    }
+  });
+}

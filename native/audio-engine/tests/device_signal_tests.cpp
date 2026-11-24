@@ -85,6 +85,22 @@ void testNetworkSender() {
   require(!sender->pop(packet), "Paused or receiving session still sent PCM");
 }
 
+void testLoopbackSilence() {
+  Session session;
+  require(session.open({48000, 2, 2, 128}), "Open loopback input");
+  auto &fifo = session.capture();
+  std::array<float, 2 * 256> packet{};
+  std::array<float, 2 * 128> output{};
+  for (const unsigned position : {0u, 48000u}) {
+    require(fifo.write(packet.data(), 2, 256, 1, position), "Write loopback packet");
+    fifo.silence(1);
+    for (unsigned i = 0; i < 12; ++i)
+      require(session.renderDevice(output, 128), "Drain loopback packet and silence");
+    require(fifo.state() == FifoState::idle && fifo.gaps() == 0 && fifo.underruns() == 0,
+            "An explicit silence boundary must absorb the gap between loopback packets");
+  }
+}
+
 void testVisualizerSourceHistory() {
   Visualizer display(48000, 256);
   display.setRate(240);
@@ -294,6 +310,7 @@ static void testRecoveryOutput() {
 int main() {
   try {
     testMix();
+    testLoopbackSilence();
     testNetworkSender();
     testVisualizerSourceHistory();
     testLocalDelay();

@@ -21,6 +21,7 @@ Para procesar el audio de una pestaña de Chrome o Edge, consulta la [guía de l
    4. Problemas de entrada, salida o efectos
    5. Discrepancia de salida multicanal
    6. Solución de problemas de visualización
+   7. Cómo informar de un problema ([GitHub Issues](https://github.com/Frieve-A/effetune/issues))
 3. Conexiones multicanal y hardware
    1. HDMI + receptor AV
    2. Interfaces sin controladores multicanal
@@ -111,6 +112,14 @@ EffeTune envía los canales en orden numérico, hasta 16 canales. Haz coincidir 
 
 En la aplicación de escritorio, **Usar aceleración por hardware** está activado de forma predeterminada. Si la ventana parpadea o deja de actualizarse, desactívalo en **Configuración > Configuración...** y reinicia EffeTune. Si los problemas de visualización se repiten, EffeTune lo desactiva y se reinicia automáticamente. Para volver a probarlo, activa la opción y reinicia la aplicación.
 
+### 2.7. Cómo informar de un problema
+
+Si el sonido se corta, guarda la información de diagnóstico mientras ocurre el problema, a ser posible antes de pulsar **Reiniciar audio**. Si ya lo has hecho, guarda los datos que queden. Al recargar la ventana se pierde su historial de actividad, y al reiniciar EffeTune se borra todo el historial. Si usas un controlador de audio nativo, reiniciar el audio también recarga la ventana.
+
+En EffeTune 2.20.0, elige **Información de diagnóstico…** en **Ayuda** en la aplicación de escritorio, en **Configuración** en la web o en el menú **⋮** de la esquina superior derecha en el móvil. En la parte superior de la ventana aparece un resumen fácil de leer: el sistema operativo, el controlador y los dispositivos de audio, si se convierte la tasa de muestreo y la latencia de cada búfer. Debajo, pulsa **Mostrar el contenido del archivo** para revisar el informe detallado antes de guardarlo. Incluye los nombres de los dispositivos de audio seleccionados. EffeTune sustituye los nombres y las rutas que reconoce, pero pueden quedar algunos. Puedes editar el archivo de texto antes de adjuntarlo.
+
+Abre un informe de error y arrastra el archivo al campo de descripción. Indica la hora local aproximada del fallo y qué hiciste cuando volvió el sonido, por ejemplo, traer la ventana al frente o pulsar un botón. Si usas una versión antigua o la extensión del navegador y el menú no está disponible, envía el informe sin archivo. [GitHub Issues](https://github.com/Frieve-A/effetune/issues)
+
 ---
 
 ## 3. Conexiones multicanal y hardware
@@ -194,6 +203,7 @@ Usa **Copiar ajustes PEQ por canal** cuando quieras pegar una corrección estát
 ---
 
 ## 7. Enlaces de referencia
+* [Cómo informar de un problema (GitHub Issues)](https://github.com/Frieve-A/effetune/issues)
 * EffeTune Desktop: <https://github.com/Frieve-A/effetune/releases>
 * Versión web de EffeTune: <https://effetune.frieve.com/effetune.html>
 * Medición de respuesta en frecuencia: <https://effetune.frieve.com/features/measurement/measurement.html>

@@ -53,7 +53,7 @@ class NetworkMusicHost extends EventEmitter {
     this.id = config.networkMusicDeviceId || `uuid:${crypto.randomUUID()}`;
     if (!config.networkMusicDeviceId) saveConfig({ ...config, networkMusicDeviceId: this.id });
     this.sharing = { enabled: config.networkMusicSharing?.enabled === true, folderIds: Array.isArray(config.networkMusicSharing?.folderIds) ? config.networkMusicSharing.folderIds : [] };
-    this.server = new MusicServer({ id: this.id, getName: getFriendlyName, discovery, browse: request => this.browseShared(request), resolveSource: uid => this.sharedSource(uid), getArtwork: async uid => (await this.getCatalog()).runtime.requestArtwork({ trackUid: uid, reason: 'detail' }), onDiagnostic });
+    this.server = new MusicServer({ id: this.id, getName: getFriendlyName, discovery, browse: request => this.browseShared(request), resolveSource: (uid, kind) => this.sharedSource(uid, kind), getArtwork: async uid => (await this.getCatalog()).runtime.requestArtwork({ trackUid: uid, reason: 'detail' }), onDiagnostic });
     this.fileServer = new MusicServer({ id: this.id, discovery, advertise: false, resolveSource: async uid => {
       const source = this.fileSources.get(uid);
       if (!source) throw fail('trackUnavailable', 'Open this file again to play it.');
@@ -487,12 +487,24 @@ class NetworkMusicHost extends EventEmitter {
     });
     this.configuring = result; return result;
   }
-  async sharedSource(uid) {
+  async sharedSource(uid, kind = 'media') {
     if (!this.sharing.enabled || !this.server.enabled) throw fail('sharingRequired', 'Enable library sharing in Settings > Config... > Network, select the music folder, and save before playing library tracks on another device.');
     const catalog = await this.getCatalog();
     const source = await catalog.runtime.resolvePlaybackSource(uid);
     if (!this.sharing.folderIds.includes(source.folderId)) throw fail('folderNotShared', 'Select this track’s folder in Settings > Config... > Network and save before playing it on another device.');
     if (source.sourceKind === 'cue-track' || source.startFrame != null || source.endFrame != null) throw fail('cueUnsupported', 'CUE tracks cannot be shared in this version. Choose a separate audio file.');
+    if (source.sourceKind === 'archive-entry' && kind !== 'artwork') {
+      const identity = await catalog.repository.getTrackStorageIdentity(uid);
+      const { getArchiveEntryPath } = await import('../js/library/archive/score-entries.js');
+      const archiveEntryPath = getArchiveEntryPath(identity?.relativePath, identity?.entryKey);
+      if (!archiveEntryPath || TYPES[path.extname(archiveEntryPath).toLowerCase()] !== 'audio/midi') {
+        throw fail('unsupportedFormat', 'This score format cannot be shared with a network player.');
+      }
+      const stat = await fs.stat(source.path);
+      const { withFileArchive } = require('./library-archive.cjs');
+      const bytes = await withFileArchive(source.path, stat.size, stat.mtimeMs, archive => archive.read(archiveEntryPath));
+      return { ...source, archiveEntryPath, bytes };
+    }
     return source;
   }
   async sharedTrack(row, address, source = null, parentId = this.viewContainer('tracks').id) {
@@ -502,7 +514,14 @@ class NetworkMusicHost extends EventEmitter {
     if (!identity || !this.sharing.folderIds.includes(identity.folderId)) throw fail('trackUnavailable', 'The selected track is unavailable.');
     const resource = this.server.resource(row.trackUid, address);
     const token = this.server.trackTokens.get(row.trackUid);
-    const mime = TYPES[path.extname(identity.path || identity.relativePath || '').toLowerCase()];
+    const archived = identity.sourceKind === 'archive-entry';
+    let resourceName = identity.path || identity.relativePath || '';
+    if (archived) {
+      const { getArchiveEntryPath } = await import('../js/library/archive/score-entries.js');
+      resourceName = identity.archiveEntryPath || getArchiveEntryPath(identity.relativePath, identity.entryKey) || '';
+    }
+    const mime = TYPES[path.extname(resourceName).toLowerCase()];
+    const size = archived ? identity.bytes?.byteLength ?? '' : identity.byteLength ?? identity.size ?? '';
     const playable = Boolean(mime) && identity.sourceKind !== 'cue-track' && identity.startFrame == null && identity.endFrame == null;
     const seconds = Number(row.durationSec) || 0;
     const durationText = `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -517,7 +536,7 @@ class NetworkMusicHost extends EventEmitter {
       this.containers.get(target.id).entityKey = key;
       links[`${type}ObjectId`] = target.id;
     }
-    return { id, parentId, refId: reference ? canonicalId : '', ...links, title: row.title || 'Track', artist: row.artist || '', album: row.album || '', genre: row.genre || '', trackNo: row.trackNo, date: row.year ? String(row.year) : '', addedAt: row.addedAt, displayPath: row.displayPath ?? identity.relativePath ?? '', upnpClass: CLASSES.track, artwork: resource.artwork, uri: playable ? resource.uri : '', resources: playable ? [{ uri: resource.uri, protocolInfo: `http-get:*:${mime}:*`, size: identity.byteLength ?? identity.size ?? '', duration: durationText }] : [], isContainer: false, playable };
+    return { id, parentId, refId: reference ? canonicalId : '', ...links, title: row.title || 'Track', artist: row.artist || '', album: row.album || '', genre: row.genre || '', trackNo: row.trackNo, date: row.year ? String(row.year) : '', addedAt: row.addedAt, displayPath: row.displayPath ?? identity.relativePath ?? '', upnpClass: CLASSES.track, artwork: resource.artwork, uri: playable ? resource.uri : '', resources: playable ? [{ uri: resource.uri, protocolInfo: `http-get:*:${mime}:*`, size, duration: durationText }] : [], isContainer: false, playable };
   }
   container(data, title, parentId = '0', metadata = {}) {
     const key = JSON.stringify(data); let id = this.containerKeys.get(key);

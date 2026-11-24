@@ -44,14 +44,42 @@ void publishPreparedBank(DeviceHost &host, std::shared_ptr<Pipeline::AssetChange
                        return;
                      }
                      host.beginAsset();
-                     if (!host.submit([change, ok](Session &) { *ok = change->apply(); },
-                                      [&host, change, ok, done = std::move(done)]() mutable {
-                                        host.endAsset();
-                                        if (*ok)
-                                          change->finish();
-                                        done(*ok);
-                                      }))
+                     if (!host.submit(
+                             [change, ok](Session &session) {
+                               *ok = change->apply();
+                               if (*ok && session.pipeline())
+                                 session.power().mutation(*session.pipeline());
+                             },
+                             [&host, change, ok, done = std::move(done)]() mutable {
+                               host.endAsset();
+                               if (*ok && !change->deferred())
+                                 change->finish();
+                               done(*ok);
+                             }))
                        throw std::runtime_error("audio command queue full");
+                   }))
+    throw std::runtime_error("audio command queue full");
+}
+
+void submitBank(DeviceHost &host, std::shared_ptr<Pipeline::AssetChange> change,
+                std::function<void(bool)> done) {
+  auto captured = std::make_shared<bool>(false);
+  host.beginAsset();
+  if (!host.submit([change, captured](Session &) { *captured = change->capture(); },
+                   [&host, change, captured, done = std::move(done)]() mutable {
+                     if (!*captured || !change->prepare() || change->awaitsPages()) {
+                       host.endAsset();
+                       done(false);
+                       return;
+                     }
+                     publishPreparedBank(host, change,
+                                         [&host, change, done = std::move(done)](bool ok) mutable {
+                                           if (!ok && change->stale()) {
+                                             submitBank(host, change, std::move(done));
+                                             return;
+                                           }
+                                           done(ok);
+                                         });
                    }))
     throw std::runtime_error("audio command queue full");
 }
@@ -110,7 +138,7 @@ bool handleSampleStream(DeviceHost &host, Session &session, const Frame &frame) 
     if (current && pipeline->pendingStream(id))
       pipeline->cancelStream(id);
     else if (current)
-      pipeline->clearAsset(id, 0);
+      submitBank(host, pipeline->assetChange(id, 0, std::nullopt), [](bool) {});
     return true;
   }
   Object result{{"type", publish ? "sfzStreamPagesPublished" : "sfzStreamRequests"},

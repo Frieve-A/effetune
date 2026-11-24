@@ -127,6 +127,7 @@ export async function updateApplicationMenu(isElectron) {
       'help.tour': { label: t('tour.menu') },
       'help.discord': { label: 'Discord' },
       'help.support': { label: t('menu.help.support') },
+      'help.diagnostics': { label: t('menu.help.diagnostics') },
       'help.about': { label: t('menu.help.about') }
     };
     

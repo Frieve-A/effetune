@@ -612,7 +612,7 @@ test('native IR hydration resolves host PCM and a genuine control edit owns the 
   } finally { decoded.resolve(null); plugin.cleanup(); }
 });
 
-test('first parameter commit after native hydration retains IR residency until routing changes', async () => {
+test('parameter and routing commits after native hydration retain IR residency', async () => {
   const irId = 'b'.repeat(24), entry = { irId, fileLabel: 'resident.wav', channels: 1 };
   const { Plugin, window } = loadPlugin({ libraryService: {
     store: { async updateAnalysis() {} }, get: () => entry,
@@ -631,20 +631,23 @@ test('first parameter commit after native hydration retains IR residency until r
       pipeline: prepareAndroidPipeline([plugin], { sampleRate: 48000 }).plugins,
       assetRefs: { [key]: { id: 'original-ir.bin' } },
       assetDefinitions: { [key]: { id: 'original-ir.bin', externalAssetSignature: asset.externalAssetSignature } } };
-    const bridge = { async request(command) { commands.push(command); return snapshot; } };
+    const bridge = { async request(command, payload) { commands.push({ command, payload }); return snapshot; } };
     Object.assign(manager, { snapshot, bridge, pipelineA: [plugin], pipelineB: [], catalogPublished: true,
       pendingMutation: Promise.resolve(), nativeAssets: new AndroidAssets(bridge),
       pipelineProcessor: { setPipeline() {} }, acceptSnapshot() {} });
     await manager.hydratePipeline({ nextPluginId: 8, createPlugin() { throw new Error('Resident plugin replaced'); } });
     plugin.setParameters({ dw: -6 });
     await manager.rebuildPipeline();
-    assert.deepEqual(commands, ['pipeline.set']);
+    assert.deepEqual(commands.map(request => request.command), ['pipeline.set']);
     assert.equal(manager.nativeAssets.authoritative.get('7:0'), 'original-ir.bin');
     assert.equal(manager.nativeAssets.resident.get('7:0'), asset);
 
     plugin.outputBus = 2;
     await manager.rebuildPipeline();
-    assert.ok(commands.includes('pipeline.asset.commit'), 'a changed graph still invalidates residency');
+    assert.deepEqual(commands.map(request => request.command), ['pipeline.set', 'pipeline.set']);
+    assert.equal(commands[1].payload.plugins[0].parameters.outputBus, 2);
+    assert.equal(manager.nativeAssets.authoritative.get('7:0'), 'original-ir.bin');
+    assert.equal(manager.nativeAssets.resident.get('7:0'), asset);
   } finally { globalThis.window = previousWindow; plugin.cleanup(); }
 });
 

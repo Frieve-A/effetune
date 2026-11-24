@@ -24,7 +24,7 @@ Gapless playback is not guaranteed, and technical metadata can remain unknown un
 
 Enable **Allow UPnP AV / DLNA playback on this network** under **Settings > Config... > Network**. In your controller app, choose EffeTune's UPnP AV / DLNA destination and select music from a server that the computer can reach. OpenHome access is a separate permission and need not be enabled.
 
-This destination receives MP3, FLAC, PCM WAV, and AAC (ADTS or MP4/M4A) over HTTP or HTTPS. Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus), and audio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC) are also supported. A supported file type still needs a supported codec; ALAC is not supported.
+This destination receives MP3, FLAC, PCM WAV, and AAC (ADTS or MP4/M4A) over HTTP or HTTPS. Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus), and audio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC) are also supported. A supported file type still needs a supported codec; ALAC is not supported. EffeTune also receives MIDI (`.mid`, `.midi`, `.kar`), including tracks inside archives in a shared EffeTune library. For MIDI playback through EffeTune’s effects, add **SoundFont Player** and load an instrument on the receiving computer as you would for local playback.
 
 Controllers can play, pause, stop, skip, seek when the source allows it, and adjust the player's volume or mute. The player volume also affects local and OpenHome music playback; it does not change the computer's volume or effect settings. Selecting a new track replaces the current player queue with that track. The controller and EffeTune show the same playback state. When supplied by the music server, track tags and source audio details are also available in Visualizer’s **Track information** item.
 
@@ -124,7 +124,7 @@ If a reachable UPnP device is not discovered, use **Add a network device manuall
 
 ## Network playback limits
 
-Automatic server discovery and music-folder sharing require the desktop app. Playback support and seeking depend on the destination and source format. EffeTune does not convert network audio; a Subsonic server may provide a converted stream. CUE sub-tracks cannot be sent as separate network tracks. Gapless and synchronized multi-room playback are not guaranteed. If a server or player disappears, check that it is awake, reachable, and allowed through the private-network firewall, then refresh the device list. Sharing stops when the source app exits or its computer sleeps.
+Automatic server discovery and music-folder sharing require the desktop app. Playback support and seeking depend on the destination and source format. EffeTune does not convert network audio; a Subsonic server may provide a converted stream. CUE sub-tracks cannot be sent as separate network tracks. MusicXML files cannot be streamed from a shared library. Gapless and synchronized multi-room playback are not guaranteed. If a server or player disappears, check that it is awake, reachable, and allowed through the private-network firewall, then refresh the device list. Sharing stops when the source app exits or its computer sleeps.
 
 When sending audio to network speakers, keep these points in mind:
 

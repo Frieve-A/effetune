@@ -2,6 +2,7 @@
  * Audio integration module for EffeTune
  * Provides audio device functionality in Electron and browser builds
  */
+import { recordDiagnosticEvent, rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
 import {
   mergeWebAudioPreferences,
   normalizeWebAudioPreferences
@@ -17,7 +18,8 @@ import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from '../audio
 import { evaluateSystemAudioGuard } from '../audio/system-audio-guard.js';
 import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 import { bindMidiDeviceSettings } from '../midi/device-settings.js';
-import { nativeDriverFor, driverName, listDriverDevices, readDriverMemory, selectDriverDevices } from './audio-drivers.js';
+import { computeAutoTarget, getLoudnessClient } from '../ui/audio-player/replay-gain.js';
+import { nativeDriverFor, driverName, listDriverDevices, selectDriverDevices } from './audio-drivers.js';
 export { isPlayerPreferenceOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
@@ -195,7 +197,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     const nativeDriver = nativeDriverFor(platform);
     let driver = driverBridge && audioPreferences.audioDriver === nativeDriver ? nativeDriver : 'standard';
     const originalDriver = driver;
-    const memory = readDriverMemory(audioPreferences.audioDriverDeviceMemory);
     const translate = key => window.uiManager?.t(key);
     const defaultDeviceLabel = translate('dialog.audioConfig.driver.defaultDevice');
     const queryNativeDevices = async () => {
@@ -325,12 +326,18 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <div class="device-section">
               <label for="replay-gain-mode">${t('dialog.audioConfig.replayGain')}</label>
               <select id="replay-gain-mode"></select>
+              <label for="replay-gain-target">${t('dialog.audioConfig.replayGainTarget')} <output id="replay-gain-target-value" aria-live="polite"></output></label>
+              <select id="replay-gain-target"></select>
               <label for="replay-gain-preamp">${t('dialog.audioConfig.replayGainPreamp')}</label>
               <input type="number" id="replay-gain-preamp" min="-15" max="15" step="0.5" value="${audioPreferences.replayGainPreampDb}">
+              <label for="replay-gain-coverage">${t('dialog.audioConfig.replayGainAutoCoverage')}</label>
+              <input type="number" id="replay-gain-coverage" min="1" max="100" step="1" value="${audioPreferences.replayGainAutoCoverage}">
               <div class="checkbox-container">
                 <input type="checkbox" id="replay-gain-prevent-clipping" ${audioPreferences.replayGainPreventClipping ? 'checked' : ''}>
                 <label for="replay-gain-prevent-clipping">${t('dialog.audioConfig.replayGainPreventClipping')}</label>
               </div>
+              <label for="replay-gain-ceiling">${t('dialog.audioConfig.replayGainPeakCeiling')}</label>
+              <input type="number" id="replay-gain-ceiling" min="-15" max="0" step="0.5" value="${audioPreferences.replayGainPeakCeilingDb}">
             </div>
           </div>` : ''}
         </div>
@@ -526,13 +533,45 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         audioPreferences.replayGainMode,
         value => t(`dialog.audioConfig.replayGain.${value}`)
       );
-      const updateReplayGainControls = () => {
+      const target = document.getElementById('replay-gain-target');
+      const coverage = document.getElementById('replay-gain-coverage');
+      const clipping = document.getElementById('replay-gain-prevent-clipping');
+      const ceiling = document.getElementById('replay-gain-ceiling');
+      const targetValue = document.getElementById('replay-gain-target-value');
+      replaceValueOptions(target, ['manual', 'auto'], audioPreferences.replayGainTarget,
+        value => t(`dialog.audioConfig.replayGainTarget.${value}`));
+      let previewVersion = 0;
+      const updateReplayGainControls = async () => {
+        const version = ++previewVersion;
         const disabled = replayGainModeSelect.value === 'off';
-        document.getElementById('replay-gain-preamp').disabled = disabled;
-        document.getElementById('replay-gain-prevent-clipping').disabled = disabled;
+        const auto = target.value === 'auto';
+        target.disabled = disabled;
+        document.getElementById('replay-gain-preamp').disabled = disabled || auto;
+        coverage.disabled = disabled || !auto;
+        clipping.disabled = disabled;
+        ceiling.disabled = disabled || (!auto && !clipping.checked);
+        targetValue.textContent = '';
+        if (!disabled && auto) {
+          try {
+            const prefs = normalizeWebAudioPreferences({
+              replayGainAutoCoverage: parseFloat(coverage.value),
+              replayGainPeakCeilingDb: parseFloat(ceiling.value)
+            });
+            const client = await getLoudnessClient();
+            const stats = await client?.getLoudnessStats({ coverage: prefs.replayGainAutoCoverage });
+            if (version === previewVersion) {
+              const level = computeAutoTarget({ mode: replayGainModeSelect.value, peakCeilingDb: prefs.replayGainPeakCeilingDb }, stats);
+              targetValue.textContent = `${level.toFixed(1)} LUFS`;
+            }
+          } catch (error) {
+            console.warn('Unable to preview the automatic loudness target:', error);
+          }
+        }
       };
-      replayGainModeSelect.addEventListener('change', updateReplayGainControls);
-      updateReplayGainControls();
+      for (const control of [replayGainModeSelect, target, clipping, coverage, ceiling]) {
+        control.addEventListener('change', updateReplayGainControls);
+      }
+      void updateReplayGainControls();
     }
 
     const supportMessage = document.getElementById('output-device-support-message');
@@ -582,7 +621,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       if (!driverSelect) return;
       const revision = ++refreshRevision, next = driverSelect.value;
       const previous = selectedDevices();
-      if (driver !== next) memory[driver] = previous;
       loadingDriver = true;
       applyButton.disabled = true;
       try {
@@ -593,8 +631,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         inputDevices = listing.devices.filter(device => device.kind === 'audioinput');
         outputDevices = listing.devices.filter(device => device.kind === 'audiooutput');
         inputDeviceOptions = [...inputExtras, ...inputDevices];
-        const saved = driver === next ? previous : memory[next];
-        const selected = selectDriverDevices(inputDeviceOptions, outputDevices, previous, saved);
+        const selected = selectDriverDevices(inputDeviceOptions, outputDevices, previous);
         replaceOptions(inputSelect, inputDeviceOptions, selected.input);
         replaceOptions(outputSelect, outputDevices, selected.output);
         driver = next;
@@ -675,6 +712,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const inputDevice = inputDeviceOptions.find(d => d.deviceId === inputDeviceSelect.value);
       let selectedOutputDeviceId = outputDeviceSelect.disabled ? 'default' : outputDeviceSelect.value;
       let outputDevice = outputDevices.find(d => d.deviceId === selectedOutputDeviceId);
+      let replacedOutput = null;
+      const recordReplacement = (reason, errorName) => {
+        replacedOutput = { id: selectedOutputDeviceId, label: outputDevice?.label || '' };
+        rememberDiagnosticNames('id', [replacedOutput.id]);
+        rememberDiagnosticNames('device', [replacedOutput.label]);
+        recordDiagnosticEvent('outputFallback', { reason, errorName, result: 'unknown',
+          outputSelection: 'explicit', outputDeviceLabel: replacedOutput.label });
+      };
       const selectedSampleRate = parseInt(sampleRateSelect.value, 10);
       const useInputWithPlayer = useInputWithPlayerCheckbox.checked;
       const outputChannels = parseInt(outputChannelsSelect.value, 10);
@@ -685,6 +730,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         outputChannels > 2 &&
         !outputSupport.hasAudioContextSink
       ) {
+        recordReplacement('multichannelSinkUnavailable');
         console.warn('Output device selection requires AudioContext.setSinkId for multichannel output, using default output.');
         selectedOutputDeviceId = 'default';
         outputDevice = outputDevices.find(d => d.deviceId === 'default') || null;
@@ -697,6 +743,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             outputDevice = selectedDevice;
           }
         } catch (error) {
+          recordReplacement('selectionRejected', error?.name);
           console.warn('Failed to select audio output device, using default output:', error);
           selectedOutputDeviceId = 'default';
           outputDevice = outputDevices.find(d => d.deviceId === 'default') || null;
@@ -705,16 +752,16 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       // Save preferences
       const preferences = {
-        ...(driverBridge && driver !== originalDriver ? {
-          audioDriver: driver,
-          audioDriverDeviceMemory: JSON.stringify(Object.fromEntries(Object.entries(memory).filter(([key]) => key !== driver)))
-        } : {}),
+        ...(driverBridge && driver !== originalDriver ? { audioDriver: driver } : {}),
         ...(!androidHost ? {
           midiInputDeviceKey: document.getElementById('midi-input-device').value,
           midiOutputDeviceKey: document.getElementById('midi-output-device').value,
           replayGainMode: document.getElementById('replay-gain-mode').value,
+          replayGainTarget: document.getElementById('replay-gain-target').value,
           replayGainPreampDb: parseFloat(document.getElementById('replay-gain-preamp').value),
-          replayGainPreventClipping: document.getElementById('replay-gain-prevent-clipping').checked
+          replayGainAutoCoverage: parseFloat(document.getElementById('replay-gain-coverage').value),
+          replayGainPreventClipping: document.getElementById('replay-gain-prevent-clipping').checked,
+          replayGainPeakCeilingDb: parseFloat(document.getElementById('replay-gain-ceiling').value)
         } : {}),
         inputDeviceId: inputDeviceSelect.value,
         outputDeviceId: selectedOutputDeviceId,
@@ -789,7 +836,13 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         closeDialog();
         let resetResult = '';
         try {
-          resetResult = await window.audioManager.reset(appliedPreferences);
+          const manager = window.audioManager.contextManager;
+          if (manager) manager.pendingDiagnosticOutput = replacedOutput;
+          try {
+            resetResult = await window.audioManager.reset(appliedPreferences);
+          } finally {
+            if (manager && manager.pendingDiagnosticOutput === replacedOutput) manager.pendingDiagnosticOutput = null;
+          }
           if (resetResult) {
             console.error('Failed to apply audio preferences:', resetResult);
           }
@@ -816,10 +869,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       window.audioPreferences = appliedPreferences;
       if (window.electronIntegration) window.electronIntegration.audioPreferences = appliedPreferences;
 
-      // The main process reloads the window with the saved devices; silence
-      // the output before that teardown.
-      if (isElectron) await window.audioManager?.fadeOutOutputForTeardown?.();
-
       // Update AudioWorklet with the new channel configuration
       if (isElectron && window.audioManager && window.audioManager.updateAudioConfig) {
         window.audioManager.updateAudioConfig(appliedPreferences);
@@ -839,33 +888,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         callback(appliedPreferences);
       }
       
-      if (!isElectron) {
-        return;
-      }
-
-      // Show message about reloading
-      const messageElement = document.createElement('div');
-      messageElement.style.position = 'fixed';
-      messageElement.style.top = '50%';
-      messageElement.style.left = '50%';
-      messageElement.style.transform = 'translate(-50%, -50%)';
-      messageElement.style.backgroundColor = 'var(--et-surface-5)';
-      messageElement.style.color = 'var(--et-text-primary)';
-      messageElement.style.padding = '20px';
-      messageElement.style.borderRadius = '8px';
-      messageElement.style.zIndex = '1000';
-      messageElement.style.textAlign = 'center';
-      messageElement.innerHTML = `<h3>${t('dialog.audioConfig.updatedTitle')}</h3><p>${t('dialog.audioConfig.updatedMessage')}</p>`;
-      document.body.appendChild(messageElement);
-      
-      // Wait a moment to show the message
-      // Note: We don't need to reload here because the main process will handle it
-      // The main process already has a timeout to reload after saving preferences
-      setTimeout(() => {
-        // Just log that we're waiting for the main process to reload
-        console.log('Waiting for main process to reload the window...');
-        // The main process will reload after 3 seconds
-      }, 1500);
+      if (isElectron) window.uiManager?.setError?.('dialog.audioConfig.updatedMessage');
       } finally {
         applyInProgress = false;
       }

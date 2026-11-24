@@ -536,3 +536,24 @@ test('client preserves a session append failure when cleanup also fails', async 
   ]);
   worker.terminate();
 });
+
+test('worker preserves archive playback errors and sanitizes unrelated failures', async t => {
+  const { zip } = await import('../helpers/archive-fixtures.mjs');
+  const { MessageChannel } = await import('node:worker_threads');
+  const { port1, port2 } = new MessageChannel();
+  const files = { missing: zip([['other.mid', 'score']]), damaged: Buffer.from('broken') };
+  const repository = { queryTracks() {}, close() {}, getTrackStorageIdentity(uid) {
+    return { folderId: 'folder', relativePath: 'set.zip', entryKey: 'archive:set.zip#piece.mid',
+      sourceKind: 'archive-entry', trackUid: uid };
+  } };
+  const runtime = { close() {}, resolveTrackFile(track) {
+    if (!files[track.trackUid]) throw new Error('Unexpected storage failure');
+    return new File([files[track.trackUid]], 'set.zip');
+  } };
+  const uninstall = installWebCatalogWorker(port2, { repository, runtime });
+  const client = new WebCatalogRepositoryClient({ worker: port1 });
+  t.after(() => { uninstall(); port1.close(); port2.close(); });
+  for (const [trackUid, code] of [['missing', 'sourceUnavailable'], ['damaged', 'archive-corrupt'], ['other', 'workerFailure']]) {
+    await assert.rejects(client.resolveSequenceEntrySource({ trackUid }), { code });
+  }
+});

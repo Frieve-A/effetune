@@ -1,3 +1,4 @@
+import { getArchiveEntryPath } from '../archive/score-entries.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import {
   metadataCompletionMatchesClaim,
@@ -75,6 +76,12 @@ export class MetadataParseService {
     });
   }
 
+  parseCandidate(candidate, signal) {
+    const { path, relativePath, sourceKind, entryKey } = candidate;
+    const archive = sourceKind === 'archive-entry' ? { archiveEntryPath: getArchiveEntryPath(relativePath, entryKey) } : {};
+    return this.parser.parse({ path, relativePath, ...archive, skipCovers: true, signal });
+  }
+
   async process(candidate, { scanReason = 'automatic', signal } = {}) {
     if (!metadataParseEligibility(candidate, { scanReason })) {
       return Object.freeze({ status: 'skipped', reason: metadataSkipReason(candidate, scanReason) });
@@ -112,12 +119,7 @@ export class MetadataParseService {
     let metadata;
     try {
       throwIfAborted(signal);
-      metadata = candidate.metadata ?? await this.parser.parse({
-          path: candidate.path,
-          relativePath: candidate.relativePath,
-          skipCovers: true,
-          signal
-        });
+      metadata = candidate.metadata ?? await this.parseCandidate(candidate, signal);
       throwIfAborted(signal);
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError') {
@@ -225,12 +227,7 @@ export class MetadataParseService {
       let metadata;
       try {
         throwIfAborted(signal);
-        metadata = item.candidate.metadata ?? await this.parser.parse({
-            path: item.candidate.path,
-            relativePath: item.candidate.relativePath,
-            skipCovers: true,
-            signal
-          });
+        metadata = item.candidate.metadata ?? await this.parseCandidate(item.candidate, signal);
         throwIfAborted(signal);
       } catch (error) {
         const interrupted = signal?.aborted || error?.name === 'AbortError';

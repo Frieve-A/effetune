@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
+import { File as NodeFile } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
+import { zip } from '../helpers/archive-fixtures.mjs';
 import * as appBootstrap from '../../js/app-bootstrap.js';
 import * as rendererStartup from '../../js/startup.js';
 import { resetWebAppConfigRuntimeForTests } from '../../js/electron/webSettingsStorage.js';
 import { createUpdateNotification } from '../../js/update-notification.js';
+import { expandArchivePlaybackSelection } from '../../js/ui/audio-player/archive-playback-selection.js';
 
 let appModulePromise = null;
 
@@ -331,6 +334,7 @@ function createDependencies(calls, options = {}) {
   };
   const uiManager = {
     pipelineManager,
+    async restorePlaybackSession() {},
     expandedPlugins: new Set(),
     audioPlayer: options.audioPlayer ?? null,
     updateLoadingProgress(percent) { calls.push(['ui.updateLoadingProgress', percent]); },
@@ -939,6 +943,68 @@ test('startup stays private until localization settles and also reveals initiali
   }
 });
 
+test('startup admits ordinary music as before and presents the window before an archive selection', async () => {
+  const archiveBytes = zip([['Set/First.mid', 'first'], ['Set/Second.kar', 'second']], 0);
+  for (const result of ['ordinary', 'load-false', 'replace', 'cancel', 'error']) {
+    await withAppModule({}, async ({ calls, document, mod, timers, window }) => {
+      const classes = new Set(['app-starting']);
+      document.documentElement = { classList: { remove: name => classes.delete(name) } };
+      const audioPreferences = { useInputWithPlayer: true };
+      window.electronIntegration = { isElectron: true, audioPreferences };
+      const ordinary = result === 'ordinary';
+      const bytes = result === 'error' ? Buffer.from('corrupt archive') : archiveBytes;
+      const music = { path: 'D:\\Music\\Song.wav', name: 'Song.wav', byteLength: 5 };
+      const archive = { path: 'D:\\Music\\Scores.zip', name: 'Scores.zip', byteLength: bytes.length };
+      window.electronAPI.signalReadyForMusicFiles = async () => ordinary ? [music] : [music, archive];
+      window.electronAPI.signalReadyForPresentation = () => calls.push(['present']);
+      const deps = createDependencies(calls);
+      deps.audioManager.useInputWithPlayer = true;
+      const previousPlayer = { play() { calls.push(['played']); } };
+      deps.uiManager.audioPlayer = previousPlayer;
+      deps.uiManager.createAudioPlayer = async (descriptors, _replace, { beforeLoad } = {}) => {
+        calls.push(['admit', classes.has('app-starting'), audioPreferences.useInputWithPlayer]);
+        if (ordinary) return previousPlayer;
+        const selected = await expandArchivePlaybackSelection([
+          new NodeFile(['audio'], descriptors[0].name), new NodeFile([bytes], descriptors[1].name)
+        ], {
+          chooseEntries(choices) {
+            calls.push(['choose', choices.map(entry => entry.path), audioPreferences.useInputWithPlayer]);
+            return result === 'cancel' ? [] : choices;
+          },
+          reportError: key => calls.push(['selectionError', key])
+        });
+        if (selected.length) {
+          beforeLoad();
+          calls.push(['load', selected.map(file => file.name), audioPreferences.useInputWithPlayer]);
+          if (result === 'load-false') return false;
+        }
+        return previousPlayer;
+      };
+
+      await new mod.App(deps).initialize();
+      const order = calls.map(([step]) => step);
+      assert.equal(order.indexOf('admit') < order.indexOf('present'), ordinary);
+      assert.deepEqual(calls.find(([step]) => step === 'admit'), ['admit', ordinary, !ordinary]);
+      if (!ordinary && result !== 'error') {
+        assert.ok(order.indexOf('choose') > order.indexOf('present'));
+        assert.deepEqual(calls.find(([step]) => step === 'choose'), ['choose', ['Set/First.mid', 'Set/Second.kar'], true]);
+      }
+      if (['load-false', 'replace'].includes(result)) {
+        assert.deepEqual(calls.find(([step]) => step === 'load'), ['load', ['Song.wav', 'First.mid', 'Second.kar'], false]);
+      } else assert.ok(!order.includes('load'));
+      if (result === 'error') assert.ok(order.includes('selectionError'));
+      if (result === 'replace') deps.uiManager.audioPlayer = { play() { calls.push(['playedReplacement']); } };
+      await runTimers(timers);
+      assert.equal(calls.some(([step]) => step === 'played'), ordinary);
+      assert.ok(!calls.some(([step]) => step === 'playedReplacement'));
+      const preservesInput = result === 'cancel' || result === 'error';
+      assert.equal(audioPreferences.useInputWithPlayer, preservesInput);
+      assert.equal(deps.audioManager.useInputWithPlayer, preservesInput);
+      assert.deepEqual(window.pendingMusicFiles, []);
+    });
+  }
+});
+
 test('initializeAudioWorklet initializes on the first navigation and honors forced skip', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true };
@@ -1352,6 +1418,21 @@ test('web update preparation preserves both pipelines and restores audio after a
     const app = new mod.App(deps);
     await assert.rejects(app.prepareWebUpdate(), /storage unavailable/);
     assert.equal(faded, false);
+  });
+});
+
+test('a failed pipeline-preserving reload restores audio and replaces the reload notification', async () => {
+  await withAppModule({
+    electronAPI: { async reloadWindow() { return { success: false }; } }
+  }, async ({ calls, mod }) => {
+    const dependencies = createDependencies(calls);
+    const fades = [];
+    dependencies.audioManager.fadeOutOutputForTeardown = async () => { fades.push('out'); return 7; };
+    dependencies.audioManager.fadeInOutputForToken = token => fades.push(token);
+    await new mod.App(dependencies).reloadWithPipelineState();
+    assert.deepEqual(fades, ['out', 7]);
+    assert.ok(calls.some(([method, key, isError]) =>
+      method === 'ui.setError' && key === 'error.pipelineReloadFailed' && isError));
   });
 });
 
@@ -2409,13 +2490,18 @@ test('output-device fallbacks handle reset, retry, and no-op paths', async () =>
   await withAppModule({
     devices: [{ kind: 'audiooutput', deviceId: 'found', label: 'Found' }]
   }, async ({ calls, mod, window }) => {
+    let audioDriver = 'wasapi';
     window.electronIntegration = {
       isElectronEnvironment: () => true,
       async loadAudioPreferences() {
-        return { outputDeviceId: 'found', outputDeviceLabel: 'Found' };
+        return { audioDriver, outputDeviceId: 'found', outputDeviceLabel: 'Found' };
       }
     };
     const app = new mod.App(createDependencies(calls, { currentSink: undefined }));
+    // A saved native-driver device is left for the reload instead of being reconciled here.
+    await app._handleOutputDeviceChangeImpl();
+    assert.equal(calls.some(call => call[0] === 'audio.reset'), false);
+    audioDriver = 'standard';
     await app._handleOutputDeviceChangeImpl();
     assert.equal(calls.some(call => call[0] === 'audio.reset'), true);
   });

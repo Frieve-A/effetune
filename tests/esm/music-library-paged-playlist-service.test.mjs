@@ -292,7 +292,7 @@ test('portable Web export preserves root names for tracks from multiple folders'
   assert.match(output, /Library B\/Album\/Song\.flac/);
 });
 
-test('M3U8 and XSPF exports skip resolved and unresolved CUE tracks without resolving physical paths', async () => {
+test('M3U8 and XSPF exports skip resolved and unresolved CUE and archive tracks', async () => {
   for (const format of ['m3u8', 'xspf']) {
     const resolvedSources = [];
     const client = createServiceClient({
@@ -302,6 +302,7 @@ test('M3U8 and XSPF exports skip resolved and unresolved CUE tracks without reso
           items: [
             { trackUid: 'plain' },
             { trackUid: 'cue-resolved' },
+            { trackUid: 'archive-resolved' },
             {
               unresolved: {
                 sourceKind: 'cue-track',
@@ -310,12 +311,16 @@ test('M3U8 and XSPF exports skip resolved and unresolved CUE tracks without reso
                 title: 'Cue Two'
               }
             },
+            { unresolved: { cueProvenance: { entryKey: 'archive:Collection.zip#Set/Two.mid' }, sourceLine: 'Collection.zip' } },
             { unresolved: { sourceLine: 'missing.flac', title: 'Missing' } }
           ],
           nextPosition: null
         };
       },
       async getTrack(trackUid) {
+        if (trackUid === 'archive-resolved') {
+          return { trackUid, sourceKind: 'archive-entry', entryKey: 'archive:Collection.zip#Set/One.mid', relativePath: 'Collection.zip' };
+        }
         return trackUid === 'cue-resolved'
           ? {
               trackUid,
@@ -348,10 +353,10 @@ test('M3U8 and XSPF exports skip resolved and unresolved CUE tracks without reso
     });
 
     const output = writes.join('');
-    assert.deepEqual(summary, { exportedCount: 2, skippedCueCount: 2 });
+    assert.deepEqual(summary, { exportedCount: 2, skippedTrackCount: 4 });
     assert.deepEqual(resolvedSources, ['plain']);
     assert.match(output, /plain\.flac/);
     assert.match(output, /missing\.flac/);
-    assert.doesNotMatch(output, /Album\.flac|Cue One|Cue Two|Private/);
+    assert.doesNotMatch(output, /Album\.flac|Cue One|Cue Two|Private|Collection\.zip/);
   }
 });

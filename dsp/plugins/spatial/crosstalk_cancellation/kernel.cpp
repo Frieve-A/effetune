@@ -1,6 +1,6 @@
 #include "effetune/kernel.h"
 #include "CrosstalkCancellationPluginParams.h"
-#include "effetune/dsp/partitioned_convolver.h"
+#include "convolver_asset.h"
 #include "nothrow_storage.h"
 
 #if defined(ET_SIMD) && defined(__wasm_simd128__)
@@ -32,7 +32,6 @@ constexpr std::uint32_t kFadeFrames = 128u;
 constexpr std::uint32_t kDelayTransitionFrames = 256u;
 constexpr std::uint32_t kReplacementDryReady = 1u << 16u;
 constexpr float kReplacementDryLatencyMode = -1.0F;
-constexpr std::size_t kAdmissionHeadroom = 1u * 1024u * 1024u;
 
 std::uint32_t readU32(const std::uint8_t *bytes) noexcept {
   return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8u) |
@@ -57,6 +56,9 @@ bool supportedHeadBlock(std::uint32_t value) noexcept {
 } // namespace
 
 class CrosstalkCancellationKernel final : public PluginKernel {
+  struct Prepared final : dsp::PreparedConvolverAsset {
+    dsp::ConvolverAssetStorage discarded;
+  };
   EFFETUNE_PARAMS(generated::CrosstalkCancellationPluginParams)
 
 public:
@@ -88,7 +90,7 @@ public:
   [[nodiscard]] bool preparedSuccessfully() const noexcept override { return prepared_; }
 
   void reset() noexcept override {
-    convolver_.reset();
+    storage_.convolver.reset();
     resetRuntime();
   }
 
@@ -109,9 +111,9 @@ public:
     if (convolverRunning) {
       std::memcpy(wet_audio_.data(), audio,
                   static_cast<std::size_t>(kProcessingChannels) * frameCount * sizeof(float));
-      const dsp::ConvolverPreparationState stateBefore = convolver_.state();
+      const dsp::ConvolverPreparationState stateBefore = storage_.convolver.state();
       const std::uint64_t historyBefore = stream_history_samples_;
-      convolver_.process(wet_audio_.data(), kProcessingChannels, frameCount);
+      storage_.convolver.process(wet_audio_.data(), kProcessingChannels, frameCount);
       const bool convolverWasWarmingOrActive =
           stateBefore == dsp::ConvolverPreparationState::warming ||
           stateBefore == dsp::ConvolverPreparationState::active;
@@ -123,7 +125,7 @@ public:
       }
       assetReadyForBlock = asset_state_ == ET_ASSET_STATE_PREPARING &&
                            convolverWasWarmingOrActive &&
-                           convolver_.state() == dsp::ConvolverPreparationState::active &&
+                           storage_.convolver.state() == dsp::ConvolverPreparationState::active &&
                            historyBefore >= resident_latency_;
     } else {
       std::memset(wet_audio_.data(), 0,
@@ -154,74 +156,98 @@ public:
 
   std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
     applyPendingParameters();
-    if (!validateBegin(slot, info)) {
+    if (slot != kAssetSlot || !prepared_ || !validateShape(info, kProcessingChannels) ||
+        !validDelay()) {
       setAssetError(1u);
       return nullptr;
     }
 
-    dsp::ConvolverConfig config;
-    config.latencySamples = info.headBlock;
-    config.sliceOffset = slice_offset_;
-    config.inputs = kProcessingChannels;
-    config.outputs = kProcessingChannels;
-    config.irChannels = kAssetChannels;
-    config.irFrames = info.frames;
-    config.pathCount = 4u;
-    config.paths[0] = {0u, 0u, 0u};
-    config.paths[1] = {0u, 1u, 1u};
-    config.paths[2] = {1u, 0u, 2u};
-    config.paths[3] = {1u, 1u, 3u};
-
-    const std::uint64_t probeBytes = static_cast<std::uint64_t>(info.footprintBytes) +
-                                     static_cast<std::uint64_t>(kAdmissionHeadroom);
-    if (probeBytes > std::numeric_limits<std::size_t>::max()) {
+    const auto config = makeConfig(info, slice_offset_);
+    if (!dsp::ConvolverAssetStorage::admitted(info.footprintBytes)) {
       setAssetError(2u);
       return nullptr;
     }
-    NothrowStorage<std::uint8_t> admissionProbe;
-    if (!admissionProbe.allocate(static_cast<std::size_t>(probeBytes))) {
-      setAssetError(2u);
-      return nullptr;
-    }
-    admissionProbe.release();
 
-    convolver_.clear();
-    staging_payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
     wet_mix_ = 0.0F;
     replacement_dry_ready_ = false;
-    if (!staging_payload_.allocate(info.byteSize / sizeof(float)) || !convolver_.reserve(config) ||
-        convolver_.memoryBytes() + info.byteSize > info.footprintBytes) {
+    if (!storage_.reserve(config, info)) {
       setAssetError(2u);
       return nullptr;
     }
-    begin_info_ = info;
-    candidate_latency_ = info.headBlock + filterDelay(params_.filterDelaySamples);
+    stagePrepared(info);
     asset_state_ = ET_ASSET_STATE_STAGED;
     asset_reason_ = 0u;
-    return reinterpret_cast<std::uint8_t *>(staging_payload_.data());
+    return reinterpret_cast<std::uint8_t *>(storage_.payload.data());
   }
 
   et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
                         std::uint32_t formatTag) noexcept override {
-    if (slot != kAssetSlot || asset_state_ != ET_ASSET_STATE_STAGED ||
-        bytes != begin_info_.byteSize || formatTag != ET_ASSET_F32_MULTICH || !validatePayload()) {
+    const auto error =
+        slot == kAssetSlot && asset_state_ == ET_ASSET_STATE_STAGED && bytes == begin_info_.byteSize
+            ? commitCoefficients(storage_, begin_info_, sample_rate_, formatTag)
+            : 1u;
+    if (error) {
+      setAssetError(error);
+      return error == 3u ? ET_ERR_STATE : ET_ERR_ARGS;
+    }
+    activatePrepared();
+    return ET_OK;
+  }
+
+  std::uint32_t assetSliceOffset() const noexcept override { return slice_offset_; }
+
+  AssetPreparer assetPreparer(std::uint32_t slot) const noexcept override {
+    return slot == kAssetSlot ? &prepareAsset : nullptr;
+  }
+
+  static et_status prepareAsset(const PrepareInfo &context, const AssetBeginInfo &info,
+                                const std::uint8_t *payload, std::uint32_t format,
+                                std::unique_ptr<PreparedAsset> &out) noexcept {
+    return dsp::PreparedConvolverAsset::prepare<Prepared>(
+        context, info, payload, out, [&](Prepared &next) -> et_status {
+          if (!validateShape(info, context.maxChannels)) {
+            next.error = 1u;
+            return ET_OK;
+          }
+          const auto config = makeConfig(info, context.sliceOffset);
+          if (!dsp::ConvolverAssetStorage::admitted(info.footprintBytes)) {
+            next.error = 2u;
+            return ET_OK;
+          }
+          next.build(config, payload, context.sampleRate, format, commitCoefficients);
+          return ET_OK;
+        });
+  }
+
+  et_status exchangePreparedAsset(std::uint32_t,
+                                  std::unique_ptr<PreparedAsset> &asset) noexcept override {
+    auto &next = static_cast<Prepared &>(*asset);
+    if (next.sliceOffset != slice_offset_)
+      return ET_ERR_STATE;
+    applyPendingParameters();
+    if (next.info.byteSize && !validDelay()) {
+      if (next.preserveResidentOnError)
+        return ET_ERR_ARGS;
+      // Retire both the resident and prepared convolvers off the render thread.
+      storage_.swap(next.discarded);
       setAssetError(1u);
       return ET_ERR_ARGS;
     }
-    const float *samples = staging_payload_.data() + kAssetHeaderBytes / sizeof(float);
-    if (!convolver_.commit(samples, begin_info_.channels, begin_info_.frames)) {
-      setAssetError(3u);
-      return ET_ERR_STATE;
+    storage_.swap(next.storage);
+    if (!next.info.byteSize) {
+      clearAsset(kAssetSlot);
+      return ET_OK;
     }
-    previous_resident_latency_ = resident_asset_seen_ ? resident_latency_ : 0u;
-    resident_latency_ = candidate_latency_;
-    resident_asset_seen_ = true;
-    latency_transition_remaining_ =
-        previous_resident_latency_ == resident_latency_ ? 0u : kDelayTransitionFrames;
-    stream_history_samples_ = 0u;
-    asset_state_ = ET_ASSET_STATE_PREPARING;
-    asset_reason_ = 0u;
+    wet_mix_ = 0.0F;
     replacement_dry_ready_ = false;
+    if (next.error) {
+      setAssetError(next.error);
+      return ET_ERR_ARGS;
+    }
+    stagePrepared(next.info);
+    activatePrepared();
     return ET_OK;
   }
 
@@ -240,14 +266,57 @@ public:
   }
 
 private:
-  bool validateBegin(std::uint32_t slot, const AssetBeginInfo &info) const noexcept {
-    if (slot != kAssetSlot || !prepared_ || info.topology != kTrueStereoTopology ||
+  static dsp::ConvolverConfig makeConfig(const AssetBeginInfo &info,
+                                         std::uint32_t sliceOffset) noexcept {
+    dsp::ConvolverConfig config;
+    config.latencySamples = info.headBlock;
+    config.sliceOffset = sliceOffset;
+    config.inputs = kProcessingChannels;
+    config.outputs = kProcessingChannels;
+    config.irChannels = kAssetChannels;
+    config.irFrames = info.frames;
+    config.pathCount = 4u;
+    config.paths[0] = {0u, 0u, 0u};
+    config.paths[1] = {0u, 1u, 1u};
+    config.paths[2] = {1u, 0u, 2u};
+    config.paths[3] = {1u, 1u, 3u};
+    return config;
+  }
+
+  void stagePrepared(const AssetBeginInfo &info) noexcept {
+    begin_info_ = info;
+    candidate_latency_ = info.headBlock + filterDelay(params_.filterDelaySamples);
+  }
+
+  void activatePrepared() noexcept {
+    previous_resident_latency_ = resident_asset_seen_ ? resident_latency_ : 0u;
+    resident_latency_ = candidate_latency_;
+    resident_asset_seen_ = true;
+    latency_transition_remaining_ =
+        previous_resident_latency_ == resident_latency_ ? 0u : kDelayTransitionFrames;
+    stream_history_samples_ = 0u;
+    asset_state_ = ET_ASSET_STATE_PREPARING;
+    asset_reason_ = 0u;
+    replacement_dry_ready_ = false;
+  }
+
+  static std::uint32_t commitCoefficients(dsp::ConvolverAssetStorage &storage,
+                                          const AssetBeginInfo &info, float sampleRate,
+                                          std::uint32_t formatTag) noexcept {
+    const auto *data = reinterpret_cast<const std::uint8_t *>(storage.payload.data());
+    if (formatTag != ET_ASSET_F32_MULTICH || !validatePayload(data, info, sampleRate))
+      return 1u;
+    const float *samples = storage.payload.data() + kAssetHeaderBytes / sizeof(float);
+    return storage.convolver.commit(samples, info.channels, info.frames) ? 0u : 3u;
+  }
+
+  static bool validateShape(const AssetBeginInfo &info, std::uint32_t maxChannels) noexcept {
+    if (maxChannels < kProcessingChannels || info.topology != kTrueStereoTopology ||
         info.channels != kAssetChannels || info.processingChannels != kProcessingChannels ||
         info.frames == 0u || info.frames > kMaximumIrFrames ||
         !supportedHeadBlock(info.headBlock) || info.rateDivider != 1u || info.pathCount != 0u ||
         info.inputCount != 0u || info.footprintBytes < info.byteSize ||
-        info.footprintBytes > kAssetCapacity || !(params_.filterDelaySamples >= 0.0F) ||
-        params_.filterDelaySamples > static_cast<float>(kMaximumFilterDelay)) {
+        info.footprintBytes > kAssetCapacity) {
       return false;
     }
     const std::uint64_t expected = kAssetHeaderBytes + static_cast<std::uint64_t>(kAssetChannels) *
@@ -256,11 +325,16 @@ private:
            (info.byteSize % sizeof(float)) == 0u;
   }
 
-  bool validatePayload() const noexcept {
-    const auto *bytes = reinterpret_cast<const std::uint8_t *>(staging_payload_.data());
+  bool validDelay() const noexcept {
+    return params_.filterDelaySamples >= 0.0F &&
+           params_.filterDelaySamples <= static_cast<float>(kMaximumFilterDelay);
+  }
+
+  static bool validatePayload(const std::uint8_t *bytes, const AssetBeginInfo &info,
+                              float sampleRate) noexcept {
     return readU32(bytes) == kAssetMagic && readU32(bytes + 4u) == kAssetChannels &&
-           readU32(bytes + 8u) == begin_info_.frames &&
-           readU32(bytes + 12u) == static_cast<std::uint32_t>(std::lround(sample_rate_)) &&
+           readU32(bytes + 8u) == info.frames &&
+           readU32(bytes + 12u) == static_cast<std::uint32_t>(std::lround(sampleRate)) &&
            readU32(bytes + 16u) == kTrueStereoTopology && readU32(bytes + 20u) == 0u &&
            readU32(bytes + 24u) == 0u && readU32(bytes + 28u) == 0u;
   }
@@ -272,8 +346,8 @@ private:
   }
 
   void discardAssetState() noexcept {
-    convolver_.clear();
-    staging_payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
     dry_delay_.clear();
     delay_position_ = 0u;
     begin_info_ = {};
@@ -293,7 +367,7 @@ private:
     dry_delay_.release();
     blend_mix_.release();
     blend_gain_.release();
-    staging_payload_.release();
+    storage_.payload.release();
   }
 
   void resetRuntime() noexcept {
@@ -455,8 +529,7 @@ private:
   std::uint32_t delay_capacity_ = 0u;
   std::uint32_t delay_position_ = 0u;
   std::uint32_t slice_offset_ = 0u;
-  dsp::PartitionedConvolver convolver_;
-  NothrowStorage<float> staging_payload_;
+  dsp::ConvolverAssetStorage storage_;
   NothrowStorage<float> wet_audio_;
   NothrowStorage<float> dry_audio_;
   NothrowStorage<float> dry_delay_;

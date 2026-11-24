@@ -1,5 +1,6 @@
 import { getArtworkFiles } from './lyrics-file-links.js';
 import { selectCueCoverFileName } from '../../library/metadata/cue-cover.js';
+import { getPlaybackFilePath } from './playback-source-policy.js';
 
 const MAX_COVER_BYTES = 20 * 1024 * 1024;
 const directory = file => String(file?.webkitRelativePath || '').replaceAll('\\', '/').split('/').slice(0, -1).join('/');
@@ -16,6 +17,6 @@ export async function readScoreArtwork(track) {
         return { data: new Uint8Array(bytes), format: 'image/jpeg' };
     }
     const api = globalThis.window?.electronAPI;
-    const path = track.path || (track.file && api?.getPathForFile?.(track.file));
+    const path = getPlaybackFilePath(track, api);
     return path && api?.readTrackTags ? (await api.readTrackTags(path))?.picture ?? null : null;
 }

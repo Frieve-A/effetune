@@ -16,10 +16,12 @@ import { AirPlayPlayback } from './audio-player/airplay-playback.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
 import { normalizeWebAudioPreferences } from '../electron/webSettingsStorage.js';
+import { computeAutoTarget, getLoudnessClient, replayGainSettings } from './audio-player/replay-gain.js';
 
 export class AudioPlayer {
-  constructor(audioManager) {
+  constructor(audioManager, { playbackSession = null } = {}) {
     this.audioManager = audioManager;
+    this.playbackSession = audioManager.isAndroid ? null : playbackSession;
     this._audioContext = audioManager.audioContext ?? null;
     this.audioElement = null;
     const initialPreferences = typeof window !== 'undefined'
@@ -27,11 +29,8 @@ export class AudioPlayer {
       : null;
     const preferences = normalizeWebAudioPreferences(initialPreferences || {});
     this.gaplessPlayback = preferences.gaplessPlayback !== false;
-    this.replayGain = {
-      mode: preferences.replayGainMode,
-      preampDb: preferences.replayGainPreampDb,
-      preventClipping: preferences.replayGainPreventClipping
-    };
+    this.replayGain = replayGainSettings(preferences);
+    this.refreshReplayGainTarget();
 
     // Initialize centralized state manager first
     this.stateManager = new StateManager(this);
@@ -115,9 +114,30 @@ export class AudioPlayer {
    * Apply new ReplayGain settings to the playing and the prepared next track at once.
    * The factor stays out of the volume UI and the player state.
    */
-  applyReplayGainPreference({ mode, preampDb, preventClipping }) {
-    this.replayGain = { mode, preampDb, preventClipping };
+  async applyReplayGainPreference(settings) {
+    this.replayGain = { ...settings };
+    await this.refreshReplayGainTarget();
     return this.contextManager.applyReplayGainPreference();
+  }
+
+  refreshReplayGainTarget(client = null) {
+    const settings = this.replayGain;
+    if (settings.target !== 'auto' || settings.mode === 'off' || this.audioManager.isAndroid) {
+      this.replayGainReady = null;
+      return null;
+    }
+    const ready = Promise.resolve().then(async () => {
+      let stats;
+      try {
+        const catalog = client ?? await getLoudnessClient();
+        stats = await catalog?.getLoudnessStats?.({ coverage: settings.autoCoverage });
+      } catch (error) {
+        console.debug('Library loudness target could not be read:', error);
+      }
+      if (this.replayGainReady === ready) settings.autoTarget = computeAutoTarget(settings, stats);
+    });
+    this.replayGainReady = ready;
+    return ready;
   }
 
   applyPlaybackSpeed(speed) {
@@ -127,10 +147,12 @@ export class AudioPlayer {
 
   setVolume(volume) {
     this.contextManager.setPlayerVolume(volume);
+    this.playbackManager?.saveExplicitPlayerSetting?.('playerVolume');
   }
 
   setMute(mute) {
     this.contextManager.setPlayerMute(mute);
+    this.playbackManager?.saveExplicitPlayerSetting?.('playerMute');
   }
 
   applyPreservePitch(enabled) {
@@ -169,7 +191,7 @@ export class AudioPlayer {
     // File loading and decoding below can outlive WebKit's activation window.
     const gestureResume = this.resumeAudioContextInGesture();
     // Stop the old source before activating the replacement queue.
-    const stopOldPlayback = this.stop();
+    const stopOldPlayback = this.stop({ saveSession: false });
     const stopTokenBefore = this.contextManager?.stopRequestToken;
     this.playbackManager.loadFiles(files, append, insertAt);
     if (!this.ui.container) {
@@ -264,8 +286,8 @@ export class AudioPlayer {
   /**
    * Pause the current track
    */
-  async pause() {
-    await this.playbackManager.pause();
+  async pause(options) {
+    await this.playbackManager.pause(options);
   }
   
   /**
@@ -278,9 +300,9 @@ export class AudioPlayer {
   /**
    * Stop playback and reset position
    */
-  async stop() {
+  async stop(options) {
     if (this.airPlayPlayback?.active) return this.airPlayPlayback.stopSession();
-    await this.playbackManager.stop();
+    await this.playbackManager.stop(options);
   }
   
   /**
@@ -352,11 +374,13 @@ export class AudioPlayer {
   close({ force = false } = {}) {
     if (!force && window.uiManager?.shouldRetainAudioPlayerForOpenHome?.(this)) {
       this.playbackManager.savePlayerState();
-      void this.stop().catch(() => {});
+      const release = this.playbackManager.blockPlaybackSessionWrites?.({ suppress: true });
+      void this.stop({ saveSession: false }).catch(() => {}).finally(release);
       this.ui.removeUI();
       return false;
     }
 
+    if (!force) this.playbackManager.removePlaybackSession?.();
     console.log('[AudioPlayer] Closing audio player');
     
     // Save player state

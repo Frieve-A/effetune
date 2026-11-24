@@ -52,6 +52,7 @@ export class DoubleBlindTest {
 
         this._savedCurrentPipeline = 'A';
         this._switchSeq = 0;             // guards rapid presses' delayed fade-ins
+        this._switchFadeToken = null;
         this._startSeq = 0;              // guards delayed parallel-readiness completion
         this._shareAttemptRevision = 0;
         this._mainContainer = null;
@@ -237,14 +238,18 @@ export class DoubleBlindTest {
         this._refreshNativeMenu();
     }
 
-    _teardownParallelPipelines(options = {}) {
-        let teardown;
+    async _teardownParallelPipelines(options = {}) {
+        const fadeToken = this._switchFadeToken;
+        this._switchFadeToken = null;
         try {
-            teardown = this.audioManager.disableParallelPipelines(options);
+            const restored = await this.audioManager.disableParallelPipelines(options);
+            if (restored === true && options.restorePrimaryDsp !== false && fadeToken !== null) {
+                this.audioManager.fadeInOutputForToken(fadeToken, FADE_SECONDS);
+            }
+            return restored;
         } catch (_) {
-            teardown = false;
+            return false;
         }
-        return Promise.resolve(teardown).catch(() => false);
     }
 
     _handleParallelInvalidated(detail = {}) {
@@ -988,12 +993,16 @@ export class DoubleBlindTest {
         // selected branch is already in steady state (no dynamics/CPU tell).
         const seq = ++this._switchSeq;
         const am = this.audioManager;
-        let fadeToken = null;
-        try { fadeToken = am.fadeOutOutput(DIP_FADE); } catch (_) { /* ignore */ }
+        this._switchFadeToken = null;
+        try { this._switchFadeToken = am.fadeOutOutput(DIP_FADE); } catch (_) { /* ignore */ }
         am.setBlindSelection(this._physicalFor(label), DIP_FADE);
         setTimeout(() => {
             if (seq !== this._switchSeq || !this.active || !this.testRunning) return;
-            try { am.fadeInOutputForToken(fadeToken, DIP_FADE); } catch (_) { /* ignore */ }
+            const fadeToken = this._switchFadeToken;
+            this._switchFadeToken = null;
+            if (fadeToken !== null) {
+                try { am.fadeInOutputForToken(fadeToken, DIP_FADE); } catch (_) { /* ignore */ }
+            }
         }, DIP_MS);
     }
 

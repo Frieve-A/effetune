@@ -10,7 +10,7 @@ const { serveRemoteResource } = require('./network-music-resource.cjs');
 const { CONTENT, CONNECTION, SsdpAdvertisement, xml, parseXml, descendants, value, didl, didlItem, interfaces, isLanAddress, networkUrl } = require('./network-music-upnp.cjs');
 const { SEARCH_CAPS, SORT_CAPS, parseSearch, parseSort } = require('./network-music-content.cjs');
 
-const TYPES = Object.freeze({ '.dsf': 'audio/x-dsf', '.dff': 'audio/x-dff', '.flac': 'audio/flac', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.webm': 'audio/webm' });
+const TYPES = Object.freeze({ '.mid': 'audio/midi', '.midi': 'audio/midi', '.kar': 'audio/midi', '.dsf': 'audio/x-dsf', '.dff': 'audio/x-dff', '.flac': 'audio/flac', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.webm': 'audio/webm' });
 const SOURCE_PROTOCOLS = [...new Set(Object.values(TYPES))].map(type => `http-get:*:${type}:*`).join(',');
 const ACTIONS = {
   ContentDirectory: {
@@ -136,7 +136,7 @@ class MusicServer {
     const responses = this.resourceResponses.get(uid); responses.add(res);
     res.once('close', () => { responses.delete(res); if (!responses.size) this.resourceResponses.delete(uid); });
     let source;
-    try { source = await this.resolveSource(uid); } catch { res.writeHead(404); res.end(); return; }
+    try { source = await this.resolveSource(uid, kind); } catch { res.writeHead(404); res.end(); return; }
     if (!isCurrent()) { res.writeHead(404); res.end(); return; }
     if (source.remote) return serveRemoteResource(req, res, await source.resource(kind), () => isCurrent() && source.isCurrent(), kind, this.streams);
     if (kind === 'artwork') {
@@ -145,15 +145,19 @@ class MusicServer {
       if (!bytes || !isCurrent()) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'Content-Type': artwork.mimeType || 'image/jpeg', 'Content-Length': bytes.length }); res.end(req.method === 'HEAD' ? undefined : bytes); return;
     }
-    const handle = await fs.promises.open(source.path, 'r');
-    const stat = await handle.stat();
-    if (!stat.isFile() || !isCurrent()) { await handle.close(); res.writeHead(404); res.end(); return; }
-    const range = byteRange(req.headers.range, stat.size);
-    if (!range) { await handle.close(); res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` }); res.end(); return; }
-    const headers = { 'Content-Type': TYPES[path.extname(source.path).toLowerCase()] || 'application/octet-stream', 'Content-Length': Math.max(0, range.end - range.start + 1), 'Accept-Ranges': 'bytes', 'transferMode.dlna.org': 'Streaming' };
-    if (range.partial) headers['Content-Range'] = `bytes ${range.start}-${range.end}/${stat.size}`;
+    const bytes = source.bytes;
+    const handle = bytes ? null : await fs.promises.open(source.path, 'r');
+    const stat = await handle?.stat();
+    if ((stat && !stat.isFile()) || !isCurrent()) { await handle?.close(); res.writeHead(404); res.end(); return; }
+    const size = bytes?.byteLength ?? stat.size;
+    const range = byteRange(req.headers.range, size);
+    if (!range) { await handle?.close(); res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return; }
+    const mime = TYPES[path.extname(source.archiveEntryPath || source.path).toLowerCase()] || 'application/octet-stream';
+    const headers = { 'Content-Type': mime, 'Content-Length': Math.max(0, range.end - range.start + 1), 'Accept-Ranges': 'bytes', 'transferMode.dlna.org': 'Streaming' };
+    if (range.partial) headers['Content-Range'] = `bytes ${range.start}-${range.end}/${size}`;
     res.writeHead(range.partial ? 206 : 200, headers);
-    if (req.method === 'HEAD' || stat.size === 0) { await handle.close(); res.end(); return; }
+    if (req.method === 'HEAD' || size === 0) { await handle?.close(); res.end(); return; }
+    if (bytes) { res.end(bytes.subarray(range.start, range.end + 1)); return; }
     const stream = handle.createReadStream({ start: range.start, end: range.end }); this.streams.add(stream);
     pipeline(stream, res, error => { this.streams.delete(stream); if (error && !res.destroyed) res.destroy(error); });
   }

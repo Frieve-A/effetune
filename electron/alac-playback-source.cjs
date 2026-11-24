@@ -100,13 +100,31 @@ class AlacPlaybackSource {
     this.directoryPromise = null;
     this.cache = new Map();
     this.inFlight = new Map();
+    this.analysisFiles = new Set();
+    this.analysisRequests = new Map();
     this.children = new Set();
     this.nextFileId = 0;
     this.disposed = false;
     this.disposePromise = null;
   }
 
-  async prepare(filePath) {
+  async prepareAnalysis(filePath, requestId, signature) {
+    if (typeof requestId !== 'string' || requestId.length !== 36 || this.analysisRequests.has(requestId) ||
+        !Number.isSafeInteger(signature?.size) || !Number.isSafeInteger(signature?.mtimeMs)) {
+      throw new Error('Invalid analysis request');
+    }
+    const controller = new AbortController();
+    this.analysisRequests.set(requestId, controller);
+    try {
+      return await this.prepare(filePath, { analysis: true, signature, signal: controller.signal });
+    } finally { this.analysisRequests.delete(requestId); }
+  }
+
+  cancelAnalysis(requestId) {
+    this.analysisRequests.get(requestId)?.abort();
+  }
+
+  async prepare(filePath, { analysis = false, signature, signal } = {}) {
     if (typeof filePath !== 'string' || !filePath || filePath.includes('\0')) {
       return { success: false, code: 'invalidPlaybackSource' };
     }
@@ -120,6 +138,12 @@ class AlacPlaybackSource {
       try {
         stats = await handle.stat();
         if (!stats.isFile()) throw new Error('Not a playback file');
+        if (signature) {
+          const { normalizeMtimeMs } = await import('../js/library/scan/file-signature.js');
+          if (stats.size !== signature.size || normalizeMtimeMs(stats.mtimeMs) !== signature.mtimeMs) {
+            return { success: false, code: 'playbackSourceUnavailable' };
+          }
+        }
         const extension = path.extname(canonicalPath).toLowerCase();
         if (extension === '.m4a' || extension === '.mp4') alac = await probeAlac(handle, stats.size);
       } finally {
@@ -129,12 +153,13 @@ class AlacPlaybackSource {
       console.error('Failed to probe local playback source:', error);
       return { success: false, code: 'playbackSourceUnavailable' };
     }
-    if (this.disposed) return { success: false, code: 'playbackSourceUnavailable' };
+    if (this.disposed || signal?.aborted) return { success: false, code: 'playbackSourceUnavailable' };
     if (!alac) return { success: true, path: canonicalPath, byteLength: stats.size, converted: false };
     if (this.platform !== 'darwin') return { success: false, code: 'alacRequiresMacDesktop' };
     const format = PCM_FORMATS.get(alac.bitDepth);
-    if (!format) return { success: false, code: 'alacConversionFailed' };
-    const key = JSON.stringify([canonicalPath, stats.size, stats.mtimeMs]);
+    if (!format) return { success: false, code: analysis ? 'alacUnsupportedDepth' : 'alacConversionFailed' };
+    // Each analysis owns its conversion until its range reader closes.
+    const key = analysis ? Symbol('analysis') : JSON.stringify([canonicalPath, stats.size, stats.mtimeMs]);
     const cached = this.cache.get(key);
     if (cached) {
       this.cache.delete(key);
@@ -142,36 +167,55 @@ class AlacPlaybackSource {
       return cached;
     }
     if (this.inFlight.has(key)) return this.inFlight.get(key);
-    const pending = this.convert(canonicalPath, format, key).finally(() => this.inFlight.delete(key));
+    const pending = this.convert(canonicalPath, format, analysis ? null : key, stats, signal).finally(() => this.inFlight.delete(key));
     this.inFlight.set(key, pending);
     return pending;
   }
 
-  async convert(source, format, key) {
+  async convert(source, format, key, original, signal) {
     let temporaryPath;
     let finalPath;
     try {
       this.directoryPromise ??= fs.mkdtemp(path.join(this.tempRoot, 'effetune-alac-'))
-        .then(directory => fs.realpath(directory));
+        .then(directory => fs.realpath(directory))
+        .catch(error => { this.directoryPromise = null; throw error; });
       const directory = await this.directoryPromise;
       if (this.disposed) throw new Error('Playback converter disposed');
+      signal?.throwIfAborted();
       finalPath = path.join(directory, `${++this.nextFileId}.wav`);
       temporaryPath = `${finalPath}.tmp`;
       await new Promise((resolve, reject) => {
         let child;
         let completed = false;
+        const abort = () => child.kill('SIGKILL');
         child = this.executeFile('/usr/bin/afconvert', ['-f', 'WAVE', '-d', format, source, temporaryPath], error => {
           completed = true;
+          signal?.removeEventListener('abort', abort);
           this.children.delete(child);
           if (error) reject(error);
           else resolve();
         });
-        if (!completed) this.children.add(child);
+        if (!completed) {
+          this.children.add(child);
+          signal?.addEventListener('abort', abort, { once: true });
+        }
       });
       if (this.disposed) throw new Error('Playback converter disposed');
+      signal?.throwIfAborted();
+      if (key === null) {
+        const current = await fs.stat(source);
+        if (current.dev !== original.dev || current.ino !== original.ino ||
+            current.size !== original.size || current.mtimeMs !== original.mtimeMs) {
+          throw new Error('Analysis source changed during conversion');
+        }
+      }
       await fs.rename(temporaryPath, finalPath);
       const stats = await fs.stat(finalPath);
       const result = { success: true, path: finalPath, byteLength: stats.size, converted: true };
+      if (key === null) {
+        this.analysisFiles.add(finalPath);
+        return result;
+      }
       this.cache.set(key, result);
       while (this.cache.size > 4) {
         const [oldestKey, oldest] = this.cache.entries().next().value;
@@ -180,11 +224,17 @@ class AlacPlaybackSource {
       }
       return result;
     } catch (error) {
-      console.error('Failed to convert ALAC playback source:', error);
+      if (!signal?.aborted) console.error('Failed to convert ALAC playback source:', error);
       this.cache.delete(key);
       await Promise.allSettled([temporaryPath, finalPath].filter(Boolean).map(file => fs.rm(file, { force: true })));
-      return { success: false, code: 'alacConversionFailed' };
+      return { success: false, code: key === null ? 'playbackSourceUnavailable' : 'alacConversionFailed' };
     }
+  }
+
+  async releaseAnalysis(filePath) {
+    if (!this.analysisFiles.has(filePath)) throw new Error('Unknown analysis file');
+    await fs.rm(filePath, { force: true });
+    this.analysisFiles.delete(filePath);
   }
 
   dispose() {
@@ -198,6 +248,7 @@ class AlacPlaybackSource {
         await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       }
       this.cache.clear();
+      this.analysisFiles.clear();
     })();
     return this.disposePromise;
   }

@@ -139,6 +139,11 @@ export async function withNativeWorkletParity(executable, options, action) {
       }
 
       const result = await action({
+        async stageAsset(pluginId, revision, {payload, ...metadata}) {
+          const message = {type:'setPluginAsset',pluginId,slot:0,operationRevision:revision,...metadata};
+          reference.send({...message,payload});
+          await session.send(message,Buffer.from(payload));
+        },
         async render(input) {
           const frames = input.length / channels;
           const worklet = reference.render(input);

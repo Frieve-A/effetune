@@ -51,8 +51,11 @@ const MIDI_DEVICE_KEYS = Object.freeze(['midiInputDeviceKey', 'midiOutputDeviceK
 export const PLAYER_PREFERENCE_KEYS = Object.freeze([
   'gaplessPlayback',
   'replayGainMode',
+  'replayGainTarget',
   'replayGainPreampDb',
-  'replayGainPreventClipping'
+  'replayGainAutoCoverage',
+  'replayGainPreventClipping',
+  'replayGainPeakCeilingDb'
 ]);
 
 export function pickPlayerPreferences(preferences) {

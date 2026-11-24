@@ -137,7 +137,7 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
 
 ### Pilotes audio de l’application de bureau
 
-Dans **Paramètres > Configuration audio**, choisissez un **Pilote**. Le pilote **Standard** est sélectionné par défaut. Pour alléger le traitement ou utiliser une entrée d’au moins trois canaux, essayez **WASAPI** sous Windows, **Core Audio** sous macOS, ou **PulseAudio** sous Linux (**ALSA** si PulseAudio est indisponible). Le pilote change la façon dont EffeTune se connecte aux périphériques audio. Les effets, les préréglages et le lecteur s’utilisent de la même manière.
+Dans **Paramètres > Configuration audio**, choisissez un **Pilote**. Les nouveaux profils de réglages utilisent **WASAPI** sous Windows, **Core Audio** sous macOS et **PulseAudio** sous Linux (**ALSA** si PulseAudio est indisponible). Ces pilotes se connectent directement aux périphériques audio, assurent le traitement du signal en mode natif et acceptent les entrées d’au moins trois canaux. Si vous utilisez actuellement le pilote **Standard**, vous pouvez en changer ici et vérifier l’entrée et la sortie sélectionnées avant d’appliquer le changement.
 
 Réglez la **Fréquence d'échantillonnage** des effets comme d’habitude. Si le périphérique de sortie utilise une fréquence différente, EffeTune convertit le son après le traitement. Les arrondis de calcul peuvent légèrement modifier les valeurs des échantillons par rapport au pilote **Standard**.
 
@@ -416,6 +416,7 @@ Voici quelques combinaisons d'effets populaires pour améliorer votre expérienc
 
 En cas de problème, consultez la page [Dépannage et FAQ](faq.md).
 Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
+Si cette option est disponible, joignez le fichier de diagnostic en suivant les indications de la FAQ.
 
 ## Effets disponibles
 

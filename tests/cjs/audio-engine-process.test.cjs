@@ -77,8 +77,18 @@ test('rebuilding a running device holds all output until the matching restore fi
       await session.send({type:'releaseRecovery',recoveryId:id});
       return (await session.receive('recoveryReleased',m => m.recoveryId === id)).message.accepted;
     };
-    const waitFrames = async frames => {
-      await session.receive('clock', m => m.pipelineFrame >= frames);
+    const readInterval = async () => {
+      await session.receive('clock');
+      return peak();
+    };
+    const assertSilentFrames = async message => {
+      let observed = 0;
+      while (observed < 4096) {
+        const interval = await readInterval();
+        assert.equal(interval.peak, 0, message);
+        observed += interval.frames;
+      }
+      assert.ok(observed >= 4096);
     };
     await session.receive('hello');
     await session.send({type:'hello',version:1});
@@ -87,21 +97,21 @@ test('rebuilding a running device holds all output until the matching restore fi
     await session.send({type:'testSetInput',level:.25});
     assert.equal((await session.receive('testInputSet')).message.accepted,true);
     await session.send({type:'startStream'});
-    await waitFrames(8192);
+    await session.receive('clock', m => m.pipelineFrame >= 8192);
     assert.ok((await peak()).peak > .2,'the test input reached the real-time device');
     await session.send({type:'testDeviceReset',outputChannels:2});
     const id = (await session.receive('dspReady')).message.recoveryId;
     assert.ok(id > 0);
     await peak();
     assert.equal(await release(id+1),false);
-    await waitFrames(8192);
-    const muted = await peak();
-    assert.ok(muted.frames >= 4096);
-    assert.equal(muted.peak,0);
+    await assertSilentFrames('A recovery hold must mute every observed callback.');
     assert.equal(await release(id),true);
     assert.equal(await release(id),false);
-    await waitFrames(16384);
-    assert.ok((await peak()).peak > .2);
+    let restored;
+    do {
+      restored = await readInterval();
+    } while (restored.peak <= .2);
+    assert.ok(restored.peak > .2);
     await session.send({type:'stopStream'});
     await session.receive('sessionState',m => m.state === 'stopped');
     await peak();
@@ -109,13 +119,7 @@ test('rebuilding a running device holds all output until the matching restore fi
     await session.receive('testInputSet');
     await session.send({type:'startStream'});
     await session.receive('sessionState',m => m.state === 'running');
-    let framesAfterRestart = 0;
-    do {
-      await session.receive('clock');
-      const restarted = await peak();
-      assert.equal(restarted.peak,0,'Restart replayed audio from the previous capture clock.');
-      framesAfterRestart += restarted.frames;
-    } while (framesAfterRestart < 4096);
+    await assertSilentFrames('Restart replayed audio from the previous capture clock.');
     await session.send({type:'closeSession'});
     await session.receive('sessionState',m => m.state === 'closed');
     assert.equal((await session.finish()).code,0);

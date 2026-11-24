@@ -124,7 +124,8 @@ public:
                                              InstanceAssetUpdate &update) noexcept;
   // Apply on the owner between blocks, including while audio is stopped.
   // Leaves retired storage in update for reclamation off the audio thread.
-  et_status applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept;
+  et_status applyInstanceAssetUpdate(InstanceAssetUpdate &update,
+                                     bool preserveResidentOnError = false) noexcept;
   et_status configureInstanceAssetStream(InstanceAssetUpdate &update,
                                          std::uint64_t generation) noexcept;
   et_status publishInstanceAssetSamplePage(InstanceAssetUpdate &update, std::uint64_t generation,
@@ -376,6 +377,9 @@ public:
     ready_ = false;
   }
   [[nodiscard]] bool hasRetiredAsset() const noexcept { return !ready_ && asset_ != nullptr; }
+  [[nodiscard]] bool hasPreparationError() const noexcept {
+    return ready_ && asset_ && asset_->hasPreparationError();
+  }
 
 private:
   friend class Engine;

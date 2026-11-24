@@ -260,7 +260,7 @@ export class PagedPlaylistService {
         typeof sink.abort !== 'function') {
       throw new TypeError('Atomic playlist export sink is required');
     }
-    const summary = { exportedCount: 0, skippedCueCount: 0 };
+    const summary = { exportedCount: 0, skippedTrackCount: 0 };
     const entries = this.#exportEntries(playlistId, { relative, destinationPath }, summary);
     const chunks = format === 'xspf'
       ? serializeXSPFStream(entries, { fileUris: !relative, limits })
@@ -286,14 +286,14 @@ export class PagedPlaylistService {
         if (item.trackUid) {
           const track = await this.client.getTrack(item.trackUid);
           if (!track) continue;
-          if (hasCueTrackProvenance(track)) {
-            summary.skippedCueCount += 1;
+          if (hasNonFileTrackProvenance(track)) {
+            summary.skippedTrackCount += 1;
             continue;
           }
           const source = await requireMethod(this.client, 'resolvePlaylistExportSource')(item.trackUid);
           if (!source) continue;
-          if (hasCueTrackProvenance(source)) {
-            summary.skippedCueCount += 1;
+          if (hasNonFileTrackProvenance(source)) {
+            summary.skippedTrackCount += 1;
             continue;
           }
           const sourcePath = playlistExportSourcePath(source);
@@ -307,8 +307,8 @@ export class PagedPlaylistService {
           };
           summary.exportedCount += 1;
         } else if (item.unresolved) {
-          if (hasCueTrackProvenance(item.unresolved)) {
-            summary.skippedCueCount += 1;
+          if (hasNonFileTrackProvenance(item.unresolved)) {
+            summary.skippedTrackCount += 1;
             continue;
           }
           const sourcePath = item.unresolved.sourceLine ?? item.unresolved.relativePathHint ?? '';
@@ -340,13 +340,13 @@ function favoriteTrackUidCursorKey(cursor) {
   return `${cursor.position}\n${cursor.itemKey}`;
 }
 
-export function hasCueTrackProvenance(value) {
+function hasNonFileTrackProvenance(value) {
   return [value, value?.cueProvenance, value?.cue_provenance].filter(Boolean).some(provenance => {
     const sourceKind = provenance.sourceKind ?? provenance.source_kind;
     const entryKey = provenance.entryKey ?? provenance.entry_key;
     const startFrame = provenance.startFrame ?? provenance.start_frame;
-    return sourceKind === 'cue-track' ||
-      typeof entryKey === 'string' && entryKey.startsWith('cue:') ||
+    return sourceKind === 'cue-track' || sourceKind === 'archive-entry' ||
+      typeof entryKey === 'string' && (entryKey.startsWith('cue:') || entryKey.startsWith('archive:')) ||
       Number.isSafeInteger(startFrame) && startFrame >= 0;
   });
 }

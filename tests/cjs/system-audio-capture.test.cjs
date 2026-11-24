@@ -7,6 +7,9 @@ const { createSystemAudioMuteKeeper } = require('../../electron/system-audio-mut
 
 function harness(t, getSources = async () => [{ id: 'screen:0:0' }], keeper) {
   const ipcMain = new EventEmitter();
+  const handlers = new Map();
+  ipcMain.handle = (channel, handler) => handlers.set(channel, handler);
+  ipcMain.removeHandler = channel => handlers.delete(channel);
   const trusted = Object.assign(new EventEmitter(), { mainFrame: {}, isDestroyed: () => false });
   const keeperCalls = [];
   const muteKeeper = keeper || Object.fromEntries(['prepare', 'hold', 'release', 'reset', 'dispose']
@@ -23,7 +26,8 @@ function harness(t, getSources = async () => [{ id: 'screen:0:0' }], keeper) {
     await capture.handleRequest({ frame: trusted.mainFrame, videoRequested: true, audioRequested: true, ...changes }, value => { streams = value; });
     return streams;
   };
-  return { ipcMain, trusted, capture, keeperCalls, send, prepare, request };
+  const invoke = (method, id, event = trustedEvent()) => handlers.get(`system-audio:${method}`)(event, id);
+  return { ipcMain, trusted, capture, keeperCalls, send, prepare, request, invoke };
 }
 
 test('System Audio reservations accept only the trusted main frame', async t => {
@@ -48,6 +52,39 @@ test('An unused System Audio reservation expires', async t => {
   t.mock.timers.tick(10001);
   assert.equal(h.capture.pendingOrder(), null);
   assert.deepEqual(await h.request(), {});
+});
+
+test('Native loopback holds only the current trusted capture and releases when its sidecar exits', async t => {
+  let prepared;
+  const calls = [];
+  const h = harness(t, undefined, {
+    prepare(endpoint) { assert.equal(endpoint, 'source-A'); return new Promise(resolve => { prepared = resolve; }); },
+    hold() { calls.push('hold'); return true; },
+    release() { calls.push('release'); }, reset() {}, dispose() {}
+  });
+  const untrusted = { sender: h.trusted, senderFrame: {} };
+  assert.equal(h.invoke('native-begin', 'source-A', untrusted), null);
+  assert.equal(h.invoke('native-begin'), null);
+  for (const invalidate of ['native-end', 'native-begin', 'did-navigate']) {
+    const id = h.invoke('native-begin', 'source-A');
+    const resolve = prepared;
+    const holding = h.invoke('native-hold', id);
+    if (invalidate === 'did-navigate') h.trusted.emit(invalidate);
+    else h.invoke(invalidate, invalidate === 'native-begin' ? 'source-A' : id);
+    resolve(true);
+    assert.equal(await holding, false);
+  }
+  const id = h.invoke('native-begin', 'source-A');
+  prepared(true);
+  assert.equal(await h.invoke('native-hold', id, untrusted), false);
+  assert.equal(await h.invoke('native-hold', id), true);
+  assert.equal(await h.invoke('native-hold', id), true);
+  h.invoke('native-end', id, untrusted);
+  assert.deepEqual(calls, ['hold']);
+  h.capture.endNativeCapture();
+  h.invoke('native-end', id);
+  assert.deepEqual(calls, ['hold', 'release']);
+  assert.equal(await h.invoke('native-hold', id), false);
 });
 
 test('Navigation and renderer loss clear unconsumed System Audio reservations', async t => {

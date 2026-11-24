@@ -1006,6 +1006,32 @@ test('startup fade-in waits for the worklet output-ready answer or its timeout',
   });
 });
 
+test('late output readiness belongs to the request before a gated publication', async () => {
+  for (const outcome of ['answer', 'timeout', 'cancel']) {
+    await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
+      manager.contextManager.audioContext.state = 'running';
+      const {port} = manager.contextManager.workletNode;
+      const pending = manager.fadeInOutputWhenReady();
+      const request = port.messages.find(message => message.type === 'awaitOutputReady');
+      const timeout = timers.at(-1);
+      assert.ok(request);
+      await manager.rebuildPipeline(false, {gate:true});
+      if (outcome === 'answer') port.onmessage({data:{type:'outputReady',requestId:request.requestId}});
+      else if (outcome === 'timeout') timeout();
+      else manager._cancelPendingDspControlRequests();
+      await pending;
+      assert.equal(manager.getDiagnosticOutput().outputGate.status, 'unconfirmed');
+      const current = manager.fadeInOutputWhenReady();
+      const next = port.messages.filter(message => message.type === 'awaitOutputReady').at(-1);
+      port.onmessage({data:{type:'outputReady',requestId:next.requestId}});
+      await current;
+      assert.equal(manager.getDiagnosticOutput().outputGate.status, 'confirmed');
+      manager._advanceAudioGraphGeneration();
+      assert.equal(manager.getDiagnosticOutput().outputGate.status, 'unconfirmed');
+    });
+  }
+});
+
 test('startup output-ready wait cannot unmute a newer fade or replacement graph', async () => {
   for (const replaceGraph of [false, true]) {
     await withAudioManager({ autoRunTimers: false }, async ({ manager }) => {
@@ -1745,7 +1771,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
   const expectedDefaults = {
     outputDeviceId: 'default',
     audioDriver: 'standard',
-    audioDriverDeviceMemory: '',
     midiInputDeviceKey: '',
     midiOutputDeviceKey: '',
     sampleRate: 96000,
@@ -1753,8 +1778,11 @@ test('Web and Electron input None switch locally only while pipeline configurati
     useWasmDsp: true,
     gaplessPlayback: true,
     replayGainMode: 'off',
+    replayGainTarget: 'manual',
     replayGainPreampDb: 0,
+    replayGainAutoCoverage: 95,
     replayGainPreventClipping: true,
+    replayGainPeakCeilingDb: 0,
     outputChannels: 2,
     latencyHint: 'interactive'
   };
@@ -1960,7 +1988,8 @@ test('Web reset applies Player settings changed together with the sample rate be
   });
   assert.deepEqual(events, [
     ['gapless', false],
-    ['replay-gain', { mode: 'track', preampDb: 3, preventClipping: true }],
+    ['replay-gain', { mode: 'track', preampDb: 3, preventClipping: true,
+      target: 'manual', autoCoverage: 95, peakCeilingDb: 0 }],
     ['rebuild']
   ]);
 });
@@ -2606,11 +2635,17 @@ test('output visualizer uses its capture stage when marker paths are active', as
     manager.networkPaths.tapRevision = 8;
     manager.networkPaths.taps = { 1: { input: { localSamples: 240, networkSamples: 0 } },
       2: { output: { localSamples: 0, networkSamples: null } } };
+    manager.networkPaths.send = manager.networkPaths.taps[1].input;
     manager.setNetworkOutputLocalDelay(true, 0, false, 2000);
     acknowledgeNetworkDelay(manager, 0);
     assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'send' }), 4100);
     assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'network' }), null);
     assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'pipeline' }), null);
+    // With every target off, the send tap still reaches this computer after downstream effects, output delay and L0.
+    manager.setNetworkOutputLocalDelay(true, 0, true, 0);
+    acknowledgeNetworkDelay(manager, 0);
+    assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'send' }),
+      (100800 + 240 + 4800 + 96000) / 48);
     manager.setNetworkOutputLocalDelay(true, 2000, true, 2000);
     acknowledgeNetworkDelay(manager, 96000);
     assert.equal(manager._resolveVisualSyncDue('viz-1', 100800, undefined, { visualizerTapStage: 'send' }), 4100);
@@ -2629,7 +2664,7 @@ test('opening Visualizer during Live Audio Send queues the first analyzer frame 
     acknowledgeNetworkDelay(manager, 110400);
     manager.handleWorkletMessage({ data: { type: 'networkRoute', sendId: 1, generation: 0, revision: 4 } }, primary);
     manager.handleWorkletMessage({ data: { type: 'networkPaths', revision: 4, outputDelaySamples: 4800,
-      localDelaySamples: 110400, taps: {} } }, primary);
+      localDelaySamples: 110400, send: { localSamples: 0, networkSamples: 0 }, taps: {} } }, primary);
 
     const tapId = 0xf0000000;
     const delivered = [];
@@ -2731,6 +2766,23 @@ test('Live Audio Send schedules upstream analyzers against the shared target bef
       windowAgeFrames: 480, completionFrames: 0, tapDelayFrames: 4800 };
     assert.equal(manager._resolveVisualSyncDue(2, 96128, 'spectrumOverlay', { timing }), 4000,
       'the overlay uses its exact capture time and the path to the send point');
+  });
+});
+
+test('telemetry lead is the analysis age under visual sync and everything downstream of the tap otherwise', async () => {
+  await withAudioManager({}, async ({ manager }) => {
+    class RhythmAnalyzerPlugin {}
+    manager.contextManager.audioContext.outputLatency = 0.01;
+    manager.pipeline = [Object.assign(new RhythmAnalyzerPlugin(), { id: 2 })];
+    manager.dspLatencyTaps = { 2: { input: 24000, output: 24000 } };
+    manager.dspPipelineLatencySamples = 30000;
+    manager._appliedOutputDelayFrames.set(manager.contextManager.workletNode, 4800);
+    assert.equal(manager.getTelemetryLeadSeconds(2), (24000 + 4800 + 480) / 48000,
+      'downstream plugins, the output delay and the device, without the upstream latency');
+    manager.visualSyncEnabled = true;
+    manager.visualSyncDelayFrames = 4800;
+    assert.equal(manager.getTelemetryLeadSeconds(2), 768 / 48000, 'held frames lead only by the onset analysis');
+    assert.equal(manager.getTelemetryLeadSeconds(99), 0, 'an unknown tap has no lead');
   });
 });
 

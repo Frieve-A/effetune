@@ -267,6 +267,33 @@ test('reset request uses localized renderer confirmation and applies the returne
   assert.equal(resetButton.disabled, true);
 });
 
+test('shared catalog startup reports failure once when an explicit Library visit joins session restoration', async () => {
+  await withGlobals({ window: { electronAPI: {} }, console: createConsoleHarness({ error() {} }) }, async () => {
+    for (const openLibrary of [false, true]) {
+      const entered = Promise.withResolvers();
+      const ready = Promise.withResolvers();
+      const messages = [];
+      let attempts = 0;
+      const manager = Object.assign(Object.create(UIManager.prototype), {
+        libraryRecoveryState: { available: true },
+        createLibraryManager() {
+          attempts++;
+          return { init() { entered.resolve(); return ready.promise; } };
+        },
+        setError(key) { messages.push(key); },
+        showEffectPipelineView() {}
+      });
+      const restoring = manager.ensureLibraryManager({ silent: true });
+      await withBoundedTimeout(entered.promise, 'catalog initialization');
+      const visits = openLibrary ? [manager.showLibraryView(), manager.showLibraryView()] : [];
+      ready.reject(new Error('Catalog open failed'));
+      await Promise.all([restoring, ...visits]);
+      assert.equal(attempts, 1);
+      assert.deepEqual(messages, openLibrary ? ['library.error.actionFailed'] : []);
+    }
+  });
+});
+
 test('queued Web startup recovery preserves its deferred subview without waiting on itself', async () => {
   const calls = [];
   const documentRef = createDocument('view-library');
@@ -290,7 +317,7 @@ test('queued Web startup recovery preserves its deferred subview without waiting
     libraryDeferredStartupOptions: null,
     libraryManager: null,
     libraryView: null,
-    libraryInitPromise: null,
+    libraryInitialization: null,
     libraryPlaybackBridge: null,
     miniPlayerMode: false,
     miniPlayerTargetMode: false,

@@ -72,7 +72,7 @@ let catalogState,
   createTrigramFtsQuery,
   cueDirectoryStage,
   duplicatePlaylist,
-  encodeBoundaryCursor,
+  finishTrackPage,
   enqueueScanSweep,
   ensureDirectoriesSynchronized,
   ensureFolderDeletionJob,
@@ -151,8 +151,10 @@ let catalogState,
   scheduleDeletionMaintenance,
   sealOperationSnapshot,
   sealPlaybackSequence,
+  projectArchiveEntryOffset,
+  loudnessCatalog,
+  playbackSession,
   setTrackFavorite,
-  stripOrderFields,
   tombstonePlaylist,
   trackFieldExpression,
   transitionOperation,
@@ -587,7 +589,7 @@ async function initialize() {
     createTrigramFtsQuery,
     cueDirectoryStage,
     duplicatePlaylist,
-    encodeBoundaryCursor,
+    finishTrackPage,
     enqueueScanSweep,
     ensureDirectoriesSynchronized,
     ensureFolderDeletionJob,
@@ -666,8 +668,10 @@ async function initialize() {
     scheduleDeletionMaintenance,
     sealOperationSnapshot,
     sealPlaybackSequence,
+    projectArchiveEntryOffset,
+    loudnessCatalog,
+    playbackSession,
     setTrackFavorite,
-    stripOrderFields,
     tombstonePlaylist,
     trackFieldExpression,
     transitionOperation,
@@ -755,6 +759,7 @@ async function initialize() {
 
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   catalogState.database = new DatabaseSync(dbPath);
+  schema.upgradeArchiveEntryTables(catalogState.database);
   catalogState.database.exec(schema.getMusicLibraryV3InitializationSql());
   catalogState.database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
@@ -917,6 +922,8 @@ function validateRequestEnvelope(message) {
   }
 }
 
+const loudnessTagSnapshots = new Map();
+
 function dispatchCommand(command, payload) {
   switch (command) {
     case 'getCapabilities': return getCapabilities();
@@ -996,6 +1003,32 @@ function dispatchCommand(command, payload) {
     case 'createPlaylist': return createPlaylist(payload);
     case 'createPlaylistWithItems': return createPlaylistWithItems(payload);
     case 'recordRecentlyPlayed': return recordRecentlyPlayed(payload);
+    case 'beginLoudnessTagSnapshot': {
+      const id = randomUUID();
+      const rows = loudnessCatalog.listLoudnessTagCandidates();
+      loudnessTagSnapshots.set(id, rows);
+      return { id, count: rows.length };
+    }
+    case 'readLoudnessTagPage': {
+      const rows = loudnessTagSnapshots.get(payload.id);
+      if (!rows) throw new Error('Loudness snapshot expired');
+      const page = [];
+      let bytes = 0;
+      for (const row of rows.slice(payload.offset, payload.offset + 128)) {
+        bytes += measureBytes(row, 'unserializableResponse');
+        if (page.length && bytes > MAX_RESPONSE_BYTES / 2) break;
+        page.push(row);
+      }
+      return page;
+    }
+    case 'closeLoudnessTagSnapshot': return loudnessTagSnapshots.delete(payload.id);
+    case 'updateLoudnessTagSignatures': return loudnessCatalog.updateLoudnessTagSignatures(payload);
+    case 'listPendingLoudness':
+    case 'saveTrackLoudness':
+    case 'finalizeLoudness':
+    case 'getTrackLoudness':
+    case 'getLoudnessStats': return loudnessCatalog[command](payload);
+    case 'playbackSession': return playbackSession(payload);
     case 'setTrackFavorite': return setTrackFavorite(payload);
     case 'getFavoriteTrackUids': return getFavoriteTrackUids(payload);
     case 'getSystemPlaylists': return getSystemPlaylists(payload);
@@ -1157,7 +1190,7 @@ function resolvePlaylistContextOrdinal(context, entityId) {
 function executeContextPage(
   context,
   order,
-  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null, ordinal = null }
 ) {
   const base = createContextFilter(context);
   const keyset = cursorTuple ? createKeysetSql(order, cursorTuple, continuation) : { sql: '', bindings: [] };
@@ -1192,21 +1225,15 @@ function executeContextPage(
   if (continuation === 'after' && hasExtra) hasAfter = true;
   if (continuation === 'before' && hasExtra) hasBefore = true;
 
-  const response = {
-    rows: rows.map(stripOrderFields),
-    nextCursor: hasAfter ? encodeBoundaryCursor(context, order, rows.at(-1), 'after') : null,
-    previousCursor: hasBefore ? encodeBoundaryCursor(context, order, rows[0], 'before') : null,
-    totalCount: Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true },
-    catalogVersion: context.snapshotVersion,
-    contextToken: context.token
-  };
-  catalogState.modules.queryContract.validatePageResponse(response, { limit });
-  return response;
+  const totalCount = Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true };
+  return finishTrackPage(context, order, rows, { totalCount }, {
+    hasBefore, hasAfter, reverse, limit, pageStartOrdinal, ordinal
+  });
 }
 
 function executePlaylistContextPage(
   context,
-  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null, ordinal = null }
 ) {
   const counts = ensurePlaylistContextCounts(context);
   const order = createPlaylistOrder();
@@ -1247,18 +1274,9 @@ function executePlaylistContextPage(
   }
   if (continuation === 'after' && hasExtra) hasAfter = true;
   if (continuation === 'before' && hasExtra) hasBefore = true;
-  const response = {
-    rows: rows.map(stripOrderFields),
-    nextCursor: hasAfter ? encodeBoundaryCursor(context, order, rows.at(-1), 'after') : null,
-    previousCursor: hasBefore ? encodeBoundaryCursor(context, order, rows[0], 'before') : null,
-    totalCount: counts.totalCount,
-    resolvedCount: counts.resolvedCount,
-    unresolvedCount: counts.unresolvedCount,
-    catalogVersion: context.snapshotVersion,
-    contextToken: context.token
-  };
-  catalogState.modules.queryContract.validatePageResponse(response, { limit });
-  return response;
+  return finishTrackPage(context, order, rows, counts, {
+    hasBefore, hasAfter, reverse, limit, pageStartOrdinal, ordinal
+  });
 }
 
 function playlistContextHasRows(context, tuple, continuation) {
@@ -1580,6 +1598,7 @@ function createTrackPageSelection(order) {
 
 function normalizePageRow(row) {
   if (row.rootPath !== undefined && row.relativePath !== undefined) {
+    projectArchiveEntryOffset(row);
     row.path = path.join(row.rootPath, ...row.relativePath.split('/'));
     delete row.rootPath;
     delete row.relativePath;
@@ -1928,7 +1947,7 @@ function prepareAutomaticPlaylistImport(payload) {
 
 function resolveImportedPlaylistTrack(unresolved) {
   if (!unresolved) return null;
-  if (unresolved.sourceKind === 'cue-track' || unresolved.cueProvenance != null) {
+  if (['cue-track', 'archive-entry'].includes(unresolved.sourceKind) || unresolved.cueProvenance != null) {
     return resolveCuePlaylistTrack(unresolved);
   }
   const trustedOriginMatch = resolveImportedTrackFromOrigin(unresolved);
@@ -2139,13 +2158,18 @@ function artworkClaimMatchesCurrentTrack(claim) {
       String(track.fileIdentity ?? '') !== claim.fileIdentity ||
       Number(track.size) !== claim.size || Number(track.mtimeMs) !== claim.mtimeMs) return false;
   if (claim.sourceKind === 'embedded-file') {
+    if (track.sourceKind === 'archive-entry') {
+      return claim.canonicalSourceIdentity === track.relativePath && claim.externalArtworkStat === null &&
+        claim.embeddedOffset === null && claim.embeddedLength === null;
+    }
     if (!claim.canonicalSourceIdentity.startsWith(`${track.relativePath}#embedded:`) ||
         claim.embeddedLength == null ||
         claim.embeddedLength === 0 || claim.embeddedLength > MAX_ARTWORK_RAW_BYTES ||
         claim.embeddedLength > claim.size || claim.externalArtworkStat !== null) return false;
   } else {
     if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null ||
-        !isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity)) {
+        !isTrackCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity,
+          track.sourceKind === 'archive-entry' ? track.fileName : null)) {
       return false;
     }
   }

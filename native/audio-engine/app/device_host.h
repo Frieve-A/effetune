@@ -1,7 +1,9 @@
 #pragma once
 
 #include "device/device.h"
+#include "host/file_fifo.h"
 #include "host/session.h"
+#include "measurement.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -13,8 +15,16 @@ class DeviceHost {
 public:
   explicit DeviceHost(std::string_view backend, bool muteOutput = false);
   ~DeviceHost();
+  FileFifo file;
   Session session;
   DeviceList list();
+  DeviceError openMeasurement(unsigned rate, const std::string &outputId, unsigned channels,
+                              const std::string &inputId, std::vector<unsigned> indices,
+                              unsigned deviceRate, unsigned captureRate, bool synchronous);
+  void closeMeasurement() noexcept;
+  bool measuring() const noexcept { return measuring_.load(); }
+  Measurement measurement;
+  std::span<const unsigned> measurementIndices() const noexcept { return measurementIndices_; }
   bool physical() const noexcept { return device_ != nullptr; }
   bool running() const noexcept { return running_; }
   void beginAsset() noexcept {
@@ -23,7 +33,7 @@ public:
   void endAsset() noexcept { assetDeadline_.reset(); }
   bool assetBusy() const noexcept { return assetDeadline_.has_value(); }
   DeviceError open(SessionFormat &format, const std::string &output, const std::string &input,
-                   DeviceLatency latency);
+                   DeviceLatency latency, const std::string &loopbackEndpointId = {});
   DeviceError start();
   void stop() noexcept;
   void stall() noexcept;
@@ -41,8 +51,10 @@ public:
   bool commandsSettled() const noexcept {
     return written_.load(std::memory_order_acquire) == consumed_.load(std::memory_order_acquire);
   }
-  DeviceError replaceInput(const std::string &id, DeviceLatency latency);
+  DeviceError replaceInput(const std::string &id, DeviceLatency latency,
+                           const std::string &loopbackEndpointId = {});
   DeviceError recover(bool inputOnly);
+  DeviceError recoverReset(int reasons);
   bool resetTestDevice(unsigned sampleRate, unsigned channels, std::string_view unavailableId,
                        bool loseInput);
   unsigned endpointEpoch(unsigned branch) const { return endpointEpochs_.at(branch); }
@@ -76,10 +88,12 @@ private:
   void renderOutput(std::span<float>, std::span<const float>, unsigned, DeviceClock) noexcept;
   void applyCommands() noexcept;
   std::unique_ptr<AudioDevice> device_;
+  std::atomic<bool> measuring_{false};
+  std::vector<unsigned> measurementIndices_;
   DeviceStreamFormat output_{}, input_{};
   DeviceError inputError_ = DeviceError::None;
   SessionFormat requested_;
-  std::string outputId_, inputId_;
+  std::string outputId_, inputId_, loopbackEndpointId_;
   DeviceLatency latency_ = DeviceLatency::Balanced;
   bool reopening_ = false, rebuilt_ = false;
   bool openedOnce_ = false;
@@ -88,7 +102,8 @@ private:
   std::atomic<Owner> owner_{Owner::Control};
   std::atomic<int> reset_{0};
   std::atomic<bool> captureReady_{false};
-  // Control owns this gate while playback is stopped. Capture callbacks only try it once.
+  // Control owns this gate while playback is stopped. Capture callbacks only
+  // try it once.
   std::atomic<bool> captureBusy_{true};
   std::atomic<std::uint64_t> captureGeneration_{0};
   // Producer overwrites each slot only after the audio consumer has returned

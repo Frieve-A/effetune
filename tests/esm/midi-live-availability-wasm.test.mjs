@@ -84,9 +84,10 @@ test('a late SF2 join inherits sixteen-channel Bank Select, Program Change, CC a
       bank.descriptor.operationRevision = 1;
       await h.initialize('SoundFontPlayerPlugin', bank.descriptor);
       const plugin = h.manager._wasmAssetMembershipByNode.get(h.node).get(7);
+      const selectedBank = plugin.sf;
       if (late) {
         await h.send({ type: 'clearPluginAsset', pluginId: 7, slot: 0, operationRevision: 1 });
-        plugin._pending = new Promise(() => {});
+        plugin.sf = '';
       }
       const playback = createNativeMidiPlaybackOwner(h);
       owner = playback.owner;
@@ -107,6 +108,8 @@ test('a late SF2 join inherits sixteen-channel Bank Select, Program Change, CC a
       assert.equal(await playing, true);
       const generation = owner.midiGeneration, anchor = owner.midiAnchorTime;
       if (late) {
+        plugin.sf = selectedBank;
+        plugin._pending = new Promise(() => {});
         await advanceTo(h, owner, .25);
         plugin._pending = null;
         bank.descriptor.operationRevision = 2;
@@ -161,8 +164,7 @@ for (const [variant, availability] of [['baseline', 'no-player'], ['simd', 'unlo
         if (availability === 'no-player') {
           await h.send({ type: 'updatePlugins', plugins: [], masterBypass: false });
           membership.clear();
-        } else if (availability === 'unloaded') plugin.sf = '';
-        else plugin._pending = new Promise(() => {});
+        } else plugin.sf = '';
         const playback = createNativeMidiPlaybackOwner(h);
         owner = playback.owner;
         let ended = 0;
@@ -173,9 +175,15 @@ for (const [variant, availability] of [['baseline', 'no-player'], ['simd', 'unlo
           { seconds: .7, status: 0x90, data1: 60, data2: 127 },
           { seconds: .9, status: 0x80, data1: 60, data2: 0 }
         ] };
-        assert.equal(await owner.playMidi(), true);
+        const playing = owner.playMidi();
+        await h.waitFor(() => playback.state.isPlaying);
+        assert.equal(await playing, true);
         assert.equal(playback.state.isPlaying, true);
         assert.equal(notices.length, 1);
+        if (availability === 'loading') {
+          plugin.sf = defaults.sf;
+          plugin._pending = new Promise(() => {});
+        }
         await owner.prepareMidiInstruments();
         assert.equal(notices.length, 1, 'Preparation/status refresh cannot spam the same song');
         await advanceTo(h, owner, .25, output => assert.ok(output.every(value => Math.abs(value) < 1e-7)));

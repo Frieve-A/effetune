@@ -5,6 +5,7 @@ import test from 'node:test';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { invalidateReplayGain, readReplayGain } from '../../js/ui/audio-player/replay-gain.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
 import { OpenHomePlaybackAdapter } from '../../js/ui/audio-player/openhome-playback-adapter.js';
@@ -1145,6 +1146,45 @@ test('finite buffer EOF is announced exactly before a delayed final-track callba
       'stopped'
     ]);
   });
+});
+
+test('a stale prepared automatic move still advances at track end', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const { audioPlayer, manager, state } = createHarness();
+    Object.assign(state, { isStopped: false, isTransitioning: false, isPlaying: true, playbackMode: 'midi' });
+    manager.activeRegion = null;
+    manager.nextBuffer = { buffer: null, automaticMovePlan: {} };
+    const calls = [];
+    audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = () => false;
+    audioPlayer.playbackManager.onTrackEnded = () => calls.push('advanced');
+    manager.transitionPreparedAutomaticMove = () => calls.push('unexpectedTransition');
+    manager.handleTrackEnded();
+    assert.deepEqual(calls, ['advanced']);
+    assert.equal(manager.nextBuffer, null);
+  });
+});
+
+test('an automatic move that goes stale mid-transition hands the track end back unless superseded', async () => {
+  for (const superseded of [false, true]) {
+    await withAudioContextGlobals({}, async () => {
+      const { audioPlayer, manager, playlist, state } = createHarness();
+      Object.assign(state, { isStopped: false, isPlaying: true, playbackMode: 'midi' });
+      const calls = [];
+      let stale = false;
+      const plan = {};
+      audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = () => !stale;
+      audioPlayer.playbackManager.getAutomaticMoveStaleReason = () => (stale ? 'current-track' : null);
+      audioPlayer.playbackManager.onTrackEnded = () => calls.push('advanced');
+      manager.prepareTrackTransitionRequest = async () => {
+        stale = true;
+        if (superseded) manager.invalidatePendingTransitionRequests();
+        return null;
+      };
+      assert.equal(await manager.transitionToNextTrack(playlist[1], 1, false, { buffer: null }, plan), false);
+      assert.deepEqual(calls, superseded ? [] : ['advanced'], `superseded=${superseded}`);
+      if (!superseded) assert.equal(state.isTransitioning, false);
+    });
+  }
 });
 
 test('rolling EOF uses the source anchor and finite-end cancellation preserves start reservations', async () => {
@@ -3752,6 +3792,37 @@ test('ReplayGain scales each player source by its own track and follows volume, 
     assert.equal(reads.length, 2, 'values are read once per track');
     for (const source of [currentSource, nextSource, recreated]) manager.releasePipelineSource(source);
     manager.disconnect();
+  });
+});
+
+test('gapless prefetch uses a refreshed ReplayGain measurement when decoding finishes', async () => {
+  let gainDb = -2;
+  const electronAPI = { readReplayGain: async () => ({ trackGainDb: gainDb }) };
+  await withAudioContextGlobals({ electronAPI, electronIntegration: { isElectron: true } }, async ({ calls }) => {
+    const current = { name: 'Current', path: 'https://example.test/current.wav' };
+    const track = { name: 'Next', path: 'C:\\Music\\prefetch-invalidation.flac', data: new Uint8Array([1]) };
+    const { manager, audioContext } = createHarness({ calls, playlist: [current, track],
+      currentTrack: current, currentTrackIndex: 0 });
+    audioContext.createGain = () => createNode(calls, 'player-gain');
+    manager.audioPlayer.replayGain = { mode: 'track', preampDb: 0, preventClipping: false };
+    let finishDecode;
+    manager.prepareTrackBuffer = () => new Promise(resolve => { finishDecode = resolve; });
+    let gain;
+    manager.schedulePreparedBufferTransition = prepared => {
+      const source = createNode(calls, 'scheduled-source');
+      gain = manager.preparePlaybackSource(source, prepared.playableTrack).gain.value;
+      manager.releasePipelineSource(source);
+    };
+    try {
+      const pending = manager.prepareNextTrackBufferForTrack(track, 1);
+      await flushMicrotasks();
+      assert.equal((await readReplayGain(track)).trackGainDb, -2);
+      gainDb = -8;
+      await invalidateReplayGain(manager);
+      finishDecode({ duration: 20 });
+      await pending;
+      assert.ok(Math.abs(gain - 10 ** (-8 / 20)) < 1e-12);
+    } finally { manager.disconnect(); }
   });
 });
 

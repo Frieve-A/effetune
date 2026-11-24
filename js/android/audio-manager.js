@@ -5,10 +5,6 @@ import { applySerializedState } from '../utils/serialization-utils.js';
 import { AndroidAssets } from './assets.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 
-function assetTopology(payload) {
-    return JSON.stringify([payload.descriptor, payload.plugins.map(plugin => plugin.type)]);
-}
-
 // Reuse editing, history and offline rendering; the Service owns live audio.
 export class AndroidAudioManager extends AudioManager {
     constructor(pipelineManager, { bridge = getAndroidBridge() } = {}) {
@@ -123,10 +119,6 @@ export class AndroidAudioManager extends AudioManager {
             this.nativeAssets.adopt(this.pipeline, this.snapshot.assetRefs, this.snapshot.assetDefinitions);
             for (const plugin of existing) if (![...this.pipelineA, ...this.pipelineB || []].includes(plugin)) plugin.cleanup?.();
             this.masterBypass = this.snapshot.masterBypass === true;
-            this.nativeAssetTopology = assetTopology(prepareAndroidPipeline(this.pipeline, {
-                sampleRate: this.snapshot.sampleRate || 48000, channelCount: this.snapshot.channelCount || 2,
-                masterBypass: this.masterBypass
-            }));
             this.pipelineProcessor.setPipeline(this.pipeline);
             window.pipeline = this.pipeline;
         } finally {
@@ -195,9 +187,7 @@ export class AndroidAudioManager extends AudioManager {
             if (externalEpoch !== this.externalPipelineEpoch) return;
             if (!Number.isSafeInteger(result?.revision)) throw new Error('Invalid Android pipeline revision');
             this.acceptSnapshot(result);
-            const topology = assetTopology(payload);
-            if (topology !== this.nativeAssetTopology) this.nativeAssets.resident.clear();
-            this.nativeAssetTopology = topology;
+            this.nativeAssets.reconcilePipeline(pipeline);
             await this.nativeAssets.transfer(pipeline, options, assetClears, result.revision);
         });
         this.mutationWrites?.push(operation);

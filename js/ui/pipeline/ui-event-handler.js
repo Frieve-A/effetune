@@ -7,13 +7,14 @@ import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
 import { attachLyricsFiles, attachArtworkFiles } from '../audio-player/lyrics-file-links.js';
 import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyboard-shortcut-handler.js';
 import { SUPPORTED_AUDIO_EXTENSIONS } from '../../library/constants.js';
+import { getArchiveFormat } from '../../library/archive/archive-reader.js';
 
 const PLAYBACK_AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS;
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 const PLAYLIST_EXTENSION_PATTERN = /\.(m3u8?|pls|xspf)$/i;
 
 function isSupportedPlaybackAudioFile(file) {
-    return !!(file && PLAYBACK_AUDIO_EXTENSION_PATTERN.test(file.name || ''));
+    return !!(file && (PLAYBACK_AUDIO_EXTENSION_PATTERN.test(file.name || '') || getArchiveFormat(file.name || '')));
 }
 
 function isPlaylistFile(file) {

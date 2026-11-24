@@ -13,6 +13,8 @@ Mide la respuesta en frecuencia, la respuesta impulsional, la distorsión y el d
 4. Genera una corrección de EQ paramétrico que se puede importar directamente en EffeTune.
 5. Aplica la corrección para lograr una reproducción más precisa y neutral.
 
+Si la aplicación de escritorio usa un controlador de audio nativo y el dispositivo de entrada tiene tres canales o más, elige **Ch 3** o un canal superior en **Canal de entrada**, según dónde esté conectado el micrófono.
+
 ## Canales de salida
 
 Ajusta **Número de canales del dispositivo de salida** según tu dispositivo de salida: **6** para 5.1 u **8** para 7.1. Las opciones de canal de salida y de ancho de banda por canal se limitan a este rango. Las señales de prueba y las mediciones siempre usan este número de canales, así que mantén **6** aunque solo midas Ch 3 (central) y Ch 4 (subwoofer) en un dispositivo 5.1.

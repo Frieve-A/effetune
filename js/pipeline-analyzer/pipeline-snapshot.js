@@ -165,9 +165,7 @@ function requireAnalyzerWasmExecution(prepared) {
     });
 }
 
-function copyDspSnapshot(audioManager, requiredTypes, preferredTypes, bytesOnly) {
-    const moduleInfo = audioManager?.dspModuleInfo;
-    const enabledTypes = new Set(audioManager?.getEnabledDspTypes?.() || []);
+function copyDspSnapshot(moduleInfo, enabledTypes, requiredTypes, preferredTypes, bytesOnly) {
     const missingTypes = [...requiredTypes].filter(type => !enabledTypes.has(type));
     if (missingTypes.length > 0) {
         throw new PipelineSnapshotError('wasm-unavailable', { pluginTypes: missingTypes });
@@ -286,6 +284,11 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
         throw new PipelineSnapshotError('pipeline-serialization-unavailable');
     }
 
+    // Loading publishes the parameter packers used to serialize the native effects below.
+    const moduleInfo = !masterBypass && originalEntries.length > 0
+        ? await (audioManager.getOfflineDspModuleInfo?.() ?? audioManager.dspModuleInfo)
+        : null;
+    guardCurrent(isCurrent);
     const preparedEntries = originalEntries.map(plugin => ({
         plugin,
         data: cloneValue(workletSync.preparePluginData(plugin))
@@ -302,7 +305,7 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
     );
     const preferredWasmTypes = new Set();
     const frozenPreferredWasmPluginIds = [];
-    const enabledDspTypes = new Set(audioManager?.getEnabledDspTypes?.() || []);
+    const enabledDspTypes = new Set(audioManager?.getEnabledDspTypes?.(null, moduleInfo) || []);
 
     for (const entry of effectiveEntries) {
         const requirements = normalizeRequirements(
@@ -439,7 +442,7 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
             plugins: preparedEntries.map(entry => entry.data),
             masterBypass,
             processors,
-            dsp: copyDspSnapshot(audioManager, requiredWasmTypes, preferredWasmTypes, dspBytesOnly),
+            dsp: copyDspSnapshot(moduleInfo, enabledDspTypes, requiredWasmTypes, preferredWasmTypes, dspBytesOnly),
             assets,
             requiredWasmPluginIds,
             expectedWasmBypassPluginIds,

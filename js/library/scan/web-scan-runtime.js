@@ -90,7 +90,7 @@ export class WebCatalogScanRuntime {
     return { checked: activeFolderIds.size, cleaned };
   }
 
-  async addFolder({ handle, displayName, scan = true, scanReason = 'automatic', languageHints = null, includeVideo = false, includeMidi = false } = {}) {
+  async addFolder({ handle, displayName, scan = true, scanReason = 'automatic', languageHints = null, includeVideo = false, includeMidi = false, includeMidiArchives = false } = {}) {
     assertDirectoryHandle(handle);
     const folders = await this.repository.listFolderRecords({ includeRemoved: true, limit: MAX_WEB_FOLDERS });
     const activeFolders = new Map(
@@ -151,7 +151,7 @@ export class WebCatalogScanRuntime {
       return { folder, scan: null };
     }
     const scanId = `web-scan-${this.idFactory()}`;
-    const result = await this.#runFolder({ scanId, folder, source: handle, scanReason, resume: false, languageHints, includeVideo, includeMidi });
+    const result = await this.#runFolder({ scanId, folder, source: handle, scanReason, resume: false, languageHints, includeVideo, includeMidi, includeMidiArchives });
     return { folder, scan: result };
   }
 
@@ -182,7 +182,7 @@ export class WebCatalogScanRuntime {
     scanReason = 'automatic',
     languageHints = null,
     includeVideo = false,
-    includeMidi = false
+    includeMidi = false, includeMidiArchives = false
   } = {}) {
     const pending = this.#requirePendingSessionSource(token);
     assertRepositoryContract(pending.source.size > 0, 'invalidSessionFiles', 'At least one folder file is required');
@@ -213,7 +213,7 @@ export class WebCatalogScanRuntime {
           resume: false,
           languageHints,
           includeVideo,
-          includeMidi
+          includeMidi, includeMidiArchives
         })
       : null;
     return { folder, existing: Boolean(pending.folder), scan: result };
@@ -230,7 +230,7 @@ export class WebCatalogScanRuntime {
     resume = false,
     languageHints = null,
     includeVideo = false,
-    includeMidi = false
+    includeMidi = false, includeMidiArchives = false
   } = {}) {
     const folders = await this.repository.listFolderRecords({ limit: MAX_WEB_FOLDERS });
     const selected = folderIds == null
@@ -260,7 +260,7 @@ export class WebCatalogScanRuntime {
           resume,
           languageHints,
           includeVideo,
-          includeMidi
+          includeMidi, includeMidiArchives
         });
         results.push(result);
         if (result.status === 'paused') break;
@@ -284,7 +284,7 @@ export class WebCatalogScanRuntime {
         resume,
         languageHints,
         includeVideo,
-        includeMidi
+        includeMidi, includeMidiArchives
       });
       results.push(result);
       if (result.status === 'paused') break;
@@ -486,7 +486,7 @@ export class WebCatalogScanRuntime {
     index: match.index };
   }
 
-  async #runFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi }) {
+  async #runFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi, includeMidiArchives }) {
     assertRepositoryContract(!this.activeScans.has(scanId), 'scanAlreadyRunning', 'Scan is already running');
     const controller = new AbortController();
     this.activeScans.set(scanId, { controller, folderId: folder.id });
@@ -494,7 +494,7 @@ export class WebCatalogScanRuntime {
     const current = previous.catch(() => {}).then(() => {
       if (controller.signal.aborted) throw controller.signal.reason;
       return this.#executeFolder({
-        scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi, controller
+        scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi, includeMidiArchives, controller
       });
     });
     this.folderScanTails.set(folder.id, current);
@@ -506,11 +506,11 @@ export class WebCatalogScanRuntime {
     }
   }
 
-  async #executeFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi, controller }) {
+  async #executeFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo, includeMidi, includeMidiArchives, controller }) {
     const playlistCollector = new AutomaticPlaylistCollector();
     const filesystem = source instanceof WebSessionFileSource
-      ? source.createAdapter({ includeVideo, includeMidi, onPlaylistFile: candidate => playlistCollector.add(candidate) })
-      : this.filesystemFactory(source, { includeVideo, includeMidi, onPlaylistFile: candidate => playlistCollector.add(candidate) });
+      ? source.createAdapter({ includeVideo, includeMidi, includeMidiArchives, onPlaylistFile: candidate => playlistCollector.add(candidate) })
+      : this.filesystemFactory(source, { includeVideo, includeMidi, includeMidiArchives, onPlaylistFile: candidate => playlistCollector.add(candidate) });
     let latestProgress = null;
     let terminalProgress = null;
     const service = this.scanServiceFactory({

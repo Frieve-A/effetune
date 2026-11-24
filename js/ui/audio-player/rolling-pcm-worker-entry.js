@@ -3,15 +3,18 @@ import {
   AudioSampleSink,
   BlobSource,
   BufferSource,
+  CustomSource,
   Input
 } from 'mediabunny';
 import { probeDsdSource } from '../../audio/dsd/dsd-parser.js';
 import { createDsdDecoder } from '../../audio/dsd/dsd-decoder.js';
 import { createDsdSpeedDecoder } from '../../audio/dsd/dsd-speed-decoder.js';
 import { openDsdWorkerReader } from './dsd-range-channel.js';
+import { DSD_RANGE_BYTE_CAP } from './dsd-source.js';
 import {
   createRollingPcmEnvelope,
   FixedPlanarSlabAssembler,
+  ROLLING_PCM_MAX_SLAB_CHANNELS,
   RollingPcmCommand,
   RollingPcmEvent,
   validateRollingPcmEnvelope
@@ -21,7 +24,8 @@ import {
   normalizePcm16WaveFillTarget,
   normalizePcm16WaveSeekFrame,
   outputToSourceFrames,
-  PCM16_STEREO_44100_TO_96000_PROFILE
+  PCM16_STEREO_44100_TO_96000_PROFILE,
+  pcmFramesForDuration
 } from './rolling-pcm-core.js';
 
 let owner = null;
@@ -91,6 +95,26 @@ async function openSource(message) {
     source = new BlobSource(message.source);
   } else if (message.sourceKind === 'bytes' && message.source instanceof ArrayBuffer) {
     source = new BufferSource(message.source);
+  } else if (message.sourceKind === 'range' && Number.isSafeInteger(message.sourceSize) && message.sourceSize > 0) {
+    const reader = openDsdWorkerReader(message.source, message.sourceSize);
+    let pendingRead = Promise.resolve();
+    source = new CustomSource({
+      getSize: () => reader.size,
+      prefetchProfile: 'fileSystem',
+      dispose: () => reader.dispose(),
+      read(start, end) {
+        const operation = pendingRead.then(async () => {
+          if (end - start <= DSD_RANGE_BYTE_CAP) return reader.read(start, end - start);
+          const bytes = new Uint8Array(end - start);
+          for (let position = start; position < end; position += DSD_RANGE_BYTE_CAP) {
+            bytes.set(await reader.read(position, Math.min(DSD_RANGE_BYTE_CAP, end - position)), position - start);
+          }
+          return bytes;
+        });
+        pendingRead = operation.catch(() => {});
+        return operation;
+      }
+    });
   } else {
     throw codedError('source-invalid');
   }
@@ -110,15 +134,16 @@ async function openSource(message) {
       ]);
     if (!canDecode) throw codedError('decoder-unsupported');
     if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0 ||
-        !Number.isSafeInteger(channelCount) || channelCount < 1 || channelCount > 2 ||
+        !Number.isSafeInteger(channelCount) || channelCount < 1 ||
+        channelCount > ROLLING_PCM_MAX_SLAB_CHANNELS ||
         !Number.isFinite(durationSec) || durationSec < 0 ||
         typeof format?.mimeType !== 'string' || format.mimeType.length === 0 ||
         (codec !== null && typeof codec !== 'string') ||
         (decoderConfig?.codec !== undefined && typeof decoderConfig.codec !== 'string')) {
       throw codedError('metadata-invalid');
     }
-    const totalFrames = Math.ceil(durationSec * sampleRate);
-    if (!Number.isSafeInteger(totalFrames) || totalFrames < 0) {
+    const totalFrames = pcmFramesForDuration(durationSec, sampleRate);
+    if (totalFrames === null) {
       throw codedError('duration-overflow');
     }
     const ids = idsFrom(message);

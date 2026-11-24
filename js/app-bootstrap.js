@@ -1,6 +1,7 @@
 import { isAndroidHost } from './android/bridge.js';
 import { installAndroidFileDownloads } from './android/file-downloads.js';
 import { WebUpdateManager } from './web-update-manager.js';
+import { startDiagnosticRecording } from './diagnostics/diagnostic-log.js';
 
 function getDefaultWindow() {
     return typeof window !== 'undefined' ? window : {};
@@ -91,6 +92,7 @@ export function startApplication({
     windowRef = getDefaultWindow(),
     logger = console
 } = {}) {
+    startDiagnosticRecording(windowRef);
     startHeartbeat('main-page');
     installAndroidFileDownloads(windowRef);
     registerTrayPresetListenerFn({

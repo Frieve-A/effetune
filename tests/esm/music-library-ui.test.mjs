@@ -521,6 +521,79 @@ test('LibraryView updates Favorites sequentially and refreshes its authoritative
   assert.equal(catalogRefreshCount, 2);
 });
 
+test('bulk Favorites resolves select-all, range, and explicit tracks after a shortened page', async () => {
+  const tracks = Array.from({ length: 480 }, (_, index) => ({ trackUid: `track-${index}`, playlistItemKey: index + 1 }));
+  const requests = [];
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    detail: { type: 'playlist' },
+    pagedController: { contextToken: 'playlist-context' },
+    pagedState: { totalCount: 480 },
+    manager: {
+      withTrackQueryContext(_contextToken, read) { return read(); },
+      async queryTracks(request) {
+        requests.push(request);
+        return request.cursor
+          ? { rows: tracks.slice(381), nextCursor: null }
+          : { rows: tracks.slice(0, 381), nextCursor: 'playlist-tail' };
+      }
+    }
+  });
+  const resolve = descriptor => view.resolveFavoriteActionTrackUids({
+    descriptor: { contextToken: 'playlist-context', ...descriptor }
+  }, tracks.at(-1));
+  const selectCases = [
+    [{ mode: 'all', exclusions: ['9'] }, tracks.filter((_, index) => index !== 8).map(row => row.trackUid)],
+    [{ mode: 'range', startUid: '480', endUid: '380', inclusions: ['2'], exclusions: ['382'] },
+      [tracks[1], ...tracks.slice(379).filter(row => row.playlistItemKey !== 382)].map(row => row.trackUid)],
+    [{ mode: 'explicit', trackUids: ['471', '5'] }, ['track-4', 'track-470']]
+  ];
+  for (const [descriptor, expected] of selectCases) {
+    assert.deepEqual(await resolve(descriptor), expected);
+    assert.deepEqual(requests.splice(0), [
+      { contextToken: 'playlist-context', cursor: null, limit: 500 },
+      { contextToken: 'playlist-context', cursor: 'playlist-tail', limit: 500 }
+    ]);
+  }
+  assert.deepEqual(await resolve({ mode: 'explicit', trackUids: ['480'] }), ['track-479']);
+  assert.deepEqual(requests, []);
+});
+
+test('bulk Favorites keeps playlist row identity when navigation changes while a page is pending', async () => {
+  const first = { trackUid: 'first-track', playlistItemKey: 11 };
+  const second = { trackUid: 'second-track', playlistItemKey: 22 };
+  const requests = [];
+  let signalSecondPage;
+  const secondPageRequested = new Promise(resolve => { signalSecondPage = resolve; });
+  let resolveSecondPage;
+  const secondPage = new Promise(resolve => { resolveSecondPage = resolve; });
+  const view = Object.assign(Object.create(LibraryView.prototype), {
+    detail: { type: 'playlist' },
+    pagedController: { contextToken: 'playlist-context' },
+    manager: {
+      withTrackQueryContext(_contextToken, read) { return read(); },
+      async queryTracks(request) {
+        requests.push(request);
+        if (!request.cursor) return { rows: [first], nextCursor: 'second-page' };
+        signalSecondPage();
+        return secondPage;
+      }
+    }
+  });
+  const resolved = view.resolveFavoriteActionTrackUids({
+    descriptor: { contextToken: 'playlist-context', mode: 'explicit', trackUids: ['11', '22'] }
+  }, first);
+  await secondPageRequested;
+  view.detail = null;
+  view.currentView = 'tracks';
+  view.pagedController.contextToken = 'tracks-context';
+  resolveSecondPage({ rows: [second], nextCursor: null });
+  assert.deepEqual(await resolved, ['first-track', 'second-track']);
+  assert.deepEqual(requests, [
+    { contextToken: 'playlist-context', cursor: null, limit: 500 },
+    { contextToken: 'playlist-context', cursor: 'second-page', limit: 500 }
+  ]);
+});
+
 test('LibraryView refreshes Favorites once after overlapping mutations finish', async () => {
   const storedFavorites = new Set();
   const resolvers = new Map();
@@ -1821,7 +1894,21 @@ test('Files displays the escaped full path and retains direct track playback', a
       ));
       await cueRow.dispatch('dblclick');
     }
-    assert.deepEqual(played, [['track-file', 4], ['cue-1', 5], ['cue-2', 6]]);
+    const archivePaths = ['Set 1/Theme.mid', 'Set 2/<Theme #2>.mid'];
+    const archiveRelativePath = 'Albums #2024/Scores #1.zip';
+    const archiveDisplayPath = 'D:\\Music\\Albums #2024\\Scores #1.zip';
+    const archiveEntryKeyPrefix = `archive:${archiveRelativePath}#`;
+    for (const [index, entryPath] of archivePaths.entries()) {
+      const archiveRow = view.createPagedRow({
+        trackUid: `archive-${index}`, folderId: 'music-root', sourceKind: 'archive-entry',
+        path: archiveDisplayPath, physicalSourceKey: 'music-root',
+        entryKey: archiveEntryKeyPrefix + entryPath, archiveEntryOffset: archiveEntryKeyPrefix.length
+      }, index + 7, { queryGeneration: 1, pageAttemptId: 1 }, true);
+      const shownPath = index === 0 ? 'Set 1/Theme.mid' : 'Set 2/&lt;Theme #2&gt;.mid';
+      assert.ok(archiveRow.innerHTML.includes(`${archiveDisplayPath} [${shownPath}]`));
+      await archiveRow.dispatch('dblclick');
+    }
+    assert.deepEqual(played, [['track-file', 4], ['cue-1', 5], ['cue-2', 6], ['archive-0', 7], ['archive-1', 8]]);
   });
 });
 
@@ -2226,6 +2313,10 @@ test('paged track properties load complete metadata and the resolved Electron pa
   const view = createLibraryViewFixture({
     manager: {
       runtime: 'electron',
+      client: { async getTrackLoudness({ trackUid }) {
+        calls.push(['getTrackLoudness', trackUid]);
+        return { integrated: -19.55, truePeak: -1.23, lra: 0 };
+      } },
       async getTrack(trackUid) {
         calls.push(['getTrack', trackUid]);
         return {
@@ -2262,11 +2353,84 @@ test('paged track properties load complete metadata and the resolved Electron pa
     assert.match(propertiesBackdrop.innerHTML, /96000 Hz/);
     assert.match(propertiesBackdrop.innerHTML, /24 bit/);
     assert.match(propertiesBackdrop.innerHTML, /1411 kbps/);
+    assert.match(propertiesBackdrop.innerHTML, /-19\.6 LUFS/);
+    assert.match(propertiesBackdrop.innerHTML, /-1\.2 dBTP/);
+    assert.match(propertiesBackdrop.innerHTML, /0\.0 LU/);
   });
   assert.deepEqual(calls, [
     ['getTrack', 'track-one'],
+    ['getTrackLoudness', 'track-one'],
     ['resolvePlaybackSource', 'track-one']
   ]);
+});
+
+test('tag writing confirms the file count, forwards scan preferences and reports the result', async () => {
+  const messages = [];
+  const calls = [];
+  const manager = { runtime: 'electron',
+    getScanOptions() { return { includeVideo: true, includeMidi: true, languageHints: { language: 'ja' } }; },
+    async refreshLoudness() { calls.push('refresh'); }
+  };
+  const view = createLibraryViewFixture({ manager, uiManager: { setError: message => messages.push(message) } });
+  let confirmed = false;
+  let rescanFailed = 0;
+  const api = {
+    async prepareLoudnessTagWrite() { return { snapshotId: 'batch', eligible: 2 }; },
+    async discardLoudnessTagSnapshot(id) { calls.push(['discard', id]); },
+    async writeLoudnessTags(options) {
+      calls.push(options);
+      return { written: 1, skipped: 1, failed: 0, rescanFailed, reasons: { changed: 1 } };
+    }
+  };
+  await withGlobals({ window: { electronAPI: { libraryCatalogV1: api }, confirm(message) {
+    assert.match(message, /2 files/);
+    assert.match(message, /changes the original files/);
+    return confirmed;
+  } } }, async () => {
+    await view.runLoudnessAction(() => view.writeLoudnessTags());
+    assert.deepEqual(calls.splice(0), [['discard', 'batch']]);
+    confirmed = true;
+    await view.runLoudnessAction(() => view.writeLoudnessTags());
+    assert.deepEqual(calls, [{ snapshotId: 'batch', scanOptions: manager.getScanOptions() }, 'refresh']);
+    assert.match(messages.at(-1), /Files updated: 1 · Skipped: 1 · Failed: 0 · Changed since measurement: 1/);
+    rescanFailed = 1;
+    await view.runLoudnessAction(() => view.writeLoudnessTags());
+    assert.match(messages.at(-1), /Files updated: 1 .*Scan failed/);
+    manager.runtime = 'web';
+    await view.writeLoudnessTags();
+    assert.equal(calls.length, 4);
+  });
+});
+
+test('closing the library cancels a pending analysis and lets it finalize before the catalog closes', async () => {
+  let release;
+  let entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  const pending = new Promise(resolve => { release = resolve; });
+  const events = [];
+  const manager = {
+    client: { async listPendingLoudness() {
+      entered();
+      await pending;
+      return { tracks: [], totalCount: 0 };
+    } },
+    async refreshLoudness() { events.push('refresh'); },
+    async close() { events.push('close'); }
+  };
+  const view = createLibraryViewFixture({ manager });
+  const ui = Object.assign(Object.create(UIManager.prototype), { libraryManager: manager, libraryView: view });
+  await withGlobals({ window: { libraryManager: manager } }, async () => {
+    const task = view.runLoudnessAction(() => view.analyzeLoudness());
+    await started;
+    assert.equal(task, view.runLoudnessAction(() => assert.fail('Started a second loudness job')));
+    const closing = ui.disposeLibraryManager();
+    assert.equal(view.analysisController.signal.aborted, true);
+    assert.deepEqual(events, []);
+    release();
+    await closing;
+    await task;
+    assert.deepEqual(events, ['refresh', 'close']);
+  });
 });
 
 test('paged CUE track properties show provenance, physical source, and logical region', async () => {
@@ -2315,6 +2479,33 @@ test('paged CUE track properties show provenance, physical source, and logical r
     assert.match(html, /D:\\Music\\Album\\Disc\.flac/);
     assert.match(html, /1:15\.000/);
     assert.match(html, /3:15\.000/);
+  });
+});
+
+test('paged archive track properties show the path inside the physical archive', async () => {
+  const documentRef = createDialogDocument();
+  const view = createLibraryViewFixture({
+    manager: {
+      runtime: 'electron',
+      async getTrack(trackUid) {
+        return {
+          trackUid,
+          sourceKind: 'archive-entry',
+          relativePath: 'Collection #1.zip',
+          entryKey: 'archive:Collection #1.zip#Set/Song.mid',
+          title: 'Song'
+        };
+      },
+      async resolvePlaybackSource() { return { path: 'D:\\Music\\Collection #1.zip' }; }
+    },
+    uiManager: { t: key => key }
+  });
+
+  await withGlobals({ document: documentRef }, async () => {
+    await view.showTrackProperties({ trackUid: 'archive-song' });
+    const html = documentRef.body.children[0].innerHTML;
+    assert.match(html, /<dd>Song\.mid<\/dd>/);
+    assert.match(html, /<dd>D:\\Music\\Collection #1\.zip\\Set\\Song\.mid<\/dd>/);
   });
 });
 
@@ -2661,14 +2852,14 @@ test('paged playlist export passes the relative path checkbox state', async () =
   ]);
 });
 
-test('paged playlist export reports skipped CUE tracks as a localized non-error notification', async () => {
+test('paged playlist export reports skipped tracks as a localized non-error notification', async () => {
   const calls = [];
   const live = { textContent: '' };
   const view = Object.assign(Object.create(LibraryView.prototype), {
     manager: {
       playlists: {
         async exportToSink() {
-          return { exportedCount: 2, skippedCueCount: 3 };
+          return { exportedCount: 2, skippedTrackCount: 3 };
         }
       }
     },
@@ -2679,8 +2870,8 @@ test('paged playlist export reports skipped CUE tracks as a localized non-error 
     },
     uiManager: {
       t(key, params) {
-        return key === 'library.paged.exportSkippedCueTracks'
-          ? `Skipped ${params.count} CUE tracks`
+        return key === 'library.paged.exportSkippedTracks'
+          ? `Skipped ${params.count} tracks`
           : key;
       },
       setError(message, sticky) {
@@ -2694,8 +2885,8 @@ test('paged playlist export reports skipped CUE tracks as a localized non-error 
 
   await view.handleExportPlaylist({ id: 'playlist-1', name: 'CUE mix' }, 'xspf');
 
-  assert.deepEqual(calls, [['Skipped 3 CUE tracks', false]]);
-  assert.equal(live.textContent, 'Skipped 3 CUE tracks');
+  assert.deepEqual(calls, [['Skipped 3 tracks', false]]);
+  assert.equal(live.textContent, 'Skipped 3 tracks');
 });
 
 test('paged Electron export sink retains the selected destination path', async () => {

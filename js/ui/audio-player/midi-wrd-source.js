@@ -2,17 +2,23 @@ import { isMidiFile } from '../../midi/smf-parser.js';
 import { findLyricsFileName } from '../../library/metadata/lyrics.js';
 import { TEXT_FILE_MAX_BYTES } from '../../library/metadata/text-encoding.js';
 import { getLyricsFiles } from './lyrics-file-links.js';
+import { getPlaybackFilePath } from './playback-source-policy.js';
 
 export async function readMidiWrdBytes(track, player) {
+    if (track.sourceKind === 'openhome') return null;
     const fileName = track.file?.name ?? track.fileName ?? track.path?.split(/[\\/]/).at(-1) ?? track.name ?? '';
     if (!isMidiFile(fileName)) return null;
     const names = [fileName.replace(/\.(mid|midi|kar)$/i, '')];
     const files = getLyricsFiles(track.file);
-    const match = findLyricsFileName(files.map(file => file.name), names, 'wrd');
-    let file = match ? files.find(file => file.name === match.fileName) : null;
+    const wrdName = (names[0] + '.wrd').normalize('NFC').toLowerCase();
+    let file = files.find(candidate => candidate.name?.normalize('NFC').toLowerCase() === wrdName);
+    if (!file && files.length) {
+        const match = findLyricsFileName(files.map(candidate => candidate.name), names, 'wrd');
+        if (match) file = files.find(candidate => candidate.name === match.fileName);
+    }
     if (!file) {
         const electronAPI = globalThis.window?.electronAPI;
-        const path = track.path || (track.file && electronAPI?.getPathForFile?.(track.file));
+        const path = getPlaybackFilePath(track, electronAPI);
         if (path && electronAPI?.readMidiWrd) return electronAPI.readMidiWrd(path);
         const trackUid = track.libraryTrackId ?? track.presentationTrack?.libraryTrackId;
         if (trackUid) {

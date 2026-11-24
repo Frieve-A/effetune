@@ -1,4 +1,5 @@
 import { AudioContextManager } from './audio/audio-context-manager.js';
+import { replayGainSettings } from './ui/audio-player/replay-gain.js';
 import { sfzPluginPreparationContext } from './sfz/preparation-context.js';
 import { audioManagerWasmAssetMethods, DSP_BYTES_READY_TIMEOUT_MS } from './audio/audio-manager-wasm-assets.js';
 import { audioManagerSfzRuntimeMethods } from './audio/audio-manager-sfz-runtime.js';
@@ -23,6 +24,7 @@ import { DSP_PARAM_PACKERS } from './audio/dsp-params.generated.js';
 import { SpectrumTapContract, VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, VISUAL_SYNC_QUEUE_LIMIT, dropVisualSyncOverflow,
     isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime,
     audiblePlaybackPosition, telemetryCaptureTiming } from './audio/visual-sync.js';
+import { recordDiagnosticEvent } from './diagnostics/diagnostic-log.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
 import { AudioPowerState, mergePowerSavingSettings } from './audio/power-policy.js';
@@ -112,14 +114,8 @@ async function applyPlayerPreferenceChanges(previousPreferences, nextPreferences
             console.error('[AudioManager] Failed to clean up the previous gapless plan:', error);
         }
     }
-    const replayGain = {
-        mode: nextPreferences.replayGainMode,
-        preampDb: nextPreferences.replayGainPreampDb,
-        preventClipping: nextPreferences.replayGainPreventClipping
-    };
-    if ((replayGain.mode !== previousPreferences.replayGainMode ||
-        replayGain.preampDb !== previousPreferences.replayGainPreampDb ||
-        replayGain.preventClipping !== previousPreferences.replayGainPreventClipping) &&
+    const replayGain = replayGainSettings(nextPreferences);
+    if (!audioPreferencesEqual(replayGain, replayGainSettings(previousPreferences)) &&
         typeof player?.applyReplayGainPreference === 'function') {
         try {
             await player.applyReplayGainPreference(replayGain);
@@ -718,14 +714,18 @@ export class AudioManager {
         return warmUpDspModule(info, sampleRate);
     }
 
-    getEnabledDspTypes(preferenceOverride = null) {
-        if (!this.dspModuleInfo) return [];
-        if (this.runtimeOptions?.wasmOnly) return [...this.dspModuleInfo.paramPackers.keys()];
+    getOfflineDspModuleInfo() {
+        return this.dspModuleInfo;
+    }
+
+    getEnabledDspTypes(preferenceOverride = null, moduleInfo = this.dspModuleInfo) {
+        if (!moduleInfo) return [];
+        if (this.runtimeOptions?.wasmOnly) return [...moduleInfo.paramPackers.keys()];
         const preference = preferenceOverride ||
             window.audioPreferences || window.electronIntegration?.audioPreferences || {};
         return getDspRolloutConfig({
-            meta: this.dspModuleInfo.meta,
-            paramPackers: this.dspModuleInfo.paramPackers,
+            meta: moduleInfo.meta,
+            paramPackers: moduleInfo.paramPackers,
             preference,
             location: window.location
         }).enabledTypes;
@@ -1067,7 +1067,7 @@ export class AudioManager {
     _cancelPendingDspControlRequests() {
         for (const request of this._pendingDspControlRequests?.values() || []) {
             if (request.timer !== null) clearTimeout(request.timer);
-            request.resolve(null);
+            request.resolve(null, 'cancelled');
         }
         this._pendingDspControlRequests?.clear();
     }
@@ -1247,6 +1247,19 @@ export class AudioManager {
     }
 
     async startPowerPolicyController() {
+        if (!this._diagnosticPowerSubscription && this.powerPolicyController?.subscribe) {
+            let previous;
+            this._diagnosticPowerSubscription = this.powerPolicyController.subscribe(snapshot => {
+                const fields = { effectiveState: snapshot.effectiveState, desiredState: snapshot.desiredState,
+                    transition: snapshot.transition?.state, reason: snapshot.reason, suspendCause: snapshot.suspendCause,
+                    resumeKind: snapshot.resumeKind, manualResumeRequired: snapshot.manualResumeRequired,
+                    errorCode: snapshot.transitionError?.code };
+                if (!previous || Object.keys(fields).some(key => fields[key] !== previous[key])) {
+                    recordDiagnosticEvent('powerTransition', fields);
+                    previous = fields;
+                }
+            });
+        }
         return this.powerPolicyController?.start?.();
     }
 
@@ -2128,11 +2141,41 @@ export class AudioManager {
         return applied?.worklet === this._getPrimaryWorkletNode() ? applied.localDelaySamples : 0;
     }
 
-    getAudiblePlaybackPosition(position, playbackSpeed) {
+    // `frame` is the render-clock frame at which `position` was produced; with it the
+    // position follows the output clock between source reports instead of stepping.
+    getAudiblePlaybackPosition(position, playbackSpeed, { frame } = {}) {
         const context = this.contextManager?.audioContext;
-        const latencySeconds = context ? (this.getTotalPipelineLatencySamples() +
-            this._getDeviceLatencyFrames(context)) / context.sampleRate : 0;
+        if (!context) return position;
+        const rate = context.sampleRate;
+        if (Number.isFinite(frame)) {
+            const heardFrame = this._audibleContextMs(context) / 1000 * rate;
+            return position + (heardFrame - this.getTotalPipelineLatencySamples() - frame) / rate * playbackSpeed;
+        }
+        const latencySeconds = (this.getTotalPipelineLatencySamples() + this._getDeviceLatencyFrames(context)) / rate;
         return audiblePlaybackPosition({ position, playbackSpeed, latencySeconds });
+    }
+
+    // Seconds by which the newest audio analysed at a telemetry tap precedes the audio being heard
+    // when its frames are shown. Visual Sync holds each frame until its audio is heard, leaving the
+    // analysis age; otherwise the frame leads by everything downstream of the tap.
+    getTelemetryLeadSeconds(tapId) {
+        const context = this.contextManager?.audioContext;
+        const source = this._visualSyncSource(tapId);
+        const rule = VISUAL_SYNC_RULES[source?.ruleKey];
+        if (!context || !rule) return 0;
+        const rate = context.sampleRate;
+        if (Number.isFinite(this._resolveVisualSyncDue(tapId, 0))) {
+            return rule.generationFrames(source.params, rate, source.execution) / rate;
+        }
+        return ((source.tap?.[rule.tap] || 0) + this.getTotalPipelineLatencySamples() -
+            (this.dspPipelineLatencySamples || 0) + this._getDeviceLatencyFrames(context)) / rate;
+    }
+
+    // Render-context time, in milliseconds, of the sample currently leaving the device.
+    _audibleContextMs(context) {
+        return audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
+            currentTime: context.currentTime, outputLatency: context.outputLatency,
+            baseLatency: context.baseLatency, performanceTime: performance.now() });
     }
 
     _publishDspLatency(sampleRate = this.contextManager?.audioContext?.sampleRate, detail = {}) {
@@ -2156,8 +2199,48 @@ export class AudioManager {
         this._publishDspLatency(sampleRate);
     }
 
+    _claimDiagnosticOutputGate(node) {
+        const evidence = { status: 'unconfirmed', role: node ? (node === this._getPrimaryWorkletNode() ? 'primary' :
+            `parallel-${this.getActivePowerWorklets().indexOf(node) + 1}`) : 'unknown',
+            workletGraphGeneration: this._workletGraphGeneration, topologyRevision: this._topologyRevision,
+            observedAtEpochMs: Date.now() };
+        this._diagnosticGate = { node, evidence };
+        return evidence;
+    }
+
+    _recordOutputGate(node, status, evidence = this._claimDiagnosticOutputGate(node)) {
+        // A late reply updates the evidence for its own request, even if a newer publication owns the gate.
+        evidence.status = status;
+        evidence.observedAtEpochMs = Date.now();
+        recordDiagnosticEvent('outputGate', evidence);
+    }
+
+    getDiagnosticOutput() {
+        const requested = this._networkOutputLocalDelay;
+        const applied = this._appliedNetworkDelay;
+        let outputGate = this._diagnosticGate?.evidence ?? { status: 'notRequested' };
+        if (this._diagnosticGate && (outputGate.workletGraphGeneration !== this._workletGraphGeneration ||
+            outputGate.topologyRevision !== this._topologyRevision ||
+            (outputGate.role === 'primary' && this._diagnosticGate.node !== this._getPrimaryWorkletNode()))) {
+            outputGate = { status: 'unconfirmed', role: 'primary', workletGraphGeneration: this._workletGraphGeneration,
+                topologyRevision: this._topologyRevision, observedAtEpochMs: Date.now() };
+        }
+        return {
+            outputGain: this.ioManager?.outputGainNode?.gain?.value ?? null,
+            outputTarget: this.outputTarget ?? null,
+            outputGate,
+            networkRequested: requested && { active: requested.active, localEnabled: requested.localEnabled,
+                requestId: requested.requestId },
+            networkApplied: applied && applied.worklet === this._getPrimaryWorkletNode()
+                ? { localEnabled: applied.localEnabled, requestId: applied.requestId } : 'unconfirmed'
+        };
+    }
+
     _requestDspControl(workletNode, type, replyType, payload, timeoutMs, transfer) {
-        if (!workletNode?.port || !(timeoutMs > 0)) return Promise.resolve(null);
+        if (!workletNode?.port || !(timeoutMs > 0)) {
+            if (type === 'awaitOutputReady') this._recordOutputGate(workletNode, 'notRequested');
+            return Promise.resolve(null);
+        }
         if (!(this._pendingDspControlRequests instanceof Map)) {
             this._pendingDspControlRequests = new Map();
         }
@@ -2166,13 +2249,17 @@ export class AudioManager {
             : 1;
         const requestId = this._dspControlRequestSequence;
         const pending = this._pendingDspControlRequests;
+        const gate = type === 'awaitOutputReady' ? this._claimDiagnosticOutputGate(workletNode) : null;
         let resolve;
         const promise = new Promise(done => { resolve = done; });
         const request = {
             workletNode,
             replyType,
             timer: null,
-            resolve
+            resolve: (data, status = 'confirmed') => {
+                if (gate) this._recordOutputGate(workletNode, status, gate);
+                resolve(data);
+            }
         };
         pending.set(requestId, request);
         try {
@@ -2181,13 +2268,13 @@ export class AudioManager {
                 request.timer = setTimeout(() => {
                     if (pending.get(requestId) !== request) return;
                     pending.delete(requestId);
-                    resolve(null);
+                    request.resolve(null, 'timedOut');
                 }, timeoutMs);
             }
         } catch (_) {
             if (request.timer !== null) clearTimeout(request.timer);
             pending.delete(requestId);
-            resolve(null);
+            request.resolve(null, 'sendFailed');
         }
         return promise;
     }
@@ -2257,17 +2344,14 @@ export class AudioManager {
 
     _visualSyncNow() {
         const context = this.contextManager?.audioContext;
-        const now = performance.now();
-        if (!context) return now;
+        if (!context) return performance.now();
         // The shared target is timed from the send tap on the render clock.
         if (this.visualSyncEnabled && ((this._networkOutputLocalDelay?.active && this.networkRoute?.sendId != null) ||
             this.networkRoute?.receiveId != null ||
             (this._networkOutputLocalDelay?.active && this._appliedNetworkDelay?.syncDelayMs > 0))) {
             return context.currentTime * 1000;
         }
-        return audibleContextTime({ outputTimestamp: context.getOutputTimestamp?.(),
-            currentTime: context.currentTime, outputLatency: context.outputLatency,
-            baseLatency: context.baseLatency, performanceTime: now });
+        return this._audibleContextMs(context);
     }
 
     _resolveVisualSyncDue(tapId, endFrame, ruleKey, frame, contextFrameOffset) {
@@ -2288,7 +2372,8 @@ export class AudioManager {
         if ((this._networkOutputLocalDelay?.active && this.networkRoute?.sendId != null) || this.networkRoute?.receiveId != null) {
             const paths = this.networkPaths;
             if (!paths || paths.revision !== this.networkRoute.revision) return null;
-            const path = stage === 'send' ? { localSamples: null, networkSamples: 0 }
+            // The send-stage Visualizer tap shares the Live Audio Send input path to both outputs.
+            const path = stage === 'send' ? paths.send
                 : stage === 'network' || stage === 'pipeline' ? { localSamples: 0, networkSamples: null }
                     : paths.taps?.[tapId]?.[rule.tap];
             if (!path) return null;
@@ -2380,15 +2465,20 @@ export class AudioManager {
     setVisualSyncEnabled(enabled) {
         this.visualSyncEnabled = this.runtimeOptions?.wasmOnly !== true && enabled === true;
         this._clearSyncedMeasurements();
-        this.telemetryHub?.setVisualSyncResolver?.(this.visualSyncEnabled
-            ? (tapId, endFrame, ruleKey, frame, contextFrameOffset) =>
-                this._resolveVisualSyncDue(tapId, endFrame, ruleKey, frame, contextFrameOffset) : null);
+        this._installVisualSyncResolver();
         for (const node of this._getActiveDspWorklets()) {
             node.port.postMessage({ type: 'setVisualSync', enabled: this.visualSyncEnabled });
         }
         if (this._visualSyncUpdateTimer != null) clearTimeout(this._visualSyncUpdateTimer);
         this._visualSyncUpdateTimer = null;
         return this._updateVisualSyncDelay();
+    }
+
+    // Delivery is held until the audible due time only while the hub has this resolver.
+    _installVisualSyncResolver() {
+        this.telemetryHub?.setVisualSyncResolver?.(this.visualSyncEnabled
+            ? (tapId, endFrame, ruleKey, frame, contextFrameOffset) =>
+                this._resolveVisualSyncDue(tapId, endFrame, ruleKey, frame, contextFrameOffset) : null);
     }
 
     _getDeviceLatencyFrames(context) {
@@ -2403,7 +2493,9 @@ export class AudioManager {
 
     _recomputeVisualSyncDelay() {
         const context = this.contextManager?.audioContext;
-        this._getDeviceLatencyFrames(context);
+        // Use the method result: the native driver overrides the estimate
+        // without filling the Web Audio cache.
+        const deviceLatencyFrames = context ? this._getDeviceLatencyFrames(context) : 0;
         const targets = [];
         if (this.visualSyncEnabled && context && !this.masterBypass) {
             let sectionEnabled = true;
@@ -2430,7 +2522,7 @@ export class AudioManager {
         for (const source of this.visualizerSources || []) taps[source.tapId] = VISUALIZER_SOURCE_TAP;
         this.visualSyncDelayFrames = context ? requiredOutputDelayFrames({ targets, taps,
             dbtFrames: this._dbtOutputDelayFrames?.get(this._getPrimaryWorkletNode()) || 0,
-            deviceLatencyFrames: this._visualSyncDeviceLatencyFrames,
+            deviceLatencyFrames,
             maxFrames: VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS * context.sampleRate }) : 0;
         return this.visualSyncDelayFrames;
     }
@@ -2842,6 +2934,8 @@ export class AudioManager {
                 });
             }
         } else if (data.type === 'dspFailed') {
+            recordDiagnosticEvent('dspFailed', { stage: data.stage, error: String(data.error ?? ''),
+                fatal: this._isFatalDspFailure(data), role: workletNode === this._getPrimaryWorkletNode() ? 'primary' : 'parallel' });
             this.clearDspReadyFallback(workletNode);
             if (this._isFatalDspFailure(data)) {
                 this._invalidateDspReadyState(workletNode);
@@ -3074,6 +3168,7 @@ export class AudioManager {
         this.registerPipelineProcessors();
         
         const result = await this.pipelineProcessor.rebuildPipeline(isInitializing, { gate });
+        if (gate && result === '') this._recordOutputGate(this.contextManager.workletNode, 'unconfirmed');
         this._scheduleVisualSyncUpdate();
         this.updateExposedProperties();
         const primaryWorklet = this._getPrimaryWorkletNode();
@@ -3745,7 +3840,7 @@ export class AudioManager {
             if (!answer && this._isOutputOwnerCurrent(outputOwner)) {
                 console.warn('[AudioManager] The worklet did not confirm the startup output in time; fading in anyway.');
             }
-        }
+        } else this._recordOutputGate(workletNode, 'notRequested');
         this._fadeInOutputIfOwned(outputOwner);
     }
 
@@ -4948,7 +5043,9 @@ export class AudioManager {
         if (!this.offlineProcessorPromise) {
             const pending = import('./audio/offline-processor.js')
                 .then(({ OfflineProcessor }) => {
-                    const processor = new OfflineProcessor(this.contextManager, this.audioEncoder);
+                    const processor = new OfflineProcessor(this.contextManager, this.audioEncoder, {
+                        getModuleInfo: () => this.getOfflineDspModuleInfo()
+                    });
                     this.offlineProcessor = processor;
                     return processor;
                 });

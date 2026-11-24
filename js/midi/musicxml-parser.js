@@ -1,3 +1,5 @@
+import { openArchive } from '../library/archive/archive-reader.js';
+import { normalizePath } from '../library/archive/archive-binary.js';
 import { SMF_MAX_BYTES, SMF_MAX_EVENTS } from './smf-parser.js';
 import { quarterToSeconds } from './lyrics-timeline.js';
 
@@ -80,68 +82,37 @@ function decodeXml(bytes) {
     catch { fail(); }
 }
 
-async function unzipScore(bytes) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const u16 = offset => { if (offset < 0 || offset + 2 > bytes.length) fail(); return view.getUint16(offset, true); };
-    const u32 = offset => { if (offset < 0 || offset + 4 > bytes.length) fail(); return view.getUint32(offset, true); };
-    let end = bytes.length - 22;
-    for (; end >= Math.max(0, bytes.length - 65557); end--) {
-        if (u32(end) === 0x06054b50 && end + 22 + u16(end + 20) === bytes.length) break;
-    }
-    if (end < Math.max(0, bytes.length - 65557) || u32(end) !== 0x06054b50 || u16(end + 4) || u16(end + 6) || u16(end + 8) !== u16(end + 10)) fail();
-    const count = u16(end + 10), files = new Map();
-    if (count > 4096 || u32(end + 12) > SMF_MAX_BYTES) fail('too-large');
-    let position = u32(end + 16);
-    for (let index = 0; index < count; index++) {
-        if (u32(position) !== 0x02014b50) fail();
-        const flags = u16(position + 8), method = u16(position + 10), size = u32(position + 24);
-        const crc = u32(position + 16), packed = u32(position + 20), offset = u32(position + 42);
-        const length = u16(position + 28), next = position + 46 + length + u16(position + 30) + u16(position + 32);
-        if (next > end || flags & 1 || files.size > 4096) fail();
-        const name = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(position + 46, position + 46 + length));
-        if (files.has(name)) fail();
-        files.set(name, { method, size, packed, offset, crc }); position = next;
-    }
-    const extract = async name => {
-        const entry = files.get(name);
-        if (!entry || entry.size > SMF_MAX_BYTES) fail(entry ? 'too-large' : 'corrupt');
-        const { offset, size, packed, method, crc } = entry;
-        const checked = data => {
-            let computed = 0xffffffff;
-            for (const byte of data) {
-                computed ^= byte;
-                for (let bit = 0; bit < 8; bit++) computed = computed >>> 1 ^ (computed & 1 ? 0xedb88320 : 0);
-            }
-            if ((computed ^ 0xffffffff) >>> 0 !== crc) fail();
-            return data;
-        };
-        if (u32(offset) !== 0x04034b50) fail();
-        const start = offset + 30 + u16(offset + 26) + u16(offset + 28);
-        if (start + packed > bytes.length) fail();
-        const data = bytes.subarray(start, start + packed);
-        if (method === 0) { if (size !== data.length) fail(); return checked(data); }
-        if (method !== 8) fail('unsupported');
-        const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
-        const chunks = []; let total = 0;
-        try {
-            for (;;) {
-                const result = await reader.read(); if (result.done) break;
-                total += result.value.length;
-                if (total > size || total > SMF_MAX_BYTES) { await reader.cancel(); fail('too-large'); }
-                chunks.push(result.value);
-            }
-        } catch (error) { if (error.code) throw error; fail(); }
-        if (total !== size) fail();
-        const result = new Uint8Array(total); let cursor = 0;
-        for (const chunk of chunks) { result.set(chunk, cursor); cursor += chunk.length; }
-        return checked(result);
+async function unzipScore(bytes, signal) {
+    const names = new Set();
+    const utf8 = new TextDecoder('utf-8', { fatal: true });
+    const zipPolicy = {
+        checkDirectory(count, length, split) {
+            if (split) fail();
+            if (count > 4096 || length > SMF_MAX_BYTES) fail('too-large');
+        },
+        decodeName(bytes, flags) {
+            if (flags & 1) fail();
+            const name = utf8.decode(bytes);
+            const key = normalizePath(name) || name;
+            if (names.has(key)) fail();
+            names.add(key);
+            return name;
+        }
     };
+    const source = { size: bytes.length, read: (offset, length) => bytes.subarray(offset, offset + length) };
+    const archive = await openArchive(source, 'score.zip', { signal, zipPolicy }).catch(error => {
+        if (error.code === 'archive-unsupported') fail();
+        throw error;
+    });
+    const extract = name => archive.read(name, { signal });
     const container = xmlDocument(decodeXml(await extract('META-INF/container.xml')));
     if (container.name !== 'container') fail();
     const rootfile = child(child(container, 'rootfiles'), 'rootfile');
     const name = rootfile?.attributes['full-path'];
-    if (!name || name.startsWith('/') || name.split('/').some(segment => segment === '..') || name.includes('\\')) fail();
-    return extract(name);
+    if (!name || name.includes('\\')) fail();
+    const path = normalizePath(name);
+    if (!path) fail();
+    return extract(path);
 }
 
 function instrument(node, fallback) {
@@ -153,7 +124,7 @@ function instrument(node, fallback) {
 }
 
 /** Convert score timing into the same bounded channel-event timeline used by SMF. */
-export function parseMusicXml(input, { fileName = '' } = {}) {
+export function parseMusicXml(input, { fileName = '', fallbackTitle } = {}) {
     const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input instanceof Uint8Array ? input : new Uint8Array(input);
     if (bytes.length > SMF_MAX_BYTES) fail('too-large');
     const root = xmlDocument(decodeXml(bytes));
@@ -373,7 +344,7 @@ export function parseMusicXml(input, { fileName = '' } = {}) {
     const duration = seconds + (quarter - origin) * tempo / 1000000;
     if (!Number.isFinite(duration) || duration > 86400) fail('too-large');
     const timeline = { format: 1, division: 480, secondsPerTick: null, durationTicks: quarter * 480, duration,
-        title: text(root, 'movement-title') || text(child(root, 'work'), 'work-title') || fileName.replace(/\.(?:musicxml|xml|mxl)$/i, ''),
+        title: text(root, 'movement-title') || text(child(root, 'work'), 'work-title') || fallbackTitle || fileName.replace(/\.(?:musicxml|xml|mxl)$/i, ''),
         events, tempoMap, timeSignatures };
     if (lyricCues.length) {
         const extending = new Map();
@@ -398,10 +369,11 @@ export async function parseMusicXmlFile(input, options = {}) {
     if (bytes.length > SMF_MAX_BYTES) fail('too-large');
     options.signal?.throwIfAborted();
     try {
-        const score = bytes[0] === 0x50 && bytes[1] === 0x4b ? await unzipScore(bytes) : bytes;
+        const score = bytes[0] === 0x50 && bytes[1] === 0x4b ? await unzipScore(bytes, options.signal) : bytes;
         options.signal?.throwIfAborted();
         return parseMusicXml(score, options);
     } catch (error) {
+        if (error.code?.startsWith('archive-')) fail(error.code.slice(8));
         if (error.code?.startsWith('musicxml-') || options.signal?.aborted) throw error;
         fail();
     }

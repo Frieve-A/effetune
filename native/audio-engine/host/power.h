@@ -50,7 +50,9 @@ public:
   void request(std::int64_t id) noexcept { requested_ = id; }
   void requestWhileDisabled(std::int64_t id, unsigned graph, unsigned topology,
                             unsigned rate) noexcept;
-  void mutation() noexcept;
+  // Wakes automatic monitoring after a control changed what the pipeline must
+  // render, matching the worklet's _invalidatePowerSkipForMutation.
+  void mutation(Pipeline &pipeline) noexcept;
   void activity() noexcept { silent_ = 0; }
   void threshold(double db) noexcept;
   void resetLevels() noexcept {
@@ -58,7 +60,8 @@ public:
     output_ = {};
     silent_ = heartbeat_ = 0;
   }
-  bool begin(Pipeline &pipeline, const float *input, unsigned channels, unsigned frames) noexcept;
+  bool begin(Pipeline &pipeline, const float *input, unsigned channels, unsigned frames,
+             bool sourceActive = false) noexcept;
   void finish(Pipeline &pipeline, const float *output, unsigned channels, unsigned frames,
               bool ran) noexcept;
   bool take(PowerEvent &event) noexcept;
@@ -84,6 +87,7 @@ private:
   std::uint64_t silent_ = 0, heartbeat_ = 0;
   std::int64_t lastCommand_ = -1, lastEpoch_ = -1, first_ = -1, requested_ = -1;
   bool settled_ = false, warmup_ = false;
+  bool sourceActive_ = false;
   bool waitingCheckpoint_ = false;
   const char *reason_ = nullptr;
   std::array<PowerEvent, 64> events_;

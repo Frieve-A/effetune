@@ -2,6 +2,7 @@
 #include "engine.h"
 #include "telemetry.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <list>
 #include <optional>
@@ -43,7 +44,7 @@ struct BoundarySlice {
       return;
     }
     if (engine.streamBoundaryInstance(instance) != ET_OK) {
-      telemetry.read(engine, position, revision, stage);
+      telemetry.read(engine, position, revision, stage, true);
       if (engine.streamBoundaryInstance(instance) != ET_OK) {
         pending = true;
         return;
@@ -51,13 +52,29 @@ struct BoundarySlice {
     }
     last = at;
     if (exact)
-      telemetry.read(engine, position, revision, stage);
+      telemetry.read(engine, position, revision, stage, true);
   }
 };
 
 class StreamBoundaries {
 public:
   using List = std::list<StreamBoundary>;
+  void addFileBoundary(std::uint64_t frame) noexcept {
+    const auto slot =
+        std::find_if(file_.begin(), file_.end(), [](const auto &item) { return !item.frame; });
+    if (slot != file_.end())
+      *slot = {frame, false};
+  }
+
+  void shareFileBoundaries(StreamBoundaries *parallel) noexcept {
+    for (auto &item : file_) {
+      if (!item.frame || item.shared)
+        continue;
+      if (parallel)
+        parallel->addFileBoundary(*item.frame);
+      item.shared = true;
+    }
+  }
   // Incoming and reclaimed nodes belong to the control command. Splicing keeps
   // all allocation and destruction outside the device callback.
   void reserve(unsigned replace, List &incoming, List &reclaimed) noexcept {
@@ -98,10 +115,24 @@ public:
       if (!slice.pending)
         finished_.splice(finished_.end(), active_, node);
     }
+    for (auto &[frame, shared] : file_) {
+      if (!frame || *frame > position + quantum)
+        continue;
+      BoundarySlice slice{*frame, position, quantum, frames, telemetry, revision, stage};
+      visit(slice);
+      frames = slice.frames;
+      if (!slice.pending)
+        frame.reset();
+    }
     return frames;
   }
 
 private:
+  struct FileBoundary {
+    std::optional<std::uint64_t> frame;
+    bool shared = false;
+  };
   List active_, finished_;
+  std::array<FileBoundary, 8> file_{};
 };
 } // namespace effetune::audio

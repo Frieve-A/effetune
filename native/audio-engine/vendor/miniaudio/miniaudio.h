@@ -29491,7 +29491,17 @@ static ma_result ma_device_init_by_type__alsa(ma_device* pDevice, const ma_devic
 
     /* Buffer Size */
     {
-        ma_snd_pcm_uframes_t actualBufferSizeInFrames = ma_calculate_buffer_size_in_frames_from_descriptor(pDescriptor, internalSampleRate, pConfig->performanceProfile) * internalPeriods;
+        ma_uint64 requestedBufferSizeInFrames = (ma_uint64)ma_calculate_buffer_size_in_frames_from_descriptor(pDescriptor, internalSampleRate, pConfig->performanceProfile) * internalPeriods;
+        ma_snd_pcm_uframes_t actualBufferSizeInFrames;
+
+        /* libasound converts the frame count to unsigned int when negotiating buffer size. */
+        if (requestedBufferSizeInFrames == 0 || requestedBufferSizeInFrames > 0xFFFFFFFF) {
+            ma_free(pHWParams, &pDevice->pContext->allocationCallbacks);
+            ((ma_snd_pcm_close_proc)pDevice->pContext->alsa.snd_pcm_close)(pPCM);
+            ma_log_post(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[ALSA] Requested buffer size is out of range.");
+            return MA_INVALID_DEVICE_CONFIG;
+        }
+        actualBufferSizeInFrames = (ma_snd_pcm_uframes_t)requestedBufferSizeInFrames;
 
         resultALSA = ((ma_snd_pcm_hw_params_set_buffer_size_near_proc)pDevice->pContext->alsa.snd_pcm_hw_params_set_buffer_size_near)(pPCM, pHWParams, &actualBufferSizeInFrames);
         if (resultALSA < 0) {

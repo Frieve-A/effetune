@@ -139,7 +139,7 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 ### Desktop audio drivers
 
-In the desktop app, open **Settings > Audio Configuration** and choose a **Driver**. **Standard** is the default. Try **WASAPI** on Windows, **Core Audio** on macOS, or **PulseAudio** on Linux (**ALSA** if PulseAudio is unavailable) to reduce processing load or use an input with three or more channels. The choice changes how EffeTune connects to audio devices. Your effects, presets, and player controls work the same way.
+In the desktop app, open **Settings > Audio Configuration** and choose a **Driver**. New settings profiles use **WASAPI** on Windows, **Core Audio** on macOS, and **PulseAudio** on Linux (**ALSA** if PulseAudio is unavailable). These drivers connect directly to audio devices, run DSP natively, and support inputs with three or more channels. If your current profile uses **Standard**, you can switch here and review your input and output selections before applying the change.
 
 Set **Sample Rate** for your effects as usual. EffeTune converts the processed audio when your output device uses a different rate. Small rounding differences can change the exact sample values compared with **Standard**.
 
@@ -420,6 +420,7 @@ Here are some popular effect combinations to enhance your listening experience:
 
 If you encounter any issues, please refer to the [Troubleshooting and FAQ](docs/faq.md).
 If the problem persists, report it through [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
+When available, attach the diagnostic information file described in the FAQ.
 
 ## Available Effects
 

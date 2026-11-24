@@ -98,8 +98,8 @@ test('maximized startup completes without a debugger or hidden-window paint even
   }
 });
 
-function silentWav() {
-  const pcm = Buffer.alloc(44 + 48000 * 4);
+function silentWav(seconds = 1) {
+  const pcm = Buffer.alloc(44 + seconds * 48000 * 4);
   pcm.write('RIFF'); pcm.writeUInt32LE(pcm.length - 8, 4); pcm.write('WAVEfmt ', 8);
   pcm.writeUInt32LE(16, 16); pcm.writeUInt16LE(1, 20); pcm.writeUInt16LE(2, 22);
   pcm.writeUInt32LE(48000, 24); pcm.writeUInt32LE(192000, 28);
@@ -107,6 +107,77 @@ function silentWav() {
   pcm.writeUInt32LE(pcm.length - 44, 40);
   return pcm;
 }
+
+async function waitForMainPage(application) {
+  const deadline = Date.now() + 30_000;
+  let page;
+  while (!(page = application.windows().find(target => target.url().includes('/effetune.html')))) {
+    if (Date.now() > deadline) throw new Error('The application document did not load');
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return page;
+}
+
+test('reopening a desktop session restores its local track, paused position and file access', { timeout: 120_000 }, async () => {
+  const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'effetune-playback-session-')));
+  const music = path.join(profile, 'Session.wav');
+  const wav = silentWav(20);
+  const helper = fileURLToPath(new URL('../helpers/startup-app-electron-main.cjs', import.meta.url));
+  try {
+    await writeFile(path.join(profile, 'config.json'), JSON.stringify({
+      checkForUpdatesOnStartup: false, pipelineStartup: 'default'
+    }));
+    await writeFile(path.join(profile, 'audio-preferences.json'), JSON.stringify({
+      inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID, outputDeviceId: 'default', sampleRate: 48000, outputChannels: 2
+    }));
+    await writeFile(music, wav);
+    for (let launch = 0; launch < 3; launch++) {
+      const application = await electron.launch({
+        args: launch === 0 ? [helper, music] : [helper],
+        env: { ...process.env, EFFETUNE_STARTUP_TEST_PROFILE: profile, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
+        timeout: 30_000
+      });
+      try {
+        const page = await waitForMainPage(application);
+        await page.waitForFunction(() => window.uiManager?.audioPlayer?.ui.container);
+        if (launch === 0) {
+          await page.waitForFunction(() => window.uiManager.audioPlayer.stateManager.getStateSnapshot().isPlaying);
+          await page.evaluate(async () => {
+            const player = window.uiManager.audioPlayer;
+            await player.pause();
+            await player.contextManager.seek(4);
+          });
+        } else {
+          const restored = await page.evaluate(async () => {
+            const player = window.uiManager.audioPlayer;
+            const state = player.stateManager.getStateSnapshot();
+            const track = state.currentTrack;
+            const bytes = await window.electronAPI.readFileBytes(track.path, track.byteLength);
+            return { name: track.name, paused: state.isPaused, position: state.currentTrackPosition, size: bytes.byteLength };
+          });
+          assert.equal(restored.name, 'Session.wav');
+          assert.equal(restored.paused, true);
+          assert.ok(Math.abs(restored.position - (launch === 1 ? 4 : 7)) < 0.1);
+          assert.equal(restored.size, wav.length);
+          if (launch === 1) {
+            await page.evaluate(() => window.uiManager.audioPlayer.contextManager.seek(7));
+          } else {
+            await page.evaluate(() => window.uiManager.audioPlayer.play());
+            await page.waitForFunction(() => {
+              const state = window.uiManager.audioPlayer.stateManager.getStateSnapshot();
+              return state.isPlaying && state.currentTrackPosition >= 7 && state.currentTrackPosition < 9;
+            }, null, { timeout: 2500 });
+          }
+        }
+        await page.evaluate(() => window.uiManager.playbackSessionStore.tail);
+      } finally {
+        await application.close();
+      }
+    }
+  } finally {
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
 
 test('multiple-instance preference allows two real desktop apps to initialize together', { timeout: 90_000 }, async () => {
   const profile = await realpath(await mkdtemp(path.join(os.tmpdir(), 'effetune-multiple-apps-')));
@@ -176,12 +247,7 @@ for (const mode of ['first-launch', 'saved-window', 'preset-and-music', 'minimiz
       application = await electron.launch({ args,
         env: { ...process.env, EFFETUNE_STARTUP_TEST_PROFILE: profile, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
         timeout: 30_000 });
-      const deadline = Date.now() + 30_000;
-      let mainPage;
-      while (!(mainPage = application.windows().find(page => page.url().includes('/effetune.html')))) {
-        if (Date.now() > deadline) throw new Error('The application document did not load');
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      const mainPage = await waitForMainPage(application);
       await mainPage.waitForFunction(() => window.app?.initialized, null, { timeout: 30_000 });
       const audio = await mainPage.evaluate(() => ({
         direct: window.audioManager.ioManager.directOutputMode,

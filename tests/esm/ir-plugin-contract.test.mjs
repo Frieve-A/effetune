@@ -226,10 +226,9 @@ test('IR footprint test detects drift from the kernel conservative admission con
     path.join(repoRoot, 'dsp', 'plugins', 'reverb', 'ir_reverb', 'kernel.cpp'),
     'utf8'
   );
-  assert.match(
-    kernel,
-    /convolver_\.memoryBytes\(\) \+ info\.byteSize > info\.footprintBytes/
-  );
+  assert.match(kernel, /if \(!fitsFootprint\(info, config\)\)/);
+  assert.match(kernel, /requiredFootprint =\s*static_cast<std::uint64_t>\(info\.byteSize\) \+ estimateConvolverMemoryUpperBound\(config\);/);
+  assert.match(kernel, /return requiredFootprint <= info\.footprintBytes && requiredFootprint <= kAssetCapacity;/);
   assert.match(kernel, /config\.outputs = info\.processingChannels/);
   assert.doesNotMatch(kernel, /releaseStagingIfPending/);
   assert.doesNotMatch(kernel, /staging_release_pending_/);

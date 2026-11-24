@@ -1,3 +1,4 @@
+import { beginDiagnosticSelection, rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
 import { openIrLibraryBackend } from '../ir-library/ir-library-factory.js';
 import { parseIrAudioHeader } from '../ir-library/audio-header-metadata.js';
 import { decodeSfzBank, encodeSfzBank, identifySfzBank, readSfzAudioHeader, estimateSfzBankBytes } from './bank.js';
@@ -29,8 +30,10 @@ function fileMap(files) {
   const result = new Map();
   for (const file of entries) {
     let path = pathsByFile.get(file) || file.webkitRelativePath || file.name;
+    rememberDiagnosticNames('file', [path, file.name]);
     if (!pathsByFile.has(file) && stripRoot) path = path.slice(path.indexOf('/') + 1);
     path = normalizeSfzPath(path);
+    rememberDiagnosticNames('file', [path]);
     if (!path || result.has(path)) throw sfzError('prepare', 'The SFZ folder contains duplicate file paths.');
     result.set(path, file);
   }
@@ -53,6 +56,7 @@ export async function enumerateSfzDirectory(directoryHandle, { isCurrent } = {})
     for await (const [name, handle] of directory.entries()) {
       if (isCurrent?.() === false) throw sfzError('cancelled', 'SFZ import was cancelled.');
       const path = normalizeSfzPath(name, prefix);
+      rememberDiagnosticNames('file', [path, name]);
       if (handle.kind === 'directory') await visit(handle, depth + 1, path);
       else if (handle.kind === 'file') {
         if (/\.(sf2|sf3|sfz)$/i.test(path) && ++instruments > 10000) {
@@ -303,6 +307,17 @@ export class SfzLibraryService {
   }
 
   async importFolderFiles(files, selectedPath, options = {}) {
+    const entries = Array.from(files || []);
+    const finishSelection = beginDiagnosticSelection('file', [selectedPath, ...entries.flatMap(file =>
+      [pathsByFile.get(file), file.webkitRelativePath, file.name])]);
+    try {
+      return await this._importFolderFiles(entries, selectedPath, options);
+    } finally {
+      finishSelection();
+    }
+  }
+
+  async _importFolderFiles(files, selectedPath, options) {
     const maxBytes = requireSfzMaxBytes(this.getMaxBytes());
     const selectedFiles = fileMap(files);
     selectedPath = normalizeSfzPath(selectedPath);

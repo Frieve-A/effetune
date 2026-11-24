@@ -1,3 +1,4 @@
+import { rememberDiagnosticNames } from '../../diagnostics/diagnostic-log.js';
 import { readRiffInfoTagsFromBlob } from '../../library/metadata/riff-info.js';
 import { decodeLegacyMetadataBytes, repairLegacyMetadataMojibake } from '../../library/metadata/text-encoding.js';
 import { isDsdSource } from './dsd-source.js';
@@ -153,6 +154,7 @@ export const audioContextManagerMetadataMethods = {
     const tagReferenceTexts = [title, fallbackName];
     const artist = riffInfo?.artist || this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
     const album = riffInfo?.album || this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
+    rememberDiagnosticNames('track', [title, artist, album]);
     const artworkUrl = this.createArtworkURL(tags.picture);
     const displayText = title ? (artist ? `${artist} - ${title}` : title) : fallbackName;
 

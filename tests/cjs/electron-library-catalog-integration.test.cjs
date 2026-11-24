@@ -399,10 +399,19 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
   await api.getTrack('track');
   await api.resolvePlaylistExportSource('track');
   await api.resolvePlaybackSource('track');
+  await api.prepareLoudnessTagWrite();
+  await api.discardLoudnessTagSnapshot('canceled');
+  await api.writeLoudnessTags({ snapshotId: 'confirmed' });
   await api.showTrackInFolder('track');
   await api.createPlaylist({ playlistId: 'playlist' });
   await api.createPlaylistWithItems({ playlistId: 'playlist-with-items', items: [{ trackUid: 'track' }] });
   await api.recordRecentlyPlayed({ trackUid: 'track' });
+  await api.listPendingLoudness({ limit: 64 });
+  await api.playbackSession({ action: 'read' });
+  await api.saveTrackLoudness({ measurements: [] });
+  await api.finalizeLoudness({});
+  await api.getTrackLoudness({ trackUid: 'track' });
+  await api.getLoudnessStats({ coverage: 95 });
   await api.setTrackFavorite({ trackUid: 'track', favorite: true });
   await api.getFavoriteTrackUids();
   await api.getSystemPlaylists();
@@ -419,6 +428,9 @@ test('preload exposes versioned bounded catalog and playlist wrappers', async ()
     expectedChannels.indexOf(LIBRARY_CATALOG_RENDERER_CHANNELS.resolvePlaylistExportSource) + 1,
     0,
     LIBRARY_CATALOG_CONTROL_CHANNELS.resolvePlaybackSource,
+    LIBRARY_CATALOG_CONTROL_CHANNELS.prepareLoudnessTagWrite,
+    LIBRARY_CATALOG_CONTROL_CHANNELS.discardLoudnessTagSnapshot,
+    LIBRARY_CATALOG_CONTROL_CHANNELS.writeLoudnessTags,
     LIBRARY_CATALOG_CONTROL_CHANNELS.showTrackInFolder
   );
   assert.deepEqual(invocations.map(call => call[0]), expectedChannels);

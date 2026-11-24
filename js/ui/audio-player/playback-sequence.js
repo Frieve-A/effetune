@@ -448,6 +448,10 @@ export class CompositeCatalogSequence {
   resolveEntrySource(entry, resolutionScope = null, signal = null) {
     const segment = this.segments.find(candidate => candidate.sequence.sequenceId === entry?.sourceSequenceId);
     if (!segment) return Promise.reject(new TypeError('Composite entry does not belong to this sequence'));
+    if (segment.sequence instanceof CompositeCatalogSequence) {
+      return segment.sequence.getEntry(entry.sourceTransportOrdinal).then(sourceEntry =>
+        segment.sequence.resolveEntrySource(sourceEntry, resolutionScope, signal));
+    }
     return segment.sequence.resolveEntrySource({
       ...entry,
       transportOrdinal: entry.sourceTransportOrdinal,

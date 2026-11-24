@@ -305,7 +305,9 @@ test('playback speed applies each selected step without persistence', async () =
     }
     audioPlayer.stateManager.updateState({ playbackSpeed: 1.234 }, 'test_invalid');
     assert.equal(audioPlayer.stateManager.getStateSnapshot().playbackSpeed, 1);
-    assert.deepEqual(manager.getPersistentPlayerState(), { repeatMode: 'OFF', shuffleMode: false });
+    assert.deepEqual(manager.getPersistentPlayerState(), {
+      repeatMode: 'OFF', shuffleMode: false, playerVolume: 100, playerMute: false
+    });
     manager.dispose();
   });
 });
@@ -1942,7 +1944,9 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     assert.equal(audioPlayer.state.shuffleMode, true);
     assert.deepEqual(JSON.parse(storage.get('effetune_player_state')), {
       repeatMode: 'ALL',
-      shuffleMode: true
+      shuffleMode: true,
+      playerVolume: 100,
+      playerMute: false
     });
 
     storage.set('effetune_player_state', '{"repeatMode":"ONE","shuffleMode":true}');
@@ -1954,7 +1958,9 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     await normalizedManager.savePlayerState();
     assert.deepEqual(JSON.parse(storage.get('effetune_player_state')), {
       repeatMode: 'ONE',
-      shuffleMode: false
+      shuffleMode: false,
+      playerVolume: 100,
+      playerMute: false
     });
   });
 
@@ -1974,7 +1980,9 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     await manager.savePlayerState();
     assert.deepEqual(JSON.parse(normalizedSaved.get('effetune_player_state')), {
       repeatMode: 'ONE',
-      shuffleMode: false
+      shuffleMode: false,
+      playerVolume: 100,
+      playerMute: false
     });
   });
 
@@ -1992,7 +2000,9 @@ test('loadPlayerState and savePlayerState persist through Electron storage', asy
     const manager = makeManager(createAudioPlayer());
     await manager.loadPlayerState();
     await manager.savePlayerState();
-    assert.deepEqual(saved[0][1], { repeatMode: 'OFF', shuffleMode: false });
+    assert.deepEqual(saved[0][1], {
+      repeatMode: 'OFF', shuffleMode: false, playerVolume: 100, playerMute: false
+    });
   });
 
   for (const content of [

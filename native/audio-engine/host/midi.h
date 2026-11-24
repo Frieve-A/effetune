@@ -35,17 +35,19 @@ public:
     std::uint32_t generation = 0;
     double position = 0, duration = 0, speed = 1, gain = 1;
     bool hasTimeline = false, playing = false, preparing = false, preserveRelease = false;
+    bool draining = false;
   };
   bool configureInput(unsigned generation, bool enabled, std::uint64_t anchor) noexcept;
   bool enqueue(unsigned generation, std::span<const LiveEvent> events) noexcept;
   bool configure(Transport &transport) noexcept;
   bool hydrate(Engine &engine, const Instrument &target, unsigned generation,
                std::span<const et_midi_event> events) noexcept;
-  void prepare(Engine &engine, std::span<const Instrument> targets, unsigned rate);
+  void resumeInput(unsigned instance) noexcept;
+  bool prepare(Engine &engine, std::span<const Instrument> targets);
   bool installMap(Engine &engine, unsigned instance) const;
   void render(Engine &engine, std::span<const Instrument> targets, std::uint64_t frame,
               unsigned frames, unsigned rate) noexcept;
-  void start(unsigned generation, std::uint64_t anchor) noexcept;
+  bool start(unsigned generation, std::uint64_t anchor) noexcept;
   void speed(double value, std::uint64_t frame, unsigned rate) noexcept;
   void gain(double value) noexcept { transport_.gain = value; }
   std::uint64_t lastBatch() const noexcept { return batchSerial_; }
@@ -84,11 +86,14 @@ private:
   struct State {
     unsigned instance = 0, token = 0, channelMask = 0;
     std::size_t cursor = 0;
-    bool initialized = false, ended = false, paused = false;
+    bool initialized = false, ended = false, paused = false, resumeInput = false;
     std::uint64_t clockBase = 0, clockAnchor = 0;
     unsigned activation = 0;
     bool joining = false, joinedDuringPlayback = false;
+    bool restoring = false, historyRequested = false;
   };
+  bool restore(Engine &engine, const Instrument &target, State &state, std::uint64_t frame,
+               unsigned rate) noexcept;
   bool joinPlaying(Engine &engine, const Instrument &target, State &state, std::uint64_t frame,
                    unsigned frames, unsigned rate) noexcept;
   State &state(const Instrument &instrument) noexcept;
@@ -98,10 +103,11 @@ private:
   std::array<et_midi_event, 4096> batch_;
   std::size_t liveCount_ = 0;
   Transport transport_;
-  bool live_ = false, pending_ = false;
+  bool live_ = false, pending_ = false, preparedNotified_ = false;
   std::uint64_t batchSerial_ = 0, blockDelivered_ = 0, pauseFrame_ = 0, nextReport_ = 0;
   double pausePosition_ = 0;
-  bool pausing_ = false, pauseComplete_ = false;
+  double firstNoteSeconds_ = 0;
+  bool pausing_ = false, pauseComplete_ = false, endingBlock_ = false;
   std::atomic<bool> paused_{false};
   std::atomic<std::uint64_t> delivered_{0}, positionFrame_{0};
   std::atomic<double> reportedPosition_{0};

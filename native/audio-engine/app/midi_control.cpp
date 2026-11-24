@@ -113,14 +113,12 @@ void timeline(MidiScheduler::Transport &t, const JsonValue &value,
       if ((tp && !std::isfinite(a)) || (mp && !std::isfinite(b)))
         throw std::runtime_error("invalid MIDI tempo time");
       const auto time = std::min(a, b);
-      if (time == a) {
-        tempo = tp;
-        ++ti;
-      }
-      if (time == b) {
-        meter = mp;
-        ++mi;
-      }
+      // The SMF parser includes defaults as well as explicit changes at tick zero.
+      // The last tempo and meter at each timestamp define a single DSP map point.
+      while (ti < tempoCount && load<double>(bytes.data() + tempoStart + 20 * ti) == time)
+        tempo = bytes.data() + tempoStart + 20 * ti++;
+      while (mi < meterCount && load<double>(bytes.data() + meterStart + 24 * mi) == time)
+        meter = bytes.data() + meterStart + 24 * mi++;
       if (!tempo || !meter)
         continue;
       const unsigned us = load<unsigned>(tempo + 16), numerator = load<unsigned>(meter + 16),
@@ -143,9 +141,9 @@ void timeline(MidiScheduler::Transport &t, const JsonValue &value,
     const auto timeA = i < a.size() ? a[i].GetNumber("seconds").value_or(0) : INFINITY;
     const auto timeB = j < b.size() ? b[j].GetNumber("seconds").value_or(0) : INFINITY;
     const auto time = std::min(timeA, timeB);
-    if (timeA == time)
+    while (i < a.size() && a[i].GetNumber("seconds").value_or(0) == time)
       tempo = &a[i++];
-    if (timeB == time)
+    while (j < b.size() && b[j].GetNumber("seconds").value_or(0) == time)
       meter = &b[j++];
     if (!tempo || !meter)
       continue;
@@ -161,14 +159,11 @@ void timeline(MidiScheduler::Transport &t, const JsonValue &value,
   }
 }
 } // namespace
-bool midiNeedsOwner(std::string_view type) noexcept {
-  return type == "midiTransport" || type == "sfzGetPreparationContext" ||
-         instrumentNeedsOwner(type);
-}
 bool isMidiControl(std::string_view type) noexcept {
-  return midiNeedsOwner(type) || type == "midiStart" || type == "midiGain" || type == "midiSpeed" ||
-         type == "midiInputConfigure" || type == "midiInputState" || type == "midiInputEvents" ||
-         type == "midiPause" || isInstrumentControl(type);
+  return type == "midiTransport" || type == "sfzGetPreparationContext" || type == "midiStart" ||
+         type == "midiGain" || type == "midiSpeed" || type == "midiInputConfigure" ||
+         type == "midiInputState" || type == "midiInputEvents" || type == "midiPause" ||
+         isInstrumentControl(type);
 }
 void notifyMidi(Session &session, unsigned branch) {
   if (!session.pipeline())
@@ -231,33 +226,57 @@ void handleMidiControl(DeviceHost &device, Session &session, const Frame &frame)
   const auto offset = m.GetUInt32("delayFrames");
   bool accepted = true;
   if (type == "midiTransport") {
-    MidiScheduler::Transport next;
+    // The worklet applies a transport inside its render quantum. Apply it on
+    // the audio thread too, so instrument tails and pipeline effects keep
+    // rendering instead of passing through an output ownership gap.
+    struct Request {
+      MidiScheduler::Transport next;
+      Frame frame;
+      bool ok = true;
+    };
+    auto request = std::make_shared<Request>();
+    auto &next = request->next;
     if (auto *data = m.Find("timeline"); data && !data->IsNull())
       timeline(next, *data, frame.attachment);
     next.position = m.GetNumber("position").value_or(0);
-    next.anchor = offset ? session.position() + *offset : anchor;
     next.speed = m.GetNumber("speed").value_or(1);
     next.gain = m.GetNumber("gain").value_or(1);
     next.generation = gen;
     next.playing = m.GetBool("playing").value_or(false);
     next.preparing = m.GetBool("preparing").value_or(false);
     next.preserveRelease = m.GetBool("preserveRelease").value_or(false);
-    if (p->midi.configure(next)) {
-      if (m.GetString("mode") == "resume" && m.Find("checkpoints") &&
-          !restoreCheckpoints(session, frame)) {
-        send({{"type", "midiTransportError"},
-              {"branch", double(branch)},
-              {"generation", double(gen)}});
-        return;
-      }
-      p->prepareMidi(session.format().sampleRate);
-    }
+    next.draining = m.GetString("mode") == "drain";
+    const bool resume = m.GetString("mode") == "resume" && m.Find("checkpoints");
+    if (resume)
+      request->frame = frame;
+    accepted = device.submit(
+        [=, &session](Session &) {
+          auto &next = request->next;
+          const auto now = session.position();
+          next.anchor = next.draining ? now : offset ? now + *offset : anchor;
+          if (!p->midi.configure(next))
+            return;
+          // Configure swapped the previous timeline into the request, which the
+          // control thread releases with this command.
+          request->ok =
+              (!resume || restoreCheckpoints(session, request->frame)) && p->prepareMidi();
+          if (request->ok)
+            session.power().mutation(*p);
+        },
+        [=] {
+          if (!request->ok)
+            send({{"type", "midiTransportError"},
+                  {"branch", double(branch)},
+                  {"generation", double(gen)}});
+        });
   } else if (type == "midiPause") {
     auto ok = std::make_shared<bool>();
     accepted = device.submit(
         [=, &session](Session &) {
           const auto now = session.position(), at = offset ? now + *offset : anchor;
           *ok = at >= now && p->midi.pause(gen, at, session.format().sampleRate);
+          if (*ok)
+            session.power().mutation(*p);
         },
         [=] {
           if (!*ok)
@@ -268,21 +287,29 @@ void handleMidiControl(DeviceHost &device, Session &session, const Frame &frame)
   } else if (isInstrumentControl(*type)) {
     handleInstrumentControl(device, session, frame);
   } else if (type == "sfzGetPreparationContext") {
-    const auto channels = p->processingChannels(id, session.format().width());
-    Object result{
-        {"type", "sfzPreparationContext"}, {"branch", double(branch)}, {"ok", channels != 0}};
+    auto result = std::make_shared<Object>(
+        Object{{"type", "sfzPreparationContext"}, {"branch", double(branch)}});
     if (auto *value = m.Find("requestId"))
-      result.emplace("requestId", *value);
-    if (channels)
-      result.emplace("context", Object{{"sampleRate", double(session.format().sampleRate)},
-                                       {"processingChannels", double(channels)},
-                                       {"maxFrames", double(std::max(32u, session.maxBlock()))},
-                                       {"minimumPhysicalBpm", p->midi.minimumBpm()}});
-    send(std::move(result));
+      result->emplace("requestId", *value);
+    // Read the context after transports queued before this request.
+    accepted = device.submit(
+        [=, &session](Session &) {
+          const auto channels = p->processingChannels(id, session.format().width());
+          result->emplace("ok", channels != 0);
+          if (channels)
+            result->emplace("context",
+                            Object{{"sampleRate", double(session.format().sampleRate)},
+                                   {"processingChannels", double(channels)},
+                                   {"maxFrames", double(std::max(32u, session.maxBlock()))},
+                                   {"minimumPhysicalBpm", p->midi.minimumBpm()}});
+        },
+        [=] { send(std::move(*result)); });
   } else if (type == "midiInputConfigure") {
-    accepted = device.submit([=, enabled = m.GetBool("enabled").value_or(false)](Session &) {
-      p->midi.configureInput(gen, enabled, anchor);
-    });
+    accepted =
+        device.submit([=, &session, enabled = m.GetBool("enabled").value_or(false)](Session &) {
+          if (p->midi.configureInput(gen, enabled, anchor))
+            session.power().mutation(*p);
+        });
   } else if (type == "midiInputState") {
     std::vector<et_midi_event> events;
     if (m.Find("eventCount")) {
@@ -352,9 +379,11 @@ void handleMidiControl(DeviceHost &device, Session &session, const Frame &frame)
     }
     auto batch = std::make_shared<std::uint64_t>(0);
     accepted = device.submit(
-        [=](Session &) {
-          if (p->midi.enqueue(gen, data->events))
+        [=, &session](Session &) {
+          if (p->midi.enqueue(gen, data->events)) {
             *batch = p->midi.lastBatch();
+            session.power().mutation(*p);
+          }
         },
         [=] {
           if (*batch) {
@@ -369,7 +398,8 @@ void handleMidiControl(DeviceHost &device, Session &session, const Frame &frame)
         });
   } else if (type == "midiStart") {
     accepted = device.submit([=, &session](Session &) {
-      p->midi.start(gen, offset ? session.position() + *offset : anchor);
+      if (p->midi.start(gen, offset ? session.position() + *offset : anchor))
+        session.power().mutation(*p);
     });
   } else if (type == "midiSpeed") {
     accepted = device.submit([p, &session, speed = m.GetNumber("speed").value_or(1)](Session &) {

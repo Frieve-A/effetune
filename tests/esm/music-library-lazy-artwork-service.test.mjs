@@ -517,3 +517,23 @@ test('catalog storage failure returns the artwork placeholder without changing c
   assert.equal(artwork, ARTWORK_PLACEHOLDER);
   assert.equal(repository.calls.some(([name]) => name === 'read-only'), false);
 });
+
+test('simultaneous archive entries and cached requests use their own directory artwork', async () => {
+  const repository = createRepository({ source: uid => sourceFor(uid, {
+    sourceKind: 'embedded-file', trackSourceKind: 'archive-entry',
+    canonicalSourceIdentity: 'songs.zip', entryKey: 'archive:songs.zip#' + uid + '/score.mid', fileIdentity: 'zip'
+  }) });
+  const extractor = createExtractor();
+  let extractions = 0;
+  extractor.createThumbnail = async ({ claim }) => {
+    extractions++;
+    return { bytes: Uint8Array.of(claim.trackUid === 'A' ? 1 : 2), width: 1, height: 1, mimeType: 'image/webp' };
+  };
+  const service = new LazyArtworkService({ repository, extractor, runtime: 'web', quotaBytes: 0 });
+  const request = trackUid => service.request({ trackUid, reason: 'viewport' });
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const covers = await Promise.all([request('A'), request('B')]);
+    assert.deepEqual(covers.map(cover => cover.bytes[0]), [1, 2]);
+  }
+  assert.equal(extractions, 2);
+});

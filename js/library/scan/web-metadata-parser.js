@@ -1,9 +1,11 @@
+import { createArchiveCache } from '../archive/archive-cache.js';
+import { withBlobArchive } from '../archive/blob-archive.js';
 import { parseBlob } from '../../vendor/music-metadata-browser.mjs';
 import { getFileExtension } from '../constants.js';
 import { createTrackFromMetadata, shouldRetryDuration } from '../metadata/metadata-mapper.js';
 import { readRiffInfoTagsFromBlob } from '../metadata/riff-info.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
-import { createScoreTrackMetadata, isScoreFile, SCORE_MAX_BYTES } from '../metadata/midi-metadata.js';
+import { createArchiveEntryTrackMetadata, scoreMetadataError, createScoreTrackMetadata, isScoreFile, SCORE_MAX_BYTES } from '../metadata/midi-metadata.js';
 
 export const WEB_METADATA_PARSER_VERSION = 'web-metadata-3';
 export const WEB_METADATA_RESULT_MAX_BYTES = 16 * 1024 * 1024;
@@ -21,13 +23,14 @@ export class WebMetadataParser {
   } = {}) {
     assertRepositoryContract(typeof filesystem?.getFile === 'function', 'invalidMetadataParser', 'Web metadata parser requires the Worker filesystem adapter');
     this.filesystem = filesystem;
+    this.archives = createArchiveCache();
     this.parseBlob = parse;
     this.readRiffInfo = readRiffInfo;
     this.now = now;
     this.languageHints = languageHints;
   }
 
-  async parse({ relativePath, skipCovers, signal } = {}) {
+  async parse({ relativePath, archiveEntryPath, skipCovers, signal } = {}) {
     assertRepositoryContract(skipCovers === true, 'metadataArtworkForbidden', 'Scan metadata parsing must skip covers');
     const file = await this.filesystem.getFile(relativePath, signal);
     const candidate = {
@@ -37,6 +40,16 @@ export class WebMetadataParser {
       size: file.size,
       mtimeMs: file.lastModified
     };
+    if (archiveEntryPath) {
+      try {
+        return await withBlobArchive(this.archives, relativePath, file,
+          async archive => projectMetadata(await createArchiveEntryTrackMetadata(
+            candidate, archive, archiveEntryPath, this.now(), this.languageHints, signal)));
+      } catch (error) {
+        if (error?.code?.startsWith?.('archive-')) throw scoreMetadataError(error);
+        throw error;
+      }
+    }
     try {
       if (isScoreFile(candidate.fileName)) {
         assertRepositoryContract(file.size <= SCORE_MAX_BYTES, 'metadata-too-large', 'Score file exceeds the byte limit');

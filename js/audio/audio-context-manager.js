@@ -1,3 +1,6 @@
+import { recordDiagnosticEvent, rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
+import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
+
 /**
  * AudioContextManager - Manages the Web Audio API context
  */
@@ -61,11 +64,35 @@ export class AudioContextManager {
             : 128;
     }
 
+    captureDiagnosticRequest(preferences, nativeFeed = false) {
+        const input = preferences?.inputDeviceId;
+        const output = preferences?.outputDeviceId || 'default';
+        const replacement = output === 'default' && this.pendingDiagnosticOutput;
+        this.pendingDiagnosticOutput = null;
+        this.diagnosticRequest = {
+            sampleRate: Number.isFinite(preferences?.sampleRate) ? preferences.sampleRate : null,
+            outputChannels: Number.isInteger(preferences?.outputChannels) ? preferences.outputChannels : null,
+            creationOutputSelection: output === 'default' ? 'default' : 'explicit',
+            outputSelection: replacement || output !== 'default' ? 'explicit' : 'default',
+            outputDeviceLabel: replacement?.label || preferences?.outputDeviceLabel || '',
+            nativeFeed
+        };
+        this.diagnosticRequestedOutputId = replacement?.id || output;
+        this.diagnosticOutputMatch = replacement ? 'unknown' : null;
+        rememberDiagnosticNames('id', [input, output].filter(id => id && !['default', NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID].includes(id)));
+        rememberDiagnosticNames('device', [preferences?.inputDeviceLabel, this.diagnosticRequest.outputDeviceLabel]);
+        return {
+            inputSelection: input === NO_AUDIO_INPUT_DEVICE_ID ? 'none' :
+                (input && input !== 'default' ? 'explicit' : 'default'),
+            inputDeviceLabel: input === NO_AUDIO_INPUT_DEVICE_ID ? '' : preferences?.inputDeviceLabel
+        };
+    }
+
     createPluginProcessorNode(context = this.audioContext, {
         channelCount = (context === this.audioContext ? this.outputChannelCount : null) ??
             context?.destination?.channelCount ?? 2
     } = {}) {
-        return new AudioWorkletNode(context, 'plugin-processor', {
+        const node = new AudioWorkletNode(context, 'plugin-processor', {
             channelCount,
             outputChannelCount: [channelCount],
             processorOptions: {
@@ -75,6 +102,10 @@ export class AudioContextManager {
             channelCountMode: 'explicit',
             channelInterpretation: 'discrete'
         });
+        node.addEventListener?.('processorerror', () => recordDiagnosticEvent('processorerror', {
+            role: node === this.workletNode ? 'primary' : 'parallel'
+        }));
+        return node;
     }
 
     _createAudioContextWithFallback(AudioContext, audioContextOptions) {
@@ -141,6 +172,7 @@ export class AudioContextManager {
                 
                 const preferences = audioPreferences || await this._loadAudioPreferences();
 
+                const inputSelection = this.captureDiagnosticRequest(preferences, nativeFeed);
                 // Default audio context options
                 let audioContextOptions = { };
                 
@@ -187,6 +219,20 @@ export class AudioContextManager {
                 }
 
                 // Detect AudioContext interruption caused by audio device changes on macOS
+                const context = this.audioContext;
+                context.addEventListener?.('statechange', () => recordDiagnosticEvent('contextState', {
+                    state: context.state, intentional: this._intentionalPowerSuspend
+                }));
+                const recordCreation = () => recordDiagnosticEvent('contextCreated', {
+                    ...this.diagnosticRequest, ...inputSelection, appliedSampleRate: context.sampleRate,
+                    appliedChannels: context.destination?.channelCount, removedOptions: contextResult.removedOptions
+                });
+                if (contextResult.removedOptions.includes('sinkId')) {
+                    this.diagnosticOutputMatch = context.sinkId === '' || context.sinkId === 'default'
+                        ? 'fellBackToDefault' : 'unknown';
+                    recordDiagnosticEvent('outputFallback', { ...this.diagnosticRequest,
+                        reason: 'contextOptionRejected', result: this.diagnosticOutputMatch });
+                }
                 this.audioContext.onstatechange = () => {
                     const state = this.audioContext?.state;
                     if (this.powerStateDelegate?.enabled) {
@@ -222,7 +268,7 @@ export class AudioContextManager {
                         }
                     }
                 };
-                if (nativeFeed) return '';
+                if (nativeFeed) { recordCreation(); return ''; }
                 
                 // Set audio context destination channel count based on preferences
                 {
@@ -282,6 +328,7 @@ export class AudioContextManager {
                     }
                     this.outputChannelCount = this._pendingAudioConfig.outputChannels;
                 }
+                recordCreation();
                 
             }
             

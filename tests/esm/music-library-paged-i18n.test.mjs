@@ -4,11 +4,17 @@ import test from 'node:test';
 
 const LOCALES = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
 const PAGED_KEYS = [
+  'library.action.analyzeLoudness', 'library.action.writeLoudnessTags',
+  'library.properties.loudness', 'library.properties.truePeak', 'library.properties.loudnessRange',
+  'library.loudness.progress', 'library.loudness.result', 'library.loudness.confirmWrite', 'library.loudness.noTags',
+  'library.loudness.writeResult', 'library.loudness.skip.unsupported', 'library.loudness.skip.changed',
+  'library.loudness.skip.unavailable', 'dialog.audioConfig.replayGainTarget', 'dialog.audioConfig.replayGainTarget.manual',
+  'dialog.audioConfig.replayGainTarget.auto', 'dialog.audioConfig.replayGainAutoCoverage', 'dialog.audioConfig.replayGainPeakCeiling',
   'library.column.trackNo', 'library.sort.added',
   'library.paged.loading', 'library.paged.loadFailed', 'library.paged.retry',
   'library.paged.selectAll', 'library.paged.deselectAll', 'library.paged.selectionStale',
   'library.paged.reselect', 'library.paged.selectionTooLarge',
-  'library.paged.exportSkippedCueTracks',
+  'library.paged.exportSkippedTracks',
   'library.paged.cueScanWarningSummary', 'library.paged.cueScanWarningInvalid',
   'library.paged.cueScanWarningUnsupported', 'library.paged.cueScanWarningTooLarge',
   'library.paged.cueScanWarningAction',
@@ -42,6 +48,7 @@ const PAGED_KEYS = [
 const REMOVED_LIBRARY_KEYS = [
   'library.action.reorder',
   'library.action.remove',
+  'library.paged.exportSkippedCueTracks',
   'library.status.moreTracks',
   'library.state.neverScanned'
 ];
@@ -69,6 +76,20 @@ test('paged Library, durable job, and queue strings have locale and placeholder 
     }
     for (const key of REMOVED_LIBRARY_KEYS) {
       assert.equal(values.has(key), false, `${locale} still contains removed key ${key}`);
+    }
+  }
+});
+
+test('MIDI archive settings and file selection have translations in every locale', () => {
+  const keys = [
+    'dialog.config.libraryIncludeMidiArchives', 'dialog.config.libraryIncludeMidiArchivesHelp',
+    'midi.archive.chooseFiles', 'midi.archive.open', 'midi.archive.noPlayableFiles', 'midi.archive.tooLarge',
+    'midi.archive.tooManyFiles'
+  ];
+  for (const locale of LOCALES) {
+    const values = readValues(locale);
+    for (const key of keys) {
+      assert.ok(values.get(key), `${locale} is missing ${key}`);
     }
   }
 });

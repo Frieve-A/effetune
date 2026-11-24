@@ -576,10 +576,13 @@ test('local catalog play routes to the selected external player without creating
 test('direct file entry targets the selected remote without replacing the local OpenHome player', async () => {
   const requests = [];
   const localPlayer = { loadFiles() { assert.fail('direct files must not start locally'); } };
-  const ui = { networkMusic: { selectedPlayerId: 'remote', playerGeneration: 1, playFiles: async files => requests.push(files) }, audioPlayer: localPlayer };
-  assert.equal(await UIManager.prototype.createAudioPlayer.call(ui, [{ path: 'song.flac' }]), localPlayer);
+  const ui = Object.assign(Object.create(UIManager.prototype), {
+    networkMusic: { selectedPlayerId: 'remote', playerGeneration: 1, playFiles: async files => requests.push(files) },
+    audioPlayer: localPlayer
+  });
+  assert.equal(await ui.createAudioPlayer([{ path: 'song.flac' }]), localPlayer);
   assert.deepEqual(requests, [[{ path: 'song.flac' }]]);
-  assert.equal(await UIManager.prototype.createAudioPlayer.call(ui, [], false), localPlayer);
+  assert.equal(await ui.createAudioPlayer([], false), localPlayer);
 });
 
 test('sharing failures remain actionable in the actual durable Library action toast', async () => {

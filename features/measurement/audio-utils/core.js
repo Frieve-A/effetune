@@ -3,6 +3,7 @@
  */
 
 import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+import { getNativeMeasurementDriver, NativeMeasurement } from './native-measurement.js';
 
 function resolveAudioWorkletModuleUrl(importerUrl = import.meta.url) {
     const workletUrl = new URL('../audioWorkletProcessors.js', importerUrl);
@@ -111,6 +112,15 @@ class AudioUtils {
             return;
         }
 
+        const driver = getNativeMeasurementDriver();
+        if (driver) {
+            this.nativeMeasurement ??= new NativeMeasurement(driver);
+            this.audioContext = new OfflineAudioContext(2, 1, preferredSampleRate || 48000);
+            await this.enumerateDevices();
+            this.initialized = true;
+            return;
+        }
+
         try {
             // Close any existing audio context
             if (this.audioContext) {
@@ -193,12 +203,12 @@ class AudioUtils {
 
         // Stop and clean up any existing resources
         this.stopWhiteNoise();
-        this.stopMicrophoneInput();
+        await this.stopMicrophoneInput();
         
         // Close and reset the AudioContext
         if (this.audioContext) {
             try {
-                await this.audioContext.close();
+                await this.audioContext.close?.();
             } catch (e) {
                 console.warn('Error closing audio context:', e);
             }
@@ -220,7 +230,7 @@ class AudioUtils {
      * @returns {Promise<boolean>} Whether the audio context was successfully resumed
      */
     async ensureAudioContextRunning() {
-        if (isAndroidHost()) return this.initialized;
+        if (isAndroidHost() || this.nativeMeasurement) return this.initialized;
         if (!this.audioContext) {
             return false;
         }
@@ -250,7 +260,7 @@ class AudioUtils {
      * @returns {number} Input level in dBFS, range -Infinity to 0
      */
     getInputLevel() {
-        if (isAndroidHost()) return this.currentInputLevel ?? -Infinity;
+        if (isAndroidHost() || this.nativeMeasurement) return this.currentInputLevel ?? -Infinity;
         // If we have a current level from the AudioWorklet, use that
         if (this.audioWorkletSupported && this.currentInputLevel !== undefined) {
             return this.currentInputLevel;

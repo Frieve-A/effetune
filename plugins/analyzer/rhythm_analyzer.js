@@ -167,7 +167,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
     }
 
     // Keep the MIDI display clock separate from the detector's clock and lens annotations.
-    handleMidiSnapshot(snapshot) {
+    // `leadSeconds` is how far the newest analysed audio is ahead of the heard audio, which the
+    // snapshot's position follows.
+    handleMidiSnapshot(snapshot, leadSeconds = 0) {
         if (!snapshot) {
             this.midiSnapshot = null;
             this.midiClockAnchors = [];
@@ -186,8 +188,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
             this.midiEventKeys.fill(undefined);
             this.midiClockAnchors = [];
         }
-        const anchor = { time, position: snapshot.position, speed: snapshot.speed,
-            running: snapshot.playing, start: time };
+        const anchor = { time, position: snapshot.position + (snapshot.playing ? leadSeconds * snapshot.speed : 0),
+            speed: snapshot.speed, running: snapshot.playing, start: time };
         if (!sourceChanged && detectorChanged) {
             // Rebased detector frames continue at the last processed frame, omitting suspended wall time.
             // Keep old projections and map only the new detector interval to the current song position.
@@ -1300,6 +1302,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
             this._graphReadout?.refresh();
             return;
         }
+        // The effect follows the music player's MIDI score; the Visualizer item receives its own snapshots.
+        const audioManager = window.audioManager;
+        const clock = audioManager?.powerPolicyController?.player?.contextManager?.getMidiBeatClock?.() ?? null;
+        this.handleMidiSnapshot(clock, clock ? audioManager.getTelemetryLeadSeconds?.(this.id) ?? 0 : 0);
         const context = this.canvasCtx;
         const read = role => window.ThemePalette?.get(role) ?? '';
         const trace = read('graph-trace');
@@ -1446,6 +1452,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const period = snapshot?.periodSeconds;
         const bpm = midi ? midi.beat.bpm * midi.speed : period > 0 ? 60 / period : NaN;
         const unavailable = !midi && snapshot?.analysisAvailable === false;
+        // A MIDI beat flashes the lamp at its score time with the same fade as a detected beat.
+        const led = midi ? midi.playing ? 1 - (midi.beat.quarter % 1) * 60 / bpm / RHYTHM_ANALYZER_LED_FADE_SECONDS : 0
+            : this.ledLevel;
+        const ledLevel = led > 0 ? led : 0;
         const value = (number, text) => (Number.isFinite(number) ? text : RHYTHM_ANALYZER_DASH);
         const tempoStatus = gateOpen ? 'LOCKED' : 'searching';
         const comb = snapshot?.strongestBpm > 0 ? snapshot.strongestBpm : NaN;
@@ -1453,7 +1463,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         return [
             [
                 // A closed gate has a hollow lamp; a previously shown pending event may still flash.
-                { lamp: true, level: gateOpen || this.ledLevel > 0 ? this.ledLevel : null,
+                { lamp: true, level: gateOpen || ledLevel > 0 ? ledLevel : null,
                     minimumLevel: 0, color: gateOpen ? markerColor(Number.isFinite(bpm) ? bpm : 120) : palette.strongGrid },
                 { ...(unavailable ? { text: 'Analysis unavailable at this sample rate' } : {
                     text: value(bpm, bpm.toFixed(1)), slot: '000.0',

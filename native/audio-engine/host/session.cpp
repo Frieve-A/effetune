@@ -1,6 +1,7 @@
 #include "session.h"
 #include "allocation_guard.h"
 #include "engine.h"
+#include "file_fifo.h"
 #include "io_pipeline.h"
 #include "pipeline.h"
 #include <algorithm>
@@ -67,6 +68,8 @@ bool Session::open(SessionFormat format) {
   format_ = format;
   maxBlock_ = format.periodFrames;
   position_ = 0;
+  if (file_)
+    file_->configure(format.sampleRate, format.periodFrames);
   return true;
 }
 
@@ -80,6 +83,8 @@ bool Session::reconfigureDevice(SessionFormat format) {
     return false;
   io_->reconfigureDevice(format);
   format_ = format;
+  if (file_)
+    file_->configure(format.sampleRate, format.periodFrames);
   return true;
 }
 
@@ -148,10 +153,11 @@ ClockedFifo &Session::capture() noexcept { return io_->capture(); }
 unsigned Session::latency() const noexcept {
   return engine_ && !bypass_ ? engine_->pipelineLatency() : 0;
 }
-bool Session::setTelemetryRate(float hz) noexcept {
+bool Session::setTelemetryRate(float hz, bool midiMetering) noexcept {
   if (!engine_ || engine_->setTelemetryRate(hz) != ET_OK)
     return false;
   telemetryRate_ = hz;
+  telemetry_->midiMetering = midiMetering;
   if (visualizer_)
     visualizer_->setRate(hz);
   return true;
@@ -250,7 +256,7 @@ bool Session::renderDevice(std::span<float> output, unsigned frames,
 }
 
 bool Session::render(std::span<float> planar, std::uint32_t frames,
-                     std::optional<FeedTime> feedTime) noexcept {
+                     std::optional<FeedTime> feedTime, bool sourceActive) noexcept {
   if (!engine_ || frames == 0 || planar.size() != std::size_t(frames) * format_.width())
     return false;
 #if defined(__x86_64__) || defined(_M_X64)
@@ -273,6 +279,14 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
                                : FeedTime{double(position()), 1.};
     const auto stage = visualizerStage(io_->delay.active(), io_->visualSync,
                                        pipeline_->sendInstance() != 0, io_->receiving);
+    Parallel *parallel;
+    // Publish the borrowed pointer before dereferencing it. The control thread
+    // retains a detached branch until this audio callback releases it.
+    do {
+      parallel = published_.load();
+      inUse_.store(parallel);
+    } while (parallel != published_.load());
+    boundaries_.shareFileBoundaries(parallel ? &parallel->b->boundaries_ : nullptr);
     const auto block = boundaries_.slice(
         position(), quantum, clock, *telemetry_, io_->routeRevision, stage,
         [&](BoundarySlice &slice) {
@@ -288,16 +302,12 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
             visualizer_->streamBoundary(slice, delay);
           }
         });
-    Parallel *parallel;
-    // Publish the borrowed pointer before dereferencing it. The control thread
-    // retains a detached branch until this audio callback releases it.
-    do {
-      parallel = published_.load();
-      inUse_.store(parallel);
-    } while (parallel != published_.load());
-    // FIR replacement is the same owner-thread asset operation as in the
-    // worklet. It may allocate between renders once its dry transition finishes.
+    allocation_guard::Scope guard;
     pipeline_->serviceAssets();
+    if (pipeline_->takeAssetLatencyChange() && !refreshLatency(false)) {
+      inUse_.store(nullptr);
+      return false;
+    }
     io_->sendInstance = pipeline_->sendInstance();
     float *bus = engine_->combined();
     for (std::uint32_t ch = 0; ch < format_.width(); ++ch)
@@ -308,19 +318,21 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
       const auto count = std::size_t(format_.width()) * block;
       std::copy_n(bus, count, parallel->input.data());
       parallel->b->position_ = position();
-      if (!parallel->b->render({parallel->input.data(), count}, block, clock)) {
+      if (!parallel->b->render({parallel->input.data(), count}, block, clock, sourceActive)) {
         inUse_.store(nullptr);
         return false;
       }
     }
-    allocation_guard::Scope guard;
-    const bool run =
-        power_->begin(*pipeline_, bus, format_.width(), block) && (!bypass_ || power_->enabled());
+    const bool run = power_->begin(*pipeline_, bus, format_.width(), block, sourceActive) &&
+                     (!bypass_ || power_->enabled());
     const bool dryOutput = run && bypass_;
     ranDsp_ = run && !bypass_;
     if (dryOutput)
       std::copy_n(bus, std::size_t(format_.width()) * block, dry_.data());
-    if (run)
+    // Master bypass removes every instrument from the MIDI targets, but the song
+    // transport still advances, as in the worklet, so it prepares and ends.
+    const bool midi = run || bypass_;
+    if (midi)
       pipeline_->renderMidi(position_, block, format_.sampleRate);
     if (run)
       spectrum_->begin(*pipeline_);
@@ -344,7 +356,7 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
         }
       }
     }
-    if (run && pipeline_->midi.generation())
+    if (midi && pipeline_->midi.generation())
       pipeline_->midi.finishedBlock(position_ + block, format_.sampleRate);
     if (!run && power_->enabled() && power_->state().directive == Directive::zero)
       std::fill_n(bus, std::size_t(format_.width()) * block, 0.f);
@@ -352,7 +364,7 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
       std::swap_ranges(bus, bus + std::size_t(format_.width()) * block, dry_.data());
     const auto visualize = [&](const float *audio, unsigned channels) {
       if (visualizer_ && !power_->state().monitoring &&
-          power_->state().directive != Directive::zero && !power_->config().displayBypass)
+          power_->state().directive != Directive::zero)
         visualizer_->render(audio, channels, block, position_, *telemetry_, io_->routeRevision,
                             stage);
     };

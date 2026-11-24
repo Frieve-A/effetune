@@ -1,3 +1,4 @@
+import { getDiagnosticLog, startDiagnosticRecording } from '../../js/diagnostics/diagnostic-log.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -448,6 +449,30 @@ test('WASAPI settings preserve explicit output when the device query fails and r
   });
 });
 
+test('Changing the driver keeps same-name devices, resets the others and saves what the dialog shows', async () => {
+  const document = createFakeDocument();
+  const harness = createAudioHarness({saveResult:{success:false}});
+  Object.assign(harness.window.electronAPI,{platform:'win32',audioEngine:{
+    list: async () => ({ok:true,backend:'wasapi',
+      inputs:[{id:'native-mic',name:'Mic One'}],outputs:[{id:'native-other',name:'Other Out'}]})
+  }});
+  await withGlobals({window:harness.window,document,navigator:{mediaDevices:createWindowEventTarget()}},async () => {
+    await withMutedConsole('warn',() => withMutedConsole('log',async () => {
+      await showAudioConfigDialog(true,{inputDeviceId:'mic1',inputDeviceLabel:'Mic One',
+        outputDeviceId:'out1',outputDeviceLabel:'Out One'});
+      const driver = document.getElementById('audio-driver');
+      driver.value = 'wasapi';
+      await driver.dispatchEvent('change');
+      assert.equal(document.getElementById('input-device').value,'native-mic');
+      assert.equal(document.getElementById('output-device').value,'default');
+
+      await document.getElementById('apply-button').dispatchEvent('click');
+      const saved = harness.calls.find(call => call[0] === 'saveAudioPreferences')[1];
+      assert.deepEqual([saved.audioDriver,saved.inputDeviceId,saved.outputDeviceId],['wasapi','native-mic','default']);
+    }));
+  });
+});
+
 test('showAudioConfigDialog opens without reporting configuration progress and handles a missing UI manager', async () => {
   const document = createFakeDocument();
   const nonElectron = createAudioHarness();
@@ -641,7 +666,8 @@ test('showAudioConfigDialog localizes Web output support and default option labe
   assert.equal(document.getElementById('sample-rate').children[3].textContent, '96 kHz (デフォルト)');
 });
 
-test('showAudioConfigDialog keeps Web output preferences aligned with available sink paths', async () => {
+test('showAudioConfigDialog keeps Web output preferences aligned with available sink paths', async t => {
+  t.after(startDiagnosticRecording({}));
   const selectOnlyHarness = createAudioHarness({
     window: {
       isSecureContext: true
@@ -714,6 +740,8 @@ test('showAudioConfigDialog keeps Web output preferences aligned with available 
   assert.equal(resetCalls[0].outputChannels, 4);
   assert.equal(Object.hasOwn(resetCalls[0], 'lowLatencyOutput'), false);
   assert.equal(directUnsupportedSelectCalls, 0);
+  const fallback = getDiagnosticLog().events.find(event => event.reason === 'multichannelSinkUnavailable');
+  assert.deepEqual([fallback.outputSelection, fallback.outputDeviceLabel, fallback.result], ['explicit','Out One','unknown']);
 });
 
 test('showAudioConfigDialog can be cancelled and closed with Escape', async () => {
@@ -889,20 +917,55 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     useWasmDsp: true,
     gaplessPlayback: true,
     replayGainMode: 'off',
+    replayGainTarget: 'manual',
+    replayGainAutoCoverage: 95,
+    replayGainPeakCeilingDb: 0,
     replayGainPreampDb: 0,
     replayGainPreventClipping: true,
     outputChannels: 6,
     latencyHint: 'balanced'
   });
   assert.deepEqual(updateCalls, [saved]);
-  // The Electron save reloads the window, so the output is silenced after the save succeeds.
-  assert.ok(harness.calls.findIndex(call => call[0] === 'fadeOutOutputForTeardown') >
-    harness.calls.findIndex(call => call[0] === 'saveAudioPreferences'));
+  assert.equal(harness.calls.some(call => call[0] === 'fadeOutOutputForTeardown'), false);
+  assert.deepEqual(harness.uiCalls.at(-1), ['setError', 'dialog.audioConfig.updatedMessage']);
   assert.deepEqual(callbackCalls, [saved]);
   assert.deepEqual(harness.window.audioPreferences, saved);
-  assert.equal(document.body.children.length, 1);
+  assert.equal(document.body.children.length, 0);
   assert.equal(document.head.children.length, 0);
   assert.equal(harness.window.listenerCount('beforeunload'), 0);
+});
+
+test('ReplayGain settings enable the active target controls and preview the library target', async () => {
+  const requests = [];
+  const libraryManager = { client: { async getLoudnessStats(request) {
+    requests.push(request);
+    return { trackPlr: 12, albumPlr: 15 };
+  } } };
+  const harness = createAudioHarness({ uiManager: { async ensureLibraryManager() { return libraryManager; } } });
+  const document = createFakeDocument();
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    await showAudioConfigDialog(true, { replayGainMode: 'off' });
+    const control = name => document.getElementById(`replay-gain-${name}`);
+    for (const name of ['target', 'preamp', 'coverage', 'prevent-clipping', 'ceiling']) {
+      assert.equal(control(name).disabled, true);
+    }
+    control('mode').value = 'album';
+    await control('mode').dispatchEvent('change');
+    assert.equal(control('preamp').disabled, false);
+    assert.equal(control('coverage').disabled, true);
+    control('prevent-clipping').checked = false;
+    await control('prevent-clipping').dispatchEvent('change');
+    assert.equal(control('ceiling').disabled, true);
+    control('target').value = 'auto';
+    control('ceiling').value = '-1';
+    await control('target').dispatchEvent('change');
+    assert.equal(control('target-value').textContent, '-16.0 LUFS');
+    assert.deepEqual(requests, [{ coverage: 95 }]);
+    assert.equal(control('preamp').disabled, true);
+    assert.equal(control('coverage').disabled, false);
+    assert.equal(control('ceiling').disabled, false);
+    await document.getElementById('cancel-button').dispatchEvent('click');
+  });
 });
 
 test('showAudioConfigDialog applies only Gapless Playback without resetting audio', async () => {
@@ -1041,6 +1104,9 @@ test('showAudioConfigDialog persists only player fields when no AudioManager exi
     {
       gaplessPlayback: false,
       replayGainMode: 'off',
+      replayGainTarget: 'manual',
+      replayGainAutoCoverage: 95,
+      replayGainPeakCeilingDb: 0,
       replayGainPreampDb: 0,
       replayGainPreventClipping: true
     },

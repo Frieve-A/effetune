@@ -35,7 +35,11 @@ Pour afficher les paroles dans **Lyrics** de Visualizer, utilisez les paroles in
 
 Pour afficher une pochette avec un fichier MIDI ou MusicXML, placez `cover.jpg` (prioritaire) ou `folder.jpg` dans le même dossier. Sur le Web, sélectionnez ou déposez l’image avec le fichier musical, sauf si le dossier est accessible depuis Music Library.
 
-Si SoundFont Player est absent, si aucun instrument n’est chargé ou si son chargement est en cours, et qu’aucun [périphérique de sortie MIDI externe](#midi-output-device) n’est connecté, le lecteur affiche des indications et continue d’envoyer le MIDI au rythme du morceau, en silence, sans passer au suivant. Le morceau se termine normalement. Vous pouvez ajouter SoundFont Player ou charger un instrument pendant la lecture : une fois prêt, il réagit aux événements MIDI qui suivent, avec les sons et réglages de contrôle actuels de chaque canal. Les notes précédentes ne sont pas rejouées, même si elles sont encore tenues dans le morceau.
+Utilisez **Ouvrir des fichiers musicaux** ou faites glisser une archive ZIP, LZH/LHA, tar, gzip ou tar compressée avec gzip pour lire les fichiers MIDI, KAR et MusicXML qu’elle contient. Cela fonctionne aussi lorsque les options de la bibliothèque sont désactivées. Si les archives sélectionnées contiennent au moins deux fichiers lisibles, choisissez ceux que vous voulez ouvrir. S’ils sont trop volumineux pour être ouverts ensemble, sélectionnez-en moins. Le lecteur utilise les paroles du fichier `.wrd` correspondant et la pochette qui se trouvent dans le dossier du morceau à l’intérieur de l’archive.
+
+Si vous lancez un morceau pendant le chargement de l’instrument choisi, la lecture attend que celui-ci soit prêt pour que vous entendiez les premières notes. Si un autre instrument est prêt ou qu’une sortie MIDI est connectée, la lecture démarre immédiatement.
+
+Si SoundFont Player est absent ou qu’aucun instrument n’est sélectionné, et qu’aucun [périphérique de sortie MIDI externe](#midi-output-device) n’est connecté, le lecteur affiche des indications et continue d’envoyer le MIDI au rythme du morceau, en silence, sans passer au suivant. Le morceau se termine normalement. Vous pouvez ajouter SoundFont Player ou charger un instrument pendant la lecture : une fois prêt, il réagit aux événements MIDI qui suivent, avec les sons et réglages de contrôle actuels de chaque canal. Les notes précédentes ne sont pas rejouées, même si elles sont encore tenues dans le morceau.
 
 Les commandes habituelles de lecture, pause, déplacement, répétition, lecture aléatoire, vitesse, volume et coupure du son restent disponibles. La vitesse modifie le rythme du MIDI sans changer la hauteur des notes. **Conserver la hauteur** n’est pas disponible pendant la lecture MIDI. Avec une collection SF2/SF3, un seul SoundFont Player suit Bank Select et Program Change indépendamment sur les 16 canaux, avec la banque de percussions sur le canal 10 par défaut. Utilisez **MIDI Mixer** pour régler le **Patch**, le niveau et les autres commandes de jeu de chaque canal. Ces modifications sont temporaires, suivent les messages MIDI ultérieurs et sont réinitialisées au morceau suivant. Les instruments SFZ gardent leurs propres correspondances.
 
@@ -66,21 +70,35 @@ Le lecteur de bureau affiche aussi la [musique en réseau et AirPlay](openhome.m
 
 Le curseur de volume et le bouton de sourdine règlent le son du lecteur avant son passage dans les effets. Les changements effectués à distance sont également affichés ici : vous pouvez ainsi vérifier le volume et rétablir le son sur l’appareil qui lit la musique.
 
+## Reprendre là où vous vous êtes arrêté
+
+Lorsque vous rouvrez l’application de bureau ou l’application web, le lecteur retrouve la file d’attente et se met en pause à la dernière position enregistrée dans le morceau en cours. La vitesse de lecture revient à 1x. La position est enregistrée toutes les 10 secondes environ pendant la lecture. Les changements effectués juste avant de quitter peuvent donc être perdus.
+
+Les deux versions retrouvent les morceaux de la bibliothèque. La version de bureau retrouve aussi les fichiers locaux ouverts directement. Sur le web, le navigateur peut vous demander de sélectionner à nouveau votre dossier de musique au moment de lancer la lecture. Ajoutez à nouveau les fichiers ouverts directement dans la version web et les morceaux provenant du réseau.
+
+Pour retrouver les morceaux d’une archive, lisez-les depuis la bibliothèque. Si vous avez ouvert l’archive directement, ouvrez-la de nouveau.
+
+Pour effacer la file enregistrée, fermez le lecteur avec **×**. Si une fonction de réception ou de commande à distance conserve la file, désactivez-la, puis fermez le lecteur affiché avec **×**.
+
 ## Lecture sans interruption
 
 **Lecture sans interruption**, dans **Configuration audio**, est activée par défaut et enchaîne sans blanc les morceaux locaux compatibles ; la prise en charge dépend du format du fichier et de l’environnement, navigateur ou application. Les formats non pris en charge et certains environnements mobiles utilisent un mode de secours économe en mémoire, si bien qu’un bref silence peut subsister. La désactiver privilégie une faible consommation de mémoire et la stabilité, au prix d’un bref silence possible ; ce changement n’interrompt pas le morceau en cours. La lecture sans interruption ne fonctionne qu’à la vitesse 1x ; changer la vitesse pendant une lecture sans interruption relance le morceau à la même position après une brève coupure.
 
+Dans l’application de bureau, lorsque le **Pilote** de **Configuration audio** est autre que **Standard**, les fichiers WAV et FLAC multicanaux jusqu’à six canaux sont eux aussi lus sans interruption. Les effets reçoivent leurs canaux dans l’ordre du fichier. Si cet ordre diffère de celui des sorties de vos enceintes, placez [**Matrix**](plugins/basics.md#matrix) en tête de la chaîne d’effets, comme pour le [DSD multicanal](#dsd-files).
+
 ## ReplayGain
 
-De nombreux fichiers musicaux contiennent des balises ReplayGain, écrites par un logiciel de balisage après avoir mesuré le volume de chaque morceau. Réglez **ReplayGain** dans **Configuration audio** pour suivre ces balises et écouter à un volume comparable des morceaux issus d’albums différents. EffeTune se contente de lire les balises : il ne mesure pas le volume et n’écrit aucune balise. Les fichiers sans balises ReplayGain sont lus à leur niveau d’origine. Pour les fichiers Opus, les balises `R128_TRACK_GAIN` et `R128_ALBUM_GAIN` sont également prises en compte.
+Dans **Configuration audio**, activez **ReplayGain** pour réduire les écarts de volume entre enregistrements. Le lecteur utilise en priorité les [mesures de la bibliothèque](music-library.md#loudness-analysis), puis les balises ReplayGain du fichier, dont `R128_TRACK_GAIN` et `R128_ALBUM_GAIN` pour Opus. En l’absence de mesure et de balise, le morceau conserve son volume d’origine.
 
-- **Désactivé** (par défaut) : les balises sont ignorées.
+- **Désactivé** (par défaut) conserve le volume d’origine.
 - **Piste** : amène tous les morceaux à un volume comparable. À choisir pour la lecture aléatoire et les listes qui mélangent plusieurs albums.
 - **Album** : ajuste chaque album comme un tout et conserve les écarts de volume entre ses morceaux, par exemple une introduction calme. À choisir pour écouter un album du début à la fin.
 
-Si un fichier ne contient que la valeur de piste ou que celle d’album, cette valeur est utilisée dans les deux modes. Les morceaux d’une feuille CUE utilisent les balises du fichier audio auquel elle renvoie.
+Si seule la valeur de piste ou celle d’album est disponible, elle sert dans les deux modes. Chaque piste CUE mesurée possède sa propre valeur. À défaut, le lecteur utilise les balises du fichier audio référencé.
 
-**Préampli ReplayGain** (de -15 à +15 dB, 0 dB par défaut) monte ou baisse le niveau des seuls fichiers balisés. ReplayGain abaisse souvent les enregistrements récents de plusieurs dB : si les morceaux balisés paraissent plus faibles que les autres, augmentez-le. **Éviter l’écrêtage** (activé par défaut) s’appuie sur les valeurs de crête des balises pour limiter le gain, afin que les morceaux amplifiés ne dépassent pas la pleine échelle. Ces deux réglages sont disponibles lorsque **ReplayGain** est sur **Piste** ou **Album**. Les changements s’appliquent immédiatement, sans interrompre la lecture.
+Avec **Niveau cible** réglé sur **Manuel** (par défaut), la cible est de −18 LUFS. Le **Préampli ReplayGain** (−15 à +15 dB, 0 dB par défaut) permet de la relever ou de l’abaisser. **Automatique** affiche la cible la plus élevée que la proportion de pistes ou d’albums mesurés définie par **Couverture automatique (%)** peut atteindre sans dépasser le **Plafond de crête (dB)**. La couverture initiale est de 95 %. Augmentez-la pour que davantage de morceaux atteignent la cible, ou réduisez-la pour permettre une cible plus élevée. Sans mesure, la cible automatique est de −18 LUFS.
+
+**Éviter l’écrêtage**, activé par défaut, réduit le gain si la crête vraie mesurée ou la crête indiquée dans les balises risque de dépasser le plafond. Abaissez le plafond, initialement à 0 dB, pour laisser de la marge aux effets qui amplifient le signal. Le mode automatique tient compte du plafond même si la protection est désactivée. Les réglages prennent effet pendant la lecture.
 
 La correction s’applique au son du lecteur avant son entrée dans la chaîne d’effets ; la position du curseur de volume ne change pas. ReplayGain ne s’applique pas à la lecture MIDI ou MusicXML, à la musique en réseau, à la réception AirPlay, à la lecture sur des lecteurs OpenHome ou UPnP AV / DLNA, ni au traitement de fichiers hors ligne. ReplayGain est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android.
 

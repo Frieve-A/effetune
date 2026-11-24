@@ -86,9 +86,10 @@ bool PowerControl::resume(Pipeline &pipeline, std::int64_t command, std::int64_t
   reason_ = "config-wake";
   return true;
 }
-void PowerControl::mutation() noexcept {
+void PowerControl::mutation(Pipeline &pipeline) noexcept {
   if (state_.directive == Directive::automatic) {
     full();
+    pipeline.resumeInstruments();
     reason_ = "config-wake";
   }
 }
@@ -116,13 +117,14 @@ PowerControl::Level PowerControl::measure(const float *data, unsigned channels, 
   d.ewma += -std::expm1(-double(frames) / (2. * config_.rate)) * (level.mean - d.ewma);
   return level;
 }
-bool PowerControl::begin(Pipeline &pipeline, const float *input, unsigned channels,
-                         unsigned frames) noexcept {
+bool PowerControl::begin(Pipeline &pipeline, const float *input, unsigned channels, unsigned frames,
+                         bool sourceActive) noexcept {
   if (!enabled() && requested_ < 0)
     return true;
   ++state_.sequence;
+  sourceActive_ = sourceActive;
   inputLevel_ = measure(input, channels, frames, input_);
-  const bool wake = inputLevel_.nonfinite || inputLevel_.peak > config_.wakeFloor ||
+  const bool wake = sourceActive || inputLevel_.nonfinite || inputLevel_.peak > config_.wakeFloor ||
                     (config_.wakeAny && inputLevel_.peak > 0);
   if (state_.monitoring && wake) {
     if (state_.directive == Directive::monitor)
@@ -160,7 +162,7 @@ void PowerControl::finish(Pipeline &pipeline, const float *output, unsigned chan
   if (!enabled() && requested_ < 0)
     return;
   const auto out = measure(output, channels, frames, output_);
-  const bool inActive = inputLevel_.nonfinite || input_.ewma > config_.threshold;
+  const bool inActive = sourceActive_ || inputLevel_.nonfinite || input_.ewma > config_.threshold;
   const bool outActive = out.nonfinite || output_.ewma > config_.threshold;
   if (inActive || outActive)
     ++state_.activityEpoch;

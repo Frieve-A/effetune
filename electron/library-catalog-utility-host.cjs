@@ -11,6 +11,8 @@ const { createArtworkThumbnail } = require('./library-catalog-scan-runtime.cjs')
 
 const LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION = 1;
 const MAX_UTILITY_MESSAGE_BYTES = 4 * 1024 * 1024;
+const MAX_ARCHIVE_SCORE_BYTES = 32 * 1024 * 1024;
+const MAX_ARCHIVE_WRD_BYTES = 1024 * 1024;
 const MAX_ARTWORK_BRIDGE_MESSAGE_BYTES = 21 * 1024 * 1024;
 const MAX_UTILITY_OUTSTANDING_REQUESTS = 32;
 const UTILITY_CLOSE_TIMEOUT_MS = 2000;
@@ -33,7 +35,7 @@ const UTILITY_HEARTBEAT_INTERVAL_MS = 1000;
 const UTILITY_SLOW_OPEN_LOG_MS = 10000;
 
 const RUNTIME_METHODS = Object.freeze([
-  'addFolder', 'requestFolderAccess', 'scanFolders', 'cancelScan', 'removeFolder',
+  'addFolder', 'requestFolderAccess', 'scanFolders', 'rescanLoudnessFolder', 'cancelScan', 'removeFolder',
   'requestArtwork', 'resolvePlaybackSource', 'pickPlaylistImport', 'grantDroppedPlaylistImport'
 ]);
 const COORDINATOR_METHODS = Object.freeze([
@@ -185,7 +187,7 @@ class LibraryCatalogUtilityHost {
     };
     assertBoundedMessage(message);
     return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
+      this.pending.set(requestId, { target, method, resolve, reject });
       try {
         this.post(message);
       } catch (error) {
@@ -237,12 +239,14 @@ class LibraryCatalogUtilityHost {
       return;
     }
     try {
-      assertBoundedMessage(
-        message,
-        message.type === 'artwork-thumbnail-request'
-          ? MAX_ARTWORK_BRIDGE_MESSAGE_BYTES
-          : MAX_UTILITY_MESSAGE_BYTES
-      );
+      const pending = message.type === 'response' && this.pending.get(message.requestId);
+      if (pending?.target === 'coordinator' && pending.method === 'resolveSequenceEntrySource' &&
+          message.ok === true && message.payload?.kind === 'archive-entry') {
+        assertArchivePlaybackResponse(message);
+      } else {
+        assertBoundedMessage(message, message.type === 'artwork-thumbnail-request'
+          ? MAX_ARTWORK_BRIDGE_MESSAGE_BYTES : MAX_UTILITY_MESSAGE_BYTES);
+      }
     } catch (error) {
       await this.handleChildFailure(this.child, error);
       return;
@@ -410,7 +414,7 @@ class LibraryCatalogUtilityHost {
     };
     assertBoundedMessage(message);
     return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
+      this.pending.set(requestId, { target, method, resolve, reject });
       try {
         this.post(message);
       } catch (error) {
@@ -446,6 +450,16 @@ class RepositoryFacade extends EventEmitter {
 
 function unwrapMessage(message) {
   return message && Object.hasOwn(message, 'data') ? message.data : message;
+}
+
+function assertArchivePlaybackResponse(message) {
+  const { bytes, wrd, ...metadata } = message.payload;
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_ARCHIVE_SCORE_BYTES ||
+      (wrd !== null && (!(wrd?.bytes instanceof Uint8Array) || wrd.bytes.byteLength > MAX_ARCHIVE_WRD_BYTES))) {
+    throw createUtilityError('invalidArchivePlaybackResponse', 'Archived score response is invalid');
+  }
+  const boundedWrd = wrd === null ? null : { ...wrd, bytes: null };
+  assertBoundedMessage({ ...message, payload: { ...metadata, bytes: null, wrd: boundedWrd } });
 }
 
 function assertBoundedMessage(value, maximumBytes = MAX_UTILITY_MESSAGE_BYTES) {

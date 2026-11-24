@@ -215,6 +215,17 @@ test('Visualizer Phase Map source syncs its input-window rule at the final outpu
     assert.equal(due, 51000 / 48);
 });
 
+test('Output delay subtracts a driver-overridden device latency estimate', () => {
+    const h = harness();
+    const source = { tapId: 0xf0000001, type: 'PhaseSelectEqPlugin', params: {} };
+    h.manager.visualizerSources = [source];
+    h.manager.pipeline = [];
+    // The native driver overrides the estimate without the Web Audio cache.
+    h.manager._getDeviceLatencyFrames = () => 100;
+    const generation = VISUAL_SYNC_RULES.PhaseSelectEqPlugin.generationFrames({}, 48000, 'wasm');
+    assert.equal(h.manager._recomputeVisualSyncDelay(), generation - 100);
+});
+
 test('Spectrum Overlay uses the same HQ analysis age for output delay and frame delivery', () => {
     const oldWindow = globalThis.window;
     globalThis.window = { SpectrumOverlay: { quality: 'hq', TARGETS: new Set(['VolumePlugin']) } };

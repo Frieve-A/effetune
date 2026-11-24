@@ -137,7 +137,7 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
 
 ### Drivers de áudio do aplicativo desktop
 
-Abra **Configurações > Configuração de Áudio** e escolha o **Driver**. A opção inicial é **Padrão**. Para reduzir a carga de processamento ou usar uma entrada com três ou mais canais, experimente **WASAPI** no Windows, **Core Audio** no macOS ou **PulseAudio** no Linux (**ALSA** quando o PulseAudio não está disponível). O driver muda como o EffeTune se conecta aos dispositivos de áudio. Os efeitos, predefinições e controles do player funcionam da mesma forma.
+Abra **Configurações > Configuração de Áudio** e escolha o **Driver**. Novos perfis de configuração usam **WASAPI** no Windows, **Core Audio** no macOS e **PulseAudio** no Linux (**ALSA** quando o PulseAudio não está disponível). Esses drivers se conectam diretamente aos dispositivos de áudio, processam o sinal de forma nativa e aceitam entradas com três ou mais canais. Se você usa o driver **Padrão**, pode trocá-lo aqui e conferir os dispositivos de entrada e saída antes de aplicar a alteração.
 
 Ajuste a **Taxa de Amostragem** dos efeitos normalmente. Se a saída usar outra taxa, o EffeTune converte o áudio após o processamento. Pequenas diferenças de arredondamento podem alterar os valores exatos das amostras em comparação com o driver **Padrão**.
 
@@ -416,6 +416,7 @@ Aqui estão algumas combinações populares de efeitos para aprimorar sua experi
 
 Se tiver algum problema, consulte [Solução de Problemas e FAQ](faq.md).
 Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
+Se o recurso estiver disponível, anexe o arquivo de diagnóstico seguindo as instruções da FAQ.
 
 ## Efeitos Disponíveis
 

@@ -1,4 +1,6 @@
 #include "host/io_pipeline.h"
+#include "allocation_guard.h"
+#include "host/file_fifo.h"
 #include "host/session.h"
 #include <algorithm>
 #include <cmath>
@@ -11,7 +13,8 @@ IoPipeline::IoPipeline(const SessionFormat &format, ClockedFifo *feedRing)
       inputBuffer_(pipelineBuffer_.size()), marker_(std::size_t{2} * format.periodFrames) {
   if (!feed_)
     return;
-  // Feed traverses renderer/main IPC. Capture needs headroom for two device periods.
+  // Feed traverses renderer/main IPC. Capture needs headroom for two device
+  // periods.
   feed_->open(format.width(), format.sampleRate, format.sampleRate,
               std::max(format.sampleRate / 20, 2 * format.periodFrames));
   replaceInput(format, format.inputChannels, format.captureRate);
@@ -65,7 +68,16 @@ bool IoPipeline::renderDevice(Session &session, float *output, unsigned frames,
     const auto block = static_cast<unsigned>(std::min<std::size_t>(format.periodFrames, needed));
     float *bus = pipelineBuffer_.data();
     if (consumed_ == buffered_ && block) {
+      bool fileActive = false;
       feed_->read(bus, block, block);
+      if (auto *file = session.file(); file && !discard) {
+        allocation_guard::Scope guard;
+        file->mix(bus, format.width(), block, session.position(), &session,
+                  [](void *context, std::uint64_t frame) noexcept {
+                    static_cast<Session *>(context)->noteFileBoundary(frame);
+                  });
+        fileActive = file->activeThisBlock();
+      }
       if (captureChannels_ && !synchronousInput)
         capture_->read(inputBuffer_.data(), block, block);
       if (!discard && inputEnabled) {
@@ -82,7 +94,8 @@ bool IoPipeline::renderDevice(Session &session, float *output, unsigned frames,
         session.advanceSilently(block);
       } else if (!session.render({bus, std::size_t(block) * format.width()}, block,
                                  FeedTime{feed_->sourceFrame() - feed_->sourceStep() * block,
-                                          feed_->sourceStep()}))
+                                          feed_->sourceStep()},
+                                 fileActive))
         return false;
       buffered_ = block;
       consumed_ = 0;
@@ -116,7 +129,7 @@ void IoPipeline::requestLocalDelay(unsigned request, bool active, unsigned sampl
     ++localDelayRevision;
     ++routeRevision;
   }
-  pendingDelayRequest = renderDelayRequest_ = request;
+  renderDelayRequest_ = request;
   requestedLocalDelay = active ? samples : 0;
   requestedDelayActive_ = active;
   localEnabled = local;

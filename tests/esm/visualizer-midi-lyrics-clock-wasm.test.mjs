@@ -65,7 +65,10 @@ test('Lyrics follow completed native MIDI samples across Sync, speed, seek, paus
             const clock = h.binding.instanceMidiClock(id).frame;
             h.advanceContextWithoutProcessing(4800000);
             assert.equal(h.binding.instanceMidiClock(id).frame, clock);
-            assert.equal(current().frame.key, first.frame.key, 'context jumps cannot advance words without processing');
+            // Between reports the position follows the output clock, but never more than one
+            // 30 Hz report period beyond rendered audio.
+            assert.ok(current().lyrics.time <= owner.getCurrentMidiTime() + 1 / 30 + 1e-9,
+                'context jumps cannot advance lyrics beyond one report period without processing');
             h.render(); await Promise.resolve();
             assert.equal(h.binding.instanceMidiClock(id).frame, clock + 128);
             await advanceTo(.7);

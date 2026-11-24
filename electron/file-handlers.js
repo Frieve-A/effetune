@@ -7,13 +7,15 @@ const fileAccess = require('./file-access.cjs');
 const { getSettingsPath, parseSettingsArguments } = require('./settings-profile.cjs');
 const {
   LocalPlaybackIngress,
+  PLAYBACK_ARCHIVE_EXTENSIONS,
+  isSupportedPlaybackArchivePath,
   admitLocalPlaybackPaths: admitLocalPlaybackPathsImpl
 } = require('./local-playback-ingress.cjs');
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['dsf', 'dff', 'mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
 const PLAYBACK_AUDIO_FILTER_NAME = 'Music and Video Files';
-const PLAYBACK_SELECTION_FILTER_NAME = 'Music and CUE Files';
-const PLAYBACK_SELECTION_EXTENSIONS = [...PLAYBACK_AUDIO_EXTENSIONS, 'cue'];
+const PLAYBACK_SELECTION_FILTER_NAME = 'Music, CUE and Archive Files';
+const PLAYBACK_SELECTION_EXTENSIONS = [...PLAYBACK_AUDIO_EXTENSIONS, 'cue', ...PLAYBACK_ARCHIVE_EXTENSIONS];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'];
 const OFFLINE_AUDIO_FILTER_NAME = 'Music Files for Processing';
@@ -209,7 +211,7 @@ function processCommandLineArgs(argv) {
         }
       }
       // Check if the argument is a music file
-      else if (arg && isSupportedPlaybackAudioPath(arg)) {
+      else if (arg && (isSupportedPlaybackAudioPath(arg) || isSupportedPlaybackArchivePath(arg))) {
         try {
           // Check if file exists
           if (fs.existsSync(arg)) {
@@ -228,6 +230,7 @@ function processCommandLineArgs(argv) {
 module.exports = {
   PLAYBACK_AUDIO_EXTENSIONS,
   isSupportedPlaybackAudioPath,
+  isSupportedPlaybackArchivePath,
   setMainWindow,
   getUserDataPath,
   showSaveDialog,

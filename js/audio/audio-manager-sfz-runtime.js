@@ -365,7 +365,7 @@ export const audioManagerSfzRuntimeMethods = {
     },
 
     async estimateSfzEffectPreparation(payload, context, formatTag = 1) {
-        const info = this.dspModuleInfo;
+        const info = await this.getOfflineDspModuleInfo();
         if (!info?.module) throw new Error('The instrument preparation module is unavailable');
         if (this._sfzEffectCost?.module !== info.module || this._sfzEffectCost.worker.closed) {
             this._sfzEffectCost?.worker.close();
@@ -400,10 +400,15 @@ export const audioManagerSfzRuntimeMethods = {
         this._pruneSfzRuntimeTargets();
         const plugin = this._getSfzRuntimePlugin(node, data.pluginId);
         const descriptor = plugin?.getWasmAssetRevisionDescriptor?.(0, data.operationRevision, data.replayEpoch, node);
-        const expected = this._getSfzRuntimeAssetIdentity(node, data.pluginId);
+        // A replacement or replay posts its identity before the engine retires this
+        // stream, and the engine then rejects requests still in flight for it.
+        const superseded = () => {
+            const expected = this._getSfzRuntimeAssetIdentity(node, data.pluginId);
+            return expected.token != null && expected.token !== data.operationRevision ||
+                expected.replayEpoch != null && expected.replayEpoch !== data.replayEpoch;
+        };
         if (typeof descriptor?.sampleProviderFactory !== 'function' || !Number.isSafeInteger(data.generation) || data.generation < 1 ||
-            expected.token != null && expected.token !== data.operationRevision ||
-            expected.replayEpoch != null && expected.replayEpoch !== data.replayEpoch) return;
+            superseded()) return;
         this._stopSfzSampleStream(node, data.pluginId);
         this._sfzSampleStreams ??= new Map();
         let streams = this._sfzSampleStreams.get(node);
@@ -425,7 +430,7 @@ export const audioManagerSfzRuntimeMethods = {
                 replayEpoch: data.replayEpoch ?? null });
         };
         const fail = error => {
-            if (!current()) { this._stopSfzSampleStream(node, data.pluginId, data.generation); return; }
+            if (!current() || superseded()) { this._stopSfzSampleStream(node, data.pluginId, data.generation); return; }
             console.error('SFZ sample streaming failed:', error);
             node.port.postMessage({ type: 'sfzStreamFailed', pluginId: data.pluginId, generation: data.generation });
             this._stopSfzSampleStream(node, data.pluginId, data.generation);
@@ -441,6 +446,7 @@ export const audioManagerSfzRuntimeMethods = {
             await descriptor.sampleProviderFactory({ generation: data.generation,
                 onProvider: provider => { stream.provider = provider; if (!current()) provider.close(); },
                 onProgress: progress,
+                publishWindow: node.port.samplePublishWindow,
                 publish: async page => {
                     if (!current()) return false;
                     const answer = await request('sfzPublishPage', 'sfzStreamPagesPublished',

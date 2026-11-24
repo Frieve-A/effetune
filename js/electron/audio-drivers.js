@@ -1,3 +1,5 @@
+import { rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
+
 export function nativeDriverFor(platform) {
   return platform === 'win32' ? 'wasapi' : 'miniaudio';
 }
@@ -19,25 +21,19 @@ export async function listDriverDevices(driver, defaultLabel) {
     const entries = (result[key] || []).map(item => ({
       kind, deviceId: item.id, groupId: item.id, label: item.name, channels: item.channels
     }));
+    rememberDiagnosticNames('id', entries.map(item => item.deviceId));
+    rememberDiagnosticNames('device', entries.map(item => item.label));
     const selected = (result[key] || []).find(item => item.isDefault);
     devices.push({kind, deviceId:'default', groupId:selected?.id || '', label:defaultLabel}, ...entries);
   }
   return {devices, backend:result.backend, ok:result.ok};
 }
 
-export function readDriverMemory(value) {
-  try {
-    const parsed = JSON.parse(value || '{}');
-    return Object.fromEntries(['standard','wasapi','miniaudio'].filter(key =>
-      parsed?.[key] && typeof parsed[key] === 'object').map(key => [key,parsed[key]]));
-  } catch { return {}; }
-}
-
-export function selectDriverDevices(inputs, outputs, previous, remembered) {
+// Keep the shown device when the new list has the same ID or name; otherwise fall back to the default.
+export function selectDriverDevices(inputs, outputs, previous) {
   const select = (devices, key) => {
-    const id = remembered?.[`${key}DeviceId`];
+    const id = previous?.[`${key}DeviceId`], label = previous?.[`${key}DeviceLabel`];
     if (devices.some(item => item.deviceId === id)) return id;
-    const label = (remembered || previous)?.[`${key}DeviceLabel`];
     return devices.find(item => label && item.label === label)?.deviceId || 'default';
   };
   return { input:select(inputs,'input'), output:select(outputs,'output') };

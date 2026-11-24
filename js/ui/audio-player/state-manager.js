@@ -1,4 +1,31 @@
+import { recordDiagnosticEvent, rememberDiagnosticTrack } from '../../diagnostics/diagnostic-log.js';
+import { getFileExtension, SUPPORTED_AUDIO_EXTENSION_SET } from '../../library/constants.js';
 import { isValidPlaybackSpeed } from './playback-speed.js';
+
+const codecs = new Set(['pcm','lpcm','pcm-s16','pcm-s24','pcm-s32','pcm-f32','pcm-f64','flac','mp3','aac',
+  'alac','opus','vorbis','dsd','ape','wavpack','wma','mpeg 1 layer 3','mpeg 2 layer 3','aac lc']);
+
+export function diagnosticTrackFormat(track, decision, ready, mediaDuration) {
+  const meta = track?.meta ?? {};
+  const metadata = decision?.metadata;
+  const file = track?.fileName || track?.file?.name || track?.path || track?.name;
+  const mime = typeof ready?.containerMimeType === 'string' ?
+    /^(?:audio|video|application)\/(?:x-)?([\w-]+)(?:\s*;|$)/i.exec(ready.containerMimeType)?.[1]?.toLowerCase() : null;
+  const aliases = { wave: 'wav', mpeg: 'mp3', matroska: 'mkv', quicktime: 'mov' };
+  const container = Object.hasOwn(aliases, mime) ? aliases[mime] : mime;
+  const format = [container, metadata?.format, decision?.sourceSnapshot?.format, meta.ext, getFileExtension(file)]
+    .find(value => typeof value === 'string' && SUPPORTED_AUDIO_EXTENSION_SET.has(value.toLowerCase()));
+  const codec = [ready?.codec, metadata?.codec, meta.codec, track?.codec]
+    .find(value => typeof value === 'string' && codecs.has(value.toLowerCase()));
+  const number = (...values) => values.find(value => Number.isFinite(value) && value >= 0) ?? null;
+  return {
+    container: format?.toLowerCase() || 'unknown',
+    codec: codec?.toLowerCase() || 'unknown',
+    sampleRate: number(ready?.sourceSampleRate, ready?.sampleRate, metadata?.sourceSampleRate, metadata?.sampleRate, track?.sampleRate, meta.sampleRate),
+    channels: number(ready?.channelCount, metadata?.channelCount, track?.channels, track?.channelCount, meta.channels),
+    durationSec: number(ready?.durationSec, mediaDuration, metadata?.durationSec, track?.durationSec, meta.durationSec)
+  };
+}
 
 /**
  * StateManager - Centralized state management for audio player
@@ -33,7 +60,7 @@ export class StateManager {
       playerMute: false,
       
       // Playback mode
-      playbackMode: 'audioElement', // 'audioElement' or 'bufferSource'
+      playbackMode: 'audioElement',
       repeatMode: 'OFF', // 'OFF', 'ALL', 'ONE'
       shuffleMode: false,
       playbackSpeed: 1,
@@ -91,14 +118,26 @@ export class StateManager {
    */
   updateState(updates, source = 'unknown') {
     
+    const trackChanged = Object.hasOwn(updates, 'currentTrack') && updates.currentTrack !== this.state.currentTrack;
+    const transportChanged = (updates.isPlaying !== undefined && updates.isPlaying !== this.state.isPlaying) ||
+      (updates.isPaused !== undefined && updates.isPaused !== this.state.isPaused) ||
+      (updates.isStopped !== undefined && updates.isStopped !== this.state.isStopped);
     // Apply updates
     Object.assign(this.state, updates);
     
     // Validate state consistency
     this.validateState();
+    if (transportChanged) recordDiagnosticEvent('playerTransport', {
+      state: this.state.isPlaying ? 'playing' : this.state.isPaused ? 'paused' : 'stopped'
+    });
+    if (trackChanged && this.state.currentTrack) {
+      rememberDiagnosticTrack(this.state.currentTrack);
+      recordDiagnosticEvent('trackChanged', diagnosticTrackFormat(this.state.currentTrack));
+    }
 
     // Notify listeners
     this.notifyListeners(updates, source);
+    this.audioPlayer?.playbackManager?.observePlaybackSessionState?.(updates);
   }
   
   /**
@@ -154,7 +193,7 @@ export class StateManager {
     }
     
     // Validate playback mode
-    if (!['audioElement', 'bufferSource', 'rollingPcm', 'midi', 'native'].includes(this.state.playbackMode)) {
+    if (!['audioElement', 'bufferSource', 'rollingPcm', 'midi', 'native', 'networkLive'].includes(this.state.playbackMode)) {
       console.warn('[StateManager] Invalid playback mode:', this.state.playbackMode);
       this.state.playbackMode = 'audioElement';
     }

@@ -6,7 +6,13 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import vm from 'node:vm';
 
+import { LibraryManagerV2 } from '../../js/library/library-manager-v2.js';
+import { keyboardMethods } from '../../js/ui/library/library-view-keyboard.js';
+import { menusMethods } from '../../js/ui/library/library-view-menus.js';
+import { PagedLibraryViewController } from '../../js/ui/library/paged-view-controller.js';
 import { WebSqliteCatalogRepository } from '../../js/library/repository/web-catalog-repository.js';
+import { WebCatalogRepositoryClient } from '../../js/library/repository/web-catalog-client.js';
+import { installWebCatalogWorker } from '../../js/library/repository/web-catalog-worker.js';
 import { MUSIC_LIBRARY_V3_WEB_OPFS_DIRECTORY } from '../../js/library/repository/schema-v3.js';
 import {
   dispatchWebSqliteCommand,
@@ -18,6 +24,68 @@ import { createConsoleHarness, withGlobals } from '../helpers/global-test-utils.
 import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 const catalogRuntimeCoreSource = fs.readFileSync(new URL('../../js/library/repository/catalog-runtime-core.js', import.meta.url), 'utf8');
+
+test('Web sessions compact deleted occurrences inside SQLite and send bounded worker pages', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-session-');
+  const repository = new WebSqliteCatalogRepository({ authority: 'test' });
+  repository.database = database;
+  const { port1, port2 } = new MessageChannel();
+  const uninstall = installWebCatalogWorker(port2, { repository });
+  t.after(() => { uninstall(); port1.close(); port2.close(); });
+  const client = new WebCatalogRepositoryClient({ worker: port1 });
+  const send = (action, fields) => client.playbackSession({ action, ...fields });
+  await repository.upsertFolders([{ id: 'web-folder', kind: 'web-fsa', displayName: 'Library', status: 'needs-permission' }]);
+  await repository.upsertTracks([
+    createWebTestTrack('A', 'a.mid', { title: '曲'.repeat(3000) }),
+    createWebTestTrack('B', 'b.mid')
+  ]);
+  const count = 70001;
+  database.prepare(`INSERT INTO playback_sequences(id, source_context, catalog_version, state, item_count, created_at, sealed_at)
+    VALUES ('source', 'test', 0, 'active', ?, 1, 1)`).run(count);
+  database.prepare(`WITH RECURSIVE numbers(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM numbers WHERE n+1 < ?)
+    INSERT INTO playback_sequence_items SELECT 'source', n, 'occurrence' || n,
+    CASE WHEN n % 2 = 0 THEN 'A' ELSE 'B' END FROM numbers`).run(count);
+  const state = { kind: 'catalog', itemCount: count, currentOrdinal: count - 1, position: 9 };
+  await send('begin', { state });
+  await send('copy', { ordinal: 0, sequenceId: 'source', startOrdinal: 0, itemCount: count });
+  await send('commit');
+  await repository.deleteTracks(['B']);
+  let restored = await send('read');
+  assert.equal(restored.currentPreserved, true);
+  assert.equal(restored.currentOrdinal, 35000);
+  assert.equal(restored.currentTrack.trackUid, 'A');
+  assert.equal(restored.restoredCount, 35001);
+  assert.deepEqual(await send('page', { startOrdinal: 0 }), {
+    rows: [{ ordinal: 0, libraryOrdinal: 0, itemCount: 35001 }], nextOrdinal: null
+  });
+  const tail = await repository.queryPlaybackSequence({ sequenceId: restored.catalogSequence.sequenceId, ordinal: 35000, limit: 1 });
+  assert.equal(tail.items[0].entryInstanceId, restored.currentTrack.entryInstanceId);
+  await send('update', { state: { ...state, currentOrdinal: 1 } });
+  restored = await send('read');
+  assert.equal(restored.currentPreserved, false);
+  assert.equal(restored.currentOrdinal, 1);
+
+  const materialized = { ...state, kind: 'materialized', itemCount: 512, currentOrdinal: 0 };
+  await send('begin', { state: materialized });
+  await send('append', { rows: Array.from({ length: 512 }, (_, ordinal) => ({ ordinal, originalOrdinal: 511 - ordinal, trackUid: 'A' })) });
+  await send('commit');
+  restored = await send('read', { profileKey: 'ignored-on-web' });
+  assert.equal(restored.catalogSequence, null);
+  let startOrdinal = 0, pageCount = 0, restoredRows = 0;
+  do {
+    const { rows, nextOrdinal } = await send('page', { startOrdinal });
+    assert.equal(rows[0].originalOrdinal, 511 - startOrdinal);
+    startOrdinal = nextOrdinal;
+    restoredRows += rows.length;
+    pageCount++;
+  } while (startOrdinal !== null);
+  assert.ok(pageCount > 2);
+  assert.equal(restoredRows, 512);
+  database.prepare("UPDATE folders SET status = 'removed' WHERE id = 'web-folder'").run();
+  assert.equal((await send('read')).restoredCount, 0);
+  await send('delete');
+  assert.equal(await send('read'), null);
+});
 
 test('Web empty imports and rescans preserve tracks in other folders', async t => {
   const { database } = await openWebTestCatalog(t, 'effetune-web-empty-import-');
@@ -927,16 +995,134 @@ test('Web SQLite statfs shim exposes total capacity for proportional artwork adm
   assert.match(source, /statfsSync\(\)[\s\S]*return \{ bsize: 1, blocks, bavail:/);
 });
 
-test('Electron and Web playlist context pages expose resolved and unresolved aggregates', () => {
-  for (const url of [
-    new URL('../../electron/library-catalog-worker.cjs', import.meta.url),
-    new URL('../../js/library/repository/web-sqlite-runtime.js', import.meta.url)
-  ]) {
-    const source = fs.readFileSync(url, 'utf8') + '\n' + catalogRuntimeCoreSource;
-    assert.match(source, /AS resolvedCount/);
-    assert.match(source, /resolvedCount: counts\.resolvedCount/);
-    assert.match(source, /unresolvedCount: counts\.unresolvedCount/);
+test('keyboard focus crosses a byte-limited previous archive page at the default 200-row limit', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-archive-focus-');
+  seedWebTestFolder();
+  const ids = Array.from({ length: 400 }, (_, i) => 'score-' + String(i).padStart(3, '0'));
+  dispatchWebSqliteCommand('upsertTracks', { tracks: ids.map(id => createWebTestTrack(id, id + '.mid')) });
+  const memberDirectory = ('歌'.repeat(160) + '/').repeat(10);
+  database.prepare(`UPDATE tracks SET source_kind='archive-entry', relative_path='scores.zip',
+    entry_key='archive:scores.zip#' || ? || file_name`).run(memberDirectory);
+  const repository = new WebSqliteCatalogRepository({ authority: 'test' });
+  repository.database = database;
+  const manager = new LibraryManagerV2({ catalogClientFactory: async () => ({ client: repository, runtime: 'web' }) });
+  const controller = new PagedLibraryViewController({ manager, seekOrdinal: request => manager.readContextPageAtOrdinal(request) });
+  const query = { endpoint: 'tracks', sort: 'title', direction: 'asc' };
+  await controller.start(query);
+  const jumped = await controller.seekToOrdinal(210);
+  assert.equal(jumped.accepted, true);
+  const start = controller.createViewState().pageStartOrdinal;
+  assert.ok(start > 200 && start <= 210);
+  const view = { pagedController: controller, pagedState: { totalCount: 400 }, pagedFocusedOrdinal: start,
+    isNavigationIntentCurrent: () => true, getPagedQuery: () => query, getPagedTrackIdentity: row => row.trackUid,
+    renderPagedCommitted() {} };
+  assert.deepEqual(await keyboardMethods.movePagedFocus.call(view, -1), {
+    accepted: true, ordinal: start - 1, entityId: ids[start - 1]
+  });
+  const state = controller.createViewState();
+  assert.ok(state.rows.length < 200);
+  assert.equal(state.pageStartOrdinal + state.rows.length, start);
+  await controller.destroy();
+});
+
+test('bulk Favorites retains its catalog context during navigation and releases it after overlapping reads', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-archive-favorites-');
+  seedWebTestFolder();
+  const ids = Array.from({ length: 500 }, (_, index) => `score-${String(index).padStart(3, '0')}`);
+  dispatchWebSqliteCommand('upsertTracks', { tracks: ids.map(id => createWebTestTrack(id, `${id}.mid`, { title: id })) });
+  database.prepare(`UPDATE tracks SET source_kind='archive-entry', relative_path='scores.zip',
+    entry_key='archive:scores.zip#' || ? || file_name`).run(('歌'.repeat(160) + '/').repeat(8));
+  const repository = new WebSqliteCatalogRepository({ authority: 'test' });
+  repository.database = database;
+  const backendReleases = [];
+  const releaseContext = repository.releaseContext.bind(repository);
+  repository.releaseContext = contextToken => {
+    backendReleases.push(contextToken);
+    return releaseContext(contextToken);
+  };
+  const manager = new LibraryManagerV2({ catalogClientFactory: async () => ({ client: repository, runtime: 'web' }) });
+  const controller = new PagedLibraryViewController({ manager });
+  const query = { endpoint: 'tracks', sort: 'title', direction: 'asc' };
+  await controller.start(query);
+  const contextToken = controller.contextToken;
+  const view = {
+    manager, pagedController: controller,
+    getPagedTrackIdentity: row => row.trackUid,
+    getPagedTrackUid: row => row.trackUid
+  };
+  const select = trackUids => menusMethods.resolveFavoriteActionTrackUids.call(view, {
+    descriptor: { contextToken, mode: 'explicit', trackUids }
+  }, { trackUid: ids[0] });
+  assert.deepEqual(await select([ids[0]]), [ids[0]]);
+
+  const queryTracks = manager.queryTracks.bind(manager);
+  let signalReadsPaused;
+  const readsPaused = new Promise(resolve => { signalReadsPaused = resolve; });
+  const resumeReads = [];
+  const initialReadError = new Error('Initial read failed');
+  manager.queryTracks = async request => {
+    const page = await queryTracks(request);
+    if (request.contextToken !== contextToken || request.cursor || request.limit !== 500) return page;
+    const index = resumeReads.length;
+    await new Promise(resolve => {
+      resumeReads.push(resolve);
+      if (resumeReads.length === 2) signalReadsPaused();
+    });
+    if (index === 0) throw initialReadError;
+    assert.ok(page.rows.length < 500 && page.nextCursor);
+    return page;
+  };
+
+  const selectedUids = [ids[0], ids.at(-1)];
+  const failed = assert.rejects(select(selectedUids), error => error === initialReadError);
+  const successful = select(selectedUids);
+  try {
+    await readsPaused;
+    await controller.start({ ...query, query: 'no matching tracks' });
+    assert.notEqual(controller.contextToken, contextToken);
+    assert.deepEqual(backendReleases, []);
+    resumeReads[0]();
+    await failed;
+    assert.deepEqual(backendReleases, []);
+    resumeReads[1]();
+    assert.deepEqual(await successful, selectedUids);
+    assert.deepEqual(backendReleases, [contextToken]);
+    for (const trackUid of selectedUids) await manager.playlists.setTrackFavorite(trackUid, true);
+    assert.deepEqual((await manager.playlists.getFavoriteTrackUids()).trackUids.sort(), selectedUids);
+    await assert.rejects(queryTracks({ contextToken, cursor: null, limit: 500 }), { code: 'STALE_CURSOR' });
+  } finally {
+    for (const resume of resumeReads) resume();
+    await Promise.allSettled([failed, successful]);
+    await controller.destroy();
   }
+});
+
+test('Web playlist context pages preserve counts and ordinal jumps across byte-limited pages', async t => {
+  await openWebTestCatalog(t, 'effetune-web-playlist-page-');
+  seedWebTestFolder();
+  dispatchWebSqliteCommand('upsertTracks', { tracks: [
+    createWebTestTrack('score', 'song.mid', { title: '音'.repeat(800) })
+  ] });
+  const playlistId = 'scores';
+  dispatchWebSqliteCommand('createPlaylistWithItems', { playlistId, name: 'Scores', createdAt: 1,
+    items: [...Array.from({ length: 499 }, () => ({ trackUid: 'score' })), { unresolved: { basename: 'missing.mid' } }]
+  });
+  const query = { scope: { playlistId }, limit: 500 };
+  let page = dispatchWebSqliteCommand('queryTracks', query);
+  const { contextToken } = page;
+  assert.ok(page.rows.length < 500);
+  const keys = [];
+  for (;;) {
+    assert.equal(page.totalCount, 500);
+    assert.equal(page.resolvedCount, 499);
+    assert.equal(page.unresolvedCount, 1);
+    keys.push(...page.rows.map(row => row.playlistItemKey));
+    if (!page.nextCursor) break;
+    page = dispatchWebSqliteCommand('readContextPage', { contextToken, cursor: page.nextCursor, limit: 500 });
+  }
+  assert.equal(new Set(keys).size, 500);
+  const jump = dispatchWebSqliteCommand('readContextPageAtOrdinal', { contextToken, ordinal: 450, limit: 500 });
+  assert.equal(jump.rows[450 - jump.pageStartOrdinal].playlistItemKey, keys[450]);
 });
 
 test('Electron and Web playlist pages keep tombstoned sources visible as unresolved and version actual repairs', () => {
@@ -1978,16 +2164,21 @@ function completeWebMetadata(claim, title) {
 }
 
 
-test('Web score artwork claims accept only the supported sibling JPEG files', async t => {
-  await openWebTestCatalog(t, 'effetune-web-score-cover-');
+for (const sourceKind of ['file', 'archive-entry'])
+test('Web ' + sourceKind + ' score artwork claims accept only the supported sibling JPEG files', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-score-cover-');
   seedWebTestFolder();
   dispatchWebSqliteCommand('upsertTracks', { tracks: [createWebTestTrack('score', 'Album/song.kar', {
     fileIdentity: 'score-file', size: 20, mtimeMs: 1 })] });
+  if (sourceKind === 'archive-entry') {
+    database.exec("UPDATE tracks SET source_kind='archive-entry', relative_path='Album/scores.zip', entry_key='archive:Album/scores.zip#inner/song.kar' WHERE track_uid='score'");
+  }
   dispatchWebSqliteCommand('beginArtworkUtilitySession', { utilitySessionId: 'score-cover-test' });
   const source = dispatchWebSqliteCommand('getArtworkSource', { trackUid: 'score' });
   const claimSource = { ...source };
   delete claimSource.trackSourceKind;
   delete claimSource.cueRelativePath;
+  delete claimSource.entryKey;
   for (const [name, allowed] of [['Album/cover.jpg', true], ['Album/FOLDER.JPG', true],
     ['Other/cover.jpg', false], ['Album/front.jpg', false], ['Album/cover.png', false]]) {
     const result = dispatchWebSqliteCommand('claimArtworkSource', { claim: { ...claimSource,
@@ -1995,4 +2186,10 @@ test('Web score artwork claims accept only the supported sibling JPEG files', as
       externalArtworkStat: { fileIdentity: name, size: 2, mtimeMs: 3 } } });
     assert.equal(Boolean(result.claim), allowed, name);
   }
+});
+
+test('Web catalog retains current loudness and rejects stale track and album readings', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-loudness-');
+  const { verifyLoudnessCatalog } = await import('../helpers/loudness-catalog.mjs');
+  await verifyLoudnessCatalog(database, dispatchWebSqliteCommand);
 });

@@ -1,3 +1,5 @@
+import { zip } from '../helpers/archive-fixtures.mjs';
+import { createBlobSource } from '../../js/library/archive/archive-reader.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -482,4 +484,102 @@ test('metadata cancellation avoids new claims and restores a claimed item as ret
     updateDerivedData: false
   });
   assert.equal(claimedRepository.calls.some(([name]) => name === 'metadata-success'), false);
+});
+
+test('archive scan bounds logical tracks and blocks sweeping when storage fails', async () => {
+  const repository = createRepository();
+  const filesystem = createFilesystem(0);
+  const scores = Array.from({ length: 501 }, (_, index) => ['scores/' + index + '.mid', 'midi']);
+  const files = new Map([
+    ['many.zip', zip([['__MACOSX/private.mid', ''], ['notes.txt', ''], ...scores, scores[0]], 0)],
+    ['empty.zip', zip([['readme.txt', '']])],
+    ['broken.zip', Buffer.from('incomplete')]
+  ]);
+  filesystem.enumerateDirectory = async function* () {
+    for (const name of [...files.keys(), 'unavailable.zip']) yield { kind: 'file', name };
+  };
+  let closed = 0;
+  filesystem.openFileSource = async ({ relativePath }) => {
+    if (!files.has(relativePath)) throw Object.assign(new Error('offline'), { code: 'EIO' });
+    return { ...createBlobSource(new Blob([files.get(relativePath)])), close() { closed++; } };
+  };
+  const result = await createService({ repository, filesystem }).runFolder({ scanId: 'archives', folder });
+  assert.equal(result.status, 'completed-no-sweep');
+  assert.equal(closed, 3);
+  const observations = repository.calls.filter(([type]) => type === 'commit').flatMap(([, batch]) => batch.observations);
+  assert.deepEqual(observations.map(item => item.logicalCandidates.length), [500, 0, 0]);
+  assert.equal(observations[0].logicalCandidates[499].entryKey, 'archive:many.zip#scores/499.mid');
+});
+
+test('an archive rewritten during listing prevents the scan from sweeping existing tracks', async () => {
+  const repository = createRepository();
+  const filesystem = createFilesystem(0);
+  const archive = zip([['song.mid', 'midi']]);
+  let mtimeMs = 1;
+  filesystem.enumerateDirectory = async function* () { yield { kind: 'file', name: 'set.zip' }; };
+  filesystem.statFile = async () => ({ fileIdentity: 'archive', size: archive.length, mtimeMs });
+  filesystem.openFileSource = async () => ({ size: archive.length, async read(_offset, length) {
+    mtimeMs = 2;
+    return new Uint8Array(length);
+  }, close() {} });
+
+  const result = await createService({ repository, filesystem }).runFolder({ scanId: 'rewritten', folder });
+  assert.equal(result.status, 'completed-no-sweep');
+  assert.equal(repository.calls.some(([type]) => type === 'commit' || type === 'enqueue-sweep'), false);
+  assert.deepEqual(repository.calls.find(([type]) => type === 'ineligible')?.[1].sample, {
+    category: 'enumeration', code: 'transient-io', path: 'set.zip', phase: 'stat', retryable: true
+  });
+});
+
+test('archive scan cancellation aborts instead of recording an enumeration error', async () => {
+  const repository = createRepository();
+  const filesystem = createFilesystem(0);
+  filesystem.enumerateDirectory = async function* () { yield { kind: 'file', name: 'set.zip' }; };
+  const controller = new AbortController();
+  const abort = Object.assign(new Error('cancel archive scan'), { name: 'AbortError' });
+  filesystem.openFileSource = async () => {
+    controller.abort(abort);
+    return { ...createBlobSource(new Blob([zip([['song.mid', 'midi']])])), close() {} };
+  };
+  await assert.rejects(createService({ repository, filesystem }).runFolder({ scanId: 'cancel', folder, signal: controller.signal }),
+    error => error === abort);
+  assert.equal(repository.calls.some(([type]) => type === 'ineligible' || type === 'errors'), false);
+});
+
+test('archive admission and adjacent observations fit the serialized scan request at the 4 MiB boundary', async () => {
+  const limit = 4 * 1024 * 1024;
+  const name = '楽譜.zip';
+  const path = 'D:/Music/' + '記録/'.repeat(30) + name;
+  const observation = { relativePath: name, path, fileIdentity: 'archive', size: 1, mtimeMs: 1, logicalCandidates: [] };
+  const entryName = (index, length) => 'nested/' + 'x'.repeat(length) + index + '.mid';
+  const candidate = entry => {
+    const entryKey = 'archive:' + name + '#' + entry;
+    return { sourceKind: 'archive-entry', relativePath: name, entryKey, logicalStorageId: entryKey };
+  };
+  const entries = Array.from({ length: 499 }, (_, i) => entryName(i, 4100));
+  const rawBytes = Buffer.byteLength(JSON.stringify([{ ...observation,
+    logicalCandidates: [...entries.map(candidate), candidate(entryName(499, 0))] }]));
+  const padding = Math.floor((limit - 8 - rawBytes) / 2);
+  assert.ok(padding > 0 && padding < 32768);
+  entries.push(entryName(499, padding));
+  // The 500 rows fit in the observations array by 8–9 bytes, before the request envelope.
+  const scores = zip(entries.map(entry => [entry, 'midi']), 0);
+  const repository = createRepository();
+  const neighbor = 'deep/'.repeat(900) + 'next.mid';
+  const filesystem = {
+    async *enumerateDirectory() {
+      yield { kind: 'file', name, relativePath: name, path };
+      yield { kind: 'file', name: 'next.mid', relativePath: neighbor, path: 'D:/Music/' + neighbor };
+    },
+    async statFile() { return { fileIdentity: 'archive', size: 1, mtimeMs: 1 }; },
+    async openFileSource() { return { ...createBlobSource(new Blob([scores])), close() {} }; }
+  };
+  const result = await createService({ repository, filesystem }).runFolder({ scanId: 'boundary', folder });
+  assert.equal(result.status, 'completed');
+  const commits = repository.calls.filter(([type]) => type === 'commit').map(([, payload]) => payload);
+  assert.deepEqual(commits.map(payload => payload.observations[0].logicalCandidates.length), [499, 1]);
+  for (const payload of commits) {
+    const message = { protocolVersion: 1, requestId: Number.MAX_SAFE_INTEGER, command: 'commitScanSeenBatch', payload };
+    assert.ok(Buffer.byteLength(JSON.stringify(message)) <= limit);
+  }
 });

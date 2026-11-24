@@ -19,7 +19,8 @@ export class CatalogPlaybackBridge {
     return this.sequenceClient.resolveTrackSiblingFile?.(request) ?? null;
   }
 
-  constructor({ uiManager, service, sequenceClient = service, runtime = 'web', requestFolderAccess = null } = {}) {
+  constructor({ uiManager, service, sequenceClient = service, sessionClient = sequenceClient,
+    runtime = 'web', requestFolderAccess = null } = {}) {
     if (!uiManager || typeof service?.start !== 'function') {
       throw new TypeError('Catalog playback bridge dependencies are invalid');
     }
@@ -35,6 +36,7 @@ export class CatalogPlaybackBridge {
     this.uiManager = uiManager;
     this.service = service;
     this.sequenceClient = sequenceClient;
+    this.sessionClient = sessionClient;
     this.runtime = runtime;
     this.requestFolderAccess = requestFolderAccess;
     this.operations = new Map();
@@ -49,6 +51,7 @@ export class CatalogPlaybackBridge {
         this.uiManager.networkMusic.selectedPlayerId !== 'local') {
       return this.uiManager.networkMusic.playSelection(request);
     }
+    this.uiManager.invalidatePlaybackSessionRestore?.();
     // Resume before lazy player loading or catalog reads can outlive user activation.
     const existingPlayer = this.#getExistingPlayer();
     if (request.operationKind === 'play') {
@@ -436,20 +439,11 @@ export class CatalogPlaybackBridge {
     ) {
       throw playbackBridgeError('invalidOperationResult', 'Playback terminal result is invalid');
     }
-    const sequence = new CatalogSequence({
+    const sequence = this.createPlaybackCatalogSequence({
       sequenceId: result.sequenceId,
       itemCount: result.itemCount,
       shuffleSeed: result.shuffleSeed ?? 0,
-      shuffleEnabled,
-      readPage: async request => {
-        const page = await this.sequenceClient.readSequencePage({
-          sequenceId: request.sequenceId,
-          ordinal: request.startOrdinal,
-          limit: request.limit
-        });
-        return { rows: page?.items ?? page?.rows ?? [] };
-      },
-      resolveSource: request => this.#resolveSequenceEntrySource(request)
+      shuffleEnabled
     });
     const currentOrdinal = sequence.toTransportOrdinal(result.firstOrdinal);
     throwIfPlaybackSourceResolutionAborted(controller.signal);
@@ -460,6 +454,29 @@ export class CatalogPlaybackBridge {
       currentOrdinal,
       firstEntry: result.firstEntry
     });
+  }
+
+  createPlaybackCatalogSequence(descriptor) {
+    return new CatalogSequence({
+      ...descriptor,
+      readPage: async request => {
+        const page = await this.sequenceClient.readSequencePage({
+          sequenceId: request.sequenceId,
+          ordinal: request.startOrdinal,
+          limit: request.limit
+        });
+        return { rows: page?.items ?? page?.rows ?? [] };
+      },
+      resolveSource: request => this.#resolveSequenceEntrySource(request)
+    });
+  }
+
+  requestPlaybackSession(request) {
+    return this.sessionClient.playbackSession(request);
+  }
+
+  resolvePlaybackSessionLibrarySource(trackUid) {
+    return this.#resolveSequenceEntrySource({ trackUid });
   }
 
   async #resolveSequenceEntrySource(request) {
@@ -520,11 +537,14 @@ export class CatalogPlaybackBridge {
 
   #reportError(error) {
     console.error('Music Library playback failed:', error);
-    const message = error?.code === 'alacRequiresMacDesktop'
-      ? 'error.alacRequiresMacDesktop'
-      : String(error?.code).includes('Timeout')
-        ? 'library.error.playbackStartTimeout'
-        : 'library.error.playbackStartFailed';
+    const messages = new Map([
+      ['alacRequiresMacDesktop', 'error.alacRequiresMacDesktop'],
+      ['archive-too-large', 'midi.error.tooLarge'],
+      ['archive-unsupported', 'midi.error.unsupported'],
+      ['archive-corrupt', 'midi.error.corrupt']
+    ]);
+    const message = messages.get(error?.code) ?? (String(error?.code).includes('Timeout')
+      ? 'library.error.playbackStartTimeout' : 'library.error.playbackStartFailed');
     if (typeof this.uiManager.showTransientMessage === 'function') {
       this.uiManager.showTransientMessage(message, true);
     } else {

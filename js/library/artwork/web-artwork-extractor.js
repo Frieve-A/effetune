@@ -1,3 +1,6 @@
+import { createArchiveCache } from '../archive/archive-cache.js';
+import { withBlobArchive } from '../archive/blob-archive.js';
+import { findArchiveCoverEntry, getArchiveEntryPath } from '../archive/score-entries.js';
 import { isScoreFile } from '../../midi/score-file.js';
 import { parseBlob } from '../../vendor/music-metadata-browser.mjs';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
@@ -18,6 +21,7 @@ export class WebArtworkExtractor {
     this.filesystemForFolder = filesystemForFolder;
     this.parse = parse;
     this.createBitmap = (...args) => createBitmap.call(globalThis, ...args);
+    this.archives = createArchiveCache();
     this.pending = new Map();
     this.pendingBytes = 0;
   }
@@ -26,7 +30,22 @@ export class WebArtworkExtractor {
     throwIfAborted(signal);
     const filesystem = this.filesystemForFolder?.(source.folderId) ?? this.filesystem;
     const file = await filesystem.getFile(source.canonicalSourceIdentity, signal);
-    const score = isScoreFile(source.canonicalSourceIdentity);
+    const archivePath = getArchiveEntryPath(source.canonicalSourceIdentity, source.entryKey);
+    if (source.trackSourceKind === 'archive-entry' && archivePath) {
+      try {
+        const staged = await withBlobArchive(this.archives, source.folderId + '\0' + source.canonicalSourceIdentity, file, async archive => {
+          const cover = findArchiveCoverEntry(archive, archivePath);
+          if (!cover) return false;
+          await this.#stageBytes(source, await archive.read(cover.path, { signal }), cueCoverMimeType(cover.path), maxRawBytes);
+          return true;
+        });
+        if (staged) return source;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        console.warn('Unable to read artwork in score archive', error);
+      }
+    }
+    const score = source.trackSourceKind === 'archive-entry' || isScoreFile(source.canonicalSourceIdentity);
     const metadata = score ? null : await this.parse(file, { duration: false, skipCovers: false });
     const picture = metadata?.common?.picture?.find(candidate => candidate?.data?.byteLength > 0);
     if (picture) {
@@ -39,7 +58,7 @@ export class WebArtworkExtractor {
     const directory = directoryName(source.cueRelativePath || source.canonicalSourceIdentity);
     const fileName = selectCueCoverFileName(
       await filesystem.listFileNames(directory, signal),
-      source.canonicalSourceIdentity
+      archivePath || source.canonicalSourceIdentity
     );
     if (!fileName) throw createRepositoryError('artwork-decode-failed', 'CUE cover image is unavailable');
     const relativePath = directory ? `${directory}/${fileName}` : fileName;

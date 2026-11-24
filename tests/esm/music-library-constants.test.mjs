@@ -53,6 +53,12 @@ test('music library path helpers normalize supported files and display names', (
       }
     }
   }
+  for (const name of ['scores.ZIP', 'scores.lzh', 'scores.lha', 'scores.tar.gz', 'song.mxl.gz', 'scores.tgz']) {
+    assert.equal(isSupportedLibraryPath(name, false, true, true), true);
+    assert.equal(isSupportedLibraryPath(name, false, false, true), false);
+    assert.equal(isSupportedLibraryPath(name, false, true, false), false);
+  }
+  assert.equal(isSupportedLibraryPath('audio.mp3.gz', false, true, true), false);
   assert.equal(isSupportedAudioPath('cover.jpg'), false);
   for (const extension of ['mp4', 'webm', 'm4v', 'mov', 'mkv', '3gp']) {
     const path = `Clip.${extension.toUpperCase()}?download=1`;

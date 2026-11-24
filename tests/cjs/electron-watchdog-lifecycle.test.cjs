@@ -29,6 +29,7 @@ function createMainHarness() {
   ipcMain.removeHandler = channel => handlers.delete(channel);
   const lifecycle = [];
   const logs = [];
+  const diagnostics = [];
   const app = new EventEmitter();
   app.quit = () => lifecycle.push('quit');
   app.relaunch = () => lifecycle.push('relaunch');
@@ -38,6 +39,7 @@ function createMainHarness() {
     app,
     process: { platform: 'win32', exit: () => lifecycle.push('process.exit') },
     macPlaybackPower: null,
+    mainDiagnostics: { record(kind, fields) { diagnostics.push([kind, fields.state]); } },
     windowsRendererPower: { dispose() {} },
     windowState: { flushScheduledSave() {} },
     queueAutoRestart: () => lifecycle.push('relaunch'),
@@ -80,7 +82,7 @@ function createMainHarness() {
     sourceBetween("app.on('before-quit'", '// Export functions')
   ].join('\n'), context, { filename: mainPath });
   return {
-    context, app, ipcMain, handlers, lifecycle, logs, timers, window,
+    context, app, ipcMain, handlers, lifecycle, logs, timers, window, diagnostics,
     advance(milliseconds) {
       now += milliseconds;
       for (const callback of [...timers.values()]) callback();
@@ -113,6 +115,7 @@ test('renderer and main-process scheduling delays never terminate or relaunch th
   assert.equal(logs.filter(([, message]) => message.includes('responsive again')).length, 1);
   harness.advance(16_000);
   assert.equal(logs.filter(([level]) => level === 'warn').length, 2);
+  assert.deepEqual(harness.diagnostics, [['watchdog', 'delayed'], ['watchdog', 'responsive'], ['watchdog', 'delayed']]);
   assert.deepEqual(lifecycle, []);
 });
 

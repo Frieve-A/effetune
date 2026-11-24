@@ -27,7 +27,7 @@ function isSampler(type) {
   return type === 'SoundFontPlayerPlugin' || type === 'SFZNotePlayerPlugin';
 }
 
-function packed(plugin, rate, channels, useWasm) {
+export function packed(plugin, rate, channels, useWasm) {
   const { id, type, parameters = {}, executionCapabilities: capabilities } = plugin;
   const packer = DSP_PARAM_PACKERS.get(type);
   const channel = parameters.channel ?? plugin.channel ?? null;
@@ -65,7 +65,7 @@ function noteAnalysisSources(active) {
   return sources;
 }
 
-function packRecords(items, descriptor) {
+export function packRecords(items, descriptor) {
   const total = items.reduce((n,item) => n + item.floats.byteLength + (item.bytes?.byteLength || 0),0);
   const attachment = new Uint8Array(total + (descriptor?.byteLength || 0));
   let offset = 0;
@@ -105,6 +105,11 @@ export class EnginePort extends EventTarget {
     this.revision = 0;
     this.midiInputSerial = 0;
     this.directSampleSupply = false;
+    // Each sample page is acknowledged only after an audio callback stages it.
+    // Four in flight caps supply below dense playback, so later requests such
+    // as release pages arrive late. 16 stays well inside the sidecar's
+    // 64-entry command ring and frame queue with several instruments.
+    this.samplePublishWindow = 16;
   }
   start() {}
   close() { this.closed = true; this.onmessage = null; }
@@ -142,6 +147,8 @@ export class EnginePort extends EventTarget {
     if (wire.type === 'setVisualizerSources') {
       wire.sources = wire.sources.map(source => ({...source,params:Array.from(source.params)}));
     }
+    if (wire.type === 'dspSetTelemetryRate' && m._soundFontMidiMeteringPlugins?.size)
+      wire.midiMetering = true;
     if (wire.type === 'sfzPublishPage' && ArrayBuffer.isView(wire.page?.pcm)) {
       const {pcm, ...page} = wire.page;
       wire.page = page;

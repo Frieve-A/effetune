@@ -1,3 +1,4 @@
+import { getArchiveFormat } from './archive/archive-reader.js';
 import { SCORE_EXTENSIONS } from '../midi/score-file.js';
 
 export const MUSIC_LIBRARY_UI_STORAGE_KEY = 'effetune_library_ui';
@@ -87,7 +88,11 @@ export function isSupportedMidiPath(pathOrName = '') {
   return SUPPORTED_MIDI_EXTENSION_SET.has(getFileExtension(pathOrName));
 }
 
-export function isSupportedLibraryPath(pathOrName = '', includeVideo = false, includeMidi = false) {
+export function isSupportedLibraryPath(pathOrName = '', includeVideo = false, includeMidi = false, includeMidiArchives = false) {
+  if (includeMidi && includeMidiArchives) {
+    const format = getArchiveFormat(pathOrName);
+    if (format && (format !== 'gz' || isSupportedMidiPath(pathOrName.slice(0, -3)))) return true;
+  }
   return isSupportedAudioPath(pathOrName) &&
     (includeVideo === true || !isSupportedVideoPath(pathOrName)) &&
     (includeMidi === true || !isSupportedMidiPath(pathOrName));

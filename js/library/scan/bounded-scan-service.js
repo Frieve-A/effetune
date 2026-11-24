@@ -1,3 +1,6 @@
+import { getArchiveFormat, openArchive } from '../archive/archive-reader.js';
+import { getArchiveScoreEntries } from '../archive/score-entries.js';
+import { normalizeMtimeMs } from './file-signature.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import {
   CUE_MAX_BYTES,
@@ -98,11 +101,18 @@ export class BoundedScanService {
 
     const context = this.#createContext(run, folder, scanReason, resume, signal);
     await this.#preflight(context, { tracks: 0, bytes: 0, initial: true });
+    // Use the widest counters so an already queued batch still fits when earlier batches commit.
+    const maximum = Number.MAX_SAFE_INTEGER;
+    const frameBytes = jsonBytes({
+      protocolVersion: 1, requestId: maximum, command: 'commitScanSeenBatch',
+      payload: this.#commitPayload(context, [], maximum, maximum)
+    });
     const batcher = new TimedBatch({
       maxItems: this.config.maxBatchTracks,
-      maxBytes: this.config.maxBatchBytes,
+      // The empty array and empty cursor path already contribute their delimiters to the frame.
+      maxBytesFor: item => Math.min(this.config.maxBatchBytes - 2,
+        DEFAULT_SCAN_SERVICE_CONFIG.maxBatchBytes - frameBytes - (jsonBytes(item.relativePath) - 2)),
       maxDelayMs: this.config.maxBatchDelayMs,
-      sizeOf: estimateObservationBytes,
       weightOf: estimateObservationRows,
       flush: batch => this.#commitBatch(context, batch)
     });
@@ -702,15 +712,56 @@ export class BoundedScanService {
         continue;
       }
       let observation;
+      let bytes;
       try {
-        observation = createObservation(result.file, result.stat);
+        const source = createObservation(result.file, result.stat);
+        observation = { ...source, logicalCandidates: [] };
+        if (getArchiveFormat(source.relativePath)) {
+          bytes = await this.#listArchiveCandidates(context, observation, batcher.maxBytesFor(observation));
+          await this.#assertObservationFresh(context, observation, 'Archive changed during listing');
+        } else {
+          observation.logicalCandidates.push(createPlainLogicalCandidate(source));
+        }
       } catch (error) {
+        this.#throwIfAborted(context.signal);
         await this.#enumerationError(context, error, result.file.relativePath, 'stat');
         continue;
       }
       context.counts.found += 1;
-      await batcher.add({ ...observation, logicalCandidates: [createPlainLogicalCandidate(observation)] });
+      await batcher.add(observation, bytes);
       this.#progress(context);
+    }
+  }
+
+  async #listArchiveCandidates(context, observation, maxBytes) {
+    const { relativePath } = observation;
+    const signal = context.signal;
+    const baseBytes = jsonBytes(observation);
+    const candidates = observation.logicalCandidates;
+    const source = await this.filesystem.openFileSource({ root: context.folder.path, relativePath, signal });
+    try {
+      const archive = await openArchive(source, relativePath.split('/').at(-1), { signal });
+      let bytes = baseBytes;
+      for (const entry of getArchiveScoreEntries(archive)) {
+        const entryKey = 'archive:' + relativePath + '#' + entry.path;
+        if (entryKey.length > 32768) continue;
+        const candidate = { sourceKind: 'archive-entry', relativePath, entryKey, logicalStorageId: entryKey };
+        const addedBytes = jsonBytes(candidate) + (candidates.length ? 1 : 0);
+        if (candidates.length >= this.config.maxBatchTracks || bytes + addedBytes > maxBytes) {
+          console.warn('Archive score listing reached the scan batch limit', relativePath);
+          break;
+        }
+        candidates.push(candidate);
+        bytes += addedBytes;
+      }
+      return bytes;
+    } catch (error) {
+      if (!error?.code?.startsWith?.('archive-')) throw error;
+      console.warn('Skipping unreadable score archive', relativePath, error);
+      candidates.length = 0;
+      return baseBytes;
+    } finally {
+      await source.close();
     }
   }
 
@@ -719,23 +770,23 @@ export class BoundedScanService {
     await this.#preflight(context, { tracks: batch.weight, bytes: batch.bytes });
     const nextCommittedBatch = context.counts.committedBatches + 1;
     const nextVisitedFiles = context.durableVisitedFiles + batch.items.length;
-    await this.#mutation(() => this.repository.commitScanSeenBatch({
-      ...runIdentity(context),
-      observations: batch.items,
-      expectedLifecycleVersion: context.run.lifecycleVersion,
-      maxTracks: this.config.maxBatchTracks,
-      maxBytes: this.config.maxBatchBytes,
-      lastCommittedBatch: nextCommittedBatch,
-      cursor: Object.freeze({
-        lastRelativePath: batch.items.at(-1)?.relativePath ?? null,
-        visitedFiles: nextVisitedFiles,
-        committedBatches: nextCommittedBatch
-      })
-    }));
+    const payload = this.#commitPayload(context, batch.items, nextCommittedBatch, nextVisitedFiles);
+    await this.#mutation(() => this.repository.commitScanSeenBatch(payload));
     context.durableVisitedFiles = nextVisitedFiles;
     context.counts.committedBatches = nextCommittedBatch;
     await this.#drainMetadata(context);
     await this.#flushErrors(context);
+  }
+
+  #commitPayload(context, observations, committedBatches, visitedFiles) {
+    return {
+      ...runIdentity(context),
+      observations,
+      maxTracks: this.config.maxBatchTracks,
+      maxBytes: this.config.maxBatchBytes,
+      lastCommittedBatch: committedBatches,
+      cursor: { lastRelativePath: observations.at(-1)?.relativePath ?? '', visitedFiles, committedBatches }
+    };
   }
 
   async #drainMetadata(context) {
@@ -933,8 +984,8 @@ class DirectoryQueue {
 }
 
 class TimedBatch {
-  constructor({ maxItems, maxBytes, maxDelayMs, sizeOf, weightOf, flush }) {
-    Object.assign(this, { maxItems, maxBytes, maxDelayMs, sizeOf, weightOf, flushBatch: flush });
+  constructor({ maxItems, maxBytesFor, maxDelayMs, weightOf, flush }) {
+    Object.assign(this, { maxItems, maxBytesFor, maxDelayMs, weightOf, flushBatch: flush });
     this.items = [];
     this.bytes = 0;
     this.weight = 0;
@@ -943,26 +994,28 @@ class TimedBatch {
     this.failure = null;
   }
 
-  async add(item) {
+  async add(item, bytes = jsonBytes(item)) {
     await this.tail;
     if (this.failure) throw this.failure;
-    const bytes = this.sizeOf(item);
+    const maxBytes = this.maxBytesFor(item);
     const weight = this.weightOf(item);
-    if (bytes > this.maxBytes) throw new ScanServiceError('scanBatchItemTooLarge', 'A scan observation exceeds the batch byte limit');
+    if (bytes > maxBytes) throw new ScanServiceError('scanBatchItemTooLarge', 'A scan observation exceeds the batch byte limit');
     if (!Number.isSafeInteger(weight) || weight < 1 || weight > this.maxItems) {
       throw new ScanServiceError('scanBatchItemTooLarge', 'A scan observation exceeds the batch row limit');
     }
-    if (this.items.length && (this.weight + weight > this.maxItems || this.bytes + bytes > this.maxBytes)) {
-      await this.flush();
+    if (this.items.length && (this.weight + weight > this.maxItems || this.bytes + 1 + bytes > maxBytes)) {
+      // flush() detaches the previous batch synchronously before another enumerator can append.
+      this.flush();
     }
+    this.bytes += bytes + (this.items.length ? 1 : 0);
     this.items.push(item);
-    this.bytes += bytes;
     this.weight += weight;
     this.#schedule();
-    if (this.weight >= this.maxItems || this.bytes >= this.maxBytes) await this.flush();
+    if (this.weight >= this.maxItems || this.bytes >= maxBytes) await this.flush();
+    else await this.tail;
   }
 
-  async flush() {
+  flush() {
     if (!this.items.length) return this.tail;
     clearTimeout(this.timer);
     this.timer = null;
@@ -1094,9 +1147,8 @@ function validateConfig(config) {
   return Object.freeze(config);
 }
 
-function estimateObservationBytes(observation) {
-  return 128 + utf8Length(observation.relativePath) + utf8Length(observation.fileIdentity) +
-    utf8Length(JSON.stringify(observation.logicalCandidates ?? []));
+function jsonBytes(value) {
+  return utf8Length(JSON.stringify(value));
 }
 
 function estimateObservationRows(observation) {
@@ -1150,7 +1202,7 @@ function createObservation(file, stat) {
     path: file.path,
     fileIdentity: String(stat.fileIdentity ?? ''),
     size: toSafeNonNegativeInteger(stat.size, 'size'),
-    mtimeMs: toSafeNonNegativeInteger(Math.round(stat.mtimeMs), 'mtimeMs')
+    mtimeMs: toSafeNonNegativeInteger(normalizeMtimeMs(stat.mtimeMs), 'mtimeMs')
   });
 }
 
@@ -1190,7 +1242,7 @@ function fileExtension(relativePath) {
 function sameObservationSignature(observation, stat) {
   return observation.fileIdentity === String(stat.fileIdentity ?? '') &&
     observation.size === Number(stat.size) &&
-    observation.mtimeMs === Math.round(Number(stat.mtimeMs));
+    observation.mtimeMs === normalizeMtimeMs(stat.mtimeMs);
 }
 
 function codeUnitOrderKey(value) {

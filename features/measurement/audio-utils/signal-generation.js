@@ -180,6 +180,71 @@ function settleWhiteNoiseStart(audioState, operationToken, published) {
     audioState.whiteNoiseDesiredActive = published || Boolean(audioState.isWhiteNoiseActive);
 }
 
+async function cachedPipelineNoise(audioContext, channel, minFreq, maxFreq, outputBands, pipeline) {
+    const key = String(channel);
+    if (!pipeline.cache.has(key)) {
+        pipeline.cache.set(key, await renderPipelineNoise(audioContext, channel, minFreq, maxFreq, outputBands, pipeline));
+    }
+    return pipeline.cache.get(key);
+}
+
+function queueNativeNoise(audioState, action) {
+    const operation = (audioState.whiteNoiseRouteOperation || Promise.resolve()).catch(() => {}).then(action);
+    audioState.whiteNoiseRouteOperation = operation.catch(() => {});
+    return operation;
+}
+
+async function startNativeNoise(audioState, level, channel, minFreq, maxFreq, outputBands, routeWidth, pipeline) {
+    const selected = channel === 'left' ? 0 : channel === 'right' ? 1 : Number(channel);
+    const starting = !audioState.isWhiteNoiseActive;
+    const token = nextWhiteNoiseOperationToken(audioState);
+    audioState.whiteNoiseDesiredActive = true;
+    audioState.isWhiteNoisePending = true;
+    try {
+        return await queueNativeNoise(audioState, async () => {
+            if (token !== audioState.whiteNoiseOperationToken) return false;
+            const native = audioState.nativeMeasurement;
+            const session = starting ? await native.ensureOpen() : native.session;
+            if (token !== audioState.whiteNoiseOperationToken) return false;
+            const width = session?.outputChannels || 0;
+            if (!width) {
+                audioState.isWhiteNoiseActive = false;
+                audioState.nativeNoiseChannels = null;
+                return false;
+            }
+            if (routeWidth > width || pipeline?.channelCount > width || selected >= width) return false;
+            let channels;
+            if (pipeline) {
+                const rendered = await cachedPipelineNoise(audioState.audioContext, channel, minFreq, maxFreq, outputBands, pipeline);
+                channels = Array.from({ length: width }, (_, index) => rendered[index]);
+            } else {
+                const wantedChannels = Math.min(width, routeWidth ?? width);
+                const buffer = createWhiteNoiseBuffer(audioState.audioContext, channel, minFreq, maxFreq, outputBands, wantedChannels);
+                channels = Array.from({ length: width }, (_, index) => {
+                    if (index >= wantedChannels || Number.isInteger(selected) && index !== selected) return null;
+                    return buffer.getChannelData(buffer.numberOfChannels === 1 ? 0 : index);
+                });
+            }
+            if (token !== audioState.whiteNoiseOperationToken) return false;
+            await native.startPlayback(channels, Math.pow(10, level / 20), { loop: true });
+            if (token !== audioState.whiteNoiseOperationToken) return false;
+            audioState.nativeNoiseChannels = channels;
+            audioState.whiteNoiseChannel = channel === 'both' ? 'all' : String(channel);
+            audioState.isWhiteNoiseActive = true;
+            return true;
+        });
+    } catch (error) {
+        console.error('Could not play the native test signal:', error);
+        if (token === audioState.whiteNoiseOperationToken) {
+            audioState.isWhiteNoiseActive = false;
+            audioState.nativeNoiseChannels = null;
+        }
+        return false;
+    } finally {
+        settleWhiteNoiseStart(audioState, token, Boolean(audioState.isWhiteNoiseActive));
+    }
+}
+
 async function prepareSerializedWhiteNoiseOutputRoute(
     audioState,
     operationToken,
@@ -228,6 +293,9 @@ async function prepareSerializedWhiteNoiseOutputRoute(
  */
 async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null, outputChannelCount, pipeline = null) {
     validateSignalOutputChannel(channel);
+    if (this.nativeMeasurement) {
+        return startNativeNoise(this, level, channel, minFreq, maxFreq, outputBands, outputChannelCount, pipeline);
+    }
     if (isAndroidHost()) {
         if (!['all', 'both', 'left', 'right', '0', '1'].includes(String(channel)) || outputChannelCount > 2) {
             throw new MeasurementOutputError('Choose an available output channel.');
@@ -297,12 +365,7 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
 
         let noiseBuffer;
         if (pipeline) {
-            const cacheKey = String(channel);
-            let rendered = pipeline.cache.get(cacheKey);
-            if (!rendered) {
-                rendered = await renderPipelineNoise(this.audioContext, channel, minFreq, maxFreq, outputBands, pipeline);
-                pipeline.cache.set(cacheKey, rendered);
-            }
+            const rendered = await cachedPipelineNoise(this.audioContext, channel, minFreq, maxFreq, outputBands, pipeline);
             if (operationToken !== this.whiteNoiseOperationToken) {
                 releaseWhiteNoiseResources(resources);
                 return false;
@@ -384,6 +447,20 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
  * Stop white noise playback
  */
 function stopWhiteNoise() {
+    if (this.nativeMeasurement) {
+        const active = this.isWhiteNoiseActive || this.isWhiteNoisePending || this.nativeNoiseChannels;
+        nextWhiteNoiseOperationToken(this);
+        this.isWhiteNoisePending = false;
+        this.isWhiteNoiseActive = false;
+        this.whiteNoiseDesiredActive = false;
+        this.nativeNoiseChannels = null;
+        this.whiteNoiseChannel = null;
+        if (active) {
+            return queueNativeNoise(this, () => this.nativeMeasurement.cancel())
+                .catch(error => console.warn('Could not stop the native test signal:', error));
+        }
+        return;
+    }
     if (isAndroidHost()) {
         nextWhiteNoiseOperationToken(this);
         this.isWhiteNoisePending = false;
@@ -419,6 +496,19 @@ async function waitForWhiteNoiseRouteIdle() {
  * @returns {boolean} Whether the level was successfully set
  */
 function setNoiseLevel(levelDb) {
+    if (this.nativeMeasurement) {
+        const channels = this.nativeNoiseChannels;
+        if (!channels) return false;
+        const token = this.whiteNoiseOperationToken;
+        // Restarting playback resends the whole buffer, so only the latest
+        // queued level change runs while the slider is moving.
+        const request = this.nativeNoiseLevelRequest = (this.nativeNoiseLevelRequest || 0) + 1;
+        void queueNativeNoise(this, () => token === this.whiteNoiseOperationToken &&
+            request === this.nativeNoiseLevelRequest &&
+            this.nativeMeasurement.startPlayback(channels, Math.pow(10, levelDb / 20), { loop: true }))
+            .catch(error => { console.warn('Could not change native test signal level:', error); this.stopWhiteNoise(); });
+        return true;
+    }
     if (isAndroidHost()) {
         void getAndroidBridge().request('measurement.noise.level', { levelDb }).catch(error => console.warn('Android test signal level failed:', error));
         return true;
@@ -446,14 +536,14 @@ function setNoiseLevel(levelDb) {
 
 /** Generate the common ESS definition used by every output route. */
 function generateESS(length = 131072, sampleRate = 48000, channel = 'all',
-    minFreq = 20, maxFreq = 20000, bandLimited = true, outputBands = null) {
+    minFreq = 20, maxFreq = 20000, bandLimited = true, outputBands = null, allChannelCount = 2) {
     validateSignalOutputChannel(channel);
     if (!this.initialized) return null;
     const { minFreq: startFrequency, maxFreq: endFrequency } = resolveSweepBand({
         acquisitionMethod: 'ess', sweepBandLimited: bandLimited, sweepMinFreq: minFreq, sweepMaxFreq: maxFreq
     }, channel, sampleRate, length);
     const definition = createEssSignal({ length, sampleRate, startFrequency, endFrequency });
-    const width = channel === 'all' && Array.isArray(outputBands) ? outputBands.length
+    const width = channel === 'all' ? outputBands?.length ?? allChannelCount
         : Math.max(2, Number.isInteger(Number(channel)) ? Number(channel) + 1 : 2);
     const selected = channel === 'left' ? 0 : channel === 'right' ? 1 : Number(channel);
     const channels = Array.from({ length: width }, (_, index) => {

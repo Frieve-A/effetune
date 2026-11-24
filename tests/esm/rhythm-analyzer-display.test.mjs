@@ -63,6 +63,25 @@ test('MIDI lane projection follows score tempo, speed, pause and seek without ch
     assert.equal(plugin.midiSnapshot, null);
 });
 
+test('MIDI lane projection places analysed audio at the score position heard after the pipeline latency', async () => {
+    const { plugin } = await loadPlugin();
+    // The newest analysed audio (detector time 2 s) is 0.5 s ahead of the heard score position 1.5 s.
+    plugin.audioNow = () => 2;
+    plugin.handleMidiSnapshot(midiSnapshot({}, 1.5), .5);
+    const add = (identity, eventTime) => {
+        plugin.storeEvent({ identity, time: eventTime, band: 0, strength: .7, epoch: 0 });
+        return (plugin.eventSerial - 1) % plugin.eventU.length;
+    };
+    const heard = add('heard', 1.25), pending = add('pending', 1.75);
+    assert.equal(plugin.midiEventPosition(heard), 2.25, 'Score second 1.25 is quarter 2.25');
+    assert.equal(plugin.midiEventPosition(pending), 2.75);
+    const visible = [];
+    plugin.forEachEvent(-Infinity, plugin.midiSnapshot.beat.quarter, index => visible.push(index), plugin.eventSerial, true);
+    assert.deepEqual(visible, [heard], 'A hit is drawn once its audio reaches the heard position');
+    plugin.handleMidiSnapshot(midiSnapshot({}, 1.5, 1, false), .5);
+    assert.equal(plugin.midiClockAt(2).position, 1.5, 'A paused score has no lead to compensate');
+});
+
 test('MIDI beat, BPM and lane grid use score timing while the Beat lens keeps its audio analysis', async () => {
     const { plugin } = await loadPlugin();
     feed(plugin, pattern(10, BACKBEAT));
@@ -84,6 +103,24 @@ test('MIDI beat, BPM and lane grid use score timing while the Beat lens keeps it
     assert.equal(JSON.stringify(plugin.lensSummary()), lens);
     assert.deepEqual([...plugin.eventU], positions);
     assert.deepEqual([...plugin.eventDeviation], deviations);
+});
+
+test('the effect takes its BPM and beat lamp from the music player MIDI clock and drops them when MIDI stops', async () => {
+    const { plugin, context } = await loadPlugin();
+    let clock = midiSnapshot({}, .51, 1.5);
+    context.window.audioManager = { powerPolicyController: { player: { contextManager: { getMidiBeatClock: () => clock } } } };
+    plugin.canvas = { width: 800, height: 400 };
+    plugin.canvasCtx = fakeContext();
+    plugin.drawGraph();
+    assert.equal(plugin.midiSnapshot, clock);
+    const palette = { label: '#000', strongGrid: '#111' };
+    const [lamp, tempo] = plugin._headerItems(null, palette, () => '#333')[0];
+    assert.equal(tempo.text, '180.0', '120 BPM score at 1.5x speed');
+    // Quarter 1.02 is 0.02 beat after the beat head: 0.02 * 60 / 180 s into the 0.09 s flash.
+    assert.ok(Math.abs(lamp.level - (1 - .02 * 60 / 180 / .09)) < 1e-9);
+    clock = null;
+    plugin.drawGraph();
+    assert.equal(plugin.midiSnapshot, null);
 });
 
 test('MIDI projection epochs preserve checkpoint pause/resume and exclude audio from before MIDI entry', async () => {

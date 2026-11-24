@@ -48,7 +48,7 @@ function registerPlaybackRangeReader({ fileIpc, assertFile }) {
       const token = randomUUID();
       sessions.set(token, { handle, stat, sender: event.sender, busy: false });
       handle = null;
-      return { token, size: stat.size, identity: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}` };
+      return { token, size: stat.size, mtimeMs: stat.mtimeMs, identity: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}` };
     } finally {
       owner.pending--;
       await handle?.close();

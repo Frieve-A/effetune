@@ -2,13 +2,189 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { NativeAudioManager } from '../../js/native/audio-manager.js';
 import { NativeInputAdapter } from '../../js/native/input-adapter.js';
 import { packInstrumentMessage, packLiveMidi, unpackCheckpoints } from '../../js/native/instrument-transport.js';
 import { EnginePort, ENGINE_PORT_ROUTES } from '../../js/native/engine-endpoint.js';
+import { buildPipelineAnalyzerSnapshot, buildPipelineProcessingSnapshot } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
+import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
+import { midiPlaybackMethods } from '../../js/ui/audio-player/midi-playback.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+
+test('native MIDI presentation excludes Chromium feed latency', () => {
+  const native = Object.assign(Object.create(NativeAudioManager.prototype),{
+    audioContext:{sampleRate:48000},
+    contextManager:{audioContext:{sampleRate:48000}},
+    session:{deviceRate:48000,outputLatencyFrames:240},
+    clock:{outputConverterDelayFrames:12,feedDelayFrames:1024},
+    getTotalPipelineLatencySamples:() => 480
+  });
+  const standard = Object.assign(Object.create(AudioManager.prototype),{
+    contextManager:native.contextManager,
+    _getDeviceLatencyFrames:() => 252,
+    getTotalPipelineLatencySamples:() => 480
+  });
+  const presentation = manager => midiPlaybackMethods.getMidiPresentation.call({
+    audioManager:manager,getCurrentState:() => ({playbackMode:'midi',playbackSpeed:1}),
+    getCurrentMidiTime:() => 20,midiTimeline:{duration:30},midiPlaying:true
+  });
+  assert.equal(presentation(native).position,presentation(standard).position);
+  assert.equal(native.getAudiblePlaybackPosition(20,1),20 - (252 + 480 + 512 + 1024) / 48000);
+  native.filePlayback = {current:{track:1}};
+  Object.assign(native.clock,{fileTrack:1,fileConverterDelayFrames:24});
+  assert.equal(native.getAudiblePlaybackPosition(20,1),20 - (252 + 480 + 24) / 48000);
+  assert.equal(presentation(native).position,presentation(standard).position);
+});
+
+test('native launch diagnostics distinguish no attempt from a failed handshake', async () => {
+  const window = new EventTarget();
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype), {
+    engineLifetime:new AbortController(), bridge:{start:async () => ({ok:false})}
+  });
+  await withGlobals({window},async () => {
+    assert.equal(manager.getDiagnosticNativeState().variant,'notStarted');
+    await assert.rejects(manager.attachPorts('wasapi'), /Audio driver unavailable/);
+    assert.equal(manager.getDiagnosticNativeState().variant,'unknown');
+    manager.bridge.start = async () => ({ok:false,variant:'baseline'});
+    await assert.rejects(manager.attachPorts('wasapi'), /Audio driver unavailable/);
+    assert.equal(manager.getDiagnosticNativeState().variant,'baseline');
+  });
+});
+
+test('cold native analysis, measurement handoff and export use the offline DSP module', async () => {
+  const preferences = {useWasmDsp:true};
+  const window = {audioPreferences:preferences, location:{pathname:'/effetune.html'}};
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype), {
+    currentPipeline:'A', preferences, dspModuleInfo:null,
+    contextManager:{audioContext:{sampleRate:48000},outputChannelCount:2}
+  });
+  const context = vm.createContext({window, Float32Array, Uint8Array, performance, console});
+  for (const file of ['plugin-base.js','analyzer/analog_meter.js']) {
+    vm.runInContext(await readFile(new URL('../../plugins/' + file, import.meta.url),'utf8'), context);
+  }
+  window.AnalogMeterPlugin.prototype.audioHostActive = false;
+  const meter = new window.AnalogMeterPlugin();
+  meter.id = 7;
+  manager.pipelineA = [meter];
+  const options = {audioManager:manager, workletSync:new PipelineWorkletSync({audioManager:manager}),
+    configuration:{inputChannel:0,outputs:[{channel:0}]}};
+  const fetch = async asset => new Response(await readFile(new URL('../../' + asset, import.meta.url)));
+  await withGlobals({window,fetch}, async () => {
+    assert.equal(window.dspParamPackers, undefined);
+    const {snapshot:analysis} = await buildPipelineAnalyzerSnapshot(options);
+    assert.deepEqual(analysis.requiredWasmPluginIds,[meter.id]);
+    assert.ok(analysis.plugins[0].wasmParams instanceof Float32Array);
+    assert.ok(analysis.dsp.module instanceof WebAssembly.Module);
+    const {snapshot:handoff} = await buildPipelineProcessingSnapshot(options);
+    assert.equal(handoff.dsp.module,null);
+    assert.ok(WebAssembly.validate(handoff.dsp.bytes));
+
+    const exporter = await manager._ensureOfflineProcessor();
+    const session = await exporter.createOfflineDspSession([meter],48000,2);
+    try {
+      assert.ok(session?.entries.get(meter), 'The exporter must instantiate the native effect in its offline engine');
+      assert.equal(session.moduleInfo.module,analysis.dsp.module);
+    } finally { exporter.destroyOfflineDspSession(session); }
+    assert.equal(manager.dspModuleInfo,null);
+    preferences.useWasmDsp = false;
+    await assert.rejects(buildPipelineAnalyzerSnapshot(options), {code:'wasm-unavailable'});
+    assert.equal(await exporter.createOfflineDspSession([meter],48000,2),null);
+  });
+});
+
+test('native System Audio mixes only a confirmed capture and ends it after input release', async () => {
+  const calls = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    contextManager:{},preferences:{inputDeviceId:'system-audio'},tap:{},
+    control:{postMessage(message) { calls.push(['mix',message.enabled]); }}
+  });
+  const io = manager.ioManager = new NativeInputAdapter(manager);
+  let allowed = true, confirmed = true;
+  io.evaluateSystemAudioGuard = async () => ({allowed,defaultGroupId:'speakers'});
+  manager.replaceInput = async id => {
+    calls.push(['replace',id]);
+    const state = id === 'system-audio' ? 'acquired' : 'none';
+    io.setInput(state);
+    if (state === 'acquired') manager.connectSourceToPipeline(io.deviceSource);
+    return {state};
+  };
+  const window = {electronAPI:{systemAudio:{
+    nativeBegin:async () => { calls.push(['begin']); return 1; },
+    nativeHold:async token => { calls.push(['hold',token]); return confirmed; },
+    nativeEnd:async token => { calls.push(['end',token]); }
+  }},uiManager:{showTransientMessage:key => calls.push(['message',key])}};
+  const acquire = () => io.beginReacquireAudioInput({requireVisible:false});
+  await withGlobals({window},async () => {
+    await acquire();
+    assert.deepEqual(calls, [['begin'],['replace','system-audio'],['mix',false],['mix',false],['hold',1],['mix',true]]);
+    assert.equal(io.systemAudioDefaultGroupId,'speakers');
+    await io.releaseAudioInput();
+    assert.deepEqual(calls.slice(-2),[['replace',NO_AUDIO_INPUT_DEVICE_ID],['end',1]]);
+    assert.equal(io.systemAudioDefaultGroupId,null);
+    calls.length = 0;
+    confirmed = false;
+    await assert.rejects(acquire(),error => error.systemAudioNotified);
+    assert.deepEqual(calls.slice(-3),[['replace',NO_AUDIO_INPUT_DEVICE_ID],['end',1],['message','error.systemAudioMuteUnavailable']]);
+    assert(!calls.some(([op, value]) => op === 'mix' && value));
+    assert.equal(io.systemAudioDisabled,true);
+    calls.length = 0;
+    allowed = false;
+    await assert.rejects(acquire(),{name:'NotAllowedError'});
+    assert.deepEqual(calls,[]);
+    allowed = confirmed = true;
+    io.systemAudioDisabled = false;
+    await acquire();
+    calls.length = 0;
+    io.setInput('failed');
+    io.setInput('failed');
+    assert.deepEqual(calls,[['end',1]]);
+    await acquire();
+    calls.length = 0;
+    manager.engineEvents = new EventTarget();
+    manager.engineLifetime = new AbortController();
+    manager.bridge = {stop:async () => { calls.push(['stop']); }};
+    manager._cancelPendingDspControlRequests = () => {};
+    manager.resetClock = () => {};
+    manager.expectRecovery = true;
+    manager.receive({type:'sessionState',state:'failed',reason:'unsupportedFormat'});
+    assert.equal(manager.engineLifetime.signal.aborted,true);
+    manager.receive({type:'engineFailure',reason:'test'});
+    assert.equal(io.nativeCapture,null);
+    assert.deepEqual(calls,[['stop']]);
+  });
+});
+
+test('output recovery checks System Audio against the newly applied default output',async () => {
+  const calls = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    engineEvents:new EventTarget(),expectRecovery:true,openSettings:{outputDeviceId:'separate'},
+    openDefaultOutput:async () => { calls.push('default'); return {state:'open'}; },
+    powerPolicyController:{handleSystemAudioOutputChange:() => calls.push('check')}
+  });
+  manager.receive({type:'sessionState',state:'failed',reason:'unavailable'});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls,['default','check']);
+});
+
+test('a compatible output reopen resumes the native file clock without recreating the endpoint', () => {
+  const calls = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    engineEvents:new EventTarget(),contextManager:{},clockOffsets:[],
+    _applyEffectiveOutputPreferences() {},
+    filePlayback:{current:{generation:4},recover:() => calls.push('recover'),update:() => calls.push('clock')}
+  });
+  manager.receive({type:'deviceReset',direction:'output'});
+  assert.equal(manager.fileRecoveryNeeded,4);
+  manager.receive({type:'sessionState',state:'open',recoveryId:0,width:2});
+  assert.equal(manager.fileRecoveryNeeded,null);
+  manager.clock = {};
+  manager.endpoints = [];
+  manager.receive({type:'clock'});
+  assert.deepEqual(calls,['recover','clock']);
+});
 
 test('native endpoints route the complete worklet command vocabulary and preserve request replies',async () => {
   const source = await readFile(new URL('../../plugins/audio-processor.js',import.meta.url),'utf8');
@@ -25,6 +201,79 @@ test('native endpoints route the complete worklet command vocabulary and preserv
     port.receive({type:reply,requestId:5,branch:1});
   }
   assert.deepEqual(received.map(m => m.type),['dspReady','assetState','sfzPreparationContext','midiCheckpoints']);
+});
+
+test('startup opens System Audio with the saved output and builds the tap at the native mix width',async () => {
+  const calls = [];
+  let defaultEndpoint = 'source-A';
+  const prefs = {audioDriver:'wasapi',inputDeviceId:'system-audio',outputDeviceId:'separate'};
+  const window = {electronAPI:{systemAudio:{
+    nativeBegin:async endpoint => { calls.push(['begin',endpoint]); defaultEndpoint = 'source-B'; return 1; },
+    nativeHold:async () => { calls.push('hold'); return true; },
+    nativeEnd:async () => { calls.push('end'); }
+  }}};
+  const context = {sampleRate:48000,audioWorklet:{async addModule() {}},async resume() {}};
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    engineLifetime:new AbortController(),contextManager:{audioContext:context,async initAudioContext() {}},
+    control:{postMessage(m) { if (m.type === 'setInputMix') calls.push(m.enabled); }},
+    async attachPorts() {},async request(settings) {
+      calls.push(settings.inputDeviceId,settings.outputDeviceId,settings.loopbackEndpointId);
+      return {state:'open',inputChannels:6,width:6};
+    },makeEndpoint:() => ({port:{}}),updateExposedProperties() { this.workletNode = this.contextManager.workletNode; },
+    _advanceAudioGraphGeneration() {},telemetryHub:{setPort() {}},endpoints:[]
+  });
+  manager.ioManager = new NativeInputAdapter(manager);
+  manager.ioManager.evaluateSystemAudioGuard = async output => {
+    calls.push(output); return {allowed:true,defaultGroupId:defaultEndpoint};
+  };
+  class Tap {
+    constructor(_context,_name,options) { calls.push(['tap',options.channelCount]); this.port = {postMessage() {}}; }
+    connect() {}
+  }
+  await withGlobals({window,AudioWorkletNode:Tap},async () => {
+    assert.equal(await manager.initAudio(prefs),'');
+    assert.deepEqual(calls,['separate',['begin','source-A'],'system-audio','separate','source-A',false,'hold',true,['tap',6]]);
+    assert.equal(manager.ioManager.systemAudioDefaultGroupId,'source-A');
+    manager.inputRequest = 0;
+    manager.waitFor = async () => ({detail:{state:'acquired'}});
+    manager.send = message => calls.push(message);
+    await manager.replaceInput('system-audio');
+    assert.equal(calls.at(-1).loopbackEndpointId,'source-A');
+  });
+});
+
+test('restoring the primary native endpoint holds synced telemetry until its audible time',async () => {
+  let resolver = null;
+  const posted = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    visualSyncEnabled:true,_dspCapabilitiesByNode:new Map(),_nextDspReadyToken() {},
+    _postNetworkOutputLocalDelay() {},_postNetworkReceiveSession() {},_postVisualizerSources() {},
+    async _applyWorkletOutputDelays() {},dispatchEvent() {},_resolveVisualSyncDue:() => 42,
+    telemetryHub:{setVisualSyncResolver(value) { resolver = value; }}
+  });
+  const endpoint = {port:{branch:0,postMessage(message) { posted.push(message); },receive() {}}};
+  await withGlobals({window:{}},async () => manager.restoreEndpoint(endpoint,{},false));
+  assert.equal(resolver?.('tap',0,'SpectrumAnalyzerPlugin'),42);
+  assert.deepEqual(posted.find(message => message.type === 'setVisualSync'),{type:'setVisualSync',enabled:true});
+});
+
+test('a saved native input that fails to open falls back to the default input without changing the preference',async () => {
+  const sent = [];
+  const replies = {missing:{state:'failed',reason:'unavailable'},default:{state:'acquired'}};
+  const preferences = {inputDeviceId:'missing',latencyHint:'interactive'};
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype),{
+    inputRequest:0,preferences,openSettings:{},
+    send:message => sent.push(message),
+    waitFor:async () => { await null; return {detail:replies[sent.at(-1).inputDeviceId]}; }
+  });
+  manager.ioManager = new NativeInputAdapter(manager);
+  const window = {electronAPI:{requestMicrophoneAccess:async () => true}};
+  await withGlobals({window},async () => {
+    assert.deepEqual(await manager.replaceInput('missing'),{state:'acquired'});
+  });
+  assert.deepEqual(sent.map(m => m.inputDeviceId),['missing','default']);
+  assert.deepEqual(manager.ioManager.diagnosticFallbackInput,{id:'missing',match:'fellBackToDefault'});
+  assert.equal(preferences.inputDeviceId,'missing');
 });
 
 test('native blind testing applies both effect chains while normal playback stays bypassed', () => {
@@ -47,6 +296,37 @@ test('native blind testing applies both effect chains while normal playback stay
   primary.configure();
   assert.deepEqual(sent,[[0,true],[0,false],[1,false],[0,false],[1,false],[0,true]]);
   assert.equal(manager.masterBypass,true);
+});
+
+test('a native preset with a continuous effect publishes without a Chromium output keepalive', async () => {
+  const contextManager = new AudioContextManager();
+  contextManager.audioContext = { sampleRate: 48000, sinkId: { type: 'none' } };
+  const plugin = { id: 1, type: 'OscillatorPlugin', enabled: true, temporalCapability: 'must-process' };
+  const calls = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype), {
+    contextManager,
+    audioContext: contextManager.audioContext,
+    pipeline: [plugin],
+    preferences: { useWasmDsp: true },
+    getOutputChannelCount: () => 2,
+    control: { postMessage: message => calls.push(message.type) },
+    powerPolicyController: { notifyTopologyChanged: reason => calls.push(reason) },
+    _scheduleVisualSyncUpdate() {}
+  });
+  contextManager.workletNode = { port: new EnginePort(manager, 0) };
+  class AudioWorkletNode {
+    constructor() {
+      calls.push('create-worklet');
+      throw new DOMException('The processor is not registered on the native feed context', 'InvalidStateError');
+    }
+  }
+  await withGlobals({ AudioWorkletNode }, () => {
+    const result = manager.commitPowerTopologyMutation({ type: 'updatePlugins', plugins: [plugin] },
+      { reason: 'apply-preset' });
+    assert.equal(result.postedNodeCount, 1);
+    assert.deepEqual(calls, ['configurePipeline', 'apply-preset']);
+    assert.equal(contextManager.realtimeOutputKeepaliveNode, null);
+  });
 });
 
 test('native device reopen and default fallback preserve the latest Player and MIDI preferences', async () => {

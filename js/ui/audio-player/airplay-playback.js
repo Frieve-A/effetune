@@ -40,6 +40,7 @@ export class AirPlayPlayback {
     if (this.disposed || !message || !Number.isSafeInteger(message.generation)) return;
     if (message.type === 'start') {
       if (message.sampleRate !== 44100 || message.channelCount !== 2) return;
+      globalThis.window?.uiManager?.invalidatePlaybackSessionRestore?.();
       this.preparing = this.prepare(message.generation);
       await this.preparing;
       return;

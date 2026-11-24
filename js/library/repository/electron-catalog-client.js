@@ -93,6 +93,12 @@ export class ElectronCatalogClient {
     return this.api.recordRecentlyPlayed(request);
   }
 
+  listPendingLoudness(request) { return this.api.listPendingLoudness(request); }
+  playbackSession(request) { return this.api.playbackSession(request); }
+  saveTrackLoudness(request) { return this.api.saveTrackLoudness(request); }
+  finalizeLoudness(request) { return this.api.finalizeLoudness(request); }
+  getTrackLoudness(request) { return this.api.getTrackLoudness(request); }
+  getLoudnessStats(request) { return this.api.getLoudnessStats(request); }
   setTrackFavorite(request) {
     return this.api.setTrackFavorite(request);
   }
@@ -136,7 +142,7 @@ export class ElectronCatalogClient {
       folderIds: [result.folder.id],
       scanReason: 'automatic',
       includeVideo: options?.includeVideo === true,
-      includeMidi: options?.includeMidi === true
+      includeMidi: options?.includeMidi === true, includeMidiArchives: options?.includeMidiArchives === true
     };
     if (options?.languageHints) scanRequest.languageHints = options.languageHints;
     const scan = await this.scanFolders(scanRequest);

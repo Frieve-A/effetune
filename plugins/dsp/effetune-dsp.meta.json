@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:7925a158092280e9c0d01b486696e17b81da85f7ec0957885f1c6c8b48b1d50d",
+  "sourceDigest": "sha256:6e8417417653a5995a513d6d613f18ad78766c405b713bec5c0f8b28a71f1283",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:67b0a6fac6ff5373c61b489dc6fac061dc1d4a58a6d6fd22e0d557b19a67747e",
+    "digest": "sha256:e24820a77bd9339465e3e7aa01f1b0e45654a774c5e70ac4116ba14397dd3279",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:2b83e78cac30c3de1108cf7e33f25f7b1db29bf206beeefad01763dc9cc46529"
+        "sha256": "sha256:06f90aeca16750ab71dc79ad5274e2990df72f60f4eaf79c24ee1246de506b4f"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:2004183f1e614d212bc28ef50ed44cee50848174c05d7372b3dbe750d2d29377"
+        "sha256": "sha256:feac3ec920c0e5e72da5c53ba5f28f2667084569ad424d22e7c977819fb5f72a"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:374d36638fa09e5bb4a22b8efee192f7745a7a1a39be3524634b32102f8fe4ac"
+        "sha256": "sha256:00f5f69e88bdb5e3e31192ea07be44553b0662e94e6fd5b20e410e00c5f59ebe"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -1179,7 +1179,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4924818,
-    "simd": 5153896
+    "baseline": 4943952,
+    "simd": 5173979
   }
 }

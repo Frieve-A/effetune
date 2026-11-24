@@ -174,7 +174,7 @@ export function createFakeDocument(options = {}) {
       return (documentListeners.get(type) || []).length;
     },
     registerElementsFromHTML(html, parent) {
-      const elementPattern = /<(input|select|option|button|label|h2|div)\b([^>]*)>/gi;
+      const elementPattern = /<(input|select|option|output|button|label|h2|div)\b([^>]*)>/gi;
       let match;
       while ((match = elementPattern.exec(html)) !== null) {
         const tagName = match[1];

@@ -65,6 +65,7 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('menu.settings.frequencyResponseMeasurement', 'Acoustic Measurement', () => this.uiManager.stateManager?.openFeaturePage?.('features/measurement/measurement.html')));
             this.panel.appendChild(this.createLocalizedAction('menu.settings.backupRestore', 'Backup / Restore', () => this.uiManager.stateManager?.openBackupRestore?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.resetButton', 'Reset Audio', () => this.uiManager.stateManager?.resetAudio?.()));
+            this.panel.appendChild(this.createLocalizedAction('menu.help.diagnostics', 'Diagnostic Information…', () => this.uiManager.stateManager?.openDiagnostics?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
             this.panel.appendChild(this.createLocalizedAction('tour.menu', 'Take the tour', () => this.uiManager.startOnboardingTour()));

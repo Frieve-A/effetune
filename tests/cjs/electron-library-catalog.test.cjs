@@ -429,7 +429,7 @@ test('CUE tracks accept only supported sibling image paths as external artwork c
   }
 });
 
-test('scoped title pages use the global title order without a temporary sort', async t => {
+test('scoped title pages use an index without a temporary sort', async t => {
   const { dbPath } = await openCatalog(t);
   const database = new DatabaseSync(dbPath, { readOnly: true });
   try {
@@ -441,7 +441,8 @@ test('scoped title pages use the global title order without a temporary sort', a
         ORDER BY sort_title, track_uid
         LIMIT 10
       `).all('scope-key');
-      assert.ok(plan.some(row => String(row.detail).includes('tracks_by_title')), JSON.stringify(plan));
+      const index = scope === 'album_key' ? 'tracks_by_album_key_title' : 'tracks_by_title';
+      assert.ok(plan.some(row => String(row.detail).includes(index)), JSON.stringify(plan));
       assert.ok(plan.every(row => !String(row.detail).includes('USE TEMP B-TREE')), JSON.stringify(plan));
     }
   } finally {
@@ -620,7 +621,7 @@ test('Electron file paths sort and page by their full absolute path', async t =>
   }
 });
 
-test('CUE file paths and track number sorts page numerically in both catalogs', async t => {
+test('file paths preserve CUE ordering and archive entry identity in both catalogs', async t => {
   const { initializeWebSqliteRuntime, dispatchWebSqliteCommand } = await import('../../js/library/repository/web-sqlite-runtime.js');
   for (const backend of ['Electron', 'Web']) await t.test(backend, async t => {
     const fixture = backend === 'Electron' ? await openCatalog(t) : createTempCatalog(t, { registerCleanup: false });
@@ -672,9 +673,31 @@ test('CUE file paths and track number sorts page numerically in both catalogs', 
         assert.deepEqual(numbers, direction === 'asc' ? [1, 2, 10] : [10, 2, 1]);
         const previous = await host.queryTracks({ ...request, contextToken: page.contextToken, cursor: page.previousCursor });
         assert.equal(previous.rows[0].trackNo, 2);
+        assert.equal(previous.rows[0].cueRelativePath, 'Album/disc.cue');
         await host.releaseContext(page.contextToken);
       }
     }
+
+    const relativePath = 'Album #7/Score #🎵.zip';
+    const entryKeyPrefix = `archive:${relativePath}#`;
+    const entryPaths = ['Set #1/Track #🎵.mid', 'Set #2/Track #🎵.mid'];
+    for (const [index, entryPath] of entryPaths.entries()) {
+      const entryKey = entryKeyPrefix + entryPath;
+      const { claim } = await host.claimMetadataParse({
+        folderId: 'folder_music', trackUid: `archive-${index}`, logicalStorageId: entryKey,
+        lifecycleVersion: scan.lifecycleVersion, generation: scan.generation, relativePath,
+        parserVersion: scan.parserVersion, signature: { fileIdentity: 'archive', size: 1000, mtimeMs: 2000 },
+        sourceKind: 'archive-entry', entryKey, explicitRescan: false
+      });
+      await host.completeMetadataParseSuccess({ claim, metadata: { title: entryPath },
+        metadataStatus: 'ok', clearErrorAndRetryState: true, updateLastKnownGood: true, updateDerivedData: true });
+    }
+    const archivePage = await host.queryTracks({ query: '', sort: 'path', direction: 'asc', limit: 10 });
+    const archiveRows = archivePage.rows.filter(row => row.sourceKind === 'archive-entry');
+    assert.deepEqual(archiveRows.map(row => row.entryKey.slice(row.archiveEntryOffset)).sort(), entryPaths);
+    assert.equal(new Set(archiveRows.map(row => row.path)).size, 1);
+    assert.ok(archiveRows.every(row => !Object.hasOwn(row, 'relativePath') && !Object.hasOwn(row, 'cueRelativePath')));
+    await host.releaseContext(archivePage.contextToken);
   });
 });
 
@@ -2676,5 +2699,17 @@ test('score tracks accept only the supported sibling JPEG artwork claims', async
       canonicalSourceIdentity: name, utilitySessionId,
       externalArtworkStat: { fileIdentity: name, size: 2, mtimeMs: 3 } } });
     assert.equal(Boolean(result.claim), allowed, name);
+  }
+});
+
+test('Electron catalog retains current loudness and rejects stale track and album readings', async t => {
+  const { host, dbPath } = await openCatalog(t);
+  const database = new DatabaseSync(dbPath);
+  try {
+    const { verifyLoudnessCatalog } = await import('../helpers/loudness-catalog.mjs');
+    const { readLoudnessTagCandidates } = require('../../electron/library-catalog-host.cjs');
+    await verifyLoudnessCatalog(database, host.request.bind(host), () => readLoudnessTagCandidates(host));
+  } finally {
+    database.close();
   }
 });

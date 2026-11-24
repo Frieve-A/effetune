@@ -1,4 +1,5 @@
 import { applySerializedState } from '../../utils/serialization-utils.js';
+import { rememberDiagnosticNames } from '../../diagnostics/diagnostic-log.js';
 
 export class PresetManager {
     constructor(pluginListManager) {
@@ -380,6 +381,7 @@ export class PresetManager {
 
     // Add user preset to pipeline
     async addUserPresetToPipeline(presetName, insertionIndex = null) {
+        rememberDiagnosticNames('preset', [presetName]);
         try {
             // Get pipeline manager's preset manager for user presets
             const pipelineManager = window.pipelineManager;

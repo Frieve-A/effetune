@@ -4,7 +4,7 @@ import { startSfzWorkerSupply } from './sample-supply-port.js';
 import { SFZ_MAX_SAMPLES } from './limits.js';
 
 const failure = code => Object.assign(new Error('The instrument samples could not be prepared. Reload the instrument.'), { code });
-const MAX_PUBLISH_IN_FLIGHT = 4;
+const MAX_IN_FLIGHT = 4;
 const pageKey = (sample, pageIndex, resident = false) => `${sample}:${pageIndex}:${resident ? 1 : 0}`;
 
 // Capture granted readers before returning the factory. A later instrument
@@ -14,15 +14,15 @@ export async function createSfzSampleProviderFactory({ assetId, paths, createRea
   const capturedPaths = Object.freeze([...paths]);
   const readers = new Map();
   for (const path of capturedPaths) readers.set(path, await createReader(path));
-  const create = (generation, publish, progress) => new SfzSamplePageProvider({ assetId, generation,
-    createReader: path => readers.get(path), persistentCache, publish, onProgress: progress,
+  const create = (generation, publish, progress, publishWindow) => new SfzSamplePageProvider({ assetId, generation,
+    createReader: path => readers.get(path), persistentCache, publish, publishWindow, onProgress: progress,
     workerFactory, storageModes });
   const preparation = create(1, () => {}, onProgress);
   let samples;
   try { samples = await preparation.prepare(capturedPaths); }
   finally { preparation.close(); }
-  const factory = async ({ generation, publish, onProgress: progress, onProvider } = {}) => {
-    const provider = create(generation, publish, progress);
+  const factory = async ({ generation, publish, publishWindow, onProgress: progress, onProvider } = {}) => {
+    const provider = create(generation, publish, progress, publishWindow);
     try {
       onProvider?.(provider);
       const current = await provider.prepare(capturedPaths,
@@ -51,15 +51,17 @@ export async function createSfzSampleProviderFactory({ assetId, paths, createRea
 
 // One provider serves one immutable bank/cache generation. Publication is an
 // acknowledged control operation; its promise resolves only after native staging.
+// publishWindow bounds unacknowledged publications. A host whose acknowledgement
+// waits for an audio callback needs a wider window to keep up with playback.
 export class SfzSamplePageProvider {
-  constructor({ assetId, generation, createReader, publish, persistentCache = null,
+  constructor({ assetId, generation, createReader, publish, publishWindow = MAX_IN_FLIGHT, persistentCache = null,
     worker = null, workerFactory, onProgress = null, storageModes = null } = {}) {
     if (!/^[a-f0-9]{24}$/.test(assetId) || !Number.isSafeInteger(generation) || generation < 1 ||
         typeof createReader !== 'function' || typeof publish !== 'function') {
       worker?.close(); throw failure('sample-range');
     }
     this.assetId = assetId; this.generation = generation; this.createReader = createReader;
-    this.publish = publish; this._worker = worker; this.workerFactory = workerFactory;
+    this.publish = publish; this.publishWindow = publishWindow; this._worker = worker; this.workerFactory = workerFactory;
     this.persistentCache = persistentCache; this.onProgress = onProgress;
     this.storageModes = storageModes;
     this.samples = []; this.pending = new Map(); this.queue = []; this.pumping = false; this.closed = false;
@@ -213,7 +215,7 @@ export class SfzSamplePageProvider {
           decoded = await this.worker.readPages(job.sample, job.pageIndex, batch.length);
         }
         for (const item of batch) {
-          while (publications.size >= MAX_PUBLISH_IN_FLIGHT && !this.closed) await Promise.race(publications);
+          while (publications.size >= this.publishWindow && !this.closed) await Promise.race(publications);
           if (this.closed) throw failure('sample-cancelled');
           const first = (item.pageIndex - job.pageIndex) * SFZ_SAMPLE_PAGE_FRAMES;
           const frames = Math.min(SFZ_SAMPLE_PAGE_FRAMES, decoded.frames - first);
@@ -235,8 +237,8 @@ export class SfzSamplePageProvider {
       while ((this.queue.length || decoding.size || publications.size) && !this.closed) {
         const job = this.queue[0];
         // The local Worker adapter identifies stateless PCM. Stateful decoders
-        // retain their existing serial path; both use the same ACK4 ceiling.
-        const capacity = job && this.samples[job.sample].rawPcm && this.worker.statelessPcmReads ? MAX_PUBLISH_IN_FLIGHT : 1;
+        // retain their existing serial path.
+        const capacity = job && this.samples[job.sample].rawPcm && this.worker.statelessPcmReads ? MAX_IN_FLIGHT : 1;
         if (!job || decoding.size >= capacity) {
           await Promise.race([...decoding, ...publications]); continue;
         }

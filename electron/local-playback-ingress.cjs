@@ -15,6 +15,12 @@ const PLAYBACK_AUDIO_EXTENSIONS = new Set([
   '.mid', '.midi', '.kar', '.musicxml', '.xml', '.mxl',
   '.3gp', '.aac', '.flac', '.m4a', '.m4v', '.mkv', '.mov', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
+const PLAYBACK_ARCHIVE_EXTENSIONS = ['zip', 'lzh', 'lha', 'tar', 'tgz', 'gz'];
+const PLAYBACK_ARCHIVE_PATTERN = new RegExp(`\\.(${PLAYBACK_ARCHIVE_EXTENSIONS.join('|')})$`, 'i');
+
+function isSupportedPlaybackArchivePath(filePath) {
+  return PLAYBACK_ARCHIVE_PATTERN.test(filePath || '');
+}
 
 class LocalPlaybackIngress {
   constructor({
@@ -97,7 +103,7 @@ async function admitLocalPlaybackPaths(filePaths, { filesystem = fs, signal } = 
   const descriptors = [];
   for (const filePath of paths) {
     throwIfAborted(signal);
-    if (!PLAYBACK_AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+    if (!PLAYBACK_AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()) && !isSupportedPlaybackArchivePath(filePath)) {
       throw createIngressError('unsupported-playback-file');
     }
     const canonicalPath = path.resolve(await filesystem.realpath(path.resolve(filePath)));
@@ -482,6 +488,8 @@ function createIngressError(code, cause = null) {
 }
 
 module.exports = {
+  PLAYBACK_ARCHIVE_EXTENSIONS,
+  isSupportedPlaybackArchivePath,
   CUE_COVER_MAX_BYTES,
   CUE_MAX_BYTES,
   LocalPlaybackIngress,

@@ -13,6 +13,8 @@ Measure frequency response, impulse response, distortion, and decay, and create 
 4. Generate a parametric EQ correction that can be directly imported into EffeTune.
 5. Apply the correction to achieve a more accurate, neutral sound reproduction.
 
+When the desktop app uses a native audio driver and your input device has three or more channels, select **Ch 3** or a higher channel under **Input Channel** to match where your microphone is connected.
+
 ## Output Channels
 
 Set **Output Device Channels** to match your output device: **6** for 5.1 or **8** for 7.1. Output channel and per-channel bandwidth choices stay within this range. Test signals and measurements always use this channel count, so keep **6** even when measuring only Ch 3 (center) and Ch 4 (subwoofer) on a 5.1 device.

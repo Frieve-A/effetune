@@ -38,7 +38,16 @@ import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from './audio-
 
 const POWER_COMMAND_TIMEOUT_MS = 1500;
 // The worklet publishes at least one heartbeat per running audio second.
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-log.js';
+
 const SFZ_OBSERVATION_MAX_AGE_MS = 2000;
+
+function isFreshObservation(observation, tokens, now) {
+    return Number.isFinite(observation?.receivedAtEpochMs) && now >= observation.receivedAtEpochMs &&
+        now - observation.receivedAtEpochMs <= SFZ_OBSERVATION_MAX_AGE_MS &&
+        observation.workletGraphGeneration === tokens.workletGraphGeneration &&
+        observation.topologyRevision === tokens.topologyRevision;
+}
 
 function defaultNow() {
     return Date.now();
@@ -302,6 +311,9 @@ export class PowerPolicyController {
         if (!snapshot || typeof snapshot.hidden !== 'boolean') return false;
         const changed = this.hostHidden !== snapshot.hidden;
         this.hostHidden = snapshot.hidden;
+        if (changed) recordDiagnosticEvent('hostVisibility', {
+            hostHidden: this.hostHidden, effectivelyHidden: this._isEffectivelyHidden()
+        });
         this._refreshHiddenClock();
         if (changed && reconcile && this.enabled && !this.disposed) {
             this._requestWorkletObservation();
@@ -540,6 +552,12 @@ export class PowerPolicyController {
         this.workletObservation = null;
         this.workletAck = null;
         this.statePreparation = createUnknownStatePreparation();
+        for (const [node, observation] of this.workletObservations) {
+            recordDiagnosticEvent('workletObservationInvalidated', {
+                role: observation.diagnosticRole ?? this._diagnosticNodeRole(node),
+                workletGraphGeneration: observation.workletGraphGeneration, receivedAtEpochMs: observation.receivedAtEpochMs
+            });
+        }
         this.workletObservations.clear();
         this.workletSfzRuntimeRevisions?.clear();
         this.workletAcks.clear();
@@ -854,12 +872,14 @@ export class PowerPolicyController {
         }
     }
 
-    _analyzeTemporalCapabilities(pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || []) {
+    _analyzeTemporalCapabilities(pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || [],
+        { includePlaybackDemand = true } = {}) {
         const receiveId = this.audioManager.networkRoute?.receiveId;
         if (receiveId != null) {
             const index = pipeline.findIndex(plugin => plugin.id === receiveId);
             if (index >= 0) pipeline = pipeline.slice(index);
         }
+        if (!includePlaybackDemand) return analyzeTemporalCapabilities(pipeline);
         const midi = this.player?.contextManager?.getMidiPresentation?.();
         const tokens = this._getTokensAndGuards().tokens;
         const nodes = this._getActiveWorkletNodes();
@@ -867,10 +887,7 @@ export class PowerPolicyController {
             (node === this.audioManager.workletNode ? this.workletObservation : null)) : [this.workletObservation];
         const now = this.now();
         const pendingMidi = observations.some(observation =>
-            Number.isFinite(observation?.receivedAtEpochMs) && now >= observation.receivedAtEpochMs &&
-            now - observation.receivedAtEpochMs <= SFZ_OBSERVATION_MAX_AGE_MS &&
-            observation.workletGraphGeneration === tokens.workletGraphGeneration &&
-            observation.topologyRevision === tokens.topologyRevision &&
+            isFreshObservation(observation, tokens, now) &&
             ((observation.midiPending === true && observation.midiGeneration === midi?.generation) ||
                 observation.sfzPending === true));
         return analyzeTemporalCapabilities(pipeline, {
@@ -1099,7 +1116,9 @@ export class PowerPolicyController {
         this.automaticMonitoringArm = emptyAutomaticArm();
         const coordinator = this._getTokensAndGuards();
         const pipeline = this.audioManager.getCurrentPipeline?.() || this.audioManager.pipeline || [];
-        const temporal = this._analyzeTemporalCapabilities(pipeline);
+        // This configuration lasts for the topology's lifetime. The host and
+        // render thread both recheck live instrument demand before skipping.
+        const temporal = this._analyzeTemporalCapabilities(pipeline, { includePlaybackDemand: false });
         const bound = this.audioManager.getPowerGraphAmplitudeBound?.(pipeline) ||
             computeLinearPipelineWakeBound(
                 pipeline,
@@ -2067,6 +2086,10 @@ export class PowerPolicyController {
         }
         this._recordMonitoringFastWakeRuntimeFailure(data, tokens);
         if (data.type === 'powerStateAck') {
+            // A later configuration can replace this directive before its first
+            // render. The processor has still consumed the accepted epoch.
+            if (data.commandAccepted === true && Number.isSafeInteger(data.skipEpoch) &&
+                data.skipEpoch > this.skipEpoch) this.skipEpoch = data.skipEpoch;
             this.workletAck = data;
             if (nodeKey) this.workletAcks.set(nodeKey, data);
             if (nodeKey && Object.hasOwn(data, 'automaticMonitoringArm')) {
@@ -2118,7 +2141,7 @@ export class PowerPolicyController {
                 this.workletObservation = freshObservation;
             }
             if (nodeKey) {
-                this.workletObservations.set(nodeKey, freshObservation);
+                this._storeWorkletObservation(nodeKey, freshObservation);
             }
             return true;
         }
@@ -2131,7 +2154,7 @@ export class PowerPolicyController {
             }
             this.workletObservation = data;
             if (nodeKey) {
-                this.workletObservations.set(nodeKey, {
+                this._storeWorkletObservation(nodeKey, {
                     ...data,
                     receivedAtEpochMs: this.now()
                 });
@@ -2337,7 +2360,7 @@ export class PowerPolicyController {
             } catch (error) {
                 console.warn('System Audio input could not be restored:', error);
                 this._resynchronizeInputGeneration();
-                await this._disableSystemAudioInput();
+                await this._disableSystemAudioInput(!error.systemAudioNotified);
             }
         } else {
             return false;
@@ -2381,7 +2404,7 @@ export class PowerPolicyController {
      * Leave the pipeline on the silent source, record the session disable and
      * tell the user once. Preferences are not touched.
      */
-    async _disableSystemAudioInput() {
+    async _disableSystemAudioInput(notify = true) {
         const ioManager = this.audioManager.ioManager;
         if (ioManager.inputSourceNode || ioManager.inputStream) {
             const released = await this.requestAudioReconfigurationInputRelease({
@@ -2392,7 +2415,7 @@ export class PowerPolicyController {
         }
         ioManager.markInputNotConfigured?.();
         ioManager.markSystemAudioDisabled?.();
-        this.windowRef?.uiManager?.showTransientMessage?.('error.systemAudioStopped', true, {}, 5000);
+        if (notify) this.windowRef?.uiManager?.showTransientMessage?.('error.systemAudioStopped', true, {}, 5000);
     }
 
     handlePageLifecycleEvent(type, detail = {}) {
@@ -3020,9 +3043,24 @@ export class PowerPolicyController {
         );
     }
 
-    ensureActive(resumeKind = ResumeKind.UNEXPECTED_RECOVERY) {
+    _recordedResume(resumeKind, trigger, reason, input) {
+        const fields = { trigger, resumeKind, reason, startedAtEpochMs: this.now(),
+            contextState: this.audioManager.contextManager?.audioContext?.state,
+            effectiveState: this.effectiveState, inputState: input?.state ?? this.audioManager.ioManager?.inputResourceState };
+        const failed = error => recordDiagnosticEvent('resume', { ...fields, result: 'error', errorName: error?.name });
+        try {
+            const pending = this.beginUserGestureResume(resumeKind);
+            Promise.resolve(pending).then(result => recordDiagnosticEvent('resume', { ...fields, result }), failed);
+            return pending;
+        } catch (error) {
+            failed(error);
+            throw error;
+        }
+    }
+
+    ensureActive(resumeKind = ResumeKind.UNEXPECTED_RECOVERY, trigger) {
         if (this.audioManager.needsSystemResumeRecovery) {
-            return this.beginUserGestureResume(resumeKind);
+            return this._recordedResume(resumeKind, trigger, 'systemResumeRecovery');
         }
         if (!this.enabled) return this.audioManager.contextManager?.resumeAudioContext?.();
         const needsInput = resumeKind === ResumeKind.DEDICATED_INPUT ||
@@ -3030,20 +3068,21 @@ export class PowerPolicyController {
         const input = needsInput ? this.audioManager.ioManager?.getInputSnapshot?.() : null;
         const inputResumeRequired = needsInput && (this.manualResumeRequired === true ||
             (input?.inputConfigured === true && input.state !== InputResourceState.LIVE));
-        if (this._isFullyActive() && !inputResumeRequired) {
+        const fullyActive = this._isFullyActive();
+        if (fullyActive && !inputResumeRequired) {
             return Promise.resolve(true);
         }
-        return this.beginUserGestureResume(resumeKind);
+        return this._recordedResume(resumeKind, trigger, fullyActive ? 'inputResumeRequired' : 'notFullyActive', input);
     }
 
-    requestResumeFromUserInteraction() {
+    requestResumeFromUserInteraction(trigger) {
         const { inputRouteIntent } = this._deriveRouteAndPlayerFacts();
         const resumeKind = inputRouteIntent === InputRouteIntent.EXTERNAL
             ? ResumeKind.DEDICATED_INPUT
             : (inputRouteIntent === InputRouteIntent.MIXED
                 ? ResumeKind.MIXED_PLAY
                 : ResumeKind.ROUTE_ACTIVATION);
-        return this.ensureActive(resumeKind);
+        return this.ensureActive(resumeKind, trigger);
     }
 
     requestResumeFromUserGesture(resumeKind = ResumeKind.DEDICATED_INPUT) {
@@ -3457,17 +3496,50 @@ export class PowerPolicyController {
         const now = this.now();
         const signalActive = nodes.some(node => {
             const observation = this.workletObservations.get(node);
-            return observation?.workletGraphGeneration === tokens.workletGraphGeneration &&
-                observation.topologyRevision === tokens.topologyRevision &&
-                Number.isFinite(observation.receivedAtEpochMs) &&
-                now >= observation.receivedAtEpochMs &&
-                now - observation.receivedAtEpochMs <= SFZ_OBSERVATION_MAX_AGE_MS &&
+            return isFreshObservation(observation, tokens, now) &&
                 (observation.inputActive === true || observation.outputActive === true);
         });
         const processingActive = this.settings.mode === PowerPolicy.CONTINUOUS &&
             contextRunning && nodes.length > 0;
         report({ processingActive,
             playbackActive: processingActive && (snapshot.transportDemand || signalActive) });
+    }
+
+    _diagnosticNodeRole(node, index = this._getActiveWorkletNodes().indexOf(node)) {
+        return node === this.audioManager.workletNode ? 'primary' : (index >= 0 ? `parallel-${index + 1}` : 'unknown');
+    }
+
+    _storeWorkletObservation(node, observation) {
+        const previous = this.workletObservations.get(node);
+        observation.diagnosticRole = previous?.diagnosticRole ?? this._diagnosticNodeRole(node);
+        const gap = previous && !isFreshObservation(previous, observation, observation.receivedAtEpochMs);
+        if (!previous || gap || previous.inputActive !== observation.inputActive ||
+            previous.outputActive !== observation.outputActive) {
+            recordDiagnosticEvent('workletObservation', {
+                role: observation.diagnosticRole, workletGraphGeneration: observation.workletGraphGeneration,
+                receivedAtEpochMs: observation.receivedAtEpochMs, renderSequence: observation.renderSequence,
+                inputActive: observation.inputActive ?? 'unknown', outputActive: observation.outputActive ?? 'unknown',
+                ...(gap && { previousReceivedAtEpochMs: previous.receivedAtEpochMs })
+            });
+        }
+        this.workletObservations.set(node, observation);
+    }
+
+    getDiagnosticObservations() {
+        const tokens = this._getTokensAndGuards().tokens;
+        const now = this.now();
+        return this._getActiveWorkletNodes().map((node, index) => {
+            const observation = this.workletObservations.get(node);
+            const fresh = isFreshObservation(observation, tokens, now);
+            return {
+                role: this._diagnosticNodeRole(node, index),
+                workletGraphGeneration: observation?.workletGraphGeneration ?? tokens.workletGraphGeneration,
+                receivedAtEpochMs: observation?.receivedAtEpochMs ?? null,
+                renderSequence: observation?.renderSequence ?? null,
+                inputActive: fresh ? observation.inputActive ?? 'unknown' : 'unknown',
+                outputActive: fresh ? observation.outputActive ?? 'unknown' : 'unknown'
+            };
+        });
     }
 
     _getSnapshotWorkletNodes(coordinator) {
@@ -3480,9 +3552,7 @@ export class PowerPolicyController {
                 (index === 0 ? this.statePreparation : createUnknownStatePreparation());
             const observedProcessingState = observation?.processingState || observation?.state;
             return {
-                role: node === this.audioManager.workletNode
-                    ? 'primary'
-                    : `parallel-${index + 1}`,
+                role: this._diagnosticNodeRole(node, index),
                 workletGraphGeneration: coordinator.tokens.workletGraphGeneration,
                 topologyRevision: coordinator.tokens.topologyRevision,
                 state: observation?.errorCode ? 'error' : (observation ? 'rendering' : 'unseen'),

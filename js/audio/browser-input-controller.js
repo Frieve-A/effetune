@@ -1,3 +1,5 @@
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-log.js';
+
 /** Owns Browser playback separately from the configured audio input device. */
 export class BrowserInputController {
     constructor(audioManager, api, onChange = () => {}) {
@@ -51,6 +53,7 @@ export class BrowserInputController {
             this.audioManager.contextManager.audioContext?.resume().catch(() => {});
             this.audioManager.ioManager.playOutputBridgeForGesture?.().catch(() => {});
         } catch (error) {
+            recordDiagnosticEvent('browserCapture', { stage: 'prepare', errorName: error.name, message: error.message });
             capture = Promise.reject(error);
         }
         this.onChange('acquiring');
@@ -92,6 +95,7 @@ export class BrowserInputController {
                 .catch(error => console.error('Browser audio could not resume:', error));
             return true;
         } catch (error) {
+            recordDiagnosticEvent('browserCapture', { stage: 'install', errorName: error.name, message: error.message });
             console.error('Browser audio capture failed:', error);
             if (revision === this.revision) {
                 await this.release({ keepSelection: true }).catch(releaseError => {

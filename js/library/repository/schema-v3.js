@@ -29,6 +29,107 @@ PRAGMA journal_mode = PERSIST;
 PRAGMA temp_store = MEMORY;
 `;
 
+const TRACKS_COLUMNS_SQL = `
+  track_key INTEGER PRIMARY KEY,
+  track_uid TEXT NOT NULL UNIQUE,
+  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE RESTRICT,
+  relative_path TEXT NOT NULL,
+  source_kind TEXT NOT NULL DEFAULT 'file' CHECK(source_kind IN ('file', 'cue-track', 'archive-entry')),
+  entry_key TEXT,
+  cue_relative_path TEXT,
+  start_frame INTEGER,
+  end_frame INTEGER,
+  cue_signature TEXT,
+  file_identity TEXT,
+  file_name TEXT NOT NULL,
+  size INTEGER CHECK(size IS NULL OR size >= 0),
+  mtime_ms INTEGER,
+  title TEXT NOT NULL,
+  artist TEXT NOT NULL DEFAULT '',
+  album_artist TEXT NOT NULL DEFAULT '',
+  album TEXT NOT NULL DEFAULT '',
+  genre TEXT NOT NULL DEFAULT '',
+  year INTEGER,
+  compilation INTEGER NOT NULL DEFAULT 0 CHECK(compilation IN (0, 1)),
+  disc_no INTEGER,
+  disc_total INTEGER,
+  track_no INTEGER,
+  track_total INTEGER,
+  sort_title BLOB NOT NULL DEFAULT X'',
+  sort_album_artist BLOB NOT NULL DEFAULT X'',
+  sort_album BLOB NOT NULL DEFAULT X'',
+  sort_genre BLOB NOT NULL DEFAULT X'',
+  duration_sec REAL,
+  sample_rate INTEGER,
+  bitrate INTEGER,
+  bits_per_sample INTEGER,
+  channels INTEGER,
+  codec TEXT,
+  metadata_status TEXT NOT NULL DEFAULT 'ok'
+    CHECK(metadata_status IN ('ok', 'parsing', 'retryable-error', 'terminal-error')),
+  metadata_error_code TEXT,
+  metadata_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(metadata_attempt_count >= 0),
+  metadata_last_attempt_generation INTEGER,
+  metadata_parser_version TEXT NOT NULL,
+  metadata_last_success_at INTEGER,
+  artwork_id TEXT REFERENCES artwork_assets(id) ON DELETE RESTRICT,
+  extension_json TEXT,
+  added_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  search_text TEXT NOT NULL,
+  normalized_basename TEXT NOT NULL DEFAULT '',
+  normalized_title TEXT NOT NULL DEFAULT '',
+  normalized_artist TEXT NOT NULL DEFAULT '',
+  duration_bucket INTEGER,
+  album_key TEXT,
+  artist_key TEXT,
+  genre_key TEXT,
+  subfolder_key TEXT,
+  CHECK (
+    (source_kind = 'file' AND entry_key IS NULL AND cue_relative_path IS NULL
+      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
+    OR
+    (source_kind = 'archive-entry' AND entry_key IS NOT NULL AND cue_relative_path IS NULL
+      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
+    OR
+    (source_kind = 'cue-track' AND entry_key IS NOT NULL AND cue_relative_path IS NOT NULL
+      AND start_frame >= 0 AND (end_frame IS NULL OR end_frame > start_frame)
+      AND cue_signature IS NOT NULL)
+  )
+`;
+
+const SCAN_LOGICAL_SEEN_COLUMNS_SQL = `
+  scan_id TEXT NOT NULL,
+  folder_id TEXT NOT NULL,
+  logical_storage_id TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  canonical_path TEXT,
+  file_identity TEXT,
+  size INTEGER CHECK(size IS NULL OR size >= 0),
+  mtime_ms INTEGER,
+  observation_sequence INTEGER NOT NULL,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('file', 'cue-track', 'archive-entry')),
+  entry_key TEXT,
+  cue_relative_path TEXT,
+  start_frame INTEGER,
+  end_frame INTEGER,
+  cue_signature TEXT,
+  metadata_json TEXT,
+  PRIMARY KEY(scan_id, folder_id, logical_storage_id),
+  FOREIGN KEY(scan_id, folder_id) REFERENCES scan_run_folders(scan_id, folder_id) ON DELETE RESTRICT,
+  CHECK (
+    (source_kind = 'file' AND entry_key IS NULL AND cue_relative_path IS NULL
+      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
+    OR
+    (source_kind = 'archive-entry' AND entry_key IS NOT NULL AND cue_relative_path IS NULL
+      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
+    OR
+    (source_kind = 'cue-track' AND entry_key IS NOT NULL AND cue_relative_path IS NOT NULL
+      AND start_frame >= 0 AND (end_frame IS NULL OR end_frame > start_frame)
+      AND cue_signature IS NOT NULL AND metadata_json IS NOT NULL)
+  )
+`;
+
 export const MUSIC_LIBRARY_V3_SCHEMA_SQL = `
 DROP TABLE IF EXISTS playback_sequence_undo_owners;
 DROP TABLE IF EXISTS transport_undo_records;
@@ -43,6 +144,20 @@ CREATE TABLE IF NOT EXISTS meta(
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS playback_sessions(
+  profile_key TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS playback_session_items(
+  profile_key TEXT NOT NULL REFERENCES playback_sessions(profile_key) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  original_ordinal INTEGER,
+  track_uid TEXT,
+  file_json TEXT,
+  PRIMARY KEY(profile_key, ordinal)
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS folders(
   id TEXT PRIMARY KEY,
@@ -106,34 +221,7 @@ CREATE TABLE IF NOT EXISTS scan_seen(
   FOREIGN KEY(scan_id, folder_id) REFERENCES scan_run_folders(scan_id, folder_id) ON DELETE RESTRICT
 );
 
-CREATE TABLE IF NOT EXISTS scan_logical_seen(
-  scan_id TEXT NOT NULL,
-  folder_id TEXT NOT NULL,
-  logical_storage_id TEXT NOT NULL,
-  relative_path TEXT NOT NULL,
-  canonical_path TEXT,
-  file_identity TEXT,
-  size INTEGER CHECK(size IS NULL OR size >= 0),
-  mtime_ms INTEGER,
-  observation_sequence INTEGER NOT NULL,
-  source_kind TEXT NOT NULL CHECK(source_kind IN ('file', 'cue-track')),
-  entry_key TEXT,
-  cue_relative_path TEXT,
-  start_frame INTEGER,
-  end_frame INTEGER,
-  cue_signature TEXT,
-  metadata_json TEXT,
-  PRIMARY KEY(scan_id, folder_id, logical_storage_id),
-  FOREIGN KEY(scan_id, folder_id) REFERENCES scan_run_folders(scan_id, folder_id) ON DELETE RESTRICT,
-  CHECK (
-    (source_kind = 'file' AND entry_key IS NULL AND cue_relative_path IS NULL
-      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
-    OR
-    (source_kind = 'cue-track' AND entry_key IS NOT NULL AND cue_relative_path IS NOT NULL
-      AND start_frame >= 0 AND (end_frame IS NULL OR end_frame > start_frame)
-      AND cue_signature IS NOT NULL AND metadata_json IS NOT NULL)
-  )
-);
+CREATE TABLE IF NOT EXISTS scan_logical_seen(${SCAN_LOGICAL_SEEN_COLUMNS_SQL});
 
 CREATE TABLE IF NOT EXISTS scan_errors(
   error_key INTEGER PRIMARY KEY,
@@ -330,71 +418,28 @@ CREATE TABLE IF NOT EXISTS track_artwork_sources(
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS tracks(
-  track_key INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS track_loudness(
+  measurement_id INTEGER PRIMARY KEY AUTOINCREMENT,
   track_uid TEXT NOT NULL UNIQUE,
-  folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE RESTRICT,
-  relative_path TEXT NOT NULL,
-  source_kind TEXT NOT NULL DEFAULT 'file' CHECK(source_kind IN ('file', 'cue-track')),
-  entry_key TEXT,
-  cue_relative_path TEXT,
-  start_frame INTEGER,
-  end_frame INTEGER,
+  size INTEGER NOT NULL,
+  mtime_ms INTEGER NOT NULL,
   cue_signature TEXT,
-  file_identity TEXT,
-  file_name TEXT NOT NULL,
-  size INTEGER CHECK(size IS NULL OR size >= 0),
-  mtime_ms INTEGER,
-  title TEXT NOT NULL,
-  artist TEXT NOT NULL DEFAULT '',
-  album_artist TEXT NOT NULL DEFAULT '',
-  album TEXT NOT NULL DEFAULT '',
-  genre TEXT NOT NULL DEFAULT '',
-  year INTEGER,
-  compilation INTEGER NOT NULL DEFAULT 0 CHECK(compilation IN (0, 1)),
-  disc_no INTEGER,
-  disc_total INTEGER,
-  track_no INTEGER,
-  track_total INTEGER,
-  sort_title BLOB NOT NULL DEFAULT X'',
-  sort_album_artist BLOB NOT NULL DEFAULT X'',
-  sort_album BLOB NOT NULL DEFAULT X'',
-  sort_genre BLOB NOT NULL DEFAULT X'',
-  duration_sec REAL,
-  sample_rate INTEGER,
-  bitrate INTEGER,
-  bits_per_sample INTEGER,
-  channels INTEGER,
-  codec TEXT,
-  metadata_status TEXT NOT NULL DEFAULT 'ok'
-    CHECK(metadata_status IN ('ok', 'parsing', 'retryable-error', 'terminal-error')),
-  metadata_error_code TEXT,
-  metadata_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(metadata_attempt_count >= 0),
-  metadata_last_attempt_generation INTEGER,
-  metadata_parser_version TEXT NOT NULL,
-  metadata_last_success_at INTEGER,
-  artwork_id TEXT REFERENCES artwork_assets(id) ON DELETE RESTRICT,
-  extension_json TEXT,
-  added_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  search_text TEXT NOT NULL,
-  normalized_basename TEXT NOT NULL DEFAULT '',
-  normalized_title TEXT NOT NULL DEFAULT '',
-  normalized_artist TEXT NOT NULL DEFAULT '',
-  duration_bucket INTEGER,
-  album_key TEXT,
-  artist_key TEXT,
-  genre_key TEXT,
-  subfolder_key TEXT,
-  CHECK (
-    (source_kind = 'file' AND entry_key IS NULL AND cue_relative_path IS NULL
-      AND start_frame IS NULL AND end_frame IS NULL AND cue_signature IS NULL)
-    OR
-    (source_kind = 'cue-track' AND entry_key IS NOT NULL AND cue_relative_path IS NOT NULL
-      AND start_frame >= 0 AND (end_frame IS NULL OR end_frame > start_frame)
-      AND cue_signature IS NOT NULL)
-  )
+  analyzer_version INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('measured', 'unsupported', 'failed')),
+  integrated REAL,
+  true_peak REAL,
+  lra REAL,
+  histogram BLOB
 );
+
+CREATE TABLE IF NOT EXISTS album_loudness(
+  album_key TEXT PRIMARY KEY,
+  member_signature TEXT NOT NULL,
+  integrated REAL NOT NULL,
+  true_peak REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tracks(${TRACKS_COLUMNS_SQL});
 
 CREATE TABLE IF NOT EXISTS directories(
   folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE RESTRICT,
@@ -482,6 +527,8 @@ CREATE TABLE IF NOT EXISTS track_subfolders(
 );
 
 CREATE INDEX IF NOT EXISTS tracks_by_title ON tracks(sort_title, track_uid);
+CREATE INDEX IF NOT EXISTS tracks_by_album_key_title ON tracks(album_key, sort_title, track_uid);
+DROP INDEX IF EXISTS tracks_by_album_key;
 CREATE INDEX IF NOT EXISTS tracks_by_genre ON tracks(sort_genre, sort_album_artist, sort_album, track_uid);
 CREATE INDEX IF NOT EXISTS tracks_by_added ON tracks(added_at DESC, track_uid DESC);
 CREATE INDEX IF NOT EXISTS tracks_by_artist_order_v2
@@ -495,7 +542,7 @@ CREATE INDEX IF NOT EXISTS tracks_by_duration_order_v2
 CREATE UNIQUE INDEX IF NOT EXISTS tracks_plain_storage_unique_v3
   ON tracks(folder_id, relative_path) WHERE source_kind = 'file';
 CREATE UNIQUE INDEX IF NOT EXISTS tracks_cue_storage_unique_v3
-  ON tracks(folder_id, entry_key) WHERE source_kind = 'cue-track';
+  ON tracks(folder_id, entry_key) WHERE source_kind <> 'file';
 CREATE INDEX IF NOT EXISTS tracks_by_folder_relative_path
   ON tracks(folder_id, relative_path);
 CREATE INDEX IF NOT EXISTS tracks_root_direct_by_folder
@@ -735,6 +782,33 @@ CREATE INDEX IF NOT EXISTS deletion_repair_items_by_track
 `;
 
 export const MUSIC_LIBRARY_V3_SESSION_SCHEMA_SQL = `
+CREATE TEMP TABLE IF NOT EXISTS session_builds(
+  profile_key TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL
+);
+CREATE TEMP TABLE IF NOT EXISTS session_build_items(
+  profile_key TEXT NOT NULL REFERENCES session_builds(profile_key) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  original_ordinal INTEGER,
+  track_uid TEXT,
+  file_json TEXT,
+  PRIMARY KEY(profile_key, ordinal)
+) WITHOUT ROWID;
+
+CREATE TEMP TABLE IF NOT EXISTS session_restore_items(
+  profile_key TEXT NOT NULL,
+  ordinal INTEGER NOT NULL,
+  saved_ordinal INTEGER NOT NULL,
+  original_ordinal INTEGER,
+  library_ordinal INTEGER,
+  track_uid TEXT,
+  entry_id TEXT NOT NULL,
+  file_json TEXT,
+  PRIMARY KEY(profile_key, ordinal)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS session_restore_files
+  ON session_restore_items(profile_key, ordinal) WHERE file_json IS NOT NULL;
+
 CREATE TEMP TABLE IF NOT EXISTS playback_sequences(
   id TEXT PRIMARY KEY,
   source_context TEXT NOT NULL,
@@ -907,6 +981,38 @@ BEGIN
     AND snapshot_overflow = 0 AND shadow_count < 10000;
 END;
 `;
+
+// SQLite cannot alter a table CHECK constraint. Keep dependent rows and their rowids intact.
+export function upgradeArchiveEntryTables(database) {
+  const outdated = ['tracks', 'scan_logical_seen'].filter(table => {
+    const row = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    return row && !row.sql.includes("'archive-entry'");
+  });
+  if (!outdated.length) return;
+  const foreignKeys = database.prepare('PRAGMA foreign_keys').get().foreign_keys;
+  database.exec('PRAGMA foreign_keys = OFF');
+  try {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const table of outdated) {
+        const body = table === 'tracks' ? TRACKS_COLUMNS_SQL : SCAN_LOGICAL_SEEN_COLUMNS_SQL;
+        const columns = database.prepare('PRAGMA table_info(' + table + ')').all()
+          .map(row => '"' + row.name.replaceAll('"', '""') + '"').join(',');
+        database.exec('CREATE TABLE ' + table + '_new(' + body + ')');
+        database.exec('INSERT INTO ' + table + '_new(rowid,' + columns + ') SELECT rowid,' + columns + ' FROM ' + table);
+        database.exec('DROP TABLE ' + table);
+        database.exec('ALTER TABLE ' + table + '_new RENAME TO ' + table);
+      }
+      if (database.prepare('PRAGMA foreign_key_check').get()) throw new Error('Catalog foreign key check failed');
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  } finally {
+    database.exec('PRAGMA foreign_keys = ' + (foreignKeys ? 'ON' : 'OFF'));
+  }
+}
 
 export function getMusicLibraryV3InitializationSql({ includePragmas = true, journalMode = 'wal' } = {}) {
   const pragmas = journalMode === 'persist'

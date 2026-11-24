@@ -107,6 +107,29 @@ test('SFZ stream pump acknowledges onset pages and retires failed source generat
   assert.equal(manager._pendingDspControlRequests.size, 0);
 });
 
+test('SFZ stream rejected after a replay supersedes it stops without failing the instrument', async t => {
+  const h = harness(), { manager } = h, messages = [];
+  let closed = 0, rejected = 0;
+  t.after(() => { manager._stopSfzSampleStream(h.primary, 7); manager._cancelPendingDspControlRequests(); });
+  manager._wasmAssetExpectedReplayEpochsByNode = new Map([[h.primary, new Map([['7:0', 1]])]]);
+  h.plugins[0].onWasmAssetRejected = () => { rejected++; };
+  h.plugins[0].getWasmAssetRevisionDescriptor = () => ({ sampleProviderFactory: async ({ generation, publish, onProvider }) => {
+    onProvider({ close() { closed++; } });
+    if (!await publish({ generation, pcm: new Float32Array(1) })) throw new Error('Publication rejected');
+  } });
+  h.primary.port.postMessage = data => {
+    messages.push(data);
+    if (data.type !== 'sfzPublishPage') return;
+    // Re-preparation posts the next replay before the engine retires this stream.
+    manager._wasmAssetExpectedReplayEpochsByNode.get(h.primary).set('7:0', 2);
+    manager._handleSfzRuntimeMessage(h.primary, { type: 'sfzStreamPagesPublished', requestId: data.requestId, ok: false });
+  };
+  await manager._startSfzSampleStream(h.primary, { pluginId: 7, operationRevision: 3, replayEpoch: 1, generation: 8 });
+  assert.equal(rejected, 0); assert.equal(closed, 1);
+  assert.equal(messages.some(data => data.type === 'sfzStreamFailed'), false);
+  assert.equal(manager._sfzSampleStreams.has(h.primary), false);
+});
+
 test('SFZ stream cancellation closes a preparing worker and ignores its delayed publication acknowledgment', async t => {
   const h = harness(), { manager } = h;
   let publication, closed = 0, failed = 0;

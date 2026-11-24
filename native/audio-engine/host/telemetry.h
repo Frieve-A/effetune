@@ -15,12 +15,13 @@ struct TelemetryPacket {
 };
 class Telemetry {
 public:
-  void read(Engine &engine, std::uint64_t endFrame, std::uint64_t revision,
-            VisualizerStage stage) noexcept;
+  void read(Engine &engine, std::uint64_t endFrame, std::uint64_t revision, VisualizerStage stage,
+            bool independent = false) noexcept;
   const TelemetryPacket *front() const noexcept;
   void pop() noexcept;
   std::uint64_t dropped() const noexcept { return dropped_.load(std::memory_order_relaxed); }
   bool enabled = true;
+  bool midiMetering = false;
 
 private:
   std::array<TelemetryPacket, 3> packets_;

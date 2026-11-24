@@ -8,6 +8,7 @@ import {
 import { findParamsSchema, readParamsSchema, readPluginManifest } from '../../tools/dsp-parity/cases.mjs';
 import { compareAudio, formatComparison } from '../../tools/dsp-parity/tolerance.mjs';
 import { withNativeWorkletParity } from '../helpers/native-audio-engine-parity.mjs';
+import { buildIrAssetPayload, IR_ASSET_TOPOLOGY } from '../../js/ir-library/ir-asset-payload.js';
 
 const frames = 1024;
 let catalog;
@@ -52,8 +53,34 @@ async function pipelineTolerance(plugins) {
 function assertParity({ expected, actual }, tolerance, channels) {
   assert.ok(expected.every(Number.isFinite), 'the reference worklet must emit finite samples');
   assert.ok(actual.every(Number.isFinite), 'the native engine must emit finite samples');
-  const comparison = compareAudio(expected, actual, tolerance, { channels, frames });
+  const comparison = compareAudio(expected, actual, tolerance, { channels, frames: actual.length / channels });
   assert.ok(comparison.pass, formatComparison(comparison));
+}
+
+function firReplacementCases() {
+  const mono = { channels: 2, filters: 1, taps: 257, tap: 64, topology: IR_ASSET_TOPOLOGY.mono };
+  const cases = ['FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin', 'GroupDelayPEQPlugin', 'HeadphoneEQPlugin', 'RoomEqPlugin']
+    .map(type => ({ ...mono, type }));
+  cases.push({ type: 'CrosstalkCancellationPlugin', channels: 2, filters: 4, taps: 65, tap: 8,
+    topology: IR_ASSET_TOPOLOGY.trueStereo, parameters: { st: 100 } });
+  cases.push({ type: 'FIRCrossoverPlugin', channels: 4, filters: 2, taps: 257, tap: 64,
+    topology: IR_ASSET_TOPOLOGY.matrix, inputs: 2, paths: [[0,0,0], [1,1,0], [0,2,1], [1,3,1]] });
+  cases.push({ type: 'BassManagementPlugin', channels: 4, filters: 1, taps: 8192, tap: 4096,
+    topology: IR_ASSET_TOPOLOGY.matrix, inputs: 4, paths: [[0,0,0]],
+    parameters: { ph: 'Linear', tp: '8192', ro: [1,0,3], su: 4, rt: [4] } });
+  return cases;
+}
+
+function firImpulse(config, gain) {
+  const channels = Array.from({ length: config.filters }, (_, channel) => {
+    const filter = new Float32Array(config.taps);
+    filter[config.tap] = gain / (channel + 1);
+    return filter;
+  });
+  const paths = config.paths?.map(([inputSlot, outputSlot, irChannel]) => ({ inputSlot, outputSlot, irChannel }));
+  return { formatTag: 1, headBlock: 128, rateDivider: 1, footprintBytes: 16 * 1024 * 1024,
+    pathCount: paths?.length ?? 0, inputCount: config.inputs ?? 0, processingChannels: config.channels,
+    payload: buildIrAssetPayload({ sampleRate: 48000, topology: config.topology, channels, paths }) };
 }
 
 for (const name of Object.values(executableNames(process.platform, process.arch)).filter(Boolean)) {
@@ -79,6 +106,24 @@ for (const name of Object.values(executableNames(process.platform, process.arch)
         await harness.update({ ...volume, parameters: { vl: -15.5 } });
         assertParity(await harness.render(inputFor(channels, frames)), tolerance, channels);
       });
+    });
+
+    await context.test('FIR banks fade to dry and exchange on the same quantum as the worklet', async group => {
+      for (const config of firReplacementCases()) {
+        await group.test(config.type, async () => {
+          const plugins = [{ id: 1, type: config.type, parameters: { fd: config.tap, lt: '128', ...config.parameters } }];
+          const tolerance = await pipelineTolerance(plugins);
+          const signal = count => Float32Array.from({ length: count * config.channels }, (_, i) => 0.2 * Math.sin(i * 0.048));
+          await withNativeWorkletParity(executable, { plugins, channels: config.channels }, async harness => {
+            await harness.stageAsset(1, 1, firImpulse(config, 0.7));
+            // Separate callbacks give the host control loop time to reserve the new filter delay.
+            for (let i = 0; i < 4; ++i) await harness.render(signal(8192));
+            assertParity(await harness.render(signal(1024)), tolerance, config.channels);
+            await harness.stageAsset(1, 2, firImpulse(config, 0.1));
+            assertParity(await harness.render(signal(16384)), tolerance, config.channels);
+          });
+        });
+      }
     });
 
     await context.test('buses, multichannel selection, disabled stages and section gates', async () => {

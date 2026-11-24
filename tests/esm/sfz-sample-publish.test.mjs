@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfzSamplePageProvider } from '../../js/sfz/sample-page-provider.js';
 
-function fixture(generation = 1, readError = -1) {
+function fixture(generation = 1, readError = -1, publishWindow) {
   const acks = [], reads = [], tasks = []; let active = 0, maximum = 0, closes = 0;
-  const provider = new SfzSamplePageProvider({ assetId: 'a'.repeat(24), generation, createReader() {},
+  const provider = new SfzSamplePageProvider({ assetId: 'a'.repeat(24), generation, publishWindow, createReader() {},
     worker: { async readPage(sample, pageIndex) {
       reads.push([sample, pageIndex]);
       if (sample === readError) throw Object.assign(new Error('authored read failure'), { code: 'sample-read' });
@@ -44,6 +44,14 @@ test('page ACKs overlap within four slots, retain same-key dedupe and accept out
   }
   await Promise.all([task, tail]); assert.equal(h.maximum, 4); assert.equal(h.provider.pending.size, 0);
   assert.deepEqual(h.acks.map(ack => ack.page.sample), [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('a host publish window widens the acknowledgement overlap', async t => {
+  const h = fixture(1, -1, 6); t.after(() => h.close());
+  const task = h.request(); await until(() => h.acks.length === 6);
+  assert.equal(h.maximum, 6);
+  for (let index = 0; index < 8; index++) { await until(() => h.acks.length > index); h.acks[index].resolve(); }
+  await task; assert.equal(h.maximum, 6);
 });
 
 test('a false ACK rejects the batch once and closing prevents later acknowledgements from publishing more pages', async t => {

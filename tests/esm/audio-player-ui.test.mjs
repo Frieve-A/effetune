@@ -1280,6 +1280,8 @@ test('local volume controls reflect incoming changes and can release mute', asyn
       audioPlayer: player, playerVolume: 100, playerMute: false, playerVolumeNodes: new Set([gain]),
       playerVolumeTracks: new WeakMap(),
       applyPlayerGains: AudioContextManager.prototype.applyPlayerGains,
+      scheduleRegionGain: AudioContextManager.prototype.scheduleRegionGain,
+      cancelRegionGain: AudioContextManager.prototype.cancelRegionGain,
       getPlayerGain: AudioContextManager.prototype.getPlayerGain,
       setPlayerVolume: AudioContextManager.prototype.setPlayerVolume,
       setPlayerMute: AudioContextManager.prototype.setPlayerMute,

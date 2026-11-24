@@ -54,6 +54,14 @@ test('ReplayGain preferences normalize to defaults, range, and 0.5 dB steps', ()
   assert.equal(normalize({ replayGainPreampDb: 40 }).replayGainPreampDb, 15);
   assert.equal(normalize({ replayGainPreampDb: -40 }).replayGainPreampDb, -15);
   assert.ok(Object.is(normalize({ replayGainPreampDb: -0.1 }).replayGainPreampDb, 0));
+  const settings = { replayGainTarget: 'auto', replayGainAutoCoverage: 92.6, replayGainPeakCeilingDb: -1.2 };
+  assert.equal(isPlayerPreferenceOnlyChange({}, settings), true);
+  const normalized = normalizeWebAudioPreferences(settings);
+  assert.equal(normalized.replayGainTarget, 'auto');
+  assert.equal(normalized.replayGainAutoCoverage, 93);
+  assert.equal(normalized.replayGainPeakCeilingDb, -1);
+  assert.equal(normalizeWebAudioPreferences({ replayGainPeakCeilingDb: 4 }).replayGainPeakCeilingDb, 0);
+  assert.equal(normalizeWebAudioPreferences({ replayGainAutoCoverage: -3 }).replayGainAutoCoverage, 1);
 });
 
 test('player-only comparison ignores device labels while the device IDs are unchanged', () => {
@@ -305,6 +313,9 @@ test('AudioManager persists then mirrors then enqueues one player operation', as
   assert.deepEqual(events[0].slice(1), [{
     gaplessPlayback: false,
     replayGainMode: 'off',
+    replayGainTarget: 'manual',
+    replayGainAutoCoverage: 95,
+    replayGainPeakCeilingDb: 0,
     replayGainPreampDb: 0,
     replayGainPreventClipping: true
   }, 'player-preferences']);
@@ -383,12 +394,24 @@ test('AudioManager applies a ReplayGain-only change without touching Gapless Pla
     ['persist', {
       gaplessPlayback: true,
       replayGainMode: 'album',
+      replayGainTarget: 'manual',
+      replayGainAutoCoverage: 95,
+      replayGainPeakCeilingDb: 0,
       replayGainPreampDb: -2.5,
       replayGainPreventClipping: true
     }, 'player-preferences'],
     ['mirror'],
-    ['replay-gain', { mode: 'album', preampDb: -2.5, preventClipping: true }]
+    ['replay-gain', { mode: 'album', preampDb: -2.5, preventClipping: true,
+      target: 'manual', autoCoverage: 95, peakCeilingDb: 0 }]
   ]);
+  await withGlobals({ window }, async () => {
+    for (const change of [{ replayGainTarget: 'auto' }, { replayGainAutoCoverage: 70 }, { replayGainPeakCeilingDb: -2 }]) {
+      events.length = 0;
+      assert.equal(await AudioManager.prototype.applyPlayerPreferences.call(manager,
+        { ...window.audioPreferences, ...change }), '');
+      assert.deepEqual(events.map(event => event[0]), ['persist', 'mirror', 'replay-gain']);
+    }
+  });
 });
 
 test('Web AudioManager compares against the mirror and stores only the player fields', async () => {

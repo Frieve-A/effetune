@@ -1,3 +1,8 @@
+import { getArchiveEntryPath } from '../archive/score-entries.js';
+import { createLoudnessCatalog } from './loudness-catalog.js';
+import { accessPlaybackSession } from './playback-session.js';
+import { normalizeMtimeMs } from '../scan/file-signature.js';
+
 const PROTOCOL_VERSION = 1;
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -174,6 +179,13 @@ let Buffer,
   trackOrderColumn,
   updateDirectoryMembership,
   withContextDatabase;
+
+export const loudnessCatalog = createLoudnessCatalog(catalogState, callback => runDurableTransaction(callback),
+  callback => commitMutation(['tracks'], 'loudness-tag-signatures', callback));
+
+export function playbackSession(request) {
+  return accessPlaybackSession(catalogState, runDurableTransaction, request);
+}
 
 export function bindCatalogPlatform(platform) {
   ({
@@ -886,25 +898,17 @@ function readContextPageAtOrdinal(payload) {
     return withContextDatabase(context, () => readEntityContextPageAtOrdinal(context, payload.ordinal, limit));
   }
   const pagePlan = createOrdinalPagePlan(totalCount, payload.ordinal, limit);
-  if (context.scope?.playlistId) {
-    const page = withContextDatabase(context, () => executePlaylistContextPage(context, {
-      continuation: pagePlan.continuation,
-      cursorTuple: null,
-      limit: pagePlan.limit,
-      offset: pagePlan.offset,
-      pageStartOrdinal: pagePlan.startOrdinal
-    }));
-    return { ...page, pageStartOrdinal: pagePlan.startOrdinal };
-  }
-  const order = createOrder(context.sort, context.direction);
-  const page = withContextDatabase(context, () => executeContextPage(context, order, {
+  const options = {
     continuation: pagePlan.continuation,
     cursorTuple: null,
     limit: pagePlan.limit,
     offset: pagePlan.offset,
-    pageStartOrdinal: pagePlan.startOrdinal
-  }));
-  return { ...page, pageStartOrdinal: pagePlan.startOrdinal };
+    pageStartOrdinal: pagePlan.startOrdinal,
+    ordinal: payload.ordinal
+  };
+  return withContextDatabase(context, () => context.scope?.playlistId
+    ? executePlaylistContextPage(context, options)
+    : executeContextPage(context, createOrder(context.sort, context.direction), options));
 }
 
 function createOrdinalPagePlan(totalCount, ordinal, limit) {
@@ -1511,6 +1515,13 @@ function createKeysetSql(order, tuple, continuation) {
   return { sql: `(${branches.join(' OR ')})`, bindings };
 }
 
+function projectArchiveEntryOffset(row) {
+  if (row.sourceKind !== 'archive-entry') return;
+  const entryPath = getArchiveEntryPath(row.relativePath, row.entryKey);
+  if (entryPath) row.archiveEntryOffset = row.entryKey.length - entryPath.length;
+  delete row.cueRelativePath;
+}
+
 function stripOrderFields(row) {
   const clean = { ...row };
   delete clean.entityKind;
@@ -1518,6 +1529,38 @@ function stripOrderFields(row) {
     'sortTitle', 'pathSort', 'sortAlbumArtist', 'sortAlbum', 'sortGenre', 'discSort', 'trackSort', 'durationSort'
   ]) delete clean[field];
   return clean;
+}
+
+function finishTrackPage(context, order, rows, counts, {
+  hasBefore, hasAfter, reverse, limit, pageStartOrdinal, ordinal
+}) {
+  const items = rows.map(stripOrderFields);
+  const sizes = items.map(item => measureBytes(item, 'unserializableResponse') + 1);
+  // Leave room for the outer ordinal or anchor response and transport envelope.
+  let bytes = sizes.reduce((sum, size) => sum + size, 4096);
+  let first = 0;
+  let end = rows.length;
+  const anchor = ordinal === null ? (reverse ? end - 1 : first) : ordinal - pageStartOrdinal;
+  for (;;) {
+    if (bytes <= MAX_RESPONSE_BYTES) {
+      const previousCursor = (first > 0 || hasBefore)
+        ? encodeBoundaryCursor(context, order, rows[first], 'before') : null;
+      const nextCursor = (end < rows.length || hasAfter)
+        ? encodeBoundaryCursor(context, order, rows[end - 1], 'after') : null;
+      if (bytes + (previousCursor?.length ?? 0) + (nextCursor?.length ?? 0) <= MAX_RESPONSE_BYTES) {
+        const response = {
+          rows: items.slice(first, end), nextCursor, previousCursor, ...counts,
+          catalogVersion: context.snapshotVersion, contextToken: context.token
+        };
+        catalogState.modules.queryContract.validatePageResponse(response, { limit });
+        return ordinal === null ? response : { ...response, pageStartOrdinal: pageStartOrdinal + first };
+      }
+    }
+    if (end - first <= 1) throw createCatalogError('responseTooLarge', 'Catalog item exceeds the response limit');
+    // Trim from the far boundary, retaining the requested ordinal or cursor-adjacent row.
+    if (first < anchor && (reverse || end - 1 === anchor)) bytes -= sizes[first++];
+    else bytes -= sizes[--end];
+  }
 }
 
 function encodeBoundaryCursor(context, order, row, continuation) {
@@ -3477,11 +3520,12 @@ function resolveCuePlaylistTrack(unresolved) {
       SELECT t.track_uid AS trackUid
       FROM tracks t
       JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
-      WHERE t.folder_id = ? AND t.source_kind = 'cue-track' AND t.entry_key = ?
+      WHERE t.folder_id = ? AND t.source_kind = ? AND t.entry_key = ?
       ORDER BY t.track_uid LIMIT 2
-    `).all(folderId, entryKey);
+    `).all(folderId, unresolved.sourceKind ?? 'cue-track', entryKey);
     if (exact.length === 1) return exact[0].trackUid;
   }
+  if (unresolved.sourceKind === 'archive-entry') return null;
 
   const normalize = catalogState.modules.searchNormalizer.normalizeSearchText;
   const normalizedTitle = normalize(unresolved.title ?? '');
@@ -3642,6 +3686,23 @@ function publishPlaylist(payload) {
   });
 }
 
+// Project only rows that fit one catalog response; keep headroom for transport and continuation fields.
+function boundedCatalogItems(rows, limit, project, headerBytes = 0) {
+  const items = [];
+  let bytes = 1024 + headerBytes;
+  for (const row of rows) {
+    if (items.length === limit) break;
+    const item = project(row);
+    bytes += measureBytes(item, 'unserializableResponse') + 1;
+    if (bytes > MAX_RESPONSE_BYTES) {
+      if (!items.length) throw createCatalogError('responseTooLarge', 'Catalog item exceeds the response limit');
+      break;
+    }
+    items.push(item);
+  }
+  return items;
+}
+
 function queryPlaylistItems(payload) {
   assertAllowedFields(payload, ['playlistId', 'afterPosition', 'limit'], 'invalidPlaylistRequest');
   const playlistId = requireString(payload.playlistId, 'playlistId', 512);
@@ -3669,7 +3730,7 @@ function queryPlaylistItems(payload) {
     ORDER BY i.position
     LIMIT ?
   `).all(playlistId, afterPosition, limit);
-  const items = rows.map(row => {
+  const items = boundedCatalogItems(rows, limit, row => {
     const sourceRemoved = row.trackUid !== null && row.folderStatus === 'removed';
     return {
       itemKey: Number(row.itemKey),
@@ -3679,11 +3740,11 @@ function queryPlaylistItems(payload) {
         ? createSourceRemovedPlaylistItem(row)
         : row.unresolvedJson === null ? null : parseStoredJson(row.unresolvedJson)
     };
-  });
+  }, measureBytes(playlist, 'unserializableResponse'));
   return {
     playlist,
     items,
-    nextPosition: items.length === limit ? items.at(-1).position : null
+    nextPosition: rows.length === limit || items.length < rows.length ? items.at(-1).position : null
   };
 }
 
@@ -4331,7 +4392,7 @@ function getArtworkTrack(trackUid) {
     SELECT t.track_uid AS trackUid, t.folder_id AS folderId,
       t.relative_path AS relativePath, t.file_identity AS fileIdentity,
       t.size, t.mtime_ms AS mtimeMs, t.artwork_id AS artworkId,
-      t.source_kind AS sourceKind, t.cue_relative_path AS cueRelativePath,
+      t.entry_key AS entryKey, t.file_name AS fileName, t.source_kind AS sourceKind, t.cue_relative_path AS cueRelativePath,
       f.lifecycle_version AS lifecycleVersion
     FROM tracks t
     JOIN folders f ON f.id = t.folder_id AND f.status <> 'removed'
@@ -4351,7 +4412,8 @@ function artworkPreclaimMatchesCurrentTrack(claim) {
     return claim.externalArtworkStat === null && claim.canonicalSourceIdentity === track.relativePath;
   }
   return claim.sourceKind === 'external-file' && claim.externalArtworkStat !== null &&
-    isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity);
+    isTrackCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity,
+          track.sourceKind === 'archive-entry' ? track.fileName : null);
 }
 
 function normalizeArtworkFileStat(value) {
@@ -4576,7 +4638,7 @@ function commitScanSeenBatch(payload) {
         optionalNullableString(observation.path, 32768),
         optionalString(observation.fileIdentity, '', 2048),
         requireNonNegativeInteger(observation.size, 'size'),
-        requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
+        requireNonNegativeInteger(normalizeMtimeMs(observation.mtimeMs), 'mtimeMs'),
         batchBase + index
       );
       const logicalCandidates = Array.isArray(observation.logicalCandidates)
@@ -4769,7 +4831,7 @@ function updateCueDirectoryStageObservations({ identity, directoryPath, payload 
         optionalNullableString(observation.path, 32768),
         optionalString(observation.fileIdentity, '', 2048),
         requireNonNegativeInteger(observation.size, 'size'),
-        requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
+        requireNonNegativeInteger(normalizeMtimeMs(observation.mtimeMs), 'mtimeMs'),
         identity.scanId, identity.folderId, directoryPath, relativePath
       );
       if (Number(result.changes) !== 1) throw createCatalogError('staleScanGeneration', 'CUE staging entry disappeared');
@@ -5101,51 +5163,47 @@ function listMetadataCandidates(payload) {
     FROM scan_logical_seen s
     LEFT JOIN tracks t ON t.folder_id = s.folder_id AND (
       (s.source_kind = 'file' AND t.source_kind = 'file' AND t.relative_path = s.relative_path)
-      OR (s.source_kind = 'cue-track' AND t.source_kind = 'cue-track' AND t.entry_key = s.entry_key)
+      OR (s.source_kind <> 'file' AND t.source_kind = s.source_kind AND t.entry_key = s.entry_key)
     )
     WHERE s.scan_id = ? AND s.folder_id = ? AND s.observation_sequence > ?
     ORDER BY s.observation_sequence LIMIT ?
   `).all(identity.scanId, identity.folderId, cursor, limit + 1);
-  const hasMore = rows.length > limit;
-  if (hasMore) rows.pop();
-  return {
-    items: rows.map(row => ({
-      folderId: identity.folderId,
-      lifecycleVersion: identity.lifecycleVersion,
-      generation: identity.generation,
-      trackUid: row.trackUid ?? null,
-      logicalStorageId: row.logicalStorageId,
-      relativePath: row.relativePath,
-      path: row.path,
-      parserVersion: payload.parserVersion ?? 'catalog-metadata-v5',
-      storedParserVersion: row.sourceKind === 'cue-track' && row.storedCueSignature !== row.cueSignature
-        ? null
-        : row.metadataParserVersion ?? null,
-      storedSignature: row.trackUid && row.storedRelativePath === row.relativePath ? {
-        fileIdentity: row.storedFileIdentity ?? '',
-        size: Number(row.storedSize ?? 0),
-        mtimeMs: Number(row.storedMtimeMs ?? 0)
-      } : null,
-      observedSignature: {
-        fileIdentity: row.observedFileIdentity ?? '',
-        size: Number(row.observedSize),
-        mtimeMs: Number(row.observedMtimeMs)
-      },
-      sourceKind: row.sourceKind,
-      entryKey: row.entryKey ?? null,
-      cueRelativePath: row.cueRelativePath ?? null,
-      startFrame: row.startFrame == null ? null : Number(row.startFrame),
-      endFrame: row.endFrame == null ? null : Number(row.endFrame),
-      cueSignature: row.cueSignature ?? null,
-      storedCueSignature: row.storedCueSignature ?? null,
-      metadata: row.metadataJson == null ? null : JSON.parse(row.metadataJson),
-      metadataStatus: row.metadataStatus ?? 'retryable-error',
-      attemptsForSignature: Number(row.metadataAttemptCount ?? 0),
-      attemptedGeneration: row.metadataLastAttemptGeneration == null ? null : Number(row.metadataLastAttemptGeneration)
-    })),
-    nextCursor: hasMore ? Number(rows.at(-1).observationSequence) : null,
-    resumeCursor: rows.length ? Number(rows.at(-1).observationSequence) : cursor
-  };
+  const items = boundedCatalogItems(rows, limit, row => ({
+    folderId: identity.folderId,
+    lifecycleVersion: identity.lifecycleVersion,
+    generation: identity.generation,
+    trackUid: row.trackUid ?? null,
+    logicalStorageId: row.logicalStorageId,
+    relativePath: row.relativePath,
+    path: row.path,
+    parserVersion: payload.parserVersion ?? 'catalog-metadata-v5',
+    storedParserVersion: row.sourceKind === 'cue-track' && row.storedCueSignature !== row.cueSignature
+      ? null
+      : row.metadataParserVersion ?? null,
+    storedSignature: row.trackUid && row.storedRelativePath === row.relativePath ? {
+      fileIdentity: row.storedFileIdentity ?? '',
+      size: Number(row.storedSize ?? 0),
+      mtimeMs: Number(row.storedMtimeMs ?? 0)
+    } : null,
+    observedSignature: {
+      fileIdentity: row.observedFileIdentity ?? '',
+      size: Number(row.observedSize),
+      mtimeMs: Number(row.observedMtimeMs)
+    },
+    sourceKind: row.sourceKind,
+    entryKey: row.entryKey ?? null,
+    cueRelativePath: row.cueRelativePath ?? null,
+    startFrame: row.startFrame == null ? null : Number(row.startFrame),
+    endFrame: row.endFrame == null ? null : Number(row.endFrame),
+    cueSignature: row.cueSignature ?? null,
+    storedCueSignature: row.storedCueSignature ?? null,
+    metadata: row.metadataJson == null ? null : JSON.parse(row.metadataJson),
+    metadataStatus: row.metadataStatus ?? 'retryable-error',
+    attemptsForSignature: Number(row.metadataAttemptCount ?? 0),
+    attemptedGeneration: row.metadataLastAttemptGeneration == null ? null : Number(row.metadataLastAttemptGeneration)
+  }));
+  const resumeCursor = items.length ? Number(rows[items.length - 1].observationSequence) : cursor;
+  return { items, nextCursor: rows.length > items.length ? resumeCursor : null, resumeCursor };
 }
 
 function advanceScanMetadataCursor(payload) {
@@ -5233,7 +5291,7 @@ function enqueueScanSweep(payload) {
   const row = catalogState.database.prepare(`
     SELECT count(*) AS count FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
       SELECT 1 FROM scan_logical_seen s WHERE s.scan_id = ? AND s.folder_id = ?
-        AND s.logical_storage_id = CASE WHEN t.source_kind = 'cue-track' THEN t.entry_key ELSE 'file:' || t.relative_path END
+        AND s.logical_storage_id = CASE WHEN t.source_kind = 'file' THEN 'file:' || t.relative_path ELSE t.entry_key END
     )
   `).get(identity.folderId, identity.scanId, identity.folderId);
   return { enqueued: Number(row.count) };
@@ -5253,7 +5311,7 @@ function runScanSweep(payload) {
         t.start_frame AS startFrame, t.end_frame AS endFrame
       FROM tracks t WHERE t.folder_id = ? AND NOT EXISTS(
         SELECT 1 FROM scan_logical_seen s WHERE s.scan_id = ? AND s.folder_id = ?
-          AND s.logical_storage_id = CASE WHEN t.source_kind = 'cue-track' THEN t.entry_key ELSE 'file:' || t.relative_path END
+          AND s.logical_storage_id = CASE WHEN t.source_kind = 'file' THEN 'file:' || t.relative_path ELSE t.entry_key END
       ) ORDER BY t.track_key LIMIT ?
   `).all(identity.folderId, identity.scanId, identity.folderId, FOLDER_DELETION_TRACKS_PER_CHUNK);
   if (rows.length === 0) return { deleted: 0, hasMore: false };
@@ -5353,7 +5411,7 @@ function createSourceRemovedPlaylistItem(track) {
     startFrame: track.startFrame == null ? null : Number(track.startFrame),
     endFrame: track.endFrame == null ? null : Number(track.endFrame)
   };
-  if (unresolved.sourceKind === 'cue-track') {
+  if (unresolved.sourceKind !== 'file') {
     unresolved.cueProvenance = {
       folderId: track.folderId,
       entryKey: unresolved.entryKey,
@@ -5476,7 +5534,7 @@ function claimMetadataParse(payload) {
       artwork_id AS artworkId, cue_signature AS cueSignature
     FROM tracks WHERE folder_id = ? AND (
       (? = 'file' AND source_kind = 'file' AND relative_path = ?)
-      OR (? = 'cue-track' AND source_kind = 'cue-track' AND entry_key = ?)
+      OR (source_kind <> 'file' AND source_kind = ? AND entry_key = ?)
     )
   `).get(folderId, source.sourceKind, relativePath, source.sourceKind, source.entryKey);
   const sameInput = existing && signaturesEqual(signature, {
@@ -5484,7 +5542,7 @@ function claimMetadataParse(payload) {
     size: Number(existing.size ?? 0),
     mtimeMs: Number(existing.mtimeMs ?? 0)
   }) && existing.relativePath === relativePath && existing.metadataParserVersion === parserVersion &&
-    (source.sourceKind === 'file' || existing.cueSignature === source.cueSignature);
+    (source.sourceKind !== 'cue-track' || existing.cueSignature === source.cueSignature);
   if (sameInput && (
     existing.metadataStatus === 'ok' || existing.metadataStatus === 'terminal-error' ||
     existing.metadataStatus === 'parsing' || Number(existing.metadataLastAttemptGeneration) === generation ||
@@ -5507,7 +5565,7 @@ function claimMetadataParse(payload) {
   const changedScopes = artworkSourceChanged
     ? ['artwork', 'tracks', 'albums', 'artists', 'genres', 'subfolders']
     : ['tracks'];
-  const fileName = path.posix.basename(relativePath);
+  const fileName = path.posix.basename(getArchiveEntryPath(relativePath, source.entryKey) ?? relativePath);
   return commitMutation(changedScopes, 'metadata-claim', () => {
     const now = Date.now();
     if (existing) {
@@ -5535,7 +5593,7 @@ function claimMetadataParse(payload) {
         recomputeArtworkAggregateRowsForTrack(trackUid);
       }
     } else {
-      const title = path.posix.basename(relativePath, path.posix.extname(relativePath));
+      const title = path.posix.basename(fileName, path.posix.extname(fileName));
       const normalize = catalogState.modules.searchNormalizer.normalizeSearchText;
       const searchText = catalogState.modules.searchNormalizer.createCompactSearchText([
         normalize(title), normalize(fileName), normalize(relativePath)
@@ -5910,7 +5968,7 @@ function requeueLatestMetadata(payload) {
       cue_signature AS cueSignature, metadata_parser_version AS parserVersion,
       metadata_last_attempt_generation AS attemptedGeneration, metadata_status AS metadataStatus
     FROM tracks WHERE folder_id = ? AND
-      CASE WHEN source_kind = 'cue-track' THEN entry_key ELSE 'file:' || relative_path END = ?
+      CASE WHEN source_kind = 'file' THEN 'file:' || relative_path ELSE entry_key END = ?
   `).get(folderId, logicalStorageId);
   if (!track || track.trackUid !== staleClaim.trackUid || track.metadataStatus !== 'parsing' ||
       track.parserVersion !== staleClaim.parserVersion ||
@@ -6142,12 +6200,13 @@ function listPlaylistResolutionCandidates(folderId, lifecycleVersion, cursorKey,
           AND f.lifecycle_version = ?
         WHERE t.folder_id = ?
           AND t.source_kind = CASE
+            WHEN json_extract(i.unresolved_json, '$.sourceKind') = 'archive-entry' THEN 'archive-entry'
             WHEN json_extract(i.unresolved_json, '$.sourceKind') = 'cue-track'
               OR json_type(i.unresolved_json, '$.cueProvenance') IS NOT NULL
             THEN 'cue-track' ELSE 'file'
           END
           AND (
-            (t.source_kind = 'cue-track'
+            (t.source_kind <> 'file'
               AND t.folder_id = json_extract(i.unresolved_json, '$.cueProvenance.folderId')
               AND t.entry_key = json_extract(i.unresolved_json, '$.cueProvenance.entryKey'))
             OR (i.unresolved_basename <> '' AND t.normalized_basename = i.unresolved_basename)
@@ -6416,7 +6475,7 @@ function normalizeScanSignature(value) {
   return {
     fileIdentity: optionalString(value.fileIdentity, '', 2048),
     size: requireNonNegativeInteger(value.size, 'signature.size'),
-    mtimeMs: requireNonNegativeInteger(Math.round(value.mtimeMs), 'signature.mtimeMs')
+    mtimeMs: requireNonNegativeInteger(normalizeMtimeMs(value.mtimeMs), 'signature.mtimeMs')
   };
 }
 
@@ -6442,26 +6501,10 @@ function normalizeScanLogicalCandidate(value, observation, observedRelativePath)
   if (relativePath !== observedRelativePath) {
     throw createCatalogError('invalidScanRequest', 'Logical scan candidate source does not match its observation');
   }
-  const sourceKind = value.sourceKind === 'cue-track' ? 'cue-track' : 'file';
   const logicalStorageId = requireString(value.logicalStorageId, 'logicalStorageId', 32768);
-  const entryKey = sourceKind === 'cue-track' ? requireString(value.entryKey, 'entryKey', 32768) : null;
-  const cueRelativePath = sourceKind === 'cue-track'
-    ? normalizeRelativePath(requireString(value.cueRelativePath, 'cueRelativePath', 32768))
-    : null;
-  const startFrame = sourceKind === 'cue-track' ? requireNonNegativeInteger(value.startFrame, 'startFrame') : null;
-  const endFrame = sourceKind === 'cue-track'
-    ? optionalNullableNonNegativeInteger(value.endFrame, 'endFrame')
-    : null;
-  const cueSignature = sourceKind === 'cue-track'
-    ? requireString(value.cueSignature, 'cueSignature', 512)
-    : null;
-  if (sourceKind === 'file' && logicalStorageId !== `file:${relativePath}` ||
-      sourceKind === 'cue-track' && (logicalStorageId !== entryKey || !entryKey.startsWith(`cue:${cueRelativePath}#`)) ||
-      endFrame !== null && endFrame <= startFrame) {
-    throw createCatalogError('invalidScanRequest', 'Logical scan identity or frame range is invalid');
-  }
+  const source = normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath, 'invalidScanRequest');
   let metadataJson = null;
-  if (sourceKind === 'cue-track') {
+  if (source.sourceKind === 'cue-track') {
     metadataJson = JSON.stringify(normalizeParsedMetadata(value.metadata));
     if (new TextEncoder().encode(metadataJson).byteLength > 64 * 1024) {
       throw createCatalogError('batchLimitExceeded', 'Logical CUE metadata is too large');
@@ -6473,20 +6516,15 @@ function normalizeScanLogicalCandidate(value, observation, observedRelativePath)
     path: optionalNullableString(value.path ?? observation.path, 32768),
     fileIdentity: optionalString(observation.fileIdentity, '', 2048),
     size: requireNonNegativeInteger(observation.size, 'size'),
-    mtimeMs: requireNonNegativeInteger(Math.round(observation.mtimeMs), 'mtimeMs'),
-    sourceKind,
-    entryKey,
-    cueRelativePath,
-    startFrame,
-    endFrame,
-    cueSignature,
+    mtimeMs: requireNonNegativeInteger(normalizeMtimeMs(observation.mtimeMs), 'mtimeMs'),
+    ...source,
     metadataJson
   };
 }
 
-function normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath) {
-  const sourceKind = value.sourceKind === 'cue-track' ? 'cue-track' : 'file';
-  const entryKey = sourceKind === 'cue-track' ? requireString(value.entryKey, 'entryKey', 32768) : null;
+function normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath, errorCode = 'invalidMetadataClaim') {
+  const sourceKind = value.sourceKind ?? 'file';
+  const entryKey = sourceKind !== 'file' ? requireString(value.entryKey, 'entryKey', 32768) : null;
   const cueRelativePath = sourceKind === 'cue-track'
     ? normalizeRelativePath(requireString(value.cueRelativePath, 'cueRelativePath', 32768))
     : null;
@@ -6497,10 +6535,13 @@ function normalizeMetadataSourceDescriptor(value, logicalStorageId, relativePath
   const cueSignature = sourceKind === 'cue-track'
     ? requireString(value.cueSignature, 'cueSignature', 512)
     : null;
-  if (sourceKind === 'file' && logicalStorageId !== `file:${relativePath}` ||
+  if (!['file', 'cue-track', 'archive-entry'].includes(sourceKind) ||
+      sourceKind === 'archive-entry' && (logicalStorageId !== entryKey || !getArchiveEntryPath(relativePath, entryKey) ||
+        [value.cueRelativePath, value.startFrame, value.endFrame, value.cueSignature].some(field => field != null)) ||
+      sourceKind === 'file' && logicalStorageId !== `file:${relativePath}` ||
       sourceKind === 'cue-track' && (logicalStorageId !== entryKey || !entryKey.startsWith(`cue:${cueRelativePath}#`)) ||
       endFrame !== null && endFrame <= startFrame) {
-    throw createCatalogError('invalidMetadataClaim', 'Metadata logical identity or frame range is invalid');
+    throw createCatalogError(errorCode, 'Logical identity or frame range is invalid');
   }
   return { sourceKind, entryKey, cueRelativePath, startFrame, endFrame, cueSignature };
 }
@@ -6981,8 +7022,10 @@ export {
   trackFieldExpression,
   createOrderBySql,
   createKeysetSql,
+  projectArchiveEntryOffset,
   stripOrderFields,
   encodeBoundaryCursor,
+  finishTrackPage,
   ensureContextCount,
   ensurePlaylistContextCounts,
   getOperationStatus,

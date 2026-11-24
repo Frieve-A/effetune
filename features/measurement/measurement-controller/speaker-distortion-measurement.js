@@ -122,7 +122,7 @@ export function levelCheckLowerDb(recording, judged, rateHz) {
 /** Recorder-chunk check that ends a capture OVERLOAD_TAIL_SECONDS after its first overloaded sample. */
 function overloadStopper(rateHz) {
     let left = null;
-    return chunk => {
+    const stopWhen = chunk => {
         if (left === null) {
             if (isOverloaded(chunk)) left = OVERLOAD_TAIL_SECONDS * rateHz;
         } else {
@@ -130,6 +130,8 @@ function overloadStopper(rateHz) {
         }
         return left !== null && left <= 0;
     };
+    stopWhen.overload = { peak: CAPTURE_OVERLOAD_PEAK, tailSeconds: OVERLOAD_TAIL_SECONDS };
+    return stopWhen;
 }
 
 /** Appends `gapSeconds` of silence to `samples`. */
@@ -187,9 +189,12 @@ function createSteps({ play, pause, signal }) {
         play: (samples, gapSeconds, settings) =>
             guard('playback', () => play(withGap(samples, gapSeconds, settings.rateHz), settings, undefined, signal)),
         playChecked: async (samples, gapSeconds, settings) => {
+            const stopWhen = overloadStopper(settings.rateHz);
             const recording = await guard('playback', () =>
-                play(withGap(samples, gapSeconds, settings.rateHz), settings, overloadStopper(settings.rateHz), signal));
-            if (isOverloaded(recording)) throw new OverloadStop(overloadExcessDb(recording, settings.rateHz));
+                play(withGap(samples, gapSeconds, settings.rateHz), settings, stopWhen, signal));
+            if (stopWhen.overloadStopped || isOverloaded(recording)) {
+                throw new OverloadStop(overloadExcessDb(recording, settings.rateHz));
+            }
             return recording;
         },
         module: call => guard('analysis', call),

@@ -1,3 +1,4 @@
+import { getLyricsFiles } from '../../js/ui/audio-player/lyrics-file-links.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -139,4 +140,15 @@ test('Electron LibraryService client validates API and listener contracts', () =
   const client = new ElectronLibraryServiceClient({ api, playbackApi });
   assert.throws(() => client.subscribeEvents(null), /must be a function/);
   assert.throws(() => client.subscribeOperation('operation', null), /must be a function/);
+});
+
+test('archived score and its WRD become linked renderer Files', async () => {
+  const { api, playbackApi } = createApi();
+  playbackApi.resolveSequenceEntrySource = async () => ({ kind: 'archive-entry', sourceKind: 'archive-entry',
+    fileName: 'score.mid', bytes: Uint8Array.of(1), wrd: { name: 'SCORE.WRD', bytes: Uint8Array.of(2) } });
+  const source = await createElectronLibraryServiceClient({ api, playbackApi }).resolveSequenceEntrySource({});
+  assert.equal(source.kind, 'file');
+  assert.equal(source.file.name, 'score.mid');
+  assert.deepEqual(new Uint8Array(await getLyricsFiles(source.file)[0].arrayBuffer()), Uint8Array.of(2));
+  assert.equal(source.path, undefined);
 });

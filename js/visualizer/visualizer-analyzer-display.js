@@ -510,7 +510,8 @@ class AnalyzerDisplay {
         const options = this.plugin.displayOptions;
         const midi = this.sources.getFrame(item.id);
         if (this.type === 'rhythm-analyzer') {
-            this.plugin.handleMidiSnapshot(midi?.sourceKind === 'midi' && midi.beat ? midi : null);
+            const clock = midi?.sourceKind === 'midi' && midi.beat ? midi : null;
+            this.plugin.handleMidiSnapshot(clock, clock ? this.sources.getTelemetryLeadSeconds(item.id) : 0);
         } else if (midi?.sourceKind === 'midi') {
             if (this.sourceKind !== 'midi' || this.midiIdentity !== midi.source) {
                 this.plugin.clearDetections?.();

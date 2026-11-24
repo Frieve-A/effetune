@@ -166,7 +166,7 @@ test('preload returns the Browser capture reservation synchronously', () => {
   assert.deepEqual(harness.sends, []);
 });
 
-test('preload returns the System Audio capture reservation synchronously', () => {
+test('preload reserves System Audio synchronously and forwards native capture commands', async () => {
   const harness = createPreloadHarness();
   const syncCalls = [];
   const reservation = { ok: false, error: 'unavailable' };
@@ -178,7 +178,9 @@ test('preload returns the System Audio capture reservation synchronously', () =>
   const systemAudio = harness.exposed.electronAPI.systemAudio;
 
   assert.equal(Object.isFrozen(systemAudio), true);
-  assert.deepEqual(Object.keys(systemAudio), ['prepareCapture', 'captureStarted', 'captureStopped']);
+  assert.deepEqual(Object.keys(systemAudio).sort(), [
+    'captureStarted', 'captureStopped', 'nativeBegin', 'nativeEnd', 'nativeHold', 'prepareCapture'
+  ]);
   assert.equal(systemAudio.prepareCapture(), reservation);
   assert.equal(systemAudio.captureStarted(), undefined);
   assert.equal(systemAudio.captureStopped(), undefined);
@@ -186,6 +188,15 @@ test('preload returns the System Audio capture reservation synchronously', () =>
     ['system-audio:prepare-capture'], ['system-audio:capture-started'], ['system-audio:capture-stopped']
   ]);
   assert.deepEqual(harness.invocations, []);
+  const nativeCalls = [
+    ['nativeBegin', 'default', 'system-audio:native-begin'],
+    ['nativeHold', 7, 'system-audio:native-hold'],
+    ['nativeEnd', 7, 'system-audio:native-end']
+  ];
+  for (const [method, argument, channel] of nativeCalls) {
+    assert.deepEqual(await systemAudio[method](argument), { channel, args: [argument] });
+  }
+  assert.deepEqual(harness.invocations, nativeCalls.map(([, argument, channel]) => [channel, argument]));
   assert.deepEqual(harness.sends, []);
 });
 
@@ -769,6 +780,7 @@ test('preload exposes listener registration wrappers', () => {
     ['onConfigAudio', 'config-audio'],
     ['onConfigApp', 'config-app'],
     ['onBackupRestore', 'backup-restore'],
+    ['onShowDiagnostics', 'show-diagnostics'],
     ['onSystemResume', 'system-resume'],
     ['onOpenFrequencyResponseMeasurement', 'open-frequency-response-measurement'],
     ['onReloadWithPipelineState', 'reload-with-pipeline-state'],
@@ -845,6 +857,7 @@ test('preload exposes listener registration wrappers', () => {
     ['onConfigAudio'],
     ['onConfigApp'],
     ['onBackupRestore'],
+    ['onShowDiagnostics'],
     ['onSystemResume'],
     ['onOpenFrequencyResponseMeasurement'],
     ['onReloadWithPipelineState'],

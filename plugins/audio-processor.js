@@ -7951,7 +7951,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                 const entry = this.wasmInstances.get(plugin.id);
                 if (!entry || (this.dspBinding.instanceAssetState(entry.id, 0) & 255) !== 3) continue;
                 const player = plugin.type === 'SoundFontPlayerPlugin' ? this.midiScheduler.instances.get(plugin.id) : null;
-                if (plugin.type === 'SoundFontPlayerPlugin' && this.midiScheduler.generation === 0) continue;
+                // Power resume requires a frozen active bank even before the first MIDI input.
+                if (data.reason === 'graph' && plugin.type === 'SoundFontPlayerPlugin' &&
+                    this.midiScheduler.generation === 0) continue;
                 const nativeState = this.dspBinding.instanceMidiState(entry.id);
                 const running = plugin.enabled !== false && sectionEnabled && !this.masterBypass;
                 if (data.reason !== 'graph' && running && !player?.paused && (nativeState & 23)) {
@@ -8201,7 +8203,9 @@ class PluginProcessor extends AudioWorkletProcessor {
             frame - (this.midiPositionReportFrame ?? -reportFrames) >= reportFrames)) {
             this.midiPositionGeneration = scheduler.generation;
             this.midiPositionReportFrame = frame;
-            this.port.postMessage({ type: 'midiPosition', generation: scheduler.generation, position, processedFrame: frame });
+            // `contextFrame` places the report on the AudioContext clock for display extrapolation.
+            this.port.postMessage({ type: 'midiPosition', generation: scheduler.generation, position, processedFrame: frame,
+                contextFrame: frame + this.telemetryContextFrameOffset });
         }
         if (scheduler.playing && !scheduler.pauseRequest && scheduler.timeline && !scheduler.endNotified &&
             scheduler.currentPosition(frame - (this.midiMaximumInputDelay ?? 0)) >= scheduler.timeline.duration) {

@@ -21,6 +21,7 @@ For audio from a Chrome or Edge tab, see the [Browser Extension guide](browser-e
    4. Input, output, or effect issues
    5. Multichannel output mismatch
    6. Display troubleshooting
+   7. Reporting a problem on [GitHub Issues](https://github.com/Frieve-A/effetune/issues)
 3. Multichannel & Hardware Connections
    1. HDMI + AV receiver
    2. Interfaces without multichannel drivers
@@ -112,6 +113,14 @@ EffeTune outputs channels in numeric order, up to 16 channels. Match **Output Ch
 
 In the desktop app, **Use hardware acceleration** is on by default. If the window flickers or stops updating, turn it off in **Settings > Config...** and restart EffeTune. After repeated display failures, EffeTune turns it off and restarts automatically. To try it again, turn the setting on and restart.
 
+### 2.7. Reporting a problem
+
+If the sound cuts out, save diagnostic information while the problem is happening, preferably before using **Reset Audio**. If you have already reset the audio, save what is still available. Reloading clears the window's recent activity, and restarting EffeTune clears the whole history. Resetting audio with a native audio driver reloads the window.
+
+In EffeTune 2.20.0, choose **Diagnostic Information…** from **Help** on desktop, **Settings** on the web, or the **⋮** menu at the top right on mobile. The top of the window shows a readable summary: the OS, the audio driver and devices, whether sample rate conversion is applied, and the latency of each buffer. Below it, use **Show file contents** to review the detailed report, then save it. It includes the selected audio device names. EffeTune replaces names and paths it recognizes, but some may remain. You can edit the saved text file before sharing it.
+
+Open a bug report and drag the text file into its description. Include the approximate local time of the problem and what restored the sound, such as bringing the window to the front or clicking a control. If your version or browser extension has no diagnostic menu, report the problem without a file. [GitHub Issues](https://github.com/Frieve-A/effetune/issues)
+
 ---
 
 ## 3. Multichannel & Hardware Connections
@@ -195,6 +204,7 @@ Use **Copy Channel PEQ Settings** when you want to paste a static frequency-resp
 ---
 
 ## 7. Reference Links
+* [Report a problem on GitHub Issues](https://github.com/Frieve-A/effetune/issues)
 * EffeTune Desktop: <https://github.com/Frieve-A/effetune/releases>
 * EffeTune Web App: <https://effetune.frieve.com/effetune.html>
 * Frequency Response Measurement: <https://effetune.frieve.com/features/measurement/measurement.html>

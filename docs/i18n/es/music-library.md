@@ -24,6 +24,8 @@ Para incluir archivos MP4, WebM, M4V, MOV, MKV y 3GP, activa **Incluir formatos 
 
 Para incluir archivos MIDI/KAR (`.mid`, `.midi`, `.kar`) y MusicXML (`.musicxml`, `.xml`, `.mxl`), activa **Incluir archivos MIDI en la Biblioteca musical** en los mismos ajustes y después añade o vuelve a escanear una carpeta. Esta opción está desactivada de forma predeterminada; cambiarla no modifica de inmediato el catálogo existente. Para escuchar estos archivos, añade SoundFont Player y carga un instrumento, o selecciona un dispositivo externo en **Dispositivo de salida MIDI**; consulta [Archivos MIDI](music-player.md#archivos-midi) y [Archivos MusicXML](music-player.md#musicxml-files). La reproducción de MIDI y MusicXML y su incorporación a la biblioteca están disponibles en la aplicación de escritorio y en el reproductor web/PWA. No se admiten en la aplicación de Android.
 
+Con **Incluir archivos MIDI en la Biblioteca musical** activado, activa **Incluir archivos MIDI dentro de archivos comprimidos (ZIP, LZH, etc.)** para incluir archivos MIDI, KAR y MusicXML en formato ZIP, LZH/LHA, tar, gzip o tar comprimido con gzip. La opción está desactivada de forma predeterminada y se aplica al añadir o volver a escanear una carpeta. La biblioteca añade hasta 500 pistas por archivo comprimido y omite los archivos protegidos con contraseña y los paquetes RAR y 7z. Para mostrar la carátula, busca primero en la carpeta de la pista dentro del paquete y después junto al propio paquete.
+
 Estos ajustes solo afectan a la Biblioteca musical. Puedes seguir abriendo los archivos compatibles directamente en el Reproductor de música.
 
 ## Abrir la Biblioteca musical
@@ -106,6 +108,14 @@ Si no se puede abrir una pista de la biblioteca porque su carpeta no está dispo
 
 Elegir **Quitar** solo retira la carpeta del catálogo de EffeTune; tus archivos en el disco nunca se borran.
 
+## Análisis de sonoridad {#loudness-analysis}
+
+Pulsa **Analizar sonoridad** en la parte superior de la biblioteca para medir las pistas nuevas o modificadas. Puedes cancelar y volver a iniciar el análisis para continuar. Para usar las mediciones, elige **Pista** o **Álbum** en **Configuración de audio** → **ReplayGain**. En las **Propiedades** de cada pista aparecen la sonoridad global (LUFS), el pico verdadero máximo (dBTP) y el rango de sonoridad (LU). Cuanto mayor sea el rango, mayor será la diferencia entre los pasajes suaves y los fuertes.
+
+Las versiones de escritorio y web pueden medir MP3, AAC, FLAC, WAV, Vorbis y Opus, así como el audio de vídeos compatibles y las pistas individuales de una hoja CUE. La compatibilidad depende del decodificador. La aplicación para macOS también mide ALAC. Se admite audio mono, estéreo y 5.1. Se excluyen DSD, MIDI, MusicXML y la música en red. Si faltan archivos, vuelve a conectar su carpeta y repite el análisis.
+
+En la aplicación de escritorio, **Escribir etiquetas ReplayGain** guarda las mediciones en archivos FLAC, MP3 y M4A compatibles para que otros reproductores puedan usarlas. Al confirmar, se modifican los archivos originales y se sustituyen sus etiquetas ReplayGain. Las etiquetas usan la referencia estándar de −18 LUFS con cualquier nivel objetivo. Las pistas CUE se omiten. Mientras no escribas las etiquetas, las mediciones se guardan en la biblioteca.
+
 ## Listas de reproducción
 
 Las listas de reproducción de la Biblioteca musical se guardan dentro de EffeTune y pueden incluir pistas de cualquier carpeta indexada:
@@ -127,7 +137,7 @@ Sus nombres siguen el idioma actual de la interfaz y no se pueden cambiar, aunqu
 
 Los escaneos de carpetas importan automáticamente los archivos de listas de reproducción compatibles que se encuentran dentro de tus carpetas de música y los actualizan al volver a escanear cuando el archivo cambia en el disco; esta actualización sustituye los cambios que hayas hecho en esa lista dentro de EffeTune. Las entradas sin coincidencia se conservan como elementos no resueltos para enlazarse automáticamente cuando se añada o reconecte la carpeta correspondiente.
 
-Al exportar una lista de reproducción, activa **Rutas relativas** si quieres mover el archivo M3U8 o XSPF exportado junto con tu carpeta de música. Dado que los archivos M3U8 y XSPF estándar no guardan intervalos de subpistas CUE, las pistas CUE se omiten durante la exportación y EffeTune informa de cuántas se han omitido.
+Al exportar una lista de reproducción, activa **Rutas relativas** si quieres mover el archivo M3U8 o XSPF exportado junto con tu carpeta de música. Al exportar en M3U8 o XSPF se omiten las pistas CUE y las pistas dentro de archivos comprimidos. EffeTune indica cuántas pistas se han omitido.
 
 ## Seguridad y almacenamiento
 

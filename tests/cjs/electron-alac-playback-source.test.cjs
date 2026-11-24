@@ -5,6 +5,7 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const test = require('node:test');
+const { randomUUID } = require('node:crypto');
 const { AlacPlaybackSource, probeAlac } = require('../../electron/alac-playback-source.cjs');
 
 function box(type, ...contents) {
@@ -147,6 +148,80 @@ test('prepare maps depth to shell-free afconvert arguments and publishes only th
     await assert.rejects(fs.stat(call.args[5]), { code: 'ENOENT' });
   }
   assert.equal(new Set(fake.calls.map(call => path.dirname(call.args[5]))).size, 1);
+});
+
+test('analysis conversions have private files and never evict playback sources', async t => {
+  const fake = fakeExecutor();
+  const { converter, source } = await setup(t, { executeFile: fake.executeFile });
+  const file = await source('album.m4a');
+  const playback = await converter.prepare(file);
+  const a = await converter.prepare(file, { analysis: true });
+  const b = await converter.prepare(file, { analysis: true });
+  assert.equal(converter.cache.size, 1);
+  assert.equal(new Set([playback.path, a.path, b.path]).size, 3);
+  await assert.rejects(converter.releaseAnalysis(playback.path));
+  await assert.rejects(converter.releaseAnalysis(file));
+  await Promise.all([converter.releaseAnalysis(a.path), converter.releaseAnalysis(b.path)]);
+  await assert.rejects(fs.stat(a.path), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(b.path), { code: 'ENOENT' });
+  assert.ok((await fs.stat(playback.path)).isFile());
+});
+
+test('analysis cancels only its own ALAC process and deletes its unfinished output', { timeout: 10000 }, async t => {
+  const fake = fakeExecutor({ hold: true });
+  const { converter, source } = await setup(t, { executeFile: fake.executeFile });
+  const file = await source('album.m4a');
+  const stat = await fs.stat(file);
+  const signature = { size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
+  const playback = converter.prepare(file);
+  const playbackCall = await fake.started;
+  const id = randomUUID();
+  const analysis = converter.prepareAnalysis(file, id, signature);
+  while (fake.calls.length < 2) await new Promise(resolve => setTimeout(resolve, 1));
+  converter.cancelAnalysis(id);
+  assert.equal((await analysis).code, 'playbackSourceUnavailable');
+  assert.equal(fake.calls[1].killed, 'SIGKILL');
+  assert.equal(playbackCall.killed, false);
+  playbackCall.finish();
+  const playing = await playback;
+  assert.ok(playing.success);
+  assert.deepEqual(await fs.readdir(path.dirname(playing.path)), [path.basename(playing.path)]);
+});
+
+test('analysis checks the source signature before ALAC conversion and rejects changes while it runs', { timeout: 10000 }, async t => {
+  const fake = fakeExecutor({ hold: true });
+  const { converter, source } = await setup(t, { executeFile: fake.executeFile });
+  const file = await source('changed.m4a');
+  const stat = await fs.stat(file);
+  const signature = { size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
+  assert.equal((await converter.prepareAnalysis(file, randomUUID(), { ...signature, size: stat.size + 1 })).code,
+    'playbackSourceUnavailable');
+  assert.equal(fake.calls.length, 0);
+  const analysis = converter.prepareAnalysis(file, randomUUID(), signature);
+  const call = await fake.started;
+  await fs.appendFile(file, box('free'));
+  call.finish();
+  assert.equal((await analysis).code, 'playbackSourceUnavailable');
+  assert.deepEqual(await fs.readdir(path.dirname(call.args[5])), []);
+});
+
+test('analysis retries temporary directory failures and keeps converter failures eligible for retry', async t => {
+  t.mock.method(console, 'error', () => {});
+  const fake = fakeExecutor({ fail: true });
+  const { root, converter, source } = await setup(t, { executeFile: fake.executeFile });
+  converter.tempRoot = path.join(root, 'initially-missing');
+  const file = await source('retry.m4a');
+  const stat = await fs.stat(file);
+  const signature = { size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
+  assert.equal((await converter.prepareAnalysis(file, randomUUID(), signature)).code, 'playbackSourceUnavailable');
+  assert.equal(fake.calls.length, 0);
+  await fs.mkdir(converter.tempRoot);
+  assert.equal((await converter.prepareAnalysis(file, randomUUID(), signature)).code, 'playbackSourceUnavailable');
+  assert.equal(fake.calls.length, 1);
+  converter.executeFile = fakeExecutor().executeFile;
+  const result = await converter.prepareAnalysis(file, randomUUID(), signature);
+  assert.ok(result.converted);
+  await converter.releaseAnalysis(result.path);
 });
 
 test('AAC and non-MP4 inputs pass through with canonical paths without conversion', async t => {

@@ -7,7 +7,8 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const test = require('node:test');
 
-const { LibraryCatalogHost } = require('../../electron/library-catalog-host.cjs');
+const { LibraryCatalogHost, registerLibraryCatalogControlIpc,
+  LIBRARY_CATALOG_CONTROL_CHANNELS } = require('../../electron/library-catalog-host.cjs');
 const { LibraryCatalogScanRuntime } = require('../../electron/library-catalog-scan-runtime.cjs');
 const { LibraryServiceCoordinator } = require('../../electron/library-service-coordinator.cjs');
 
@@ -20,6 +21,77 @@ async function waitForTerminal(runtime, scanId, timeoutMs = 5000) {
   }
   throw new Error(`Timed out waiting for scan ${scanId}`);
 }
+
+test('writing ReplayGain to a measured audio file preserves its track, album and readings through the normal rescan',
+  { timeout: 20000 }, async t => {
+    const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-tag-rescan-')));
+    let host, runtime, dispose;
+    t.after(async () => {
+      dispose?.();
+      await runtime?.close();
+      await host?.close();
+      await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    });
+    const root = path.join(temporary, 'Music');
+    await fs.mkdir(root);
+    const filename = path.join(root, 'tone.m4a');
+    const { Output, AudioSample, AudioSampleSource, BufferTarget, Mp4OutputFormat } = await import('mediabunny');
+    const sampleRate = 44100;
+    const pcm = Float32Array.from({ length: sampleRate }, (_, i) => 0.1 * Math.sin(2 * Math.PI * 1000 * i / sampleRate));
+    const target = new BufferTarget();
+    const output = new Output({ target, format: new Mp4OutputFormat() });
+    const source = new AudioSampleSource({ codec: 'pcm-f32' });
+    output.addAudioTrack(source);
+    output.setMetadataTags({ album: 'Test album', artist: 'Artist', title: 'Tone' });
+    await output.start();
+    const sample = new AudioSample({ data: pcm, format: 'f32', numberOfChannels: 1, sampleRate, timestamp: 0 });
+    try { await source.add(sample); } finally { sample.close(); }
+    await output.finalize();
+    await fs.writeFile(filename, new Uint8Array(target.buffer));
+
+    host = await LibraryCatalogHost.open({ dbPath: path.join(temporary, 'catalog.sqlite') });
+    runtime = await LibraryCatalogScanRuntime.open({ host,
+      dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [root] }) } });
+    const added = await runtime.addFolder();
+    assert.equal((await waitForTerminal(runtime, added.scan.scanId)).status, 'completed');
+    const { tracks: [track] } = await host.request('listPendingLoudness', {});
+    const { createLoudnessMeter } = await import('../../js/library/loudness/measurement.js');
+    const module = await WebAssembly.compile(await fs.readFile(path.join(__dirname, '../../plugins/dsp/effetune-dsp.wasm')));
+    const meter = await createLoudnessMeter(module, sampleRate, 1);
+    try {
+      meter.push([pcm]);
+      await host.request('saveTrackLoudness', { measurements: [{ ...track, status: 'measured', ...meter.finish() }] });
+    } finally { meter.close(); }
+    await host.request('finalizeLoudness', {});
+    const read = () => host.request('getTrackLoudness', { trackUid: track.trackUid });
+    const before = await read();
+    assert.ok(Number.isFinite(before.integrated) && Number.isFinite(before.albumIntegrated));
+
+    const handlers = new Map();
+    const sender = { isDestroyed: () => false, send() {} };
+    dispose = registerLibraryCatalogControlIpc({ repository: host, runtime,
+      ipcMain: { handle: (channel, handler) => handlers.set(channel, handler), removeHandler: channel => handlers.delete(channel) },
+      getMainWindow: () => ({ isDestroyed: () => false, webContents: sender }), shell: { showItemInFolder() {} } });
+    const invoke = (method, request) => handlers.get(LIBRARY_CATALOG_CONTROL_CHANNELS[method])({ sender }, request);
+    const canceled = await invoke('prepareLoudnessTagWrite');
+    assert.equal(await invoke('discardLoudnessTagSnapshot', { snapshotId: canceled.snapshotId }), true);
+    await assert.rejects(invoke('writeLoudnessTags', { snapshotId: canceled.snapshotId }));
+    const { snapshotId, eligible } = await invoke('prepareLoudnessTagWrite');
+    assert.equal(eligible, 1);
+    assert.equal(await invoke('discardLoudnessTagSnapshot', { snapshotId: canceled.snapshotId }), false);
+    const terminal = [];
+    runtime.on('scan-event', event => { if (event.terminal) terminal.push(event); });
+    const result = await invoke('writeLoudnessTags', { snapshotId });
+    assert.equal(result.written, 1);
+    assert.equal(result.rescanFailed, 0);
+    assert.ok(terminal.some(event => event.status === 'completed' && event.folderIds.includes(added.folder.id)));
+    const { parseFile } = await import('music-metadata');
+    const { getReplayGain } = await import('../../js/library/metadata/metadata-mapper.js');
+    assert.ok(Math.abs(getReplayGain(await parseFile(filename)).trackGainDb - (-18 - before.integrated)) < 0.01);
+    assert.deepEqual(await read(), before);
+    assert.equal((await host.request('listPendingLoudness', {})).totalCount, 0);
+    assert.equal((await host.getCounts()).tracks, 1);
+  });
 
 test('Electron empty imports and rescans preserve tracks in other folders', async t => {
   const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-empty-library-import-')));
@@ -108,8 +180,7 @@ test('Electron library scans apply the video format preference on add and rescan
   const audioOnly = await runtime.scanFolders({ folderIds: [added.folder.id] });
   assert.equal((await waitForTerminal(runtime, audioOnly.scanId)).status, 'completed');
   assert.equal((await host.getCounts()).tracks, 1);
-  const videos = await runtime.scanFolders({ folderIds: [added.folder.id], includeVideo: true });
-  assert.equal((await waitForTerminal(runtime, videos.scanId)).status, 'completed');
+  assert.equal(await runtime.rescanLoudnessFolder(added.folder.id, { includeVideo: true }), 'completed');
   assert.equal((await host.getCounts()).tracks, 7);
 });
 

@@ -24,6 +24,7 @@ import {
 } from '../audio-utils/output-routing.js';
 import { isAndroidHost } from '../../../js/android/bridge.js';
 import { configureAndroidMeasurementOutput } from '../../../js/android/measurement.js';
+import { nativeMeasurementDevice } from '../audio-utils/native-measurement.js';
 
 export class MeasurementSetupError extends Error {
     constructor(code) {
@@ -233,10 +234,15 @@ export class MeasurementController {
                 throw new MeasurementSetupError('pipelineInputChannelUnavailable');
             }
             // Every pipeline output plays on its matching device channel.
-            configSnapshot.outputChannelCount = SUPPORTED_OUTPUT_CHANNEL_COUNTS.find(
-                count => count >= pipelineSnapshot.channelCount);
+            configSnapshot.outputChannelCount = audioUtils.nativeMeasurement ? pipelineSnapshot.channelCount
+                : SUPPORTED_OUTPUT_CHANNEL_COUNTS.find(count => count >= pipelineSnapshot.channelCount);
         }
-        if (!isAndroidHost() && (configSnapshot.outputChannelCount !== undefined ||
+        if (audioUtils.nativeMeasurement) {
+            const device = nativeMeasurementDevice(audioUtils.devices.outputs, configSnapshot.audioOutputId);
+            if (device?.channels < configSnapshot.outputChannelCount && pipelineSnapshot) {
+                throw new MeasurementSetupError('pipelineOutputChannelsUnavailable');
+            }
+        } else if (!isAndroidHost() && (configSnapshot.outputChannelCount !== undefined ||
             (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel'))) {
             await audioUtils.waitForWhiteNoiseRouteIdle?.();
             let route;

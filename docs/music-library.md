@@ -24,6 +24,8 @@ To include MP4, WebM, M4V, MOV, MKV, and 3GP files, enable **Include video file 
 
 To include MIDI/KAR (`.mid`, `.midi`, `.kar`) and MusicXML (`.musicxml`, `.xml`, `.mxl`) files, enable **Include MIDI files in Music Library** in the same settings, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. To hear these files, add SoundFont Player and load an instrument, or select an external **MIDI Output Device**; see [MIDI files](music-player.md#midi-files) and [MusicXML files](music-player.md#musicxml-files). MIDI and MusicXML playback and library registration are available in the desktop app and web/PWA player. They are not supported in the Android app.
 
+With **Include MIDI files in Music Library** enabled, turn on **Include MIDI files inside archives (ZIP, LZH, etc.)** to include MIDI, KAR, and MusicXML files in ZIP, LZH/LHA, tar, gzip, and gzip-compressed tar archives. This option is off by default and takes effect when you add or rescan a folder. Music Library adds up to 500 tracks per archive and skips password-protected files and RAR or 7z archives. For cover artwork, Music Library first looks in the track’s folder inside the archive, then beside the archive itself.
+
 These settings only affect Music Library. You can still open supported files directly in Music Player.
 
 ## Opening Music Library
@@ -106,6 +108,14 @@ If a library track cannot be opened because its folder is offline, reconnect or 
 
 Choosing **Remove** only removes the folder from EffeTune's catalog; your files on disk are never deleted.
 
+## Loudness Analysis
+
+Choose **Analyze Loudness** at the top of Music Library to measure new and changed tracks. You can cancel and run it again to continue. To use the results, choose **Track** or **Album** under **ReplayGain** in **Audio Configuration**. A track’s **Properties** show its average loudness (LUFS), highest true peak (dBTP), and loudness range (LU). A wider range means a greater difference between quiet and loud passages.
+
+The desktop and web apps can measure MP3, AAC, FLAC, WAV, Vorbis and Opus, including supported video soundtracks and individual CUE tracks. Support depends on the decoder. The macOS app also measures ALAC. Analysis supports mono, stereo and 5.1 audio. DSD, MIDI, MusicXML and network tracks are excluded. If files are unavailable, reconnect their folder and run the analysis again.
+
+In the desktop app, **Write ReplayGain Tags** saves the measurements to eligible FLAC, MP3 and M4A files for use in other players. Confirming changes the original files and replaces existing ReplayGain tags. The tags use the standard −18 LUFS reference regardless of the playback target. CUE tracks are skipped. Measurements stay in the library until you choose to write tags.
+
 ## Playlists
 
 Music Library playlists are saved inside EffeTune and can hold tracks from any indexed folder:
@@ -127,7 +137,7 @@ Their names follow the current UI language and cannot be renamed, though you can
 
 Folder scans automatically import supported playlist files found inside your music folders and update them on rescan when the playlist file changes on disk; this update replaces any edits you made to that playlist in EffeTune. Unmatched entries are kept as unresolved items so they can link automatically once the matching folder is added or reconnected.
 
-When exporting a playlist, enable **Relative paths** if you want the exported M3U8 or XSPF file to move together with your music folder. Because standard M3U8 and XSPF files do not store CUE sub-track ranges, CUE tracks are omitted during export and EffeTune reports how many were skipped.
+When exporting a playlist, enable **Relative paths** if you want the exported M3U8 or XSPF file to move together with your music folder. M3U8 and XSPF exports omit CUE tracks and tracks inside archives. EffeTune reports how many tracks were skipped.
 
 ## Safety and Storage
 

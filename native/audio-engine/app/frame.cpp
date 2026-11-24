@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <istream>
+#include <mutex>
 #include <ostream>
 #include <span>
 
@@ -69,6 +70,12 @@ void writeWire(std::ostream &output, FrameKind kind, const std::string &json,
 }
 } // namespace
 
+bool isFileControl(const JsonValue &message) {
+  const auto type = message.GetString("type");
+  return type == "fileStart" || type == "fileNext" || type == "fileEnd" || type == "fileGain" ||
+         type == "fileFlush" || type == "fileCancelNext";
+}
+
 bool readFrame(std::istream &input, Frame &frame,
                const std::function<void(const Frame &)> &onFeed) {
   if (!readWire(input, frame))
@@ -96,7 +103,8 @@ bool readFrame(std::istream &input, Frame &frame,
         throw std::runtime_error("truncated instrument attachment");
       if (!onFeed ||
           (frame.kind != FrameKind::Feed &&
-           (frame.kind != FrameKind::Control || frame.message.GetString("type") != "feedSilence")))
+           (frame.kind != FrameKind::Control ||
+            (frame.message.GetString("type") != "feedSilence" && !isFileControl(frame.message)))))
         break;
       onFeed(frame);
     }
@@ -106,6 +114,10 @@ bool readFrame(std::istream &input, Frame &frame,
 }
 
 void writeFrame(std::ostream &output, const Frame &frame) {
+  // File acknowledgements and control replies share one framed output pipe.
+  // Keep every wire part of a logical message together.
+  static std::mutex writer;
+  const std::lock_guard lock(writer);
   if (!frame.message.IsObject())
     throw std::runtime_error("invalid outgoing metadata");
   const auto json = frame.message.Serialize();

@@ -37,7 +37,7 @@ const fftSize = params => 2 ** Math.round(bounded(params.pt, 12, 8, 14));
 function spectrumAge(params, sampleRate, execution, rateLimited) {
     const size = fftSize(params);
     const hop = rateLimited ? Math.max(size / 2, Math.ceil(sampleRate / 30)) : size / 2;
-    // HQ uses a fourfold decimated long window with a 97-tap FIR (48-frame delay).
+    // HQ centres both windows on the fourfold decimated long window (97-tap FIR, 48-frame delay).
     if (params.sc === 'log-hq') return size * 2 + 48 + Math.floor(hop / 16) * 16;
     const completion = execution === 'wasm' ? clamp(Math.floor(hop / 16), 1, 512) * 16 : 0;
     return size / 2 + completion;

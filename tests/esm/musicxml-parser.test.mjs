@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deflateRawSync } from 'node:zlib';
+import { zip } from '../helpers/archive-fixtures.mjs';
 import { Worker } from 'node:worker_threads';
 import { parseMusicXml, parseMusicXmlFile } from '../../js/midi/musicxml-parser.js';
 import { isScoreFile, isMusicXmlFile, parseScoreAsync } from '../../js/midi/score-file.js';
@@ -21,32 +21,6 @@ const fixture = score([
 ]);
 const ons = timeline => timeline.events.filter(event => (event.status & 0xf0) === 0x90).map(event => [event.seconds, event.status & 15, event.data1, event.data2]);
 
-function zip(entries, method = 8) {
-    const local = [], central = [];
-    let offset = 0;
-    for (const [name, text] of entries) {
-        const raw = Buffer.from(text), packed = method === 8 ? deflateRawSync(raw) : raw;
-        let crc = 0xffffffff;
-        for (const byte of raw) {
-            crc ^= byte;
-            for (let bit = 0; bit < 8; bit++) crc = crc >>> 1 ^ (crc & 1 ? 0xedb88320 : 0);
-        }
-        crc = (crc ^ 0xffffffff) >>> 0;
-        const label = Buffer.from(name), prefix = Buffer.alloc(30);
-        prefix.writeUInt32LE(0x04034b50); prefix.writeUInt16LE(20, 4); prefix.writeUInt16LE(method, 8);
-        prefix.writeUInt32LE(crc, 14); prefix.writeUInt32LE(packed.length, 18); prefix.writeUInt32LE(raw.length, 22); prefix.writeUInt16LE(label.length, 26);
-        const directory = Buffer.alloc(46);
-        directory.writeUInt32LE(0x02014b50); directory.writeUInt16LE(20, 4); directory.writeUInt16LE(20, 6); directory.writeUInt16LE(method, 10);
-        directory.writeUInt32LE(crc, 16); directory.writeUInt32LE(packed.length, 20); directory.writeUInt32LE(raw.length, 24);
-        directory.writeUInt16LE(label.length, 28); directory.writeUInt32LE(offset, 42);
-        local.push(prefix, label, packed); central.push(directory, label);
-        offset += prefix.length + label.length + packed.length;
-    }
-    const directory = Buffer.concat(central), end = Buffer.alloc(22);
-    end.writeUInt32LE(0x06054b50); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
-    end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
-    return Buffer.concat([...local, directory, end]);
-}
 const container = '<container><rootfiles><rootfile full-path="Scores/main.musicxml" media-type="application/vnd.recordare.musicxml+xml"/><rootfile full-path="preview.pdf"/></rootfiles></container>';
 const mxl = (source = fixture, method = 8) => zip([['decoy.xml', '<not-a-score/>'], ['META-INF/container.xml', container], ['Scores/main.musicxml', source]], method);
 
@@ -90,6 +64,38 @@ test('sharp signs in local MusicXML names preserve score decoding for plain and 
     }
     assert.equal(isMusicXmlFile('https://example.test/song.xml?download=song.mid#part'), true);
     assert.equal(isMusicXmlFile('https://example.test/song.mid?download=score.xml'), false);
+});
+
+test('MXL resolves relative dot components in rootfile references and rejects traversal', async () => {
+    const archive = reference => zip([
+        ['META-INF/container.xml', container.replace('Scores/main.musicxml', reference)],
+        ['./score.xml', fixture]
+    ]);
+    assert.deepEqual(await parseMusicXmlFile(archive('./score.xml')), parseMusicXml(fixture));
+    for (const reference of ['../score.xml', '/score.xml', '.\\score.xml']) {
+        await assert.rejects(parseMusicXmlFile(archive(reference)), { code: 'musicxml-corrupt' });
+    }
+});
+
+test('MXL rejects ambiguous, encrypted, multi-disk, invalid UTF-8 and oversized directories with package errors', async () => {
+    const files = [['META-INF/container.xml', container], ['Scores/main.musicxml', fixture]];
+    await assert.rejects(parseMusicXmlFile(zip([...files, files[1]])), { code: 'musicxml-corrupt' });
+    await assert.rejects(parseMusicXmlFile(zip([...files, [Buffer.from([255]), 'unused']])), { code: 'musicxml-corrupt' });
+    const signature = Buffer.from([0x50, 0x4b, 1, 2]);
+    for (const flagsAt of ['Scores/main.musicxml', 'unused']) {
+        const bytes = zip([...files, ['unused', 'other']]);
+        const header = bytes.lastIndexOf(Buffer.from(flagsAt)) - 46;
+        assert.deepEqual(bytes.subarray(header, header + 4), signature);
+        bytes.writeUInt16LE(1, header + 8);
+        await assert.rejects(parseMusicXmlFile(bytes), { code: 'musicxml-corrupt' });
+    }
+    const split = zip(files);
+    split.writeUInt16LE(1, split.length - 22 + 4);
+    await assert.rejects(parseMusicXmlFile(split), { code: 'musicxml-corrupt' });
+    const large = zip(files);
+    large.writeUInt32LE(2 ** 26, large.length - 22 + 12);
+    await assert.rejects(parseMusicXmlFile(large), { code: 'musicxml-too-large' });
+    await assert.rejects(parseMusicXmlFile(zip(files, 12)), { code: 'musicxml-unsupported' });
 });
 
 test('MusicXML changes channel programs only when the performed instrument changes', () => {

@@ -1,4 +1,5 @@
 import { escapeHtml } from '../../utils/escape-html.js';
+import { getArchiveEntryPath } from '../../library/archive/score-entries.js';
 import {
   ICONS,
   LIBRARY_SEARCH_DEBOUNCE_MS,
@@ -242,41 +243,37 @@ export const menusMethods = {
   async resolveFavoriteActionTrackUids(intent, track) {
     const fallbackTrackUid = this.getPagedTrackUid(track);
     const descriptor = intent?.descriptor;
-    const currentIdentity = this.getPagedTrackIdentity(track);
     if (!descriptor || descriptor.contextToken !== this.pagedController?.contextToken) {
       return fallbackTrackUid ? [fallbackTrackUid] : [];
     }
-    if (descriptor.mode === 'explicit' && descriptor.trackUids?.length === 1 &&
-        descriptor.trackUids[0] === currentIdentity) {
+    const { contextToken, mode, startUid, endUid } = descriptor;
+    const usePlaylistItemKey = this.detail?.type === 'playlist';
+    if (mode === 'explicit' && descriptor.trackUids?.length === 1 &&
+        descriptor.trackUids[0] === this.getPagedTrackIdentity(track, usePlaylistItemKey)) {
       return fallbackTrackUid ? [fallbackTrackUid] : [];
-    }
-    const rows = [];
-    const limit = 500;
-    const totalCount = Number.isSafeInteger(this.pagedState?.totalCount)
-      ? this.pagedState.totalCount
-      : null;
-    for (let ordinal = 0; ; ordinal += limit) {
-      if (totalCount !== null && ordinal >= totalCount) break;
-      const page = await this.manager.readContextPageAtOrdinal({
-        contextToken: descriptor.contextToken,
-        ordinal,
-        limit
-      });
-      const pageRows = Array.isArray(page?.rows) ? page.rows : [];
-      rows.push(...pageRows.map(item => ({
-        identity: this.getPagedTrackIdentity(item),
-        trackUid: this.getPagedTrackUid(item)
-      })));
-      if (pageRows.length < limit) break;
     }
     const exclusions = new Set(descriptor.exclusions ?? []);
     const inclusions = new Set(descriptor.inclusions ?? []);
     const explicit = new Set(descriptor.trackUids ?? []);
+    const rows = [];
+    const manager = this.manager;
+    await manager.withTrackQueryContext(contextToken, async () => {
+      let cursor = null;
+      do {
+        const page = await manager.queryTracks({ contextToken, cursor, limit: 500 });
+        const pageRows = Array.isArray(page?.rows) ? page.rows : [];
+        rows.push(...pageRows.map(item => ({
+          identity: this.getPagedTrackIdentity(item, usePlaylistItemKey),
+          trackUid: this.getPagedTrackUid(item)
+        })));
+        cursor = page?.nextCursor;
+      } while (cursor);
+    });
     let rangeStart = -1;
     let rangeEnd = -1;
-    if (descriptor.mode === 'range') {
-      const first = rows.findIndex(row => row.identity === descriptor.startUid);
-      const last = rows.findIndex(row => row.identity === descriptor.endUid);
+    if (mode === 'range') {
+      const first = rows.findIndex(row => row.identity === startUid);
+      const last = rows.findIndex(row => row.identity === endUid);
       if (first >= 0 && last >= 0) {
         rangeStart = Math.min(first, last);
         rangeEnd = Math.max(first, last);
@@ -284,9 +281,9 @@ export const menusMethods = {
     }
     return [...new Set(rows.flatMap((row, index) => {
       if (!row.trackUid) return [];
-      const selected = descriptor.mode === 'all'
+      const selected = mode === 'all'
         ? !exclusions.has(row.identity)
-        : descriptor.mode === 'range'
+        : mode === 'range'
           ? (inclusions.has(row.identity) || index >= rangeStart && index <= rangeEnd) &&
             !exclusions.has(row.identity)
           : explicit.has(row.identity);
@@ -420,13 +417,16 @@ export const menusMethods = {
     const intentId = this.beginNavigationIntent();
     let details = track;
     let playbackSource = null;
+    let loudness = null;
     const trackUid = track?.trackUid ?? track?.id;
     if (trackUid && typeof this.manager.getTrack === 'function') {
       try {
         details = { ...track, ...(await this.manager.getTrack(trackUid) || {}) };
         if (!this.isNavigationIntentCurrent(intentId)) return false;
+        loudness = await this.manager.client?.getTrackLoudness?.({ trackUid });
+        if (!this.isNavigationIntentCurrent(intentId)) return false;
         const runtime = this.manager.getRuntimeStatus?.().runtime ?? this.manager.runtime;
-        if ((!details.path || isCueTrackDetails(details)) && runtime === 'electron' &&
+        if ((!details.path || isCueTrackDetails(details) || details.sourceKind === 'archive-entry') && runtime === 'electron' &&
             typeof this.manager.resolvePlaybackSource === 'function') {
           playbackSource = await this.manager.resolvePlaybackSource(trackUid);
           if (!this.isNavigationIntentCurrent(intentId)) return false;
@@ -450,6 +450,9 @@ export const menusMethods = {
       ? joinDisplayPath(folder.path, details.relativePath)
       : (details.relativePath || details.fileName || ''));
     const cueTrack = isCueTrackDetails(details);
+    const archiveEntryPath = details.sourceKind === 'archive-entry'
+      ? getArchiveEntryPath(details.relativePath, details.entryKey)
+      : null;
     const cuePath = cueTrack && details.cueRelativePath
       ? (folder?.path
           ? joinDisplayPath(folder.path, details.cueRelativePath)
@@ -463,6 +466,9 @@ export const menusMethods = {
       ['library.properties.year', details.year],
       ['library.properties.track', formatTrackNumber(details)],
       ['library.properties.duration', formatDuration(details.durationSec)],
+      ...[['integrated', 'loudness', 'LUFS'], ['truePeak', 'truePeak', 'dBTP'], ['lra', 'loudnessRange', 'LU']]
+        .filter(([field]) => Number.isFinite(loudness?.[field]))
+        .map(([field, label, unit]) => [`library.properties.${label}`, `${loudness[field].toFixed(1)} ${unit}`]),
       ...(cueTrack ? [
         ['library.properties.sourceType', this.t('library.properties.cueTrack')],
         ['library.properties.cuePath', cuePath],
@@ -473,8 +479,8 @@ export const menusMethods = {
           this.t('library.properties.sourceEnd')
         )]
       ] : []),
-      ['library.properties.file', details.fileName],
-      ...(!cueTrack ? [['library.properties.path', path]] : []),
+      ['library.properties.file', archiveEntryPath?.split('/').at(-1) ?? details.fileName],
+      ...(!cueTrack ? [['library.properties.path', archiveEntryPath ? joinDisplayPath(path, archiveEntryPath) : path]] : []),
       ['library.properties.format', details.codec || details.format || details.container],
       ['library.properties.sampleRate', formatNumber(details.sampleRate, ' Hz')],
       ['library.properties.bitDepth', formatNumber(details.bitsPerSample || details.bitDepth, ' bit')],

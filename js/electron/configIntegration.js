@@ -65,6 +65,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   config.libraryIncludeVideo = config.libraryIncludeVideo === true;
   config.libraryIncludeMidi = config.libraryIncludeMidi === true;
+  config.libraryIncludeMidiArchives = config.libraryIncludeMidiArchives === true;
   config.videoAutoRotate = config.videoAutoRotate !== false;
   let visualizerHdr = false;
   try {
@@ -357,6 +358,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <label for="library-include-midi" id="library-include-midi-label"></label>
             </div>
             <div class="power-mode-help" id="library-include-midi-help"></div>
+            <div class="library-midi-archive-option">
+              <div class="checkbox-container">
+                <input type="checkbox" id="library-include-midi-archives" aria-describedby="library-include-midi-archives-help" ${config.libraryIncludeMidiArchives ? 'checked' : ''} ${config.libraryIncludeMidi ? '' : 'disabled'}>
+                <label for="library-include-midi-archives" id="library-include-midi-archives-label"></label>
+              </div>
+              <div class="power-mode-help" id="library-include-midi-archives-help"></div>
+            </div>
           </div>` : ''}
           ${electronGeneralSections}`,
     startup: `
@@ -606,6 +614,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     .power-mode-option .radio-container {
       margin-bottom: 2px;
+    }
+    .library-midi-archive-option {
+      margin: 10px 0 0 26px;
     }
     .power-mode-help {
       margin-top: 6px;
@@ -1850,6 +1861,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (libraryMidiLabel) libraryMidiLabel.textContent = t('dialog.config.libraryIncludeMidi');
     const libraryMidiHelp = document.getElementById('library-include-midi-help');
     if (libraryMidiHelp) libraryMidiHelp.textContent = t('dialog.config.libraryIncludeMidiHelp');
+    const libraryMidiArchivesLabel = document.getElementById('library-include-midi-archives-label');
+    if (libraryMidiArchivesLabel) libraryMidiArchivesLabel.textContent = t('dialog.config.libraryIncludeMidiArchives');
+    const libraryMidiArchivesHelp = document.getElementById('library-include-midi-archives-help');
+    if (libraryMidiArchivesHelp) libraryMidiArchivesHelp.textContent = t('dialog.config.libraryIncludeMidiArchivesHelp');
     document.getElementById('video-auto-rotate-label').textContent = t('dialog.config.videoAutoRotate');
     document.getElementById('video-auto-rotate-help').textContent = t('dialog.config.videoAutoRotateHelp');
     document.getElementById('visualizer-hdr-label').textContent = t('dialog.config.visualizerHdr');
@@ -1960,6 +1975,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (libraryIncludeVideo) libraryIncludeVideo.checked = config.libraryIncludeVideo === true;
     const libraryIncludeMidi = document.getElementById('library-include-midi');
     if (libraryIncludeMidi) libraryIncludeMidi.checked = config.libraryIncludeMidi === true;
+    const libraryIncludeMidiArchives = document.getElementById('library-include-midi-archives');
+    if (libraryIncludeMidiArchives) {
+      libraryIncludeMidiArchives.checked = config.libraryIncludeMidiArchives === true;
+      libraryIncludeMidiArchives.disabled = config.libraryIncludeMidi !== true;
+    }
     const videoAutoRotate = document.getElementById('video-auto-rotate');
     if (videoAutoRotate) videoAutoRotate.checked = config.videoAutoRotate !== false;
     const visualizerHdrInput = document.getElementById('visualizer-hdr');
@@ -2174,6 +2194,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
   });
   document.getElementById('library-include-midi')?.addEventListener('change', async e => {
     await save({ libraryIncludeMidi: e.target.checked });
+  });
+  document.getElementById('library-include-midi-archives')?.addEventListener('change', async e => {
+    await save({ libraryIncludeMidiArchives: e.target.checked });
   });
   document.getElementById('video-auto-rotate').addEventListener('change', async e => {
     if (!await save({ videoAutoRotate: e.target.checked })) return;

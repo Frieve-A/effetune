@@ -1,3 +1,6 @@
+import { PagedPlaylistService } from '../../js/library/playlists/paged-playlist-service.js';
+import { zip } from '../helpers/archive-fixtures.mjs';
+import { getLyricsFiles } from '../../js/ui/audio-player/lyrics-file-links.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -19,9 +22,17 @@ const { LibraryServiceCoordinator } = require('../../electron/library-service-co
 const files = ['Audio/song.flac', 'Video/clip.mp4', ...['mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl'].map(extension => `Scores/piece.${extension}`),
   'Scores/C# minor.mid', 'Scores/C# collection/piece.mxl'];
 
-function metadata({ relativePath }) {
+const archivePath = 'Scores/C# scores.zip';
+const archiveBytes = zip([['Set/Song.kar', 'music'], ['Set/SONG.WRD', 'words'], ['Other/SONG.WRD', 'other'], ['Set/cover.jpg', 'art']]);
+const allPaths = [...files, archivePath];
+function testFile(relativePath) {
+  const name = path.posix.basename(relativePath);
+  return new File([name.endsWith('.zip') ? archiveBytes : 'media'], name, { lastModified: 1 });
+}
+
+function metadata({ relativePath, archiveEntryPath }) {
   const group = relativePath.split('/')[0];
-  return { title: path.posix.basename(relativePath), artist: group, albumArtist: group, album: group, genre: group, durationSec: 1 };
+  return { title: path.posix.basename(archiveEntryPath || relativePath), artist: group, albumArtist: group, album: group, genre: group, durationSec: 1 };
 }
 
 function directoryHandle(name, paths) {
@@ -34,7 +45,7 @@ function directoryHandle(name, paths) {
         paths.filter(value => value.startsWith(`${childName}/`)).map(value => value.slice(childName.length + 1))));
     } else {
       handles.set(relativePath, { kind: 'file', name: relativePath,
-        getFile: async () => ({ name: relativePath, size: 5, lastModified: 1 }) });
+        getFile: async () => testFile(relativePath) });
     }
   }
   return { kind: 'directory', name, queryPermission: async () => 'granted',
@@ -79,14 +90,18 @@ for (const platform of ['Electron', 'Web', 'Web session']) {
     let added;
     if (platform === 'Electron') {
       const root = path.join(directory, 'Music');
-      for (const file of files) {
+      for (const file of allPaths) {
         await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
-        await fs.writeFile(path.join(root, file), 'media');
+        await fs.writeFile(path.join(root, file), file === archivePath ? archiveBytes : 'media');
       }
       repository = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
       runtime = await LibraryCatalogScanRuntime.open({ host: repository, metadataParser: parser,
+        artworkThumbnailer: async bytes => {
+          assert.equal(Buffer.from(bytes).toString(), 'art');
+          return { bytes: Uint8Array.of(1), width: 1, height: 1, mimeType: 'image/jpeg' };
+        },
         dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [root] }) } });
-      coordinator = await LibraryServiceCoordinator.open({ repository });
+      coordinator = await LibraryServiceCoordinator.open({ repository, importSourceProvider: runtime });
       added = await runtime.addFolder({ includeMidi: true, includeVideo: true });
     } else {
       const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));
@@ -94,14 +109,13 @@ for (const platform of ['Electron', 'Web', 'Web session']) {
       repository = new WebSqliteCatalogRepository({ authority: 'test' });
       repository.database = database;
       repository.mode = 'readwrite';
-      const root = directoryHandle('Music', files);
+      const root = directoryHandle('Music', allPaths);
       runtime = new WebCatalogScanRuntime({ repository, metadataParserFactory: () => parser,
         handleStore: { list: async () => [], put: async () => {}, get: async () => root, close() {} } });
-      coordinator = new WebLibraryServiceCoordinator({ repository });
+      coordinator = new WebLibraryServiceCoordinator({ repository, sourceProvider: runtime });
       if (platform === 'Web session') {
         const { token } = await runtime.beginSessionFolder({ displayName: 'Music' });
-        runtime.appendSessionFolderFiles({ token, entries: files.map(relativePath => ({ relativePath,
-          file: { name: path.posix.basename(relativePath), size: 5, lastModified: 1 } })) });
+        runtime.appendSessionFolderFiles({ token, entries: allPaths.map(relativePath => ({ relativePath, file: testFile(relativePath) })) });
         added = await runtime.commitSessionFolder({ token, includeMidi: true, includeVideo: true });
       } else added = await runtime.addFolder({ handle: root, includeMidi: true, includeVideo: true });
     }
@@ -163,5 +177,120 @@ for (const platform of ['Electron', 'Web', 'Web session']) {
       originalTracks.filter(row => row.artist !== 'Scores').map(row => row.trackUid).sort());
     await waitUntil(async () => (await repository.queryPlaylistItems({ playlistId: 'all-media', limit: 20 })).items.every(item => item.trackUid !== null));
     assert.equal(await playbackCount(), files.length);
+
+    const archiveOptions = { folderIds: [added.folder.id], includeMidi: true, includeVideo: true, includeMidiArchives: true };
+    await complete(await runtime.scanFolders(archiveOptions));
+    const archived = (await tracks()).rows.find(row => row.title === 'Song.kar');
+    assert.equal(archived.sourceKind, 'archive-entry');
+    const source = await coordinator.resolveSequenceEntrySource({ trackUid: archived.trackUid });
+    if (platform === 'Electron') {
+      assert.equal(source.fileName, 'Song.kar');
+      assert.equal(Buffer.from(source.bytes).toString(), 'music');
+      assert.equal(Buffer.from(source.wrd.bytes).toString(), 'words');
+      assert.equal(source.path, undefined);
+      const cover = await runtime.requestArtwork({ trackUid: archived.trackUid, reason: 'viewport' });
+      assert.equal(cover.kind, 'thumbnail');
+    } else {
+      assert.equal(source.file.name, 'Song.kar');
+      assert.equal(await source.file.text(), 'music');
+      assert.equal(await getLyricsFiles(source.file)[0].text(), 'words');
+    }
+    await repository.createPlaylistWithItems({ playlistId: 'archived', name: 'Archived', createdAt: 2,
+      items: [{ trackUid: archived.trackUid }] });
+    await complete(await runtime.scanFolders({ ...archiveOptions, includeMidiArchives: false }));
+    assert.equal((await repository.queryPlaylistItems({ playlistId: 'archived' })).items[0].trackUid, null);
+    await complete(await runtime.scanFolders(archiveOptions));
+    await waitUntil(async () => (await repository.queryPlaylistItems({ playlistId: 'archived' })).items[0].trackUid !== null);
   });
 }
+
+test('Electron scans 500 long archive entries and exports playlists after archive discovery is disabled', async t => {
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-archive-paging-')));
+  let host;
+  let runtime;
+  t.after(async () => {
+    await runtime?.close();
+    await host?.close();
+    await removeSqliteTestDirectory(directory);
+  });
+  const root = path.join(directory, 'Music');
+  await fs.mkdir(root);
+  const name = '曲'.repeat(79) + '.zip';
+  const memberDirectory = ('組'.repeat(38) + '/').repeat(5);
+  const entries = Array.from({ length: 500 }, (_, index) => [memberDirectory + index + '.mid', 'score']);
+  await fs.writeFile(path.join(root, name), zip(entries, 0));
+  host = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });
+  const pages = [];
+  const readCandidates = host.listMetadataCandidates.bind(host);
+  host.listMetadataCandidates = async request => {
+    const page = await readCandidates(request);
+    if (page.items.length) pages.push({ cursor: request.cursor, ...page });
+    return page;
+  };
+  runtime = await LibraryCatalogScanRuntime.open({ host, metadataParser: { parse: async input => metadata(input) },
+    dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [root] }) } });
+  const result = await runtime.addFolder({ includeMidi: true, includeMidiArchives: true });
+  await waitUntil(() => !runtime.getScanStatus({ scanId: result.scan.scanId }).active);
+  assert.equal(runtime.getScanStatus({ scanId: result.scan.scanId }).status, 'completed');
+  assert.equal((await host.getCounts()).tracks, entries.length);
+  assert.ok(pages.length > 1);
+  for (let index = 1; index < pages.length; index++) {
+    assert.equal(pages[index].cursor, pages[index - 1].nextCursor);
+    assert.equal(pages[index].cursor, pages[index - 1].resumeCursor);
+  }
+  assert.equal(pages.at(-1).nextCursor, null);
+  assert.deepEqual(pages.flatMap(page => page.items.map(item => item.entryKey)),
+    entries.map(([entry]) => 'archive:' + name + '#' + entry));
+
+  const playlistId = 'long-entries';
+  const trackIds = [];
+  const query = { query: '', limit: 500 };
+  let trackPage = await host.queryTracks(query);
+  assert.ok(trackPage.rows.length < query.limit);
+  const firstIds = trackPage.rows.map(row => row.trackUid);
+  for (;;) {
+    trackIds.push(...trackPage.rows.map(row => row.trackUid));
+    if (!trackPage.nextCursor) break;
+    trackPage = await host.queryTracks({ ...query, contextToken: trackPage.contextToken, cursor: trackPage.nextCursor });
+  }
+  const previous = await host.queryTracks({ ...query, contextToken: trackPage.contextToken, cursor: trackPage.previousCursor });
+  assert.equal(previous.rows.at(-1).trackUid, trackIds[trackIds.indexOf(trackPage.rows[0].trackUid) - 1]);
+  for (const ordinal of [0, firstIds.length, 499]) {
+    const jumped = await host.readContextPageAtOrdinal({ contextToken: trackPage.contextToken, limit: 500, ordinal });
+    assert.equal(jumped.rows[ordinal - jumped.pageStartOrdinal].trackUid, trackIds[ordinal]);
+  }
+  await host.releaseContext(trackPage.contextToken);
+  assert.equal(new Set(trackIds).size, 500);
+  await fs.writeFile(path.join(root, 'plain.mid'), 'plain');
+  const plainScan = await runtime.scanFolders({ folderIds: [result.folder.id], includeMidi: true, includeMidiArchives: true });
+  await waitUntil(() => !runtime.getScanStatus({ scanId: plainScan.scanId }).active);
+  const plainPage = await host.queryTracks({ query: 'plain', limit: 1 });
+  const plainUid = plainPage.rows[0].trackUid;
+  await host.releaseContext(plainPage.contextToken);
+  await host.createPlaylistWithItems({ playlistId, name: 'Archived and ordinary MIDI', createdAt: 1,
+    items: [...trackIds.slice(0, 499), plainUid].map(trackUid => ({ trackUid })) });
+  const disabled = await runtime.scanFolders({ folderIds: [result.folder.id], includeMidi: true });
+  await waitUntil(() => !runtime.getScanStatus({ scanId: disabled.scanId }).active);
+
+  const positions = [];
+  let itemPages = 0;
+  const readItems = host.queryPlaylistItems.bind(host);
+  host.queryPlaylistItems = async request => {
+    const page = await readItems(request);
+    assert.equal(request.afterPosition, positions.at(-1) ?? 0);
+    if (page.items.length) itemPages++;
+    positions.push(...page.items.map(item => item.position));
+    if (positions.length < 500) assert.equal(page.nextPosition, positions.at(-1));
+    return page;
+  };
+  const service = new PagedPlaylistService({ client: host, requestIdFactory: () => 'export' });
+  const chunks = [];
+  const summary = await service.exportToSink(playlistId, { format: 'm3u8', relative: false,
+    sink: { write(chunk) { chunks.push(chunk); }, commit() {}, abort() {} } });
+  assert.deepEqual(summary, { exportedCount: 1, skippedTrackCount: 499 });
+  assert.ok(itemPages > 1);
+  assert.equal(new Set(positions).size, 500);
+  assert.match(chunks.join(''), /plain\.mid/);
+  assert.doesNotMatch(chunks.join(''), /\.zip/);
+
+});

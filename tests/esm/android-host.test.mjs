@@ -129,6 +129,55 @@ test('native retained asset definitions protect sources in filtered and common l
     assert.equal(manager.isExternalAssetInUse('SFZ', 'older-ir'), false);
 });
 
+test('normal Android rebuild retains an unchanged SFZ asset while routing and order change', async () => {
+    const bank = { payload: Uint8Array.of(1, 2, 3).buffer, operationRevision: 4 };
+    class SFZNotePlayerPlugin {
+        constructor(id) { this.id = id; this.enabled = true; this.name = 'SFZ'; }
+        getParameters() { return {}; }
+        getWasmAssets() { return new Map([[0, bank]]); }
+    }
+    class VolumePlugin {
+        constructor() { this.id = 19; this.enabled = true; this.name = 'Volume'; }
+        getParameters() { return { vl: 0 }; }
+    }
+    const sfz = new SFZNotePlayerPlugin(17), volume = new VolumePlugin();
+    const commands = [];
+    const manager = Object.create(AndroidAudioManager.prototype);
+    const bridge = { async request(command, payload, revision) {
+        commands.push({ command, payload, revision });
+        return { revision: revision + 1 };
+    } };
+    Object.assign(manager, {
+        bridge, nativeAssets: new AndroidAssets(bridge), pendingMutation: Promise.resolve(),
+        currentPipeline: 'A', externalPipelineEpoch: 0, snapshot: { revision: 10 },
+        acceptSnapshot(snapshot) { this.snapshot = snapshot; },
+        dispatchEvent() {},
+    });
+    manager.pipeline = [sfz];
+    await manager.rebuildPipeline();
+    assert.equal(commands.filter(item => item.command === 'pipeline.asset.commit').length, 1);
+    const batch = commands.find(item => item.command === 'pipeline.asset.begin').payload._assetBatch;
+    assert.ok(batch);
+    assert.ok(commands.filter(item => item.command.startsWith('pipeline.asset.'))
+        .every(item => item.payload._assetBatch === batch));
+    const descriptor = commands[0].payload.descriptor;
+    commands.length = 0;
+    sfz.inputBus = 1;
+    manager.pipeline = [volume, sfz];
+    await manager.rebuildPipeline();
+    assert.notEqual(commands[0].payload.descriptor, descriptor);
+    assert.deepEqual(commands.map(item => item.command), ['pipeline.set']);
+    assert.equal(manager.nativeAssets.resident.get('17:0'), bank);
+
+    manager.pipeline = [volume];
+    await manager.rebuildPipeline();
+    assert.equal(manager.nativeAssets.resident.has('17:0'), false);
+    commands.length = 0;
+    manager.pipeline = [volume, new SFZNotePlayerPlugin(17)];
+    await manager.rebuildPipeline();
+    assert.equal(commands.filter(item => item.command === 'pipeline.asset.commit').length, 1);
+});
+
 test('native SFZ preview sends only ephemeral notes and keeps canonical pipeline serialization unchanged', async () => {
     const manager = Object.create(AndroidAudioManager.prototype), calls = [];
     manager.bridge = { request: async (name, payload) => calls.push({ name, payload }) };
@@ -332,6 +381,27 @@ test('native assets acknowledge readiness and clear removed slots', async () => 
     assets.clear();
     await host.transfer([plugin]);
     assert.deepEqual(commands.at(-1), { name: 'pipeline.asset.clear', payload: { pluginId: 3, slot: 0, externalAssetParameters: undefined } });
+});
+
+test('native assets defer readiness and use the notice operation revision', async () => {
+    const states = [], rejections = [];
+    let receive;
+    const asset = { payload: new ArrayBuffer(8), operationRevision: 5, formatTag: 1 };
+    const plugin = { id: 47, getWasmAssets: () => new Map([[0, asset]]),
+        onWasmAssetState: (...args) => states.push(args),
+        onWasmAssetRejected: (...args) => rejections.push(args) };
+    const host = new AndroidAssets({
+        on(name, listener) { if (name === 'asset-state') receive = listener; },
+        async request(name) { if (name === 'pipeline.asset.commit') return { state: 'pending' }; },
+    });
+    host.synchronize([plugin], () => {});
+    await host.transfer([plugin]);
+    assert.deepEqual(states, []);
+    receive({ pluginId: 47, slot: 0, state: 3, operationRevision: 4 });
+    receive({ pluginId: 47, slot: 0, rejected: true, operationRevision: 5 });
+    assert.deepEqual(states, [[0, 3, 4]]);
+    assert.deepEqual(rejections, [[0, 'prepare', 5]]);
+    assert.equal(host.resident.has('47:0'), false);
 });
 
 test('native query queue materialization pages sources without a 4096-track cutoff', async () => {

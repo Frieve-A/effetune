@@ -6,6 +6,12 @@ import { isSupportedVideoPath } from '../../library/constants.js';
 
 export const MAX_BUFFER_SOURCE_BYTES = 256 * 1024 * 1024;
 
+export function getPlaybackFilePath(track, electronAPI) {
+  if (track.path) return track.path;
+  if (Object.hasOwn(track, 'droppedFilePath')) return track.droppedFilePath;
+  return track.file && electronAPI?.getPathForFile?.(track.file);
+}
+
 export function isVideoPlaybackSource(source) {
   if (!source || typeof source !== 'object') return false;
   return [source.type, source.mimeType, source.file?.type, source.mediaSource?.type,

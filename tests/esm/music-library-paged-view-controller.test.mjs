@@ -315,6 +315,34 @@ function createPagedManager({ pageSize = 500 } = {}) {
   };
 }
 
+test('short standalone cursor pages preserve backward ordinals and seek past a short adjacent page', async () => {
+  const manager = createPagedManager();
+  const rows = (start, count) => Array.from({ length: count }, (_, index) => ({ trackUid: 'track-' + (start + index) }));
+  const response = (start, count) => ({ rows: rows(start, count), totalCount: 400,
+    nextCursor: 'after-' + (start + count), previousCursor: start ? 'before-' + start : null });
+  manager.queryTracks = async ({ cursor }) => {
+    if (!cursor) return response(0, 50);
+    const [direction, boundary] = cursor.split('-');
+    return response(Number(boundary) - (direction === 'before' ? 50 : 0), 50);
+  };
+  const seeks = [];
+  const controller = new PagedLibraryViewController({ manager, seekOrdinal: async ({ ordinal }) => {
+    seeks.push(ordinal);
+    return { ...response(ordinal, 50), pageStartOrdinal: ordinal };
+  } });
+  await controller.start({ endpoint: 'tracks' });
+  assert.equal((await controller.ensureOrdinal(140)).accepted, true);
+  assert.deepEqual(seeks, [140]);
+  assert.equal(controller.getCachedRows(140, 141)[0].row.trackUid, 'track-140');
+  assert.equal((await controller.prefetchAroundOrdinal(140, { direction: -1 })).prefetched, true);
+  assert.equal(controller.getCachedRows(139, 140)[0].row.trackUid, 'track-139');
+  assert.equal((await controller.ensureOrdinal(80)).accepted, true);
+  assert.deepEqual(seeks, [140, 80]);
+  await controller.previousPage();
+  assert.equal(controller.createViewState().pageStartOrdinal, 30);
+  await controller.destroy();
+});
+
 test('playlist collection paging preserves system playlist visibility', async () => {
   const manager = createPagedManager({ pageSize: 3 });
   const entityRequests = [];

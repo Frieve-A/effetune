@@ -41,7 +41,8 @@ function selectCueCoverFileName(entries, audioRelativePath) {
   return null;
 }
 
-function isTrackCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath) {
+function isTrackCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath, archiveScoreName = null) {
+  if (archiveScoreName) return isCueCoverRelativePath(audioRelativePath, archiveScoreName, coverRelativePath);
   if (cueRelativePath) return isCueCoverRelativePath(cueRelativePath, audioRelativePath, coverRelativePath);
   if (!/\.(mid|midi|kar|musicxml|xml|mxl)$/i.test(String(audioRelativePath ?? ''))) return false;
   return isCueCoverRelativePath(audioRelativePath, audioRelativePath, coverRelativePath);

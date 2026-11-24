@@ -1,35 +1,29 @@
+import { NATIVE_COUNTERS, closeNativeCounterIntervals, recordDiagnosticEvent, recordNativeCounters } from '../diagnostics/diagnostic-log.js';
 import { AudioManager } from '../audio-manager.js';
+import { DSP_PARAM_PACKERS } from '../audio/dsp-params.generated.js';
 import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 import { saveAudioPreferences } from '../electron/audio-preference-store.js';
 import { EnginePort, unpackSpectrumOverlay } from './engine-endpoint.js';
 import { NativeInputAdapter } from './input-adapter.js';
 import { unpackCheckpoints } from './instrument-transport.js';
 import { audiblePlaybackPosition } from '../audio/visual-sync.js';
+import { connectAudioEngine, DRIVER_RESPONSE_TIMEOUT_MS, waitForEvent } from './engine-connection.js';
+import { NativeFilePlayback } from './file-playback.js';
 
 const FEED_BATCH_FRAMES = 512;
-const DRIVER_RESPONSE_TIMEOUT_MS = 15000;
+const DEVICE_COMMANDS = new Set(['openSession','releaseRecovery','flushFeed','startStream','stopStream','replaceInput']);
 const DEVICE_ERRORS = {unavailable:'unavailable',unsupportedFormat:'format',permission:'permission',busy:'busy'};
-
-function waitForEvent(target, type, accept, timeoutMs = DRIVER_RESPONSE_TIMEOUT_MS, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) { reject(signal.reason); return; }
-    const finish = () => {
-      clearTimeout(timer);
-      target.removeEventListener(type,listener);
-      signal?.removeEventListener('abort',cancel);
-    };
-    const cancel = () => { finish(); reject(signal.reason); };
-    const listener = event => { if (accept(event)) { finish(); resolve(event); } };
-    const timer = setTimeout(() => { finish(); reject(new Error('Audio driver response timed out')); }, timeoutMs);
-    target.addEventListener(type,listener);
-    signal?.addEventListener('abort',cancel,{once:true});
-  });
-}
+// A specific hardware input that fails to open falls back to the system default.
+const fallsBackToDefault = id => !!id && id !== 'default' &&
+  id !== NO_AUDIO_INPUT_DEVICE_ID && id !== SYSTEM_AUDIO_INPUT_DEVICE_ID;
 
 export class NativeAudioManager extends AudioManager {
   constructor(pipelineManager) {
     super(pipelineManager, {externalInput:true});
+    // Plugin payloads and execution reports use the sidecar's parameter layouts from startup.
+    window.dspParamPackers = DSP_PARAM_PACKERS;
     this.bridge = window.electronAPI.audioEngine;
+    this.filePlayback = new NativeFilePlayback(this);
     this.ioManager = new NativeInputAdapter(this);
     this.pipelineProcessor.ioManager = this.ioManager;
     this.engineEvents = new EventTarget();
@@ -57,14 +51,19 @@ export class NativeAudioManager extends AudioManager {
       this.outputTarget = message.gain;
       if (this.endpoints[1]) this.send({...message,branch:1});
     }
-    if (message.type === 'setInputMix') this.inputMixEnabled = message.enabled;
+    if (message.type === 'setInputMix') {
+      this.inputMixEnabled = message.enabled;
+      if (message.enabled && !this.ioManager.inputMixAllowed()) message = {...message,enabled:false};
+    }
     const branch = message.branch || 0;
     const epoch = this.ready?.[branch]?.endpointEpoch;
     if (branch && !epoch) {
       this.endpoints[branch]?.port.pendingCommands?.push(message);
       return;
     }
-    const scoped = epoch && !['openSession','releaseRecovery','flushFeed'].includes(message.type);
+    // Device-wide commands stay valid across endpoint rebuilds; scoping them
+    // would make the sidecar answer endpointRetired, which these waits ignore.
+    const scoped = epoch && !DEVICE_COMMANDS.has(message.type);
     this.control?.postMessage(scoped ? {...message,endpointEpoch:epoch} : message);
   }
   waitFor(type, accept, timeoutMs) {
@@ -124,14 +123,31 @@ export class NativeAudioManager extends AudioManager {
       this._networkOutputLocalDelay?.active && (this.networkRoute?.sendId != null || this._appliedNetworkDelay?.syncDelayMs > 0));
     return network ? (this.audioContext?.currentTime || 0) * 1000 : this.getAudibleContextMs();
   }
-  getAudiblePlaybackPosition(position,playbackSpeed) {
-    return audiblePlaybackPosition({position,playbackSpeed,latencySeconds:this.getOutputLatencySeconds(true) +
-      (this.audioContext ? this.getTotalPipelineLatencySamples() / this.audioContext.sampleRate : 0)});
+  // A MIDI `frame` is the engine frame at which `position` was rendered; the engine clock
+  // carries it to the heard frame so the position advances smoothly between reports.
+  getAudiblePlaybackPosition(position,playbackSpeed,{source,frame} = {}) {
+    const midi = source === 'midi';
+    const context = this.audioContext;
+    if (midi && Number.isFinite(frame) && this.clock && context) {
+      const rate = context.sampleRate;
+      const heard = this.clock.pipelineFrame + (performance.now() - this.clock.time) * rate / 1000 -
+        this._getDeviceLatencyFrames(context);
+      return position + (heard - this.getTotalPipelineLatencySamples() - frame) / rate * playbackSpeed;
+    }
+    const file = !midi && this.filePlayback?.current;
+    const converter = file && this.clock?.fileTrack === file.track ? this.clock.fileConverterDelayFrames || 0 : 0;
+    return audiblePlaybackPosition({position,playbackSpeed,latencySeconds:this.getOutputLatencySeconds(!midi && !file) +
+      (context ? (this.getTotalPipelineLatencySamples() + converter) / context.sampleRate : 0)});
   }
   setNetworkOutputPort(port) { port?.close(); }
   getNativeSampleRate() { return this.session?.sampleRate || this.audioContext?.sampleRate || 48000; }
   failOutput(reason = 'stopped') {
+    if (this.failed) return;
     this.failed = true;
+    closeNativeCounterIntervals();
+    this.diagnosticActivity = 'stopped';
+    this.ioManager.endSystemAudio(true);
+    void this.bridge.stop().catch(error => console.warn('Audio driver shutdown:',error));
     this.engineLifetime.abort(new Error('The audio driver stopped'));
     this._cancelPendingDspControlRequests();
     this.resetClock();
@@ -149,7 +165,17 @@ export class NativeAudioManager extends AudioManager {
   }
   async openDefaultOutput() {
     const settings = {...this.openSettings,outputDeviceId:'default'};
-    const result = await this.request(settings,'sessionState',s => s.state === 'open' || s.state === 'failed');
+    if (settings.inputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID &&
+        !(await this.ioManager.evaluateSystemAudioGuard(settings.outputDeviceId)).allowed) settings.inputDeviceId = '';
+    let result;
+    try {
+      result = await this.request(settings,'sessionState',s => s.state === 'open' || s.state === 'failed');
+    } catch (error) {
+      this.ioManager._recordOutputFallback?.(this.preferences, 'deviceUnavailable', 'unknown', {errorName:error?.name});
+      throw error;
+    }
+    this.ioManager._recordOutputFallback?.(this.preferences, 'deviceUnavailable',
+      result.state === 'open' ? 'success' : 'failed', {failureReason:result.reason});
     if (result.state === 'open') {
       this.openSettings = settings;
       this.ioManager.currentOutputDeviceId = 'default';
@@ -160,21 +186,73 @@ export class NativeAudioManager extends AudioManager {
     return result;
   }
   async attachPorts(driver) {
-    const token = crypto.randomUUID();
-    const received = waitForEvent(window,'message',event => event.source === window &&
-      event.data?.type === 'effetune-audio-engine-ports' && event.data.token === token && event.ports.length === 2,
-      15000,this.engineLifetime.signal);
-    // Both waits settle independently if the main process cannot launch the driver.
-    const [result, event] = await Promise.all([this.bridge.start(driver,token).then(status => {
-      if (!status.ok) throw new Error('Audio driver unavailable');
-      return status;
-    }),received]);
-    if (!result.ok) return;
-    [this.control,this.feedPort] = event.ports;
+    this.diagnosticVariant = 'unknown';
+    try {
+      const {ports,variant} = await connectAudioEngine(driver,{bridge:this.bridge,signal:this.engineLifetime.signal});
+      this.diagnosticVariant = variant ?? 'single';
+      [this.control,this.feedPort,this.filePort] = ports;
+    } catch (error) {
+      this.diagnosticVariant = error?.variant ?? 'unknown';
+      throw error;
+    }
     this.control.onmessage = ({data}) => this.receive(data);
   }
+  getDiagnosticNativeState() {
+    const s = this.session;
+    const settings = this.openSettings;
+    const c = this.clock;
+    return {
+      variant:this.diagnosticVariant || 'notStarted',
+      lastNotification:this.diagnosticNotification ?? null,
+      confirmedActivity:this.diagnosticActivity || 'unknown',
+      lastFailure:this.diagnosticFailure ?? null,
+      session:s && {sampleRate:s.sampleRate,deviceRate:s.deviceRate,captureRate:s.captureRate,
+        inputChannels:s.inputChannels,outputChannels:s.outputChannels,inputFailed:s.inputFailed,
+        periodFrames:s.periodFrames,width:s.width,inputLatencyFrames:s.inputLatencyFrames,outputLatencyFrames:s.outputLatencyFrames},
+      // The engine clock reports these only while the stream runs.
+      latency:c && {outputLatencyFrames:c.outputLatencyFrames,inputLatencyFrames:c.inputLatencyFrames,
+        outputConverterDelayFrames:c.outputConverterDelayFrames,captureTargetFrames:c.captureTargetFrames,
+        feedFrames:FEED_BATCH_FRAMES + (c.feedDelayFrames || 0)},
+      openSettings:settings && {sampleRate:settings.sampleRate,outputChannels:settings.outputChannels,latency:settings.latency},
+      counters:this.diagnosticCounters ?? {}
+    };
+  }
   receive(data) {
+    if (data.type === 'clock' || data.type === 'powerObservation') {
+      this.diagnosticCounters ??= {};
+      for (const key of NATIVE_COUNTERS) {
+        if (Number.isFinite(data[key])) this.diagnosticCounters[key] = data[key];
+      }
+      recordNativeCounters(data);
+      if (data.type === 'clock' && Number.isFinite(data.pipelineFrame)) {
+        if (this.diagnosticActivity !== 'stopped' && data.pipelineFrame > this.diagnosticFrame) {
+          this.diagnosticActivity = 'running';
+        }
+        this.diagnosticFrame = data.pipelineFrame;
+      }
+    } else if (data.type === 'sessionState') {
+      const epochMs = Date.now();
+      this.diagnosticNotification = {state:data.state,epochMs};
+      this.diagnosticFrame = undefined;
+      this.diagnosticActivity = ['closed','stopped'].includes(data.state) ? 'stopped' : 'unknown';
+      if (data.state === 'failed') this.diagnosticFailure = {
+        reason:['unavailable','busy','unsupportedFormat','permission','internal'].includes(data.reason) ? data.reason : 'unknown',
+        epochMs
+      };
+      if (data.state === 'closed') closeNativeCounterIntervals();
+      recordDiagnosticEvent('sessionState', {state:data.state,reason:data.reason});
+    } else if (data.type === 'deviceReset' || data.type === 'engineFailure' ||
+        data.type === 'dspFailure' || data.type === 'inputState') {
+      recordDiagnosticEvent(data.type, {state:data.state,reason:data.reason,stage:data.stage,
+        direction:data.direction,reasons:data.reasons});
+    }
     this.observeClock(data);
+    if (this.fileRecoveryNeeded && this.filePlayback?.current?.generation !== this.fileRecoveryNeeded) {
+      this.fileRecoveryNeeded = null;
+    }
+    if (data.type === 'clock' && this.clock && !this.fileRecoveryNeeded) this.filePlayback?.update(this.clock);
+    if (data.type === 'fileEnded') this.filePlayback?.ended(data);
+    if (data.type === 'fileNextResult') this.filePlayback?.reserveNext(data);
     if (Array.isArray(data.checkpoints)) {
       try { data = unpackCheckpoints(data); }
       catch (error) { console.warn('Audio sampler response:',error); return; }
@@ -191,9 +269,14 @@ export class NativeAudioManager extends AudioManager {
         this.tap.channelCount = data.width;
         for (const endpoint of this.endpoints) if (endpoint) endpoint.channelCount = data.width;
         this.flushFeed();
+        this.fileRecoveryNeeded ??= this.filePlayback?.current?.generation ?? null;
       }
+      // A compatible output reopen reuses the DSP endpoint and therefore has
+      // no dspReady or releaseRecovery notification to finish file recovery.
+      if (this.fileRecoveryNeeded && !data.recoveryId) this.restoreFilePlayback();
     } else if (data.type === 'deviceReset' && data.direction === 'output') {
       this.expectRecovery = true;
+      this.fileRecoveryNeeded = this.filePlayback?.current?.generation ?? null;
       this.resetClock();
     } else if (data.type === 'sessionState' && data.state === 'failed' && this.expectRecovery) {
       this.expectRecovery = false;
@@ -201,6 +284,7 @@ export class NativeAudioManager extends AudioManager {
         // Dispatch this failed open before registering the fallback open's waiter.
         void Promise.resolve().then(() => this.openDefaultOutput()).then(result => {
           if (result.state !== 'open') this.failOutput(DEVICE_ERRORS[result.reason] || 'stopped');
+          else return this.powerPolicyController?.handleSystemAudioOutputChange();
         }).catch(error => { console.warn('Audio output recovery:',error); this.failOutput(); });
       } else this.failOutput(DEVICE_ERRORS[data.reason] || 'stopped');
     } else if (data.type === 'dspReady') {
@@ -213,7 +297,11 @@ export class NativeAudioManager extends AudioManager {
         delete endpoint.port.pendingCommands;
       }
       if (!data.branch && endpoint && data.recoveryId > 0) {
-        void this.restorePrimary(data).catch(error => {
+        void this.restorePrimary(data).then(() => {
+          if (this.fileRecoveryNeeded && this.session.recoveryId === data.recoveryId) {
+            this.restoreFilePlayback();
+          }
+        }).catch(error => {
           if (this.session.recoveryId !== data.recoveryId) return;
           console.warn('Native audio recovery:',error);
           this.failOutput();
@@ -223,9 +311,11 @@ export class NativeAudioManager extends AudioManager {
       if (!data.requestId || data.requestId === this.inputRequest) {
         if (!this.ioManager.inputStream)
           this.ioManager.setInput(data.state,!data.requestId && !!this.tap,data.reopened);
-        if (data.state === 'failed') {
+        if (data.state === 'acquired') this.inputWarning = null;
+        const fallback = data.requestId && data.reason !== 'permission' && fallsBackToDefault(this.requestedInputId);
+        if (data.state === 'failed' && !fallback && this.preferences.inputDeviceId !== SYSTEM_AUDIO_INPUT_DEVICE_ID) {
           this.inputWarning = data.reason === 'permission' ? 'error.microphoneAccessDenied' : 'browser.deviceError';
-          window.uiManager?.setError?.(this.inputWarning,true);
+          window.uiManager?.showTransientMessage?.(this.inputWarning,true,{},3000);
         }
       }
     } else if (data.type === 'dspTelemetry') {
@@ -251,9 +341,16 @@ export class NativeAudioManager extends AudioManager {
     }
     this.engineEvents.dispatchEvent(new CustomEvent(data.type,{detail:data}));
   }
+
+  restoreFilePlayback() {
+    const generation = this.fileRecoveryNeeded;
+    this.fileRecoveryNeeded = null;
+    if (this.filePlayback?.current?.generation === generation) this.filePlayback.recover();
+  }
   async initAudio(preferences = null) {
     try {
       this.preferences = preferences || await this.contextManager._loadAudioPreferences() || {};
+      this.contextManager.captureDiagnosticRequest?.(this.preferences, true);
       await this.attachPorts(this.preferences.audioDriver);
       const contextError = await this.contextManager.initAudioContext(this.preferences,{nativeFeed:true});
       if (contextError) throw new Error(contextError);
@@ -261,14 +358,22 @@ export class NativeAudioManager extends AudioManager {
       const input = this.preferences.inputDeviceId || 'default';
       const hardwareInput = ![NO_AUDIO_INPUT_DEVICE_ID,SYSTEM_AUDIO_INPUT_DEVICE_ID].includes(input);
       const permission = !hardwareInput || await window.electronAPI.requestMicrophoneAccess();
+      let capture = null;
+      if (input === SYSTEM_AUDIO_INPUT_DEVICE_ID) {
+        try { capture = await this.ioManager.prepareSystemAudio(this.preferences.outputDeviceId || 'default'); }
+        catch (error) { console.warn('System Audio input preparation:',error); }
+      }
       const settings = {type:'openSession',sampleRate:this.audioContext.sampleRate,
+        ...(capture && {loopbackEndpointId:capture.groupId}),
         outputChannels:this.preferences.outputChannels || 2,outputDeviceId:this.preferences.outputDeviceId || 'default',
-        inputDeviceId:hardwareInput && permission ? input : '',latency:this.preferences.latencyHint || 'interactive'};
+        inputDeviceId:capture || (hardwareInput && permission) ? input : '',latency:this.preferences.latencyHint || 'interactive'};
       this.openSettings = settings;
       let opened = await this.request(settings,'sessionState');
       if (opened.state !== 'open' && opened.reason === 'unavailable' &&
           settings.outputDeviceId !== 'default') {
         opened = await this.openDefaultOutput();
+        if (capture) await this.ioManager.endSystemAudio();
+        capture = null;
       }
       if (opened.state !== 'open') {
         this.outputErrorKey = 'dialog.audioConfig.driver.' + (DEVICE_ERRORS[opened.reason] || 'startFailed');
@@ -276,7 +381,22 @@ export class NativeAudioManager extends AudioManager {
       }
       this.send({type:'fadeOutput',gain:0,duration:0});
       this.ioManager.currentOutputDeviceId = this.openSettings.outputDeviceId;
-      this.ioManager.setInput(opened.inputFailed ? 'failed' : opened.inputChannels ? 'acquired':'none');
+      const inputState = opened.inputFailed ? 'failed' : opened.inputChannels ? 'acquired':'none';
+      this.ioManager.setInput(inputState);
+      if (opened.inputFailed && permission && fallsBackToDefault(input)) {
+        await this.fallBackToDefaultInput(input,'openFailed')
+          .catch(error => console.warn('Native default input fallback:',error));
+      }
+      if (input === SYSTEM_AUDIO_INPUT_DEVICE_ID) {
+        try {
+          if (!capture) throw new Error('System Audio input is unavailable');
+          await this.ioManager.confirmSystemAudio(capture,inputState);
+        } catch (error) {
+          this.ioManager.markSystemAudioDisabled();
+          if (!error.systemAudioNotified)
+            window.uiManager?.showTransientMessage?.('error.systemAudioStopped',true,{},5000);
+        }
+      }
       await this.audioContext.audioWorklet.addModule(new URL('./feed-worklet.js',import.meta.url));
       this.tap = new AudioWorkletNode(this.audioContext,'effetune-native-feed',{
         numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],
@@ -294,19 +414,18 @@ export class NativeAudioManager extends AudioManager {
       this.telemetryHub.setPort(this.workletNode.port);
       this._networkOutputPortRequester?.();
       if (this.ready?.[0]) this.restoreEndpoint(this.workletNode,this.ready[0]);
-      if (input === SYSTEM_AUDIO_INPUT_DEVICE_ID) {
-        await this.ioManager.initAudioInput(this.preferences);
-        this.connectSourceToPipeline(this.ioManager.sourceNode);
-      }
       if (!permission) this.inputWarning = 'error.microphoneAccessDenied';
       await this.audioContext.resume();
       this.failed = false;
       return '';
     } catch (error) {
       this.failed = true;
+      this.ioManager.endSystemAudio(true);
       this.engineLifetime.abort(error);
       console.warn('Native audio initialization:',error);
       await this.bridge.stop();
+      closeNativeCounterIntervals();
+      this.diagnosticActivity = 'stopped';
       this.outputErrorKey ||= 'dialog.audioConfig.driver.startFailed';
       return 'Audio Error: ' + this.outputErrorKey;
     }
@@ -335,7 +454,11 @@ export class NativeAudioManager extends AudioManager {
     this._postNetworkOutputLocalDelay(endpoint);
     this._postNetworkReceiveSession(endpoint);
     endpoint.port.postMessage({type:'dspSetTelemetryRate',hz:this.getDspTelemetryRate()});
-    if (!endpoint.port.branch) this._postVisualizerSources(endpoint);
+    if (!endpoint.port.branch) {
+      this._postVisualizerSources(endpoint);
+      // The native engine starts here instead of initializeAudioWorklet, which installs it for Web Audio.
+      this._installVisualSyncResolver();
+    }
     endpoint.port.postMessage({type:'setVisualSync',enabled:this.visualSyncEnabled});
     this._appliedOutputDelayFrames?.delete(endpoint);
     void this._applyWorkletOutputDelays([endpoint]);
@@ -390,6 +513,7 @@ export class NativeAudioManager extends AudioManager {
     const result = await this.request({type:'releaseRecovery',recoveryId:data.recoveryId},'recoveryReleased',
       m => m.recoveryId === data.recoveryId);
     if (!current()) return;
+    recordDiagnosticEvent('recoveryReleased', {accepted:result.accepted === true});
     if (!result.accepted) throw new Error('Replacement audio output was not released');
     if (!this.streamRequested) await this.streamState(false);
   }
@@ -406,12 +530,14 @@ export class NativeAudioManager extends AudioManager {
     return false;
   }
   initializeAudioWorklet() { return this.failed ? 'Audio Error: unavailable' : ''; }
+  _syncRealtimeOutputKeepalive() {
+    // The sidecar owns the hardware sink. The renderer context only feeds it.
+    return false;
+  }
   prefetchDspModule() { return Promise.resolve(null); }
-  async estimateSfzEffectPreparation(payload,context,formatTag) {
-    // The desktop engine renders the instrument. Its existing offline sizing
-    // worker uses the matching module to prepare assets for that engine.
-    this.dspModuleInfo ??= await this._loadEnabledDspModule(this.preferences);
-    return super.estimateSfzEffectPreparation(payload,context,formatTag);
+  getOfflineDspModuleInfo() {
+    // The sidecar owns live DSP. Renderer workers load the matching module on demand.
+    return this._loadEnabledDspModule(this.preferences);
   }
   registerPipelineProcessors() {}
   isDspReady() { return !!this.dspCapabilities && !this.failed; }
@@ -465,6 +591,7 @@ export class NativeAudioManager extends AudioManager {
     this.updateExposedProperties();
     this._configureOwnedPipelineWasmAssetResolvers();
     this.workletNode.port.configure(undefined,undefined,gate);
+    if (gate) this._recordOutputGate(this.workletNode, 'unconfirmed');
     this.syncPrimaryWasmAssetMembership?.();
     this.powerPolicyController?.notifyTopologyChanged?.('pipeline-rebuild');
     return '';
@@ -497,17 +624,32 @@ export class NativeAudioManager extends AudioManager {
   }
   async replaceInput(id,timeoutMs = 15000) {
     const requestId = ++this.inputRequest;
-    const allowed = id === NO_AUDIO_INPUT_DEVICE_ID || await window.electronAPI.requestMicrophoneAccess();
+    const allowed = id === NO_AUDIO_INPUT_DEVICE_ID || id === SYSTEM_AUDIO_INPUT_DEVICE_ID ||
+      await window.electronAPI.requestMicrophoneAccess();
     if (requestId !== this.inputRequest) throw this.ioManager._createStaleInputAcquisitionError();
     const result = this.waitFor('inputState',data => data.requestId === requestId,timeoutMs);
     const inputDeviceId = allowed && id !== NO_AUDIO_INPUT_DEVICE_ID ? id : '';
-    this.send({type:'replaceInput',inputDeviceId,
+    this.requestedInputId = inputDeviceId;
+    const loopbackEndpointId = inputDeviceId === SYSTEM_AUDIO_INPUT_DEVICE_ID ? this.ioManager.nativeCapture?.groupId : undefined;
+    this.send({type:'replaceInput',inputDeviceId,loopbackEndpointId,
       latency:this.preferences.latencyHint,requestId});
     const {detail} = await result;
     if (requestId !== this.inputRequest) throw this.ioManager._createStaleInputAcquisitionError();
-    this.openSettings = {...this.openSettings,inputDeviceId};
+    this.openSettings = {...this.openSettings,inputDeviceId,loopbackEndpointId};
     if (!allowed) throw new DOMException('Microphone access denied','NotAllowedError');
+    if (detail.state === 'failed' && detail.reason !== 'permission' && fallsBackToDefault(inputDeviceId))
+      return this.fallBackToDefaultInput(inputDeviceId,detail.reason,timeoutMs);
     return detail;
+  }
+  // Matches the Standard path: retry once with the default input and keep the
+  // saved preference unchanged.
+  async fallBackToDefaultInput(id,errorName,timeoutMs) {
+    console.warn('Saved audio input is unavailable, falling back to default:',errorName);
+    const result = await this.replaceInput('default',timeoutMs);
+    const match = result.state === 'acquired' ? 'fellBackToDefault' : 'fallbackFailed';
+    this.ioManager.diagnosticFallbackInput = {id,match};
+    recordDiagnosticEvent('inputFallback',{errorName,result:match,inputDeviceLabel:this.preferences.inputDeviceLabel});
+    return result;
   }
   flushFeed() {
     this.feedGeneration++;

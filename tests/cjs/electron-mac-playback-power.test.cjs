@@ -4,13 +4,15 @@ const { createMacPlaybackPower } = require('../../electron/mac-playback-power.cj
 
 test('Mac playback blocker is held only during continuous-mode activity', () => {
   const calls = [];
+  const history = [];
   let mode = 'continuous';
   const power = createMacPlaybackPower({
     powerSaveBlocker: {
       start(type) { calls.push(['start', type]); return 17; },
       stop(id) { calls.push(['stop', id]); }
     },
-    getConfig: () => ({ powerSaving: { mode } })
+    getConfig: () => ({ powerSaving: { mode } }),
+    recordDiagnosticEvent: (kind, fields) => history.push([kind, fields])
   });
   power.update(false);
   power.update(true);
@@ -25,4 +27,8 @@ test('Mac playback blocker is held only during continuous-mode activity', () => 
   power.update(true);
   assert.equal(calls.length, 4);
   power.stop();
+  assert.deepEqual(history, [
+    ['appNap', { state: 'started' }], ['appNap', { state: 'released', reason: 'playbackInactive' }],
+    ['appNap', { state: 'started' }], ['appNap', { state: 'released', reason: 'powerSavingEnabled' }]
+  ]);
 });

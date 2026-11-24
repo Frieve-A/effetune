@@ -7,6 +7,9 @@ lang: en
 # Version History
 
 ### Version 2.20.0 (Nov 27, 2026)
+- Supports native audio device output and native high-speed DSP processing (desktop version)
+- Added loudness analysis for Music Library, automatic playback level matching, and ReplayGain tag writing in the desktop app
+- Added playback and Music Library support for MIDI and MusicXML inside archives, plus MIDI playback from shared libraries
 - Various minor improvements
 
 ### Version 2.19.0 (Nov 20, 2026)

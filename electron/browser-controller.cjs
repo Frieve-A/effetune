@@ -174,7 +174,7 @@ function normalizeBrowserSettings(value) {
   };
 }
 
-function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, openMusicFiles, themePreset, systemAudioCapture, allowStartupCapture = false }) {
+function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, openMusicFiles, themePreset, systemAudioCapture, allowStartupCapture = false, recordDiagnosticEvent }) {
   const trusted = mainWindow.webContents;
   const chromiumUserAgent = trusted.getUserAgent().replace(/\sElectron\/\S+/g, '').trim();
   const defaultUserAgent = chromiumUserAgent.toLowerCase().includes(`${APP_NAME.toLowerCase()}/`) ?
@@ -740,6 +740,8 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       event.senderFrame === trusted.mainFrame;
   }
 
+  const recordCapture = decision => recordDiagnosticEvent?.('browserCapture', { decision });
+
   function prepareCapture() {
     muteCapture();
     if (!components?.whenReady) ensureView();
@@ -747,10 +749,14 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       allowWithoutGesture: allowStartupCapture === true, expires: Date.now() + CAPTURE_TIMEOUT_MS };
     allowStartupCapture = false;
     token.timer = setTimeout(() => {
-      if (reservation === token) muteCapture('captureFailed');
+      if (reservation === token) {
+        recordCapture('reservationTimedOut');
+        muteCapture('captureFailed');
+      }
     }, CAPTURE_TIMEOUT_MS);
     token.timer.unref?.();
     reservation = token;
+    recordCapture('reserved');
     return { ok: true, generation };
   }
 
@@ -758,37 +764,45 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   // request takes the oldest unconsumed reservation of either kind and consumes it even when
   // rejected, so that a later request cannot take a reservation of the other kind.
   captureSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    if (request.frame !== trusted.mainFrame) { callback({}); return; }
+    if (request.frame !== trusted.mainFrame) { recordCapture('untrustedFrame'); callback({}); return; }
     const token = reservation && !reservation.consumed ? reservation : null;
     const systemAudioOrder = systemAudioCapture.pendingOrder();
     if (systemAudioOrder !== null && (!token || systemAudioOrder < token.order)) {
+      recordCapture('systemAudio');
       await systemAudioCapture.handleRequest(request, callback);
       return;
     }
-    if (!token) { callback({}); return; }
+    if (!token) { recordCapture('noReservation'); callback({}); return; }
     token.consumed = true;
     if ((!request.userGesture && !token.allowWithoutGesture) || !request.videoRequested || !request.audioRequested ||
       request.frame !== token.frame || token.expires < Date.now()) {
+      recordCapture('requestRejected');
       muteCapture('captureFailed');
       callback({}); return;
     }
     try { await prepareView(); }
     catch (failure) {
+      recordCapture('prepareFailed');
       console.error('Browser capture initialization failed:', failure);
       if (reservation === token) muteCapture('captureFailed');
       callback({}); return;
     }
     if (disposed || reservation !== token || !view || view.webContents.isDestroyed() || request.frame !== trusted.mainFrame) {
+      recordCapture('stale');
       callback({}); return;
     }
     captureGranted = true;
+    recordCapture('granted');
     callback({ video: view.webContents.mainFrame, audio: view.webContents.mainFrame, enableLocalEcho: false });
   }, { useSystemPicker: false });
 
   const syncPrepare = event => {
     if (!trustedEvent(event)) { event.returnValue = { ok: false, error: 'unavailable' }; return; }
     try { event.returnValue = prepareCapture(); }
-    catch { event.returnValue = { ok: false, error: 'captureFailed' }; }
+    catch {
+      recordCapture('prepareFailed');
+      event.returnValue = { ok: false, error: 'captureFailed' };
+    }
   };
   ipcMain.on('browser:prepare-capture', syncPrepare);
 

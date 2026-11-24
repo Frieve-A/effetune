@@ -17,6 +17,11 @@ const catalogRequests = [
   ['resolveEntityAnchor', [{ contextToken: 'context-1', entityId: 'album-1' }]],
   ['releaseContext', ['context-1'], { contextToken: 'context-1' }],
   ['getTrack', ['track-1'], { trackUid: 'track-1' }],
+  ['getTrackLoudness', [{ trackUid: 'track-1' }]],
+  ['getLoudnessStats', [{ coverage: 95 }]],
+  ['listPendingLoudness', [{ afterTrackUid: '', limit: 64 }]],
+  ['saveTrackLoudness', [{ measurements: [] }]],
+  ['finalizeLoudness', [{}]],
   ['resolvePlaylistExportSource', ['track-1'], { trackUid: 'track-1' }],
   ['createPlaylist', [{ name: 'New playlist' }]],
   ['createPlaylistWithItems', [{ name: 'Selection', trackUids: ['track-1', 'track-2'] }]],
@@ -32,7 +37,7 @@ const catalogRequests = [
 ];
 const controlRequests = [
   ['addFolder', [], {}],
-  ['requestFolderAccess', ['folder-1', { includeVideo: true, includeMidi: true }], { folderId: 'folder-1', includeVideo: true, includeMidi: true }],
+  ['requestFolderAccess', ['folder-1', { includeVideo: true, includeMidi: true, includeMidiArchives: true }], { folderId: 'folder-1', includeVideo: true, includeMidi: true, includeMidiArchives: true }],
   ['scanFolders', [{ folderIds: ['folder-1'], scanReason: 'manual' }]],
   ['cancelScan', ['scan-1'], { scanId: 'scan-1' }],
   ['removeFolder', ['folder-1'], { folderId: 'folder-1' }],
@@ -95,19 +100,56 @@ test('catalog preload requests reach their registered main-process handlers with
     assert.deepEqual(await api[method](...args), { method, request });
     assert.deepEqual(calls.at(-1), [method, request]);
   }
-  await api.requestFolderAccess('folder-2', { includeVideo: 'true', includeMidi: 'true', path: '/untrusted' });
-  assert.deepEqual(calls.at(-1), ['requestFolderAccess', { folderId: 'folder-2', includeVideo: false, includeMidi: false }]);
+  await api.requestFolderAccess('folder-2', { includeVideo: 'true', includeMidi: 'true', includeMidiArchives: 'true', path: '/untrusted' });
+  assert.deepEqual(calls.at(-1), ['requestFolderAccess', { folderId: 'folder-2', includeVideo: false, includeMidi: false, includeMidiArchives: false }]);
 });
 
 test('every catalog and control handler rejects foreign senders before accessing the host', t => {
   const { handlers, calls } = createHarness(t);
-  assert.equal(handlers.size, 34);
+  assert.equal(handlers.size, 43);
   for (const [channel, handler] of handlers) {
     for (const event of [undefined, {}, { sender: {} }]) {
       assert.throws(() => handler(event, {}), { code: 'unauthorizedCatalogSender' }, channel);
     }
   }
   assert.deepEqual(calls, []);
+});
+
+test('session IPC requires the main frame, binds the active profile and filters file rows through existing grants', async t => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+  const access = require('../../electron/file-access.cjs');
+  const profile = require('../../electron/settings-profile.cjs');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-session-ipc-')));
+  t.after(() => {
+    profile.configureSettingsProfile([]);
+    access.clear();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const h = createHarness(t);
+  const invoke = h.handlers.get('library-catalog-v1:playback-session');
+  h.sender.mainFrame = {};
+  assert.throws(() => invoke({ sender: h.sender, senderFrame: {} }, { action: 'read' }), /cannot access files/);
+  const event = { sender: h.sender, senderFrame: h.sender.mainFrame };
+  const song = path.join(root, 'selected.mid');
+  fs.writeFileSync(song, 'music');
+  access.grantRead(song);
+  const expectedPath = access.getGrantedReadPath(song);
+  fs.unlinkSync(song);
+  profile.configureSettingsProfile(['--settings-name=default']);
+  const track = { path: song, byteLength: 5, meta: { title: 'Song', picture: new Uint8Array(20) } };
+  const paths = [path.join(root, 'player-state.json'), 'https://example.invalid/media', path.join(root, 'other.mid')];
+  assert.deepEqual(await invoke(event, { action: 'append', profileKey: 'forged', rows: [
+    { ordinal: 0, track }, ...paths.map((value, i) => ({ ordinal: i + 1, track: { path: value } }))
+  ] }), { excludedCount: 3 });
+  const saved = h.calls.at(-1)[1];
+  assert.equal(saved.profileKey, 'default');
+  assert.deepEqual(saved.rows[0].track, { path: expectedPath, byteLength: 5, meta: { title: 'Song' } });
+  access.clear();
+  h.host.request = async () => ({ rows: saved.rows, nextOrdinal: null });
+  await invoke(event, { action: 'page', startOrdinal: 0 });
+  assert.equal(access.getGrantedReadPath(song), expectedPath);
 });
 
 test('catalog sender authority follows the current live main window', async t => {
@@ -134,6 +176,20 @@ test('catalog capabilities reject unexpected renderer data', async t => {
   assert.deepEqual(h.calls, []);
   await h.api.getCapabilities();
   assert.deepEqual(h.calls, [['getCapabilities', undefined]]);
+});
+
+test('tag writing accepts only the previously issued snapshot and no renderer paths', async t => {
+  const h = createHarness(t);
+  const event = { sender: h.sender };
+  const write = h.handlers.get('library-catalog-v1:write-loudness-tags');
+  assert.throws(() => write(event, { snapshotId: 'guessed', path: '/file' }), { code: 'invalidRequest' });
+  assert.throws(() => write(event, { snapshotId: 'guessed', scanOptions: { folderIds: ['chosen'] } }),
+    { code: 'invalidRequest' });
+  assert.throws(() => write(event, { snapshotId: 'guessed', scanOptions: { languageHints: { path: '/file' } } }),
+    { code: 'invalidLanguageHints' });
+  await assert.rejects(write(event, { snapshotId: 'guessed' }));
+  assert.throws(() => h.handlers.get('library-catalog-v1:prepare-loudness-tag-write')(event, { path: '/file' }),
+    { code: 'invalidRequest' });
 });
 
 test('catalog events expose public invalidation data and unsubscribe without leaking Electron events', t => {
@@ -172,5 +228,22 @@ test('partial catalog IPC registration is rolled back when a channel cannot be r
       shell: { showItemInFolder() {} }, getMainWindow: () => null
     }), error => error === failure);
     assert.equal(registered.size, 0);
+  }
+});
+
+test('archive catalog lookup returns the path without granting raw file access', async t => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const access = require('../../electron/file-access.cjs');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-archive-grant-')));
+  t.after(() => { access.clear(); fs.rmSync(root, { recursive: true, force: true }); });
+  const h = createHarness(t);
+  for (const [kind, name] of [['archive-entry', 'scores.zip'], ['file', 'song.mid']]) {
+    const sourcePath = path.join(root, name);
+    fs.writeFileSync(sourcePath, 'data');
+    h.runtime.resolvePlaybackSource = async () => ({ kind: 'electron-file', path: sourcePath, sourceKind: kind });
+    assert.equal((await h.api.resolvePlaybackSource('track')).path, sourcePath);
+    assert.equal(Boolean(access.getGrantedReadPath(sourcePath)), kind === 'file');
   }
 });

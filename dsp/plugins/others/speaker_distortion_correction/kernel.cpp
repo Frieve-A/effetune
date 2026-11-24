@@ -22,9 +22,11 @@
 #include "nothrow_storage.h"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace effetune::plugins::others {
 namespace {
@@ -95,6 +97,10 @@ std::uint32_t readU32(const std::uint8_t *bytes) noexcept {
          (static_cast<std::uint32_t>(bytes[3]) << 24u);
 }
 
+float readWeight(const std::uint8_t *bytes, std::uint32_t index) noexcept {
+  return std::bit_cast<float>(readU32(bytes + static_cast<std::size_t>(index) * sizeof(float)));
+}
+
 // Modified Bessel function of the first kind, order zero, as its power series.
 double besselI0(double x) noexcept {
   const double quarterSquare = x * x * 0.25;
@@ -156,6 +162,48 @@ struct Bank final {
   std::array<bool, kAssetChannels> oddActive{};
   std::array<bool, kAssetChannels> corrected{};
   std::uint32_t length = kLengthShort;
+
+  bool allocate() noexcept {
+    return weights.allocate(static_cast<std::size_t>(kAssetChannels) * kWeightCount) &&
+           odd.allocate(static_cast<std::size_t>(kAssetChannels) * 2u * kLowStates);
+  }
+
+  void swap(Bank &other) noexcept {
+    weights.swap(other.weights);
+    odd.swap(other.odd);
+    oddActive.swap(other.oddActive);
+    corrected.swap(other.corrected);
+    std::swap(length, other.length);
+  }
+};
+
+struct PreparedBank final : PreparedAsset {
+  Bank bank;
+  std::uint32_t error = 0u;
+  bool clear = false;
+
+  [[nodiscard]] bool hasPreparationError() const noexcept override { return error != 0u; }
+};
+
+struct ResonantSections final {
+  std::array<Section, kLowSections> low{};
+  std::array<Section, kHighSections> high{};
+  std::array<double, kLowStates> lowScales{};
+  std::array<double, kHighStates> highScales{};
+
+  void design(double sampleRate) noexcept {
+    for (std::uint32_t i = 0u; i < kLowSections; ++i) {
+      const double frequency = 20.0 * dsp::portableExp(static_cast<double>(i) / 3.0 * kLn2);
+      low[i] = designSection(frequency, kLowQ, sampleRate);
+      lowScales[2u * i] = low[i].peakScale;
+      lowScales[2u * i + 1u] = low[i].quadratureScale;
+    }
+    for (std::uint32_t j = 0u; j < kHighSections; ++j) {
+      high[j] = designSection(kHighFrequencies[j], kHighQ, sampleRate);
+      highScales[2u * j] = high[j].peakScale;
+      highScales[2u * j + 1u] = high[j].quadratureScale;
+    }
+  }
 };
 
 struct ChannelState final {
@@ -204,8 +252,7 @@ public:
     sample_rate_ = static_cast<double>(info.sampleRate);
     max_channels_ = info.maxChannels;
     for (Bank &bank : banks_) {
-      if (!bank.weights.allocate(static_cast<std::size_t>(kAssetChannels) * kWeightCount) ||
-          !bank.odd.allocate(static_cast<std::size_t>(kAssetChannels) * 2u * kLowStates))
+      if (!bank.allocate())
         return;
     }
     rate_supported_ = sample_rate_ >= kMinimumRate;
@@ -277,14 +324,8 @@ public:
   }
 
   std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
-    if (!prepared_ || slot != kAssetSlot || info.channels != kAssetChannels ||
-        info.frames != kAssetFrames || info.topology != kTopologyIndependent ||
-        info.headBlock != 0u || info.rateDivider != 1u || info.pathCount != 0u ||
-        info.inputCount != 0u || info.processingChannels == 0u ||
-        info.processingChannels > max_channels_ || info.byteSize != kAssetBytes ||
-        info.footprintBytes < info.byteSize || info.footprintBytes > kAssetCapacity) {
+    if (!prepared_ || slot != kAssetSlot || !validAssetInfo(info, max_channels_))
       return nullptr;
-    }
     if (!staging_.allocate(kAssetBytes / sizeof(float))) {
       setAssetError(2u);
       return nullptr;
@@ -296,12 +337,13 @@ public:
 
   et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
                         std::uint32_t format_tag) noexcept override {
+    const auto *payload = reinterpret_cast<const std::uint8_t *>(staging_.data());
     if (slot != kAssetSlot || asset_state_ != ET_ASSET_STATE_STAGED || bytes != kAssetBytes ||
-        format_tag != ET_ASSET_F32_MULTICH || !validatePayload()) {
+        format_tag != ET_ASSET_F32_MULTICH || !validatePayload(payload)) {
       setAssetError(1u);
       return ET_ERR_ARGS;
     }
-    foldPayload(banks_[1u - active_bank_]);
+    foldPayload(payload, banks_[1u - active_bank_], sections_, rate_supported_);
     asset_state_ = ET_ASSET_STATE_PREPARING;
     asset_reason_ = 0u;
     return ET_OK;
@@ -311,9 +353,31 @@ public:
     if (slot != kAssetSlot)
       return;
     staging_.release();
-    has_active_ = false;
-    asset_state_ = ET_ASSET_STATE_NONE;
-    asset_reason_ = 0u;
+    clearAssetState();
+  }
+
+  AssetPreparer assetPreparer(std::uint32_t slot) const noexcept override {
+    return slot == kAssetSlot ? &prepareAsset : nullptr;
+  }
+
+  et_status exchangePreparedAsset(std::uint32_t slot,
+                                  std::unique_ptr<PreparedAsset> &asset) noexcept override {
+    if (slot != kAssetSlot)
+      return ET_ERR_UNSUPPORTED;
+    if (!asset)
+      return ET_ERR_STATE;
+    auto &update = static_cast<PreparedBank &>(*asset);
+    if (update.clear) {
+      clearAssetState();
+    } else if (update.error != 0u) {
+      setAssetErrorState(update.error);
+      return update.error == 2u ? ET_ERR_OOM : ET_ERR_ARGS;
+    } else {
+      banks_[1u - active_bank_].swap(update.bank);
+      asset_state_ = ET_ASSET_STATE_PREPARING;
+      asset_reason_ = 0u;
+    }
+    return ET_OK;
   }
 
   [[nodiscard]] std::uint32_t assetState(std::uint32_t slot) const noexcept override {
@@ -332,6 +396,46 @@ public:
   }
 
 private:
+  void clearAssetState() noexcept {
+    has_active_ = false;
+    asset_state_ = ET_ASSET_STATE_NONE;
+    asset_reason_ = 0u;
+  }
+
+  static bool validAssetInfo(const AssetBeginInfo &info, std::uint32_t maxChannels) noexcept {
+    return info.channels == kAssetChannels && info.frames == kAssetFrames &&
+           info.topology == kTopologyIndependent && info.headBlock == 0u &&
+           info.rateDivider == 1u && info.pathCount == 0u && info.inputCount == 0u &&
+           info.processingChannels != 0u && info.processingChannels <= maxChannels &&
+           info.byteSize == kAssetBytes && info.footprintBytes >= info.byteSize &&
+           info.footprintBytes <= kAssetCapacity;
+  }
+
+  static et_status prepareAsset(const PrepareInfo &prepare, const AssetBeginInfo &info,
+                                const std::uint8_t *payload, std::uint32_t format,
+                                std::unique_ptr<PreparedAsset> &asset) noexcept {
+    if (payload && !validAssetInfo(info, prepare.maxChannels))
+      return ET_ERR_ARGS;
+    auto update = std::unique_ptr<PreparedBank>(new (std::nothrow) PreparedBank);
+    if (!update)
+      return ET_ERR_OOM;
+    if (!payload) {
+      update->clear = true;
+    } else if (format != ET_ASSET_F32_MULTICH || !validatePayload(payload)) {
+      update->error = 1u;
+    } else if (!update->bank.allocate()) {
+      update->error = 2u;
+    } else {
+      ResonantSections sections;
+      const bool rateSupported = prepare.sampleRate >= kMinimumRate;
+      if (rateSupported)
+        sections.design(prepare.sampleRate);
+      foldPayload(payload, update->bank, sections, rateSupported);
+    }
+    asset = std::move(update);
+    return ET_OK;
+  }
+
   [[nodiscard]] static std::uint32_t selectedFirst(const Params &parameters) noexcept {
     return parameters.selectedFirst >= 0.0F && parameters.selectedFirst < kAssetChannels
                ? static_cast<std::uint32_t>(parameters.selectedFirst)
@@ -357,17 +461,7 @@ private:
   }
 
   bool designFilters() noexcept {
-    for (std::uint32_t i = 0u; i < kLowSections; ++i) {
-      const double frequency = 20.0 * dsp::portableExp(static_cast<double>(i) / 3.0 * kLn2);
-      low_[i] = designSection(frequency, kLowQ, sample_rate_);
-      low_scales_[2u * i] = low_[i].peakScale;
-      low_scales_[2u * i + 1u] = low_[i].quadratureScale;
-    }
-    for (std::uint32_t j = 0u; j < kHighSections; ++j) {
-      high_[j] = designSection(kHighFrequencies[j], kHighQ, sample_rate_);
-      high_scales_[2u * j] = high_[j].peakScale;
-      high_scales_[2u * j + 1u] = high_[j].quadratureScale;
-    }
+    sections_.design(sample_rate_);
 
     decimation_ = 2u;
     while (sample_rate_ / (2.0 * decimation_) >= kDecimatedMinimumRate)
@@ -481,24 +575,23 @@ private:
     return state_.data() + static_cast<std::size_t>(channel) * channel_stride_;
   }
 
-  bool validatePayload() const noexcept {
-    const auto *bytes = reinterpret_cast<const std::uint8_t *>(staging_.data());
+  static bool validatePayload(const std::uint8_t *bytes) noexcept {
     if (readU32(bytes) != kAssetMagic || readU32(bytes + 4u) != kAssetChannels ||
         readU32(bytes + 8u) != kAssetFrames || readU32(bytes + 16u) != kTopologyIndependent)
       return false;
-    const float *data = staging_.data() + kAssetHeaderBytes / sizeof(float);
-    const float step = data[kStepFrame];
+    const auto *data = bytes + kAssetHeaderBytes;
+    const float step = readWeight(data, kStepFrame);
     if (step != 0.0F && step != 1.0F)
       return false;
     for (std::uint32_t channel = 0u; channel < kAssetChannels; ++channel) {
-      const float *frames = data + static_cast<std::size_t>(channel) * kAssetFrames;
-      if (frames[kStepFrame] != step)
+      const auto *frames = data + static_cast<std::size_t>(channel) * kAssetFrames * sizeof(float);
+      if (readWeight(frames, kStepFrame) != step)
         return false;
       bool odd = false;
       for (std::uint32_t index = 0u; index < kOddBoundFrame; ++index) {
         if (index == kStepFrame)
           continue;
-        const double weight = frames[index];
+        const double weight = readWeight(frames, index);
         const double magnitude = weight >= 0.0 ? weight : -weight;
         if (!(magnitude < kMaxWeight))
           return false;
@@ -506,7 +599,7 @@ private:
       }
       // Bounds matter only where the odd block is active.
       for (std::uint32_t a = 0u; odd && a < kLowStates; ++a) {
-        const double bound = frames[kOddBoundFrame + a];
+        const double bound = readWeight(frames, kOddBoundFrame + a);
         if (!std::isfinite(bound) || !(bound > 0.0))
           return false;
       }
@@ -514,58 +607,67 @@ private:
     return true;
   }
 
-  void foldPayload(Bank &bank) noexcept {
-    const float *data = staging_.data() + kAssetHeaderBytes / sizeof(float);
-    bank.length = data[kStepFrame] == 1.0F ? kLengthLong : kLengthShort;
+  static void foldPayload(const std::uint8_t *payload, Bank &bank, const ResonantSections &sections,
+                          bool rateSupported) noexcept {
+    const auto *data = payload + kAssetHeaderBytes;
+    bank.length = readWeight(data, kStepFrame) == 1.0F ? kLengthLong : kLengthShort;
     for (std::uint32_t channel = 0u; channel < kAssetChannels; ++channel) {
-      const float *weights = data + static_cast<std::size_t>(channel) * kAssetFrames;
+      const auto *weights = data + static_cast<std::size_t>(channel) * kAssetFrames * sizeof(float);
       bool corrected = false;
       for (std::uint32_t index = 0u; index < kWeightCount; ++index)
-        corrected = corrected || weights[index] != 0.0F;
+        corrected = corrected || readWeight(weights, index) != 0.0F;
       bool odd = false;
       for (std::uint32_t a = 0u; a < kLowStates; ++a)
-        odd = odd || weights[kOddWeightFrame + a] != 0.0F;
+        odd = odd || readWeight(weights, kOddWeightFrame + a) != 0.0F;
       bank.oddActive[channel] = odd;
       double *folded = bank.odd.data() + static_cast<std::size_t>(channel) * 2u * kLowStates;
       for (std::uint32_t a = 0u; odd && a < kLowStates; ++a) {
-        folded[a] = kRms * weights[kOddWeightFrame + a];
-        folded[kLowStates + a] = low_scales_[a] / (kRms * weights[kOddBoundFrame + a]);
+        folded[a] = kRms * readWeight(weights, kOddWeightFrame + a);
+        folded[kLowStates + a] =
+            sections.lowScales[a] / (kRms * readWeight(weights, kOddBoundFrame + a));
       }
       corrected = corrected || odd;
       bank.corrected[channel] = corrected;
-      if (corrected && rate_supported_)
-        foldChannel(weights,
-                    bank.weights.data() + static_cast<std::size_t>(channel) * kWeightCount);
+      if (corrected && rateSupported)
+        foldChannel(weights, bank.weights.data() + static_cast<std::size_t>(channel) * kWeightCount,
+                    sections);
     }
   }
 
-  void foldChannel(const float *weights, double *folded) const noexcept {
+  static void foldChannel(const std::uint8_t *weights, double *folded,
+                          const ResonantSections &sections) noexcept {
     std::uint32_t index = kLowLowOffset;
     for (std::uint32_t a = 0u; a < kLowStates; ++a) {
       for (std::uint32_t b = a; b < kLowStates; ++b, ++index)
-        folded[index] = weights[index] * low_scales_[a] * low_scales_[b] / kRms;
+        folded[index] =
+            readWeight(weights, index) * sections.lowScales[a] * sections.lowScales[b] / kRms;
     }
     for (std::uint32_t a = 0u; a < kLowStates; ++a) {
       for (std::uint32_t j = 0u; j < kHighSections; ++j) {
         const std::uint32_t pair = kHighSections * a + j;
-        const double low = low_scales_[a];
+        const double low = sections.lowScales[a];
         folded[kLowHighOffset + pair] =
-            weights[kLowHighOffset + pair] * low * high_scales_[2u * j] / kRms;
-        folded[kLowQuadratureOffset + pair] =
-            weights[kLowQuadratureOffset + pair] * low * high_scales_[2u * j + 1u] / kRms;
+            readWeight(weights, kLowHighOffset + pair) * low * sections.highScales[2u * j] / kRms;
+        folded[kLowQuadratureOffset + pair] = readWeight(weights, kLowQuadratureOffset + pair) *
+                                              low * sections.highScales[2u * j + 1u] / kRms;
         folded[kSecondOffset + pair] =
-            weights[kSecondOffset + pair] * low * high_scales_[2u * j] / kRms;
+            readWeight(weights, kSecondOffset + pair) * low * sections.highScales[2u * j] / kRms;
       }
     }
     index = kHighHighOffset;
     for (std::uint32_t c = 0u; c < kHighStates; ++c) {
       for (std::uint32_t e = c; e < kHighStates; ++e, ++index)
-        folded[index] = weights[index] * high_scales_[c] * high_scales_[e] / kRms;
+        folded[index] =
+            readWeight(weights, index) * sections.highScales[c] * sections.highScales[e] / kRms;
     }
   }
 
   void setAssetError(std::uint32_t reason) noexcept {
     staging_.clear();
+    setAssetErrorState(reason);
+  }
+
+  void setAssetErrorState(std::uint32_t reason) noexcept {
     has_active_ = false;
     asset_state_ = ET_ASSET_STATE_ERROR;
     asset_reason_ = reason;
@@ -626,7 +728,7 @@ private:
       const double x = samples[frame];
       const bool instant = channel_state.phase == 0u;
       for (std::uint32_t i = 0u; i < kLowSections; ++i) {
-        const double v = x - low_[i].a1 * low1[i] - low_[i].a2 * low2[i];
+        const double v = x - sections_.low[i].a1 * low1[i] - sections_.low[i].a2 * low2[i];
         if (instant) {
           low_states[2u * i] = v - low2[i];
           low_states[2u * i + 1u] = low1[i];
@@ -635,7 +737,7 @@ private:
         low1[i] = v;
       }
       for (std::uint32_t j = 0u; j < kHighSections; ++j) {
-        const double g = x - high_[j].a1 * high1[j] - high_[j].a2 * high2[j];
+        const double g = x - sections_.high[j].a1 * high1[j] - sections_.high[j].a2 * high2[j];
         high_states[2u * j] = g - high2[j];
         high_states[2u * j + 1u] = high1[j];
         high2[j] = high1[j];
@@ -783,10 +885,7 @@ private:
   NothrowStorage<double> state_;
   std::array<Bank, 2> banks_{};
   std::array<ChannelState, kAssetChannels> channels_{};
-  std::array<Section, kLowSections> low_{};
-  std::array<Section, kHighSections> high_{};
-  std::array<double, kLowStates> low_scales_{};
-  std::array<double, kHighStates> high_scales_{};
+  ResonantSections sections_;
   std::array<HalfBandStage, kMaxStages> stages_{};
   std::array<LengthConfig, kLengthCount> lengths_{};
   std::array<std::uint32_t, kMaxStages> decimator_offset_{};

@@ -2,7 +2,11 @@
 #include "engine.h"
 #include "host/pipeline.h"
 #include <cmath>
+#include <functional>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
 
 namespace effetune::audio {
 namespace {
@@ -131,19 +135,27 @@ Object mixerReply(const JsonValue &m) {
     result.emplace("requestId", *request);
   return result;
 }
+struct Reply {
+  Object result;
+  std::vector<std::uint8_t> bytes;
+  std::optional<Object> identity;
+};
+// Instrument state belongs to the audio thread, as in the worklet. Apply each
+// request as one audio command and send its reply from the control thread.
+void submitReply(DeviceHost &host, Object result, std::function<void(Reply &)> action) {
+  auto reply = std::make_shared<Reply>(Reply{std::move(result), {}, {}});
+  if (!host.submit([reply, action = std::move(action)](Session &) { action(*reply); },
+                   [reply] {
+                     if (reply->identity)
+                       send(std::move(*reply->identity));
+                     send(std::move(reply->result), std::move(reply->bytes));
+                   }))
+    throw std::runtime_error("audio command queue full");
+}
 } // namespace
-bool instrumentNeedsOwner(std::string_view t) noexcept {
-  return t == "sfzCaptureCheckpoints" || t == "sfzStartRuntime" || t == "midiCaptureCheckpoint";
-}
-bool pausedMixerNeedsOwner(Session &s, const Frame &f) noexcept {
-  if (!s.pipeline() || !s.pipeline()->midi.paused())
-    return false;
-  const auto action = mixerAction(f.message);
-  return action && action->count;
-}
 bool isInstrumentControl(std::string_view t) noexcept {
-  return instrumentNeedsOwner(t) || t == "sfzResumeRuntime" || t == "soundFontMidiMetering" ||
-         t == "soundFontMixerAction";
+  return t == "sfzCaptureCheckpoints" || t == "sfzStartRuntime" || t == "midiCaptureCheckpoint" ||
+         t == "sfzResumeRuntime" || t == "soundFontMidiMetering" || t == "soundFontMixerAction";
 }
 bool restoreCheckpoints(Session &s, const Frame &f) {
   auto *a = f.message.Find("checkpoints");
@@ -156,60 +168,35 @@ bool restoreCheckpoints(Session &s, const Frame &f) {
   }
   return true;
 }
-void handlePausedMixer(Session &s, const Frame &f) {
-  auto result = mixerReply(f.message);
-  const auto action = mixerAction(f.message);
-  const auto i = s.pipeline()->instrument(number(f.message, "pluginId"));
-  std::vector<std::uint8_t> bytes;
-  try {
-    if (action && i && applyMixer(*i, *action)) {
-      List checkpoints;
-      if (s.pipeline()->midi.paused())
-        checkpoints.emplace_back(capture(s, *i, bytes, false));
-      result.insert_or_assign("checkpoints", std::move(checkpoints));
-      result.emplace("appliedFrame", double(s.position()));
-      result.insert_or_assign("ok", true);
-    }
-  } catch (const std::runtime_error &) {
-    bytes.clear();
-  }
-  send(std::move(result), std::move(bytes));
-}
 void handleInstrumentControl(DeviceHost &host, Session &s, const Frame &f) {
   const auto &m = f.message;
   auto type = m.GetString("type");
   const auto branch = number(m, "branch"), id = number(m, "pluginId");
   auto &p = *s.pipeline();
   if (type == "soundFontMixerAction") {
-    // Offline null has no audio callback or ownership transition.
-    if (!host.physical() && pausedMixerNeedsOwner(s, f)) {
-      handlePausedMixer(s, f);
-      return;
-    }
     auto result = mixerReply(m);
     const auto action = mixerAction(m);
     if (!action) {
       send(std::move(result));
       return;
     }
-    struct Receipt {
-      bool applied = false;
-      std::uint64_t frame = 0;
-    };
-    auto receipt = std::make_shared<Receipt>();
-    if (!host.submit(
-            [receipt, action = *action, id, &s, &p](Session &) {
-              const auto i = p.instrument(id);
-              receipt->applied = i && applyMixer(*i, action);
-              receipt->frame = s.position();
-            },
-            [receipt, result = std::move(result)]() mutable {
-              result.insert_or_assign("ok", receipt->applied);
-              if (receipt->applied)
-                result.emplace("appliedFrame", double(receipt->frame));
-              send(std::move(result));
-            }))
-      throw std::runtime_error("audio command queue full");
+    submitReply(host, std::move(result), [action = *action, id, &s, &p](Reply &r) {
+      try {
+        const auto i = p.instrument(id);
+        if (!i || !applyMixer(*i, action))
+          return;
+        List checkpoints;
+        // The paused checkpoint must contain the edited controllers.
+        if (action.count && p.midi.paused())
+          checkpoints.emplace_back(capture(s, *i, r.bytes, false));
+        r.result.insert_or_assign("checkpoints", std::move(checkpoints));
+        r.result.emplace("appliedFrame", double(s.position()));
+        r.result.insert_or_assign("ok", true);
+        s.power().mutation(p);
+      } catch (const std::exception &) {
+        r.bytes.clear();
+      }
+    });
     return;
   }
   if (type == "sfzResumeRuntime") {
@@ -231,98 +218,106 @@ void handleInstrumentControl(DeviceHost &host, Session &s, const Frame &f) {
   Object result{{"branch", double(branch)}};
   if (auto *request = m.Find("requestId"))
     result.emplace("requestId", *request);
-  std::vector<std::uint8_t> bytes;
-  List records;
-  bool ok = true;
-  try {
-    if (type == "midiCaptureCheckpoint" || type == "sfzCaptureCheckpoints") {
-      const bool midi = type == "midiCaptureCheckpoint";
-      result.emplace("type", midi ? "midiCheckpoints" : "sfzCheckpoints");
-      result.emplace("generation", double(p.midi.generation()));
-      result.emplace("position", p.midi.position(s.position(), s.format().sampleRate));
-      if (midi && (!p.midi.paused() || p.midi.generation() != number(m, "generation")))
-        throw std::runtime_error("stale MIDI checkpoint");
-      if (!midi && m.GetString("reason") == "monitoring") {
-        const auto *proof = m.Find("proof");
-        const auto &state = s.power().state();
-        if (!s.power().checkpointRequested() || !proof ||
-            proof->GetNumber("activityEpoch") != double(state.activityEpoch) ||
-            proof->GetNumber("runtimeRevision") != double(p.runtimeRevision()) ||
-            number(*proof, "workletGraphGeneration") != state.graph ||
-            number(*proof, "topologyRevision") != state.topology ||
-            proof->GetNumber("commandId") != double(state.command) ||
-            proof->GetNumber("skipEpoch") != double(state.epoch) ||
-            number(*proof, "midiGeneration") != p.midi.generation() ||
-            state.arm != PowerState::Arm::armed)
-          throw std::runtime_error("stale instrument power proof");
-      }
-      for (auto plugin : p.instrumentIds()) {
-        auto i = p.instrument(plugin);
-        if (!i || (midi && !i->target.enabled) ||
-            (i->settings.type == "SoundFontPlayerPlugin" && !p.midi.generation()))
-          continue;
-        if (!midi && m.GetString("reason") != "graph" && i->target.enabled && !p.midi.paused() &&
-            (i->engine.instanceMidiState(i->target.instance) & 23))
-          throw std::runtime_error("instrument is active");
-        auto record = capture(s, *i, bytes, !midi && !p.midi.paused());
-        if (!midi) {
-          if (i->engine.resetInstance(i->target.instance) != ET_OK ||
-              !restore(s, *i, record, bytes, false))
-            throw std::runtime_error("instrument verification failed");
-          p.freeze(plugin, s.position(), false, true, false);
+  auto request = std::make_shared<const Frame>(f);
+  submitReply(
+      host, std::move(result), [request, type = std::string(*type), branch, id, &s, &p](Reply &r) {
+        const auto &m = request->message;
+        auto &result = r.result;
+        auto &bytes = r.bytes;
+        List records;
+        bool ok = true;
+        try {
+          if (type == "midiCaptureCheckpoint" || type == "sfzCaptureCheckpoints") {
+            const bool midi = type == "midiCaptureCheckpoint";
+            result.emplace("type", midi ? "midiCheckpoints" : "sfzCheckpoints");
+            result.emplace("generation", double(p.midi.generation()));
+            result.emplace("position", p.midi.position(s.position(), s.format().sampleRate));
+            if (midi && (!p.midi.paused() || p.midi.generation() != number(m, "generation")))
+              throw std::runtime_error("stale MIDI checkpoint");
+            if (!midi && m.GetString("reason") == "monitoring") {
+              const auto *proof = m.Find("proof");
+              const auto &state = s.power().state();
+              if (!s.power().checkpointRequested() || !proof ||
+                  proof->GetNumber("activityEpoch") != double(state.activityEpoch) ||
+                  proof->GetNumber("runtimeRevision") != double(p.runtimeRevision()) ||
+                  number(*proof, "workletGraphGeneration") != state.graph ||
+                  number(*proof, "topologyRevision") != state.topology ||
+                  proof->GetNumber("commandId") != double(state.command) ||
+                  proof->GetNumber("skipEpoch") != double(state.epoch) ||
+                  number(*proof, "midiGeneration") != p.midi.generation() ||
+                  state.arm != PowerState::Arm::armed)
+                throw std::runtime_error("stale instrument power proof");
+            }
+            for (auto plugin : p.instrumentIds()) {
+              auto i = p.instrument(plugin);
+              if (!i || (midi && !i->target.enabled))
+                continue;
+              const bool unused =
+                  i->settings.type == "SoundFontPlayerPlugin" && !p.midi.generation();
+              if (unused && (midi || m.GetString("reason") == "graph"))
+                continue;
+              if (!midi && m.GetString("reason") != "graph" && i->target.enabled &&
+                  !p.midi.paused() && (i->engine.instanceMidiState(i->target.instance) & 23))
+                throw std::runtime_error("instrument is active");
+              auto record = capture(s, *i, bytes, !midi && !p.midi.paused());
+              if (!midi) {
+                if (i->engine.resetInstance(i->target.instance) != ET_OK ||
+                    !restore(s, *i, record, bytes, false))
+                  throw std::runtime_error("instrument verification failed");
+                p.freeze(plugin, s.position(), unused, true, false);
+              }
+              records.emplace_back(std::move(record));
+            }
+          } else if (type == "sfzStartRuntime") {
+            result.emplace("type", "sfzRuntimeStarted");
+            auto i = p.instrument(id);
+            if (!i || i->target.token != number(m, "token"))
+              throw std::runtime_error("stale instrument");
+            auto *checkpoint = m.Find("checkpoint");
+            const bool restoring = checkpoint && !checkpoint->IsNull();
+            if (restoring) {
+              if (!restore(s, *i, *checkpoint, request->attachment, false))
+                throw std::runtime_error("instrument restore failed");
+              records.emplace_back(capture(s, *i, bytes, false));
+            }
+            if (i->settings.type == "SFZNotePlayerPlugin") {
+              const auto k = i->target.instance;
+              const bool deferred = m.GetBool("deferStart").value_or(false);
+              const bool streamed = p.sampleStream(id) != nullptr;
+              if (restoring) {
+                p.freeze(id,
+                         static_cast<std::uint64_t>(
+                             std::max(0., checkpoint->GetNumber("captureFrame").value_or(0))),
+                         false, checkpoint->GetBool("sameContext").value_or(true), !deferred);
+              } else {
+                const auto gen = std::max(1u, i->engine.instanceMidiGeneration(k));
+                if (i->engine.setInstanceMidiEvents(k, nullptr, 0, gen, ET_MIDI_RETIME) != ET_OK ||
+                    i->engine.setInstanceMidiClock(
+                        k, i->engine.instanceMidiClock(k), gen,
+                        deferred || streamed ? 0 : ET_MIDI_CLOCK_RUNNING) != ET_OK)
+                  throw std::runtime_error("instrument clock failed");
+                if (deferred || streamed)
+                  p.freeze(id, s.position(), true, false, !deferred);
+              }
+            }
+            r.identity = Object{{"type", "sfzRuntimeIdentity"},
+                                {"branch", double(branch)},
+                                {"pluginId", double(id)},
+                                {"instanceId", double(i->target.instance)},
+                                {"instanceEpoch", double(i->target.instance)},
+                                {"token", double(i->target.token)}};
+          }
+        } catch (const std::exception &) {
+          ok = false;
+          bytes.clear();
+          records.clear();
+          if (type == "midiCaptureCheckpoint")
+            result.insert_or_assign("type", "midiCheckpointError");
+          else if (type == "sfzCaptureCheckpoints")
+            p.resumeInstruments();
         }
-        records.emplace_back(std::move(record));
-      }
-    } else if (type == "sfzStartRuntime") {
-      result.emplace("type", "sfzRuntimeStarted");
-      auto i = p.instrument(id);
-      if (!i || i->target.token != number(m, "token"))
-        throw std::runtime_error("stale instrument");
-      auto *r = m.Find("checkpoint");
-      const bool restoring = r && !r->IsNull();
-      if (restoring) {
-        if (!restore(s, *i, *r, f.attachment, false))
-          throw std::runtime_error("instrument restore failed");
-        records.emplace_back(capture(s, *i, bytes, false));
-      }
-      if (i->settings.type == "SFZNotePlayerPlugin") {
-        const auto k = i->target.instance;
-        const bool deferred = m.GetBool("deferStart").value_or(false);
-        const bool streamed = p.sampleStream(id) != nullptr;
-        if (restoring) {
-          p.freeze(
-              id,
-              static_cast<std::uint64_t>(std::max(0., r->GetNumber("captureFrame").value_or(0))),
-              false, r->GetBool("sameContext").value_or(true), !deferred);
-        } else {
-          const auto gen = std::max(1u, i->engine.instanceMidiGeneration(k));
-          if (i->engine.setInstanceMidiEvents(k, nullptr, 0, gen, ET_MIDI_RETIME) != ET_OK ||
-              i->engine.setInstanceMidiClock(k, i->engine.instanceMidiClock(k), gen,
-                                             deferred || streamed ? 0 : ET_MIDI_CLOCK_RUNNING) !=
-                  ET_OK)
-            throw std::runtime_error("instrument clock failed");
-          if (deferred || streamed)
-            p.freeze(id, s.position(), true, false, !deferred);
-        }
-      }
-      send({{"type", "sfzRuntimeIdentity"},
-            {"branch", double(branch)},
-            {"pluginId", double(id)},
-            {"instanceId", double(i->target.instance)},
-            {"instanceEpoch", double(i->target.instance)},
-            {"token", double(i->target.token)}});
-    }
-  } catch (const std::exception &) {
-    ok = false;
-    bytes.clear();
-    records.clear();
-    if (type == "midiCaptureCheckpoint")
-      result.insert_or_assign("type", "midiCheckpointError");
-    else if (type == "sfzCaptureCheckpoints")
-      p.resumeInstruments();
-  }
-  result.emplace("ok", ok);
-  result.emplace("checkpoints", std::move(records));
-  send(std::move(result), std::move(bytes));
+        result.emplace("ok", ok);
+        result.emplace("checkpoints", std::move(records));
+      });
 }
 } // namespace effetune::audio

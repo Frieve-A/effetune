@@ -1,6 +1,4 @@
-// Reserves and grants the System Audio input: a loopback of the system default output
-// that mutes that output while captured. The Browser controller owns the session's only
-// display-media handler and hands System Audio requests to this module.
+// Owns the default output mute for Chromium display capture and native WASAPI loopback.
 const { createSystemAudioMuteKeeper } = require('./system-audio-mute-keeper.cjs');
 
 // The renderer requests capture right after reserving, so a reservation that outlives
@@ -12,6 +10,8 @@ function createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer, muteKe
   let reservation = null;
   let disposed = false;
   let generation = 0;
+  let nativeCapture = null;
+  let nativeSequence = 0;
 
   function clearReservation() {
     if (reservation) clearTimeout(reservation.timer);
@@ -47,9 +47,37 @@ function createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer, muteKe
     if (fromTrustedFrame(event)) muteKeeper.release();
     event.returnValue = null;
   };
+  function endNativeCapture() {
+    const capture = nativeCapture;
+    nativeCapture = null;
+    if (capture?.holdStarted) muteKeeper.release();
+    else if (capture) muteKeeper.discardPrepared?.();
+  }
+  ipcMain.handle('system-audio:native-begin', (event, endpointId) => {
+    if (!fromTrustedFrame(event) || typeof endpointId !== 'string' || !endpointId ||
+        endpointId.length > 1024 || endpointId.includes('\0')) return null;
+    endNativeCapture();
+    const id = ++nativeSequence;
+    nativeCapture = { id, prepared: muteKeeper.prepare(endpointId), holdStarted: false };
+    return id;
+  });
+  ipcMain.handle('system-audio:native-hold', async (event, id) => {
+    const capture = nativeCapture;
+    if (!fromTrustedFrame(event) || !capture || id !== capture.id || !await capture.prepared ||
+        capture !== nativeCapture) return false;
+    if (!capture.holdStarted) {
+      capture.holdStarted = true;
+      capture.confirmed = muteKeeper.hold();
+    }
+    return await capture.confirmed && capture === nativeCapture;
+  });
+  ipcMain.handle('system-audio:native-end', (event, id) => {
+    if (fromTrustedFrame(event) && nativeCapture?.id === id) endNativeCapture();
+  });
   // A reload or crash ends the renderer's captures without their reports.
   const resetCaptures = () => {
     generation++;
+    endNativeCapture();
     clearReservation();
     muteKeeper.reset();
   };
@@ -95,7 +123,10 @@ function createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer, muteKe
   function dispose() {
     if (disposed) return;
     disposed = true;
+    endNativeCapture();
     clearReservation();
+    for (const method of ['native-begin', 'native-hold', 'native-end'])
+      ipcMain.removeHandler(`system-audio:${method}`);
     ipcMain.removeListener('system-audio:prepare-capture', syncPrepare);
     ipcMain.removeListener('system-audio:capture-started', syncCaptureStarted);
     ipcMain.removeListener('system-audio:capture-stopped', syncCaptureStopped);
@@ -104,7 +135,7 @@ function createSystemAudioCapture({ mainWindow, ipcMain, desktopCapturer, muteKe
     muteKeeper.dispose();
   }
 
-  return { pendingOrder, handleRequest, dispose };
+  return { pendingOrder, handleRequest, endNativeCapture, dispose };
 }
 
 module.exports = { createSystemAudioCapture };

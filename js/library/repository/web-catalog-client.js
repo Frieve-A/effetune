@@ -1,3 +1,4 @@
+import { attachLyricsFiles } from '../../ui/audio-player/lyrics-file-links.js';
 import { createRepositoryError } from './contract-errors.js';
 import { AndroidDocumentFile, forwardAndroidDocumentRequest } from '../../android/library-io.js';
 import {
@@ -119,7 +120,12 @@ export class WebCatalogRepositoryClient {
   async cancelPlaylistImportPreview(request) { return this.request('cancelPlaylistImportPreview', request); }
   async getProvisionalEntry(operationId) { return this.request('getProvisionalEntry', operationId); }
   async readSequencePage(options) { return this.request('readSequencePage', options); }
-  async resolveSequenceEntrySource(options) { return this.request('resolveSequenceEntrySource', options); }
+  async resolveSequenceEntrySource(options) {
+    const result = await this.request('resolveSequenceEntrySource', options);
+    // Worker messages clone the File objects. Restore their attachment in the renderer.
+    if (result?.wrdFile) attachLyricsFiles([result.file], [result.wrdFile]);
+    return result;
+  }
   async resolveTrackSiblingFile(options) {
     const result = await this.request('resolveTrackSiblingFile', options);
     return result?.file?.kind === 'android-document'
@@ -138,6 +144,12 @@ export class WebCatalogRepositoryClient {
   async createPlaylist(options) { return this.request('createPlaylist', options); }
   async createPlaylistWithItems(options) { return this.request('createPlaylistWithItems', options); }
   async recordRecentlyPlayed(options) { return this.request('recordRecentlyPlayed', options); }
+  listPendingLoudness(request) { return this.request('listPendingLoudness', request); }
+  playbackSession(request) { return this.request('playbackSession', request); }
+  saveTrackLoudness(request) { return this.request('saveTrackLoudness', request); }
+  finalizeLoudness(request) { return this.request('finalizeLoudness', request); }
+  getTrackLoudness(request) { return this.request('getTrackLoudness', request); }
+  getLoudnessStats(request) { return this.request('getLoudnessStats', request); }
   async setTrackFavorite(options) { return this.request('setTrackFavorite', options); }
   async getFavoriteTrackUids(options = {}) { return this.request('getFavoriteTrackUids', options); }
   async getSystemPlaylists() { return this.request('getSystemPlaylists'); }
@@ -184,7 +196,7 @@ export class WebCatalogRepositoryClient {
         scanReason: options.scanReason ?? 'automatic',
         languageHints: options.languageHints ?? null,
         includeVideo: options.includeVideo === true,
-        includeMidi: options.includeMidi === true
+        includeMidi: options.includeMidi === true, includeMidiArchives: options.includeMidiArchives === true
       });
     } catch (error) {
       await this.request('abortSessionFolder', { token: begun.token }).catch(() => {});

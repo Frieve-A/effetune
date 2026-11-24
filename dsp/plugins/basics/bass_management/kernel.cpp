@@ -1,8 +1,8 @@
 #include "effetune/kernel.h"
 #include "BassManagementPluginParams.h"
 #include "binary_io.h"
+#include "convolver_asset.h"
 #include "effetune/dsp/biquad.h"
-#include "effetune/dsp/partitioned_convolver.h"
 #include "effetune/dsp/smoothing.h"
 #include "nothrow_storage.h"
 
@@ -166,14 +166,15 @@ public:
   void reset() noexcept override {
     delay_.clear();
     position_ = 0;
-    convolver_.reset();
+    storage_.convolver.reset();
     for (std::size_t bank = 0; bank < lp_.size(); ++bank)
       for (auto &filter : lp_.data()[bank])
         filter.states = {};
     for (std::size_t bank = 0; bank < hp_.size(); ++bank)
       for (auto &filter : hp_.data()[bank])
         filter.states = {};
-    const bool ready = resident_ && convolver_.state() == dsp::ConvolverPreparationState::active;
+    const bool ready =
+        resident_ && storage_.convolver.state() == dsp::ConvolverPreparationState::active;
     mix_ = ready ? 1.0F : 0.0F;
     history_ = ready ? latency_ : 0;
     transition_ = 0;
@@ -200,8 +201,8 @@ public:
   void clearAsset(std::uint32_t slot) noexcept override {
     if (slot != 0)
       return;
-    convolver_.clear();
-    payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
     resident_ = false;
     asset_state_ = ET_ASSET_STATE_NONE;
     reason_ = 0;
@@ -209,95 +210,192 @@ public:
   }
   std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
     applyPendingParameters();
-    Parameters requested = params_;
-    // The host stages replacements while the resident filter is held dry.
+    const auto requested = assetParameters();
+    if (slot || !prepared_ || !validShape(info, channels_) || !matchesParameters(requested, info) ||
+        !dsp::ConvolverAssetStorage::admitted(info.footprintBytes))
+      return nullptr;
+    storage_.convolver.clear();
+    stagePrepared(requested, info);
+    auto config = makeConfig(info, salt_);
+    std::uint32_t index = 0;
+    for (std::uint32_t ch = 0; ch < info.processingChannels; ++ch)
+      if (needsLowpass(candidate_, ch))
+        config.paths[index] = {ch, ch, index}, ++index;
+    if (!storage_.reserve(config, info) ||
+        storage_.convolver.memoryBytes() + info.byteSize + workingBytes() > kCapacity) {
+      failAsset(2);
+      return nullptr;
+    }
+    asset_state_ = ET_ASSET_STATE_STAGED;
+    reason_ = 0;
+    return reinterpret_cast<std::uint8_t *>(storage_.payload.data());
+  }
+  et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
+                        std::uint32_t tag) noexcept override {
+    if (slot != 0 || asset_state_ != ET_ASSET_STATE_STAGED)
+      return ET_ERR_STATE;
+    const auto error =
+        bytes != begin_.byteSize
+            ? 1u
+            : commitCoefficients(storage_, begin_, static_cast<float>(rate_), tag, candidate_);
+    if (error) {
+      failAsset(error);
+      return error == 3u ? ET_ERR_STATE : ET_ERR_ARGS;
+    }
+    activatePrepared();
+    return ET_OK;
+  }
+
+  std::uint32_t assetSliceOffset() const noexcept override { return salt_; }
+  AssetPreparer assetPreparer(std::uint32_t slot) const noexcept override {
+    return slot == 0 ? &prepareAsset : nullptr;
+  }
+  struct Prepared final : dsp::PreparedConvolverAsset {
+    std::uint32_t filterMask = 0;
+    dsp::ConvolverAssetStorage discarded;
+  };
+
+  static et_status prepareAsset(const PrepareInfo &context, const AssetBeginInfo &info,
+                                const std::uint8_t *payload, std::uint32_t format,
+                                std::unique_ptr<PreparedAsset> &out) noexcept {
+    return dsp::PreparedConvolverAsset::prepare<Prepared>(
+        context, info, payload, out, [&](Prepared &next) -> et_status {
+          if (!validShape(info, context.maxChannels))
+            return ET_ERR_ARGS;
+          if (!dsp::ConvolverAssetStorage::admitted(info.footprintBytes))
+            return ET_ERR_OOM;
+          auto config = makeConfig(info, context.sliceOffset);
+          for (std::uint32_t i = 0; i < info.pathCount; ++i) {
+            const auto *path = payload + 32u + i * 12u;
+            const auto channel = readU32(path);
+            if (channel >= info.processingChannels || (i && channel <= config.paths[i - 1].input) ||
+                readU32(path + 4u) != channel || readU32(path + 8u) != i) {
+              next.error = 1;
+              return ET_OK;
+            }
+            next.filterMask |= 1u << channel;
+            config.paths[i] = {channel, channel, i};
+          }
+          next.build(config, payload, context.sampleRate, format, commitValidatedPaths);
+          return ET_OK;
+        });
+  }
+
+  et_status exchangePreparedAsset(std::uint32_t,
+                                  std::unique_ptr<PreparedAsset> &asset) noexcept override {
+    auto &next = static_cast<Prepared &>(*asset);
+    if (next.sliceOffset != salt_)
+      return ET_ERR_STATE;
+    if (!next.info.byteSize) {
+      storage_.swap(next.storage);
+      clearAsset(0);
+      return ET_OK;
+    }
+    applyPendingParameters();
+    const auto requested = assetParameters();
+    if (!matchesParameters(requested, next.info))
+      return ET_ERR_ARGS;
+    auto error = next.error;
+    if (!error &&
+        next.storage.convolver.memoryBytes() + next.info.byteSize + workingBytes() > kCapacity)
+      error = 2;
+    for (std::uint32_t ch = 0; !error && ch < next.info.processingChannels; ++ch)
+      if (needsLowpass(requested, ch) != bool(next.filterMask & (1u << ch)))
+        error = 1;
+    if (error && next.preserveResidentOnError)
+      return ET_ERR_ARGS;
+    stagePrepared(requested, next.info);
+    if (error) {
+      storage_.swap(next.discarded);
+      failAsset(error);
+      return ET_ERR_ARGS;
+    }
+    storage_.swap(next.storage);
+    activatePrepared();
+    return ET_OK;
+  }
+
+private:
+  Parameters assetParameters() const noexcept {
+    auto requested = params_;
     if (requested.phase == -1)
       requested.phase = 1;
-    if (slot != 0 || !prepared_ || info.processingChannels == 0 ||
-        info.processingChannels > channels_ || !valid(requested, info.processingChannels) ||
-        requested.phase != 1 || info.frames != taps(requested) || info.topology != 4 ||
-        info.headBlock != 128 || info.rateDivider != 1 ||
-        info.inputCount != info.processingChannels ||
-        info.channels != lowpassCount(requested, info.processingChannels) || info.channels == 0 ||
-        info.pathCount != info.channels || info.footprintBytes > kCapacity ||
-        info.footprintBytes < info.byteSize ||
-        static_cast<std::uint64_t>(info.byteSize) !=
-            32u + static_cast<std::uint64_t>(info.channels) *
-                      (12u + static_cast<std::uint64_t>(info.frames) * 4u))
-      return nullptr;
-    // Reject before releasing the resident convolver whenever admission can be checked in advance.
-    NothrowStorage<std::uint8_t> probe;
-    if (!probe.allocate(static_cast<std::size_t>(info.footprintBytes) + 1024u * 1024u))
-      return nullptr;
-    probe.release();
+    return requested;
+  }
+  static bool validShape(const AssetBeginInfo &info, std::uint32_t maxChannels) noexcept {
+    return info.processingChannels && info.processingChannels <= maxChannels &&
+           info.processingChannels <= kChannels && info.topology == 4 && info.headBlock == 128 &&
+           info.rateDivider == 1 && info.inputCount == info.processingChannels && info.channels &&
+           info.channels <= info.processingChannels && info.pathCount == info.channels &&
+           info.footprintBytes <= kCapacity && info.footprintBytes >= info.byteSize &&
+           info.byteSize == 32u + static_cast<std::uint64_t>(info.channels) *
+                                      (12u + static_cast<std::uint64_t>(info.frames) * 4u);
+  }
+  static bool matchesParameters(const Parameters &p, const AssetBeginInfo &info) noexcept {
+    return valid(p, info.processingChannels) && p.phase == 1 && info.frames == taps(p) &&
+           info.channels == lowpassCount(p, info.processingChannels);
+  }
+  static dsp::ConvolverConfig makeConfig(const AssetBeginInfo &info, std::uint32_t salt) noexcept {
+    dsp::ConvolverConfig config;
+    config.inputs = config.outputs = info.processingChannels;
+    config.irChannels = info.channels;
+    config.irFrames = info.frames;
+    config.latencySamples = 128;
+    config.sliceOffset = salt;
+    config.pathCount = info.channels;
+    return config;
+  }
+  void stagePrepared(const Parameters &requested, const AssetBeginInfo &info) noexcept {
     candidate_ = requested;
     begin_ = info;
-    convolver_.clear();
     resident_ = false;
     mix_ = 0;
     active_ = candidate_;
     active_channels_ = info.processingChannels;
     configured_ = true;
     latency_ = taps(active_) / 2u + 128u;
-    dsp::ConvolverConfig config;
-    config.inputs = config.outputs = info.processingChannels;
-    config.irChannels = info.channels;
-    config.irFrames = info.frames;
-    config.latencySamples = 128;
-    config.sliceOffset = salt_;
-    config.pathCount = info.channels;
-    std::uint32_t index = 0;
-    for (std::uint32_t ch = 0; ch < info.processingChannels; ++ch)
-      if (needsLowpass(candidate_, ch))
-        config.paths[index] = {ch, ch, index}, ++index;
-    if (!payload_.allocate(info.byteSize / 4u) || !convolver_.reserve(config) ||
-        convolver_.memoryBytes() + info.byteSize + workingBytes() > kCapacity ||
-        convolver_.memoryBytes() + info.byteSize > info.footprintBytes) {
-      failAsset(2);
-      return nullptr;
-    }
-    asset_state_ = ET_ASSET_STATE_STAGED;
-    reason_ = 0;
-    return reinterpret_cast<std::uint8_t *>(payload_.data());
   }
-  et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
-                        std::uint32_t tag) noexcept override {
-    if (slot != 0 || asset_state_ != ET_ASSET_STATE_STAGED)
-      return ET_ERR_STATE;
-    const auto *data = reinterpret_cast<const std::uint8_t *>(payload_.data());
-    bool correct = bytes == begin_.byteSize && tag == ET_ASSET_F32_MULTICH &&
-                   readU32(data) == 0x31415445u && readU32(data + 4) == begin_.channels &&
-                   readU32(data + 8) == begin_.frames &&
-                   readU32(data + 12) == static_cast<std::uint32_t>(std::lround(rate_)) &&
-                   readU32(data + 16) == 4 && readU32(data + 20) == begin_.pathCount &&
-                   readU32(data + 24) == 0 && readU32(data + 28) == 0;
+  static std::uint32_t commitCoefficients(dsp::ConvolverAssetStorage &storage,
+                                          const AssetBeginInfo &info, float sampleRate,
+                                          std::uint32_t tag, const Parameters &params) noexcept {
+    const auto *data = reinterpret_cast<const std::uint8_t *>(storage.payload.data());
     std::uint32_t index = 0;
-    for (std::uint32_t ch = 0; correct && ch < begin_.processingChannels; ++ch) {
-      if (!needsLowpass(candidate_, ch))
+    for (std::uint32_t ch = 0; ch < info.processingChannels; ++ch) {
+      if (!needsLowpass(params, ch))
         continue;
       const auto *path = data + 32u + index * 12u;
-      correct = readU32(path) == ch && readU32(path + 4u) == ch && readU32(path + 8u) == index;
+      if (readU32(path) != ch || readU32(path + 4u) != ch || readU32(path + 8u) != index)
+        return 1;
       ++index;
     }
-    const float *ir = payload_.data() + 8u + begin_.pathCount * 3u;
-    const std::size_t count = static_cast<std::size_t>(begin_.channels) * begin_.frames;
+    return commitValidatedPaths(storage, info, sampleRate, tag);
+  }
+  static std::uint32_t commitValidatedPaths(dsp::ConvolverAssetStorage &storage,
+                                            const AssetBeginInfo &info, float sampleRate,
+                                            std::uint32_t tag) noexcept {
+    const auto *data = reinterpret_cast<const std::uint8_t *>(storage.payload.data());
+    bool correct = tag == ET_ASSET_F32_MULTICH && readU32(data) == 0x31415445u &&
+                   readU32(data + 4) == info.channels && readU32(data + 8) == info.frames &&
+                   readU32(data + 12) == static_cast<std::uint32_t>(std::lround(sampleRate)) &&
+                   readU32(data + 16) == 4 && readU32(data + 20) == info.pathCount &&
+                   readU32(data + 24) == 0 && readU32(data + 28) == 0;
+    const float *ir = storage.payload.data() + 8u + info.pathCount * 3u;
+    const std::size_t count = static_cast<std::size_t>(info.channels) * info.frames;
     for (std::size_t i = 0; correct && i < count; ++i)
       correct = std::isfinite(ir[i]);
-    if (!correct) {
-      failAsset(1);
-      return ET_ERR_ARGS;
-    }
-    if (!convolver_.commit(ir, begin_.channels, begin_.frames)) {
-      failAsset(3);
-      return ET_ERR_STATE;
-    }
+    if (!correct)
+      return 1u;
+    return storage.convolver.commit(ir, info.channels, info.frames) ? 0u : 3u;
+  }
+  void activatePrepared() noexcept {
     asset_params_ = candidate_;
     resident_ = true;
     asset_channels_ = begin_.processingChannels;
     asset_state_ = ET_ASSET_STATE_PREPARING;
     history_ = 0;
-    return ET_OK;
   }
+
+public:
   void process(float *audio, std::uint32_t channels, std::uint32_t frames,
                const ProcessInfo &) noexcept override {
     telemetry_channels_ = channels;
@@ -312,15 +410,15 @@ public:
     std::memcpy(input_.data(), audio, bytes);
     std::memcpy(low_.data(), audio, bytes);
     if (usable) {
-      const auto before = convolver_.state();
-      convolver_.process(low_.data(), channels, frames);
+      const auto before = storage_.convolver.state();
+      storage_.convolver.process(low_.data(), channels, frames);
       if (before == dsp::ConvolverPreparationState::active ||
           before == dsp::ConvolverPreparationState::warming)
         history_ += frames;
-      if (convolver_.state() == dsp::ConvolverPreparationState::active &&
+      if (storage_.convolver.state() == dsp::ConvolverPreparationState::active &&
           history_ >= latency_ + frames)
         asset_state_ = ET_ASSET_STATE_ACTIVE;
-      if (convolver_.state() == dsp::ConvolverPreparationState::error) {
+      if (storage_.convolver.state() == dsp::ConvolverPreparationState::error) {
         resident_ = false;
         asset_state_ = ET_ASSET_STATE_ERROR;
         reason_ = 3;
@@ -422,8 +520,8 @@ private:
            (lp_.size() + hp_.size()) * sizeof(std::array<Filter, kChannels>);
   }
   void failAsset(std::uint32_t reason) noexcept {
-    convolver_.clear();
-    payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
     resident_ = false;
     mix_ = 0;
     asset_state_ = ET_ASSET_STATE_ERROR;
@@ -533,8 +631,8 @@ private:
                 frequency_fade_ = 0, bank_ = 0;
   std::uint64_t history_ = 0;
   AssetBeginInfo begin_{};
-  NothrowStorage<float> input_, low_, main_, delay_, payload_;
-  dsp::PartitionedConvolver convolver_;
+  NothrowStorage<float> input_, low_, main_, delay_;
+  dsp::ConvolverAssetStorage storage_;
   NothrowStorage<std::array<Filter, kChannels>> lp_, hp_;
   dsp::LinearSmoother bass_gain_, lfe_gain_, head_gain_;
 };

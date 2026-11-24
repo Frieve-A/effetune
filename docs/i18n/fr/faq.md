@@ -21,6 +21,7 @@ Pour traiter le son d’un onglet Chrome ou Edge, consultez le [guide de l’ext
    4. Problèmes d'entrée, de sortie ou d'effets
    5. Discordance de sortie multicanal
    6. Dépannage de l’affichage
+   7. Signaler un problème ([GitHub Issues](https://github.com/Frieve-A/effetune/issues))
 3. Connexions multicanal et matérielles
    1. HDMI + récepteur AV
    2. Interfaces sans pilotes multicanaux
@@ -111,6 +112,14 @@ EffeTune produit les canaux dans l'ordre numérique, jusqu'à 16 canaux. Faites 
 
 Dans l’application de bureau, **Utiliser l’accélération matérielle** est activé par défaut. Si la fenêtre clignote ou cesse de se mettre à jour, désactivez cette option dans **Paramètres > Configuration...**, puis redémarrez EffeTune. Si les problèmes d’affichage se répètent, EffeTune la désactive et redémarre automatiquement. Pour réessayer, réactivez l’option et redémarrez l’application.
 
+### 2.7. Signaler un problème
+
+Si le son se coupe, enregistrez les informations de diagnostic pendant la coupure, si possible avant de choisir **Réinitialiser l'audio**. Si vous avez déjà réinitialisé l’audio, enregistrez les informations restantes. Recharger la fenêtre efface son historique d’activité. Redémarrer EffeTune efface tout l’historique. Avec un pilote audio natif, la réinitialisation de l’audio recharge aussi la fenêtre.
+
+Dans EffeTune 2.20.0, choisissez **Informations de diagnostic…** dans **Aide** sur ordinateur, dans **Paramètres** sur le Web ou dans le menu **⋮** en haut à droite sur mobile. Le haut de la fenêtre présente un résumé lisible : système d’exploitation, pilote et périphériques audio, conversion de fréquence éventuelle et latence de chaque tampon. En dessous, choisissez **Afficher le contenu du fichier** pour vérifier le rapport détaillé avant de l’enregistrer. Il contient le nom des périphériques audio sélectionnés. EffeTune remplace les noms et les chemins qu’il reconnaît, mais certains peuvent subsister. Vous pouvez modifier le fichier texte avant de le joindre.
+
+Ouvrez un rapport de bug et faites glisser le fichier dans le champ de description. Indiquez l’heure locale approximative de la coupure et le geste qui a rétabli le son, par exemple un clic ou le retour de la fenêtre au premier plan. Si votre version ou l’extension du navigateur ne propose pas ce menu, envoyez le rapport sans fichier. [GitHub Issues](https://github.com/Frieve-A/effetune/issues)
+
 ---
 
 ## 3. Connexions multicanal et matérielles
@@ -194,6 +203,7 @@ Utilisez **Copier les réglages PEQ par canal** pour coller dans **Effect Pipeli
 ---
 
 ## 7. Liens de référence
+* [Signaler un problème (GitHub Issues)](https://github.com/Frieve-A/effetune/issues)
 * EffeTune Desktop : <https://github.com/Frieve-A/effetune/releases>
 * Version web EffeTune : <https://effetune.frieve.com/effetune.html>
 * Mesure de la réponse en fréquence : <https://effetune.frieve.com/features/measurement/measurement.html>

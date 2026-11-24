@@ -617,17 +617,17 @@ test('LibraryManagerV2 forwards current language hints and media preferences to 
     browserLanguages: ['ja-JP', 'en-US']
   };
   assert.deepEqual(calls, [
-    ['addFolder', { languageHints, includeVideo: false, includeMidi: false }],
-    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: false, includeMidi: false }]
+    ['addFolder', { languageHints, includeVideo: false, includeMidi: false, includeMidiArchives: false }],
+    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: false, includeMidi: false, includeMidiArchives: false }]
   ]);
-  manager.windowRef.appConfig = { libraryIncludeVideo: true, libraryIncludeMidi: true };
+  manager.windowRef.appConfig = { libraryIncludeVideo: true, libraryIncludeMidi: true, libraryIncludeMidiArchives: true };
   await manager.addFolder();
   await manager.scanFolders(['folder-1']);
   await manager.requestFolderAccess('folder-1');
   assert.deepEqual(calls.slice(2), [
-    ['addFolder', { languageHints, includeVideo: true, includeMidi: true }],
-    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: true, includeMidi: true }],
-    ['requestFolderAccess', 'folder-1', { includeVideo: true, includeMidi: true }]
+    ['addFolder', { languageHints, includeVideo: true, includeMidi: true, includeMidiArchives: true }],
+    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: true, includeMidi: true, includeMidiArchives: true }],
+    ['requestFolderAccess', 'folder-1', { includeVideo: true, includeMidi: true, includeMidiArchives: true }]
   ]);
 });
 

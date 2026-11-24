@@ -25,7 +25,7 @@ export function createWebLibraryServices({
         scanReason: options.scanReason ?? 'automatic',
         languageHints: options.languageHints ?? null,
         includeVideo: options.includeVideo === true,
-        includeMidi: options.includeMidi === true
+        includeMidi: options.includeMidi === true, includeMidiArchives: options.includeMidiArchives === true
       };
       const result = await client.addFolder(request);
       if (result?.confirmationRequired !== true) return result;

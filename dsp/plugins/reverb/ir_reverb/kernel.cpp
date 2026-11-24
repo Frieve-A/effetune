@@ -1,7 +1,7 @@
 #include "effetune/kernel.h"
 #include "IRReverbPluginParams.h"
+#include "convolver_asset.h"
 #include "effetune/dsp/halfband.h"
-#include "effetune/dsp/partitioned_convolver.h"
 #include "nothrow_storage.h"
 
 #include <algorithm>
@@ -18,7 +18,6 @@ namespace {
 
 constexpr std::uint32_t kAssetSlot = 0u;
 constexpr std::uint32_t kAssetCapacity = 32u * 1024u * 1024u;
-constexpr std::size_t kAssetAdmissionHeadroom = 1u * 1024u * 1024u;
 constexpr std::uint32_t kAssetHeaderBytes = 32u;
 constexpr std::uint32_t kAssetMagic = 0x31415445u;
 constexpr std::uint32_t kAssetFormat = ET_ASSET_F32_MULTICH;
@@ -106,8 +105,6 @@ public:
   }
 };
 
-using StagingPayload = NothrowStorage<float>;
-
 } // namespace
 
 class IRReverbKernel final : public PluginKernel {
@@ -159,13 +156,13 @@ public:
 
   void readSchedulerTrace(dsp::ConvolverScheduleTrace &trace,
                           std::uint32_t &sliceOffset) const noexcept {
-    trace = convolver_.scheduleTraceForTesting();
+    trace = storage_.convolver.scheduleTraceForTesting();
     sliceOffset = slice_offset_;
   }
 #endif
 
   void reset() noexcept override {
-    convolver_.reset();
+    storage_.convolver.reset();
     resetRuntimeState();
     clearDryDelay();
     wet_fade_out_remaining_ = 0u;
@@ -222,7 +219,7 @@ public:
   [[nodiscard]] std::uint32_t latencySamples() const noexcept override {
     if (asset_state_ == ET_ASSET_STATE_NONE || asset_state_ == ET_ASSET_STATE_ERROR)
       return 0u;
-    const std::uint32_t convolution = convolver_.latencySamples() * rate_divider_;
+    const std::uint32_t convolution = storage_.convolver.latencySamples() * rate_divider_;
     const std::uint32_t resampler =
         rate_divider_ == 1u
             ? 0u
@@ -235,100 +232,88 @@ public:
   }
 
   std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
-    if (!validateBegin(slot, info))
+    if (slot != kAssetSlot || !prepared_ || !validateShape(info, max_channels_))
       return nullptr;
 
-    dsp::ConvolverConfig config;
-    config.latencySamples = info.headBlock;
-    config.sliceOffset = slice_offset_;
-    config.inputs =
-        info.topology == kTopologyTrueStereo
-            ? 2u
-            : (info.topology == kTopologyMatrix ? info.inputCount : info.processingChannels);
-    config.outputs = info.processingChannels;
-    config.irChannels = info.channels;
-    config.irFrames = info.frames;
-    if (info.topology == kTopologyMono) {
-      config.pathCount = info.processingChannels;
-      for (std::uint32_t channel = 0u; channel < config.pathCount; ++channel)
-        config.paths[channel] = {channel, channel, 0u};
-    } else if (info.topology == kTopologyIndependent) {
-      config.pathCount = info.channels;
-      for (std::uint32_t channel = 0u; channel < info.channels; ++channel)
-        config.paths[channel] = {channel, channel, channel};
-    } else if (info.topology == kTopologyTrueStereo) {
-      config.pathCount = 4u;
-      config.paths[0u] = {0u, 0u, 0u};
-      config.paths[1u] = {0u, 1u, 1u};
-      config.paths[2u] = {1u, 0u, 2u};
-      config.paths[3u] = {1u, 1u, 3u};
-    } else {
-      config.pathCount = info.pathCount;
-      for (std::uint32_t path = 0u; path < info.pathCount; ++path) {
-        config.paths[path] = {path % info.inputCount, path % info.processingChannels,
-                              path % info.channels};
-      }
-    }
-
-    const std::uint64_t requiredFootprint =
-        static_cast<std::uint64_t>(info.byteSize) + estimateConvolverMemoryUpperBound(config);
-    if (requiredFootprint > info.footprintBytes || requiredFootprint > kAssetCapacity)
+    const auto config = makeConfig(info, slice_offset_);
+    if (!fitsFootprint(info, config))
       return nullptr;
-
-    const std::uint64_t probeBytes =
-        static_cast<std::uint64_t>(info.footprintBytes) + kAssetAdmissionHeadroom;
-    if (probeBytes > std::numeric_limits<std::size_t>::max())
+    if (!dsp::ConvolverAssetStorage::admitted(info.footprintBytes))
       return nullptr;
-    NothrowStorage<std::uint8_t> admissionProbe;
-    if (!admissionProbe.allocate(static_cast<std::size_t>(probeBytes)))
-      return nullptr;
-    admissionProbe.release();
 
     beginWetMute();
-    convolver_.clear();
-    staging_payload_.release();
-    if (!staging_payload_.allocate(info.byteSize / sizeof(float)) || !convolver_.reserve(config) ||
-        convolver_.memoryBytes() + info.byteSize > info.footprintBytes) {
-      convolver_.clear();
-      staging_payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
+    if (!storage_.reserve(config, info)) {
+      storage_.convolver.clear();
+      storage_.payload.release();
       setAssetError(2u);
       return nullptr;
     }
 
-    begin_info_ = info;
-    processing_channels_ = info.processingChannels;
-    rate_divider_ = info.rateDivider;
+    stagePrepared(info);
     asset_state_ = ET_ASSET_STATE_STAGED;
     asset_reason_ = 0u;
-    resetRuntimeState();
-    return reinterpret_cast<std::uint8_t *>(staging_payload_.data());
+    return reinterpret_cast<std::uint8_t *>(storage_.payload.data());
   }
 
   et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
-                        std::uint32_t format_tag) noexcept override {
-    if (slot != kAssetSlot || asset_state_ != ET_ASSET_STATE_STAGED ||
-        bytes != begin_info_.byteSize || format_tag != kAssetFormat || !validatePayload()) {
-      setAssetError(1u);
+                        std::uint32_t formatTag) noexcept override {
+    const auto error =
+        slot == kAssetSlot && asset_state_ == ET_ASSET_STATE_STAGED && bytes == begin_info_.byteSize
+            ? commitCoefficients(storage_, begin_info_, sample_rate_, formatTag)
+            : 1u;
+    if (error) {
+      setAssetError(error);
+      return error == 3u ? ET_ERR_STATE : ET_ERR_ARGS;
+    }
+    activatePrepared();
+    return ET_OK;
+  }
+
+  std::uint32_t assetSliceOffset() const noexcept override { return slice_offset_; }
+
+  AssetPreparer assetPreparer(std::uint32_t slot) const noexcept override {
+    return slot == kAssetSlot ? &prepareAsset : nullptr;
+  }
+
+  static et_status prepareAsset(const PrepareInfo &context, const AssetBeginInfo &info,
+                                const std::uint8_t *payload, std::uint32_t format,
+                                std::unique_ptr<PreparedAsset> &out) noexcept {
+    return dsp::PreparedConvolverAsset::prepare(
+        context, info, payload, out, [&](dsp::PreparedConvolverAsset &next) -> et_status {
+          if (!validateShape(info, context.maxChannels))
+            return ET_ERR_ARGS;
+          const auto config = makeConfig(info, context.sliceOffset);
+          if (!fitsFootprint(info, config))
+            return ET_ERR_ARGS;
+          if (!dsp::ConvolverAssetStorage::admitted(info.footprintBytes))
+            return ET_ERR_OOM;
+          next.build(config, payload, context.sampleRate, format, commitCoefficients, true);
+          return ET_OK;
+        });
+  }
+
+  et_status exchangePreparedAsset(std::uint32_t,
+                                  std::unique_ptr<PreparedAsset> &asset) noexcept override {
+    auto &next = static_cast<dsp::PreparedConvolverAsset &>(*asset);
+    if (next.sliceOffset != slice_offset_)
+      return ET_ERR_STATE;
+    storage_.swap(next.storage);
+    if (!next.info.byteSize) {
+      clearAsset(kAssetSlot);
+      return ET_OK;
+    }
+    beginWetMute();
+    if (next.error != 2u)
+      stagePrepared(next.info);
+    if (next.error) {
+      asset_state_ = ET_ASSET_STATE_ERROR;
+      asset_reason_ = next.error;
+      resetRuntimeState();
       return ET_ERR_ARGS;
     }
-    const std::uint32_t pathTableBytes =
-        begin_info_.topology == kTopologyMatrix ? begin_info_.pathCount * kPathRecordBytes : 0u;
-    if (begin_info_.topology == kTopologyMatrix) {
-      std::array<dsp::ConvolutionPath, kMaximumPaths> paths{};
-      if (!decodeMatrixPaths(paths) ||
-          !convolver_.updatePathsWithoutAllocation(paths.data(), begin_info_.pathCount)) {
-        setAssetError(1u);
-        return ET_ERR_ARGS;
-      }
-    }
-    const float *samples =
-        staging_payload_.data() + (kAssetHeaderBytes + pathTableBytes) / sizeof(float);
-    if (!convolver_.commit(samples, begin_info_.channels, begin_info_.frames)) {
-      setAssetError(3u);
-      return ET_ERR_STATE;
-    }
-    asset_state_ = ET_ASSET_STATE_PREPARING;
-    asset_reason_ = 0u;
+    activatePrepared();
     return ET_OK;
   }
 
@@ -337,8 +322,8 @@ public:
       return;
     if (asset_state_ != ET_ASSET_STATE_NONE)
       beginWetMute();
-    convolver_.clear();
-    staging_payload_.release();
+    storage_.convolver.clear();
+    storage_.payload.release();
     asset_state_ = ET_ASSET_STATE_NONE;
     asset_reason_ = 0u;
     rate_divider_ = 1u;
@@ -445,13 +430,84 @@ private:
             decibelsToGain(params_.wetLevel)};
   }
 
-  bool validateBegin(std::uint32_t slot, const AssetBeginInfo &info) const noexcept {
-    if (slot != kAssetSlot || sample_rate_ <= 0.0F || max_channels_ == 0u || info.channels == 0u ||
-        info.channels > kMaximumChannels || info.frames == 0u ||
+  static dsp::ConvolverConfig makeConfig(const AssetBeginInfo &info,
+                                         std::uint32_t sliceOffset) noexcept {
+    dsp::ConvolverConfig config;
+    config.latencySamples = info.headBlock;
+    config.sliceOffset = sliceOffset;
+    config.inputs =
+        info.topology == kTopologyTrueStereo
+            ? 2u
+            : (info.topology == kTopologyMatrix ? info.inputCount : info.processingChannels);
+    config.outputs = info.processingChannels;
+    config.irChannels = info.channels;
+    config.irFrames = info.frames;
+    if (info.topology == kTopologyMono) {
+      config.pathCount = info.processingChannels;
+      for (std::uint32_t channel = 0u; channel < config.pathCount; ++channel)
+        config.paths[channel] = {channel, channel, 0u};
+    } else if (info.topology == kTopologyIndependent) {
+      config.pathCount = info.channels;
+      for (std::uint32_t channel = 0u; channel < info.channels; ++channel)
+        config.paths[channel] = {channel, channel, channel};
+    } else if (info.topology == kTopologyTrueStereo) {
+      config.pathCount = 4u;
+      config.paths[0u] = {0u, 0u, 0u};
+      config.paths[1u] = {0u, 1u, 1u};
+      config.paths[2u] = {1u, 0u, 2u};
+      config.paths[3u] = {1u, 1u, 3u};
+    } else {
+      config.pathCount = info.pathCount;
+      for (std::uint32_t path = 0u; path < info.pathCount; ++path) {
+        config.paths[path] = {path % info.inputCount, path % info.processingChannels,
+                              path % info.channels};
+      }
+    }
+    return config;
+  }
+
+  static bool fitsFootprint(const AssetBeginInfo &info,
+                            const dsp::ConvolverConfig &config) noexcept {
+    const std::uint64_t requiredFootprint =
+        static_cast<std::uint64_t>(info.byteSize) + estimateConvolverMemoryUpperBound(config);
+    return requiredFootprint <= info.footprintBytes && requiredFootprint <= kAssetCapacity;
+  }
+
+  void stagePrepared(const AssetBeginInfo &info) noexcept {
+    begin_info_ = info;
+    processing_channels_ = info.processingChannels;
+    rate_divider_ = info.rateDivider;
+    resetRuntimeState();
+  }
+
+  void activatePrepared() noexcept {
+    asset_state_ = ET_ASSET_STATE_PREPARING;
+    asset_reason_ = 0u;
+  }
+
+  static std::uint32_t commitCoefficients(dsp::ConvolverAssetStorage &storage,
+                                          const AssetBeginInfo &info, float sampleRate,
+                                          std::uint32_t formatTag) noexcept {
+    const auto *data = reinterpret_cast<const std::uint8_t *>(storage.payload.data());
+    if (formatTag != kAssetFormat || !validatePayload(data, info, sampleRate))
+      return 1u;
+    std::array<dsp::ConvolutionPath, dsp::ConvolverConfig::kMaximumPaths> paths{};
+    if (info.pathCount &&
+        (!decodeMatrixPaths(data, info, paths) ||
+         !storage.convolver.updatePathsWithoutAllocation(paths.data(), info.pathCount)))
+      return 1u;
+    const float *samples =
+        storage.payload.data() + (kAssetHeaderBytes + info.pathCount * 12u) / sizeof(float);
+    return storage.convolver.commit(samples, info.channels, info.frames) ? 0u : 3u;
+  }
+
+  static bool validateShape(const AssetBeginInfo &info, std::uint32_t maxChannels) noexcept {
+    if (maxChannels == 0u || info.channels == 0u || info.channels > kMaximumChannels ||
+        info.frames == 0u ||
         (info.topology != kTopologyMono && info.topology != kTopologyIndependent &&
          info.topology != kTopologyTrueStereo && info.topology != kTopologyMatrix) ||
         (info.topology == kTopologyMono && info.channels != 1u) || info.processingChannels == 0u ||
-        info.processingChannels > max_channels_ || info.footprintBytes < info.byteSize ||
+        info.processingChannels > maxChannels || info.footprintBytes < info.byteSize ||
         info.footprintBytes > kAssetCapacity ||
         (info.topology == kTopologyIndependent && info.channels != info.processingChannels) ||
         (info.topology == kTopologyTrueStereo &&
@@ -480,28 +536,27 @@ private:
            (info.byteSize % sizeof(float)) == 0u;
   }
 
-  bool validatePayload() const noexcept {
-    const auto *bytes = reinterpret_cast<const std::uint8_t *>(staging_payload_.data());
+  static bool validatePayload(const std::uint8_t *bytes, const AssetBeginInfo &info,
+                              float sampleRate) noexcept {
     const std::uint32_t expected_rate =
-        static_cast<std::uint32_t>(std::lround(sample_rate_ / rate_divider_));
-    return readU32(bytes) == kAssetMagic && readU32(bytes + 4u) == begin_info_.channels &&
-           readU32(bytes + 8u) == begin_info_.frames && readU32(bytes + 12u) == expected_rate &&
-           readU32(bytes + 16u) == begin_info_.topology &&
-           readU32(bytes + 20u) ==
-               (begin_info_.topology == kTopologyMatrix ? begin_info_.pathCount : 0u) &&
+        static_cast<std::uint32_t>(std::lround(sampleRate / info.rateDivider));
+    return readU32(bytes) == kAssetMagic && readU32(bytes + 4u) == info.channels &&
+           readU32(bytes + 8u) == info.frames && readU32(bytes + 12u) == expected_rate &&
+           readU32(bytes + 16u) == info.topology &&
+           readU32(bytes + 20u) == (info.topology == kTopologyMatrix ? info.pathCount : 0u) &&
            readU32(bytes + 24u) == 0u && readU32(bytes + 28u) == 0u;
   }
 
-  bool decodeMatrixPaths(std::array<dsp::ConvolutionPath, kMaximumPaths> &paths) const noexcept {
-    const auto *bytes =
-        reinterpret_cast<const std::uint8_t *>(staging_payload_.data()) + kAssetHeaderBytes;
+  static bool decodeMatrixPaths(const std::uint8_t *payload, const AssetBeginInfo &info,
+                                std::array<dsp::ConvolutionPath, kMaximumPaths> &paths) noexcept {
+    const auto *bytes = payload + kAssetHeaderBytes;
     std::array<bool, kMaximumChannels> inputs{};
     std::uint32_t distinctInputs = 0u;
-    for (std::uint32_t index = 0u; index < begin_info_.pathCount; ++index) {
+    for (std::uint32_t index = 0u; index < info.pathCount; ++index) {
       const std::uint8_t *record = bytes + index * kPathRecordBytes;
       const dsp::ConvolutionPath path{readU32(record), readU32(record + 4u), readU32(record + 8u)};
-      if (path.input >= begin_info_.inputCount || path.output >= max_channels_ ||
-          path.output >= begin_info_.processingChannels || path.irChannel >= begin_info_.channels)
+      if (path.input >= info.inputCount || path.output >= info.processingChannels ||
+          path.irChannel >= info.channels)
         return false;
       paths[index] = path;
       if (!inputs[path.input]) {
@@ -509,11 +564,11 @@ private:
         ++distinctInputs;
       }
     }
-    return distinctInputs == begin_info_.inputCount;
+    return distinctInputs == info.inputCount;
   }
 
   void setAssetError(std::uint32_t reason) noexcept {
-    staging_payload_.clear();
+    storage_.payload.clear();
     asset_state_ = ET_ASSET_STATE_ERROR;
     asset_reason_ = reason;
     resetRuntimeState();
@@ -526,7 +581,7 @@ private:
 
   void updatePreparationState() noexcept {
     if (asset_state_ == ET_ASSET_STATE_PREPARING &&
-        convolver_.state() == dsp::ConvolverPreparationState::active &&
+        storage_.convolver.state() == dsp::ConvolverPreparationState::active &&
         wet_fade_out_remaining_ == 0u) {
       asset_state_ = ET_ASSET_STATE_ACTIVE;
       wet_fade_in_remaining_ = kFadeFrames;
@@ -564,7 +619,7 @@ private:
           conv_frame_[channel] =
               full_rate_audio_[static_cast<std::size_t>(channel) * frame_count + frame];
         }
-        convolver_.process(conv_frame_.data(), processing_channels_, 1u);
+        storage_.convolver.process(conv_frame_.data(), processing_channels_, 1u);
         updatePreparationState();
         if (wet_allowed && asset_state_ == ET_ASSET_STATE_ACTIVE) {
           for (std::uint32_t channel = 0u; channel < channel_count; ++channel)
@@ -576,7 +631,7 @@ private:
       }
       return;
     }
-    convolver_.process(full_rate_audio_.data(), processing_channels_, frame_count);
+    storage_.convolver.process(full_rate_audio_.data(), processing_channels_, frame_count);
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         wet_frame_[channel] =
@@ -604,7 +659,7 @@ private:
           low_ready = produced;
       }
       if (low_ready) {
-        convolver_.process(conv_frame_.data(), processing_channels_, 1u);
+        storage_.convolver.process(conv_frame_.data(), processing_channels_, 1u);
         updatePreparationState();
         if (wet_allowed && asset_state_ == ET_ASSET_STATE_ACTIVE)
           interpolateAndQueue();
@@ -834,8 +889,7 @@ private:
   std::uint32_t wet_fade_in_remaining_ = 0u;
   bool prepared_ = false;
   AssetBeginInfo begin_info_{};
-  dsp::PartitionedConvolver convolver_{};
-  StagingPayload staging_payload_;
+  dsp::ConvolverAssetStorage storage_;
   IRStorage<float> full_rate_audio_;
   IRStorage<dsp::Halfband2x> decimators_;
   IRStorage<dsp::Halfband2x> interpolators_;

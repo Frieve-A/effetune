@@ -1,6 +1,7 @@
 import { createUserDataBackupAdapter } from '../user-data-backup/adapters.js';
 import { openUserDataBackupDialog } from '../user-data-backup/dialog.js';
 import { UserDataBackupService } from '../user-data-backup/service.js';
+import { openDiagnosticDialog } from '../diagnostics/diagnostic-dialog.js';
 
 export class StateManager {
     constructor(audioManager, showNotification = null) {
@@ -21,6 +22,7 @@ export class StateManager {
         this.measurementSettingsButton = document.getElementById('measurementSettingsButton');
         this.backupRestoreSettingsButton = document.getElementById('backupRestoreSettingsButton');
         this.resetAudioSettingsButton = document.getElementById('resetAudioSettingsButton');
+        this.diagnosticsSettingsButton = document.getElementById('diagnosticsSettingsButton');
         this.webUpdateSettingsButton = document.getElementById('webUpdateSettingsButton');
         this.shareButton = document.getElementById('shareButton');
         this.sampleRate = document.getElementById('sampleRate');
@@ -48,6 +50,7 @@ export class StateManager {
         this.measurementSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/measurement/measurement.html')));
         this.backupRestoreSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openBackupRestore()));
         this.resetAudioSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.resetAudio()));
+        this.diagnosticsSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openDiagnostics()));
         this.webUpdateSettingsButton?.addEventListener('click', () => this.runMenuAction(() => {
             const manager = window.webUpdateManager;
             return manager?.waitingBuild ? manager.apply() : manager?.check(true);
@@ -148,6 +151,10 @@ export class StateManager {
         if (this.resetAudioSettingsButton) {
             this.resetAudioSettingsButton.textContent = this.translate('ui.resetButton', 'Reset Audio');
         }
+        if (this.diagnosticsSettingsButton) {
+            this.diagnosticsSettingsButton.textContent = this.translate('menu.help.diagnostics', 'Diagnostic Information…');
+            this.diagnosticsSettingsButton.hidden = isElectron;
+        }
         this.updateWebUpdateAvailability();
     }
 
@@ -233,6 +240,10 @@ export class StateManager {
         }
         window.uiManager?.flushPipelineStateToLocalStorage?.();
         window.location.href = path;
+    }
+
+    openDiagnostics() {
+        return openDiagnosticDialog({ translate: (key, fallback) => this.translate(key, fallback) });
     }
 
     openBackupRestore(initialFile = null) {

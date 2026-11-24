@@ -944,6 +944,19 @@ test('READY channel count must fit the count the reservation was sized for', asy
     { code: 'decoded-format-ineligible' });
 });
 
+test('native file READY resizes the admission to the decoded channel count', async () => {
+  const transport = new RollingPcmTransport(new FakeAudioContext(), {
+    nativeFile: {},
+    workerFactory: () => new FakeWorker({ channelCount: 6 })
+  });
+  assert.equal((await transport.prepare(canonical(new Uint8Array([1])))).channelCount, 6);
+  const reservation = transport.reservationLedger.entries.get(transport.reservationOwner);
+  assert.equal(transport.reservationProfile.channelCount, 6);
+  assert.equal(reservation.inFlightBytes,
+    transport.reservationProfile.slabFrames * 6 * Float32Array.BYTES_PER_ELEMENT);
+  await transport.dispose();
+});
+
 test('seek generations reject delayed slabs and release the replaced queue', async () => {
   const context = new FakeAudioContext();
   const workers = [];

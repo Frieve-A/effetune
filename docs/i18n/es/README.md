@@ -137,7 +137,7 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 
 ### Controladores de audio de la aplicación de escritorio
 
-Abre **Configuración > Configuración de audio** y elige un **Controlador**. **Estándar** es el predeterminado. Para reducir la carga de procesamiento o utilizar una entrada de tres o más canales, prueba **WASAPI** en Windows, **Core Audio** en macOS, o **PulseAudio** en Linux (**ALSA** si PulseAudio no está disponible). El controlador cambia la forma en que EffeTune se conecta a los dispositivos de audio. Los efectos, los preajustes y el reproductor se usan de la misma forma.
+Abre **Configuración > Configuración de audio** y elige un **Controlador**. Los perfiles de configuración nuevos usan **WASAPI** en Windows, **Core Audio** en macOS y **PulseAudio** en Linux (**ALSA** si PulseAudio no está disponible). Estos controladores se conectan directamente a los dispositivos de audio, ejecutan el procesamiento de señal de forma nativa y admiten entradas de tres o más canales. Si actualmente usas **Estándar**, puedes cambiar de controlador aquí y revisar la entrada y la salida antes de aplicar el cambio.
 
 Ajusta la **Tasa de muestreo** de los efectos como siempre. Si el dispositivo de salida utiliza otra tasa, EffeTune convierte el audio después de procesarlo. Las diferencias de redondeo pueden cambiar ligeramente los valores de las muestras respecto al controlador **Estándar**.
 
@@ -416,6 +416,7 @@ Aquí hay algunas combinaciones populares de efectos para mejorar tu experiencia
 
 Si tienes algún inconveniente, consulta [Resolución de problemas y preguntas frecuentes](faq.md).
 Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
+Si está disponible, adjunta el archivo de diagnóstico siguiendo los pasos de las preguntas frecuentes.
 
 ## Efectos Disponibles
 

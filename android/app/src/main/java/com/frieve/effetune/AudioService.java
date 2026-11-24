@@ -10,6 +10,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
@@ -32,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.security.SecureRandom;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -116,8 +118,8 @@ public final class AudioService extends Service {
     private final HashMap<String, String> instanceTypes = new HashMap<>();
     private final HashMap<Integer, String> runtimeEvents = new HashMap<>();
     private long instanceEpoch;
-    private int[] telemetryTapIds = new int[0];
     private AssetTransfers assets;
+    private final AssetTransfers.RevisionGuard assetRevisions = new AssetTransfers.RevisionGuard();
     private MeasurementCapture measurement;
     private RecordingMonitor recordingMonitor;
     private boolean focusHeld;
@@ -282,29 +284,19 @@ public final class AudioService extends Service {
                 if (destroyed) throw new HostError("audio-unavailable", "Audio controls closed. Reopen EffeTune and try again.");
                 if (!authority.getAsBoolean()) throw new HostError("unauthorized", "Remote access changed. Reconnect and try again.");
                 String name = request.getString("command");
-                if (request.has("expectedRevision") && request.getLong("expectedRevision") != revision) throw new HostError("revision-conflict", "Audio settings changed. Refresh the controls and try again.");
                 JSONObject args = request.getJSONObject("payload");
                 if (args.has("_remoteRequestId")) requireRemoteAuthority(args.getString("_remoteRequestId"));
+                String assetBatch = name.startsWith("pipeline.asset.") ? args.optString("_assetBatch", null) : null;
+                if (request.has("expectedRevision")
+                        && !assetRevisions.accepts(request.getLong("expectedRevision"), revision, assetBatch))
+                    throw new HostError("revision-conflict", "Audio settings changed. Refresh the controls and try again.");
                 if (name.startsWith("remote.")) { reply.complete(remoteCommand(name, args, fromVisibleUi), null); return; }
                 if (name.startsWith("pipeline.asset.")) {
-                    JSONObject previous = pipelineRequest == null ? null : new JSONObject(pipelineRequest.toString());
                     JSONObject clearedParameters = name.equals("pipeline.asset.clear") ? AssetTransfers.assetParameters(args.optJSONObject("externalAssetParameters")) : null;
                     JSONObject result = assets.command(name, args, instances, instanceTypes, engine);
-                    if (name.equals("pipeline.asset.commit") || name.equals("pipeline.asset.clear")) {
-                        if (previous != null) {
-                            undo.add(previous); if (undo.size() > 100) undo.remove(0); redo.clear();
-                            JSONObject next = new JSONObject(pipelineRequest.toString()).put("assetRefs", assets.snapshot());
-                            if (name.equals("pipeline.asset.clear")) {
-                                JSONArray records = next.getJSONArray("plugins");
-                                for (int i = 0; i < records.length(); i++) {
-                                    JSONObject record = records.getJSONObject(i);
-                                    if (record.getInt("id") == args.getInt("pluginId")) mergeAssetParameters(record, clearedParameters);
-                                }
-                            }
-                            next.put("descriptor", packer.prepareRecords(next.getJSONArray("plugins"), masterBypass, slot).getString("descriptor"));
-                            applyPipeline(next); collectAssets();
-                        }
-                        changed();
+                    String state = result.getString("state");
+                    if (state.equals("ready") || state.equals("empty")) {
+                        commitAssetChange(args.getInt("pluginId"), args.optInt("slot", 0), clearedParameters, true, null);
                     }
                     reply.complete(result.put("revision", revision), null); return;
                 }
@@ -483,35 +475,38 @@ public final class AudioService extends Service {
     }
 
     private void applyPipeline(JSONObject value) throws Exception {
-        value = new JSONObject(value.toString());
-        JSONArray records = value.getJSONArray("plugins");
-        JSONObject assetRefs = value.has("assetRefs") ? value.getJSONObject("assetRefs") : assets.compatible(records);
-        value.put("assetRefs", assetRefs);
-        // Preparation controls belong to the resident version until its replacement commits.
-        boolean assetRoutingChanged = false;
-        for (int i = 0; i < records.length(); i++) {
-            JSONObject record = records.getJSONObject(i);
-            String prefix = record.getString("type") + ":" + record.getInt("id") + ":";
-            java.util.Iterator<String> keys = assetRefs.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                if (key.startsWith(prefix)) assetRoutingChanged |= mergeAssetParameters(record, assetRefs.getJSONObject(key).optJSONObject("externalAssetParameters"));
-            }
+        JSONObject requested = new JSONObject(value.toString());
+        boolean replacePending = requested.has("assetRefs");
+        if (!replacePending) {
+            JSONObject previous = slots.get(slot);
+            JSONObject refs = previous == null ? new JSONObject() : previous.getJSONObject("assetRefs");
+            requested.put("assetRefs", AssetTransfers.compatible(requested.getJSONArray("plugins"), refs));
         }
-        if (assetRoutingChanged) value.put("descriptor", packer.prepareRecords(records, value.optBoolean("masterBypass", false), value.optString("slot", slot)).getString("descriptor"));
+        applyAssetParameters(requested, requested.getJSONObject("assetRefs"));
+        applyPipelineRuntime(requested, replacePending);
+        // Slots and history retain the selected files while the runtime reports resident files.
+        slots.put(slot, requested);
+        persistSlots();
+    }
+
+    private void applyPipelineRuntime(JSONObject requested, boolean replacePending) throws Exception {
+        JSONObject value = new JSONObject(requested.toString());
+        JSONArray records = value.getJSONArray("plugins");
+        JSONObject assetRefs = value.getJSONObject("assetRefs");
+        // Preparation controls belong to the resident version until its replacement commits.
+        applyAssetParameters(value, assets.preparationParameters(assetRefs));
         if (records.length() > 128) throw new HostError("pipeline-too-large", "Use at most 128 effects.");
         ArrayList<String> types = new ArrayList<>();
         ArrayList<float[]> parameters = new ArrayList<>();
         ArrayList<Integer> hashes = new ArrayList<>();
         ArrayList<byte[]> parameterBytes = new ArrayList<>();
-        HashMap<Integer, Integer> descriptorIds = new HashMap<>();
+        HashSet<Integer> descriptorIds = new HashSet<>();
         ArrayList<String> ids = new ArrayList<>();
         for (int index = 0; index < records.length(); index++) {
             JSONObject record = records.getJSONObject(index);
             if ("SectionPlugin".equals(record.getString("type"))) continue;
             int id = record.getInt("id");
-            if (descriptorIds.containsKey(id)) throw new IllegalArgumentException("Duplicate effect id");
-            descriptorIds.put(id, types.size() + 1);
+            if (!descriptorIds.add(id)) throw new IllegalArgumentException("Duplicate effect id");
             ids.add(Integer.toString(id));
             types.add(record.getString("type"));
             JSONArray values = record.getJSONArray("parameterValues");
@@ -529,9 +524,7 @@ public final class AudioService extends Service {
         ByteBuffer bytes = ByteBuffer.wrap(descriptor).order(ByteOrder.LITTLE_ENDIAN);
         if (descriptor.length < 8 || bytes.getInt(0) != 1 || bytes.getInt(4) != types.size() || descriptor.length != 8 + types.size() * 12) throw new IllegalArgumentException("Invalid pipeline descriptor");
         for (int i = 0; i < types.size(); i++) {
-            Integer id = descriptorIds.get(bytes.getInt(8 + i * 12));
-            if (id == null) throw new IllegalArgumentException("Unknown descriptor effect");
-            bytes.putInt(8 + i * 12, id);
+            if (!descriptorIds.contains(bytes.getInt(8 + i * 12))) throw new IllegalArgumentException("Unknown descriptor effect");
         }
         int[] layouts = new int[hashes.size()];
         for (int i = 0; i < layouts.length; i++) layouts[i] = hashes.get(i);
@@ -543,6 +536,7 @@ public final class AudioService extends Service {
                     && old.optLong("layoutHash") == next.optLong("layoutHash");
         }
         if (!slot.equals(value.optString("slot", slot))) previews.clear();
+        HashSet<String> created = new HashSet<>();
         if (sameGraph) {
             for (int i = 0; i < ids.size(); i++) {
                 String id = ids.get(i); JSONObject held = previews.get(id);
@@ -558,14 +552,24 @@ public final class AudioService extends Service {
             }
         } else {
             previews.clear();
-            int[] handles = engine.configurePipeline(types.toArray(new String[0]), parameters.toArray(new float[0][]), layouts, descriptor, parameterBytes.toArray(new byte[0][]));
+            int[] pluginIds = new int[ids.size()];
+            for (int i = 0; i < ids.size(); i++) {
+                String id = ids.get(i);
+                pluginIds[i] = Integer.parseInt(id);
+                if (!types.get(i).equals(instanceTypes.get(id))) created.add(id);
+            }
+            int[] handles = engine.configurePipeline(types.toArray(new String[0]), parameters.toArray(new float[0][]), layouts, pluginIds, descriptor, parameterBytes.toArray(new byte[0][]));
             if (handles == null || handles.length != types.size()) throw new HostError("pipeline-invalid", "The effect pipeline could not be applied.");
             instances.clear(); instanceEpoch++; runtimeEvents.clear();
-            telemetryTapIds = new int[ids.size()]; for (int i = 0; i < ids.size(); i++) telemetryTapIds[i] = Integer.parseInt(ids.get(i));
             instanceTypes.clear(); assets.discardPending();
             for (int i = 0; i < handles.length; i++) { instances.put(ids.get(i), handles[i]); instanceTypes.put(ids.get(i), types.get(i)); }
         }
-        assets.select(assetRefs, instances, instanceTypes, engine, !sameGraph);
+        boolean refreshParameters = assets.select(assetRefs, instances, instanceTypes, engine, created, replacePending);
+        value.put("assetRefs", assets.snapshot());
+        if (refreshParameters) {
+            applyPipelineRuntime(requested, false);
+            return;
+        }
         masterBypass = value.optBoolean("masterBypass", false);
         temporalMustProcess = packer.mustProcessPipeline(records, masterBypass);
         engine.setMasterBypass(masterBypass);
@@ -573,9 +577,22 @@ public final class AudioService extends Service {
         pipelineRequest = new JSONObject(value.toString());
         engine.setPowerSettings((float) Math.pow(10, silenceThresholdDb / 20), 60, temporalMustProcess || !previews.isEmpty() || powerMode.equals("continuous"));
         slot = value.optString("slot", slot);
-        slots.put(slot, new JSONObject(pipelineRequest.toString()));
-        persistPipeline();
         if (autoSuspended && visible) startAudio(true);
+    }
+
+    private void applyAssetParameters(JSONObject value, JSONObject refs) throws Exception {
+        JSONArray records = value.getJSONArray("plugins");
+        boolean changed = false;
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject record = records.getJSONObject(i);
+            String prefix = record.getString("type") + ":" + record.getInt("id") + ":";
+            java.util.Iterator<String> keys = refs.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (key.startsWith(prefix)) changed |= mergeAssetParameters(record, refs.getJSONObject(key).optJSONObject("externalAssetParameters"));
+            }
+        }
+        if (changed) value.put("descriptor", packer.prepareRecords(records, value.optBoolean("masterBypass", false), value.optString("slot", slot)).getString("descriptor"));
     }
 
     private boolean mergeAssetParameters(JSONObject record, JSONObject parameters) throws Exception {
@@ -586,10 +603,43 @@ public final class AudioService extends Service {
         packer.packRecord(record); return true;
     }
 
+    private void commitAssetChange(int pluginId, int assetSlot, JSONObject clearedParameters, boolean historyEntry,
+                                   String completingBatch) throws Exception {
+        JSONObject previous = slots.get(slot);
+        if (previous != null) {
+            JSONObject next = previous;
+            if (historyEntry) {
+                next = new JSONObject(previous.toString());
+                String key = instanceTypes.get(Integer.toString(pluginId)) + ":" + pluginId + ":" + assetSlot;
+                JSONObject refs = next.getJSONObject("assetRefs");
+                JSONObject resident = assets.snapshot().optJSONObject(key);
+                if (resident == null) refs.remove(key); else refs.put(key, resident);
+                JSONArray records = next.getJSONArray("plugins");
+                if (clearedParameters != null) {
+                    for (int i = 0; i < records.length(); i++) {
+                        JSONObject record = records.getJSONObject(i);
+                        if (record.getInt("id") == pluginId) mergeAssetParameters(record, clearedParameters);
+                    }
+                    next.put("descriptor", packer.prepareRecords(records, masterBypass, slot).getString("descriptor"));
+                } else applyAssetParameters(next, refs);
+            }
+            applyPipelineRuntime(next, false);
+            if (historyEntry) {
+                slots.put(slot, next);
+                persistSlots();
+                undo.add(previous);
+                if (undo.size() > 100) undo.remove(0);
+                redo.clear();
+            }
+            collectAssets();
+        }
+        changed(completingBatch);
+    }
+
     private void replacePipeline(JSONObject value) throws Exception {
         String nextSlot = value.optString("slot", slot);
         if (!nextSlot.equals("A") && !nextSlot.equals("B")) throw new IllegalArgumentException("Invalid pipeline slot");
-        JSONObject previous = pipelineRequest == null ? packer.prepareChain(new JSONArray(), masterBypass, slot) : new JSONObject(pipelineRequest.toString());
+        JSONObject previous = slots.containsKey(slot) ? slots.get(slot) : packer.prepareChain(new JSONArray(), masterBypass, slot);
         applyPipeline(value);
         undo.add(previous); if (undo.size() > 100) undo.remove(0); redo.clear();
         collectAssets();
@@ -598,14 +648,9 @@ public final class AudioService extends Service {
     private void moveHistory(ArrayList<JSONObject> source, ArrayList<JSONObject> destination) throws Exception {
         if (source.isEmpty()) return;
         JSONObject target = source.get(source.size() - 1);
-        JSONObject previous = new JSONObject(pipelineRequest.toString());
+        JSONObject previous = slots.get(slot);
         applyPipeline(target); source.remove(source.size() - 1); destination.add(previous);
         collectAssets();
-    }
-
-    private void persistPipeline() {
-        getSharedPreferences("audio", MODE_PRIVATE).edit().putString("pipeline", pipelineRequest.toString()).apply();
-        persistSlots();
     }
 
     private ArrayList<JSONObject> retainedPipelineStates() {
@@ -821,7 +866,15 @@ public final class AudioService extends Service {
         updateRemoteLifetime();
     }
 
-    private void changed() { refreshInputOwnership(); revision++; sessionState(); send("snapshot", snapshot()); if (remote != null) remote.broadcast(remoteState(null)); }
+    private void changed() { changed(null); }
+    private void changed(String completingBatch) {
+        refreshInputOwnership();
+        assetRevisions.advanced(revision, completingBatch);
+        revision++;
+        sessionState();
+        send("snapshot", snapshot());
+        if (remote != null) remote.broadcast(remoteState(null));
+    }
 
     private void reconcileOutput() {
         if (!running) return;
@@ -842,9 +895,14 @@ public final class AudioService extends Service {
         send("error", object("code", "audio-unavailable", "message", "The audio output disconnected. Reconnect it and press Play."));
     }
     private void send(String name, JSONObject value) { if (events != null) events.send(name, value); }
+    private JSONArray slotRecords(String selected) {
+        if (selected.equals(slot)) return pipeline;
+        JSONObject saved = slots.get(selected);
+        return saved == null ? new JSONArray() : saved.optJSONArray("plugins");
+    }
     private JSONObject snapshot() {
         return object("revision", revision, "sampleRate", engine == null ? 48000 : engine.getSampleRate(), "channelCount", 2,
-                "slot", slot, "pipelines", object("A", slots.containsKey("A") ? slots.get("A").optJSONArray("plugins") : new JSONArray(), "B", slots.containsKey("B") ? slots.get("B").optJSONArray("plugins") : new JSONArray()), "canUndo", !undo.isEmpty(), "canRedo", !redo.isEmpty(),
+                "slot", slot, "pipelines", object("A", slotRecords("A"), "B", slotRecords("B")), "canUndo", !undo.isEmpty(), "canRedo", !redo.isEmpty(),
                 "routingChannelCount", 2, "pipeline", pipeline, "masterBypass", masterBypass, "powerState", powerState,
                 "assetRefs", pipelineRequest == null ? new JSONObject() : pipelineRequest.optJSONObject("assetRefs"),
                 "assetDefinitions", AssetTransfers.definitions(pipelineRequest == null ? null : pipelineRequest.optJSONObject("assetRefs")),
@@ -1241,15 +1299,15 @@ public final class AudioService extends Service {
         } else getSystemService(NotificationManager.class).notify(1, notification);
     }
 
-    private byte[] remapTelemetry(byte[] data) {
+    private byte[] validatedTelemetry(byte[] data) {
         if (data == null) return null;
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         for (int offset = 0; offset < data.length;) {
             if (data.length - offset < 16) return null;
             int bytes = (16 + Short.toUnsignedInt(buffer.getShort(offset + 12)) + 3) & ~3;
             int tap = buffer.getInt(offset + 4);
-            if (bytes > data.length - offset || tap < 1 || tap > telemetryTapIds.length) return null;
-            buffer.putInt(offset + 4, telemetryTapIds[tap - 1]); offset += bytes;
+            if (bytes > data.length - offset || !instanceTypes.containsKey(Integer.toString(tap))) return null;
+            offset += bytes;
         }
         return data;
     }
@@ -1261,9 +1319,8 @@ public final class AudioService extends Service {
             int handle = values[i], generation = values[i + 1], latched = values[i + 2], cause = values[i + 3];
             String signature = generation + ":" + latched + ":" + cause;
             if (signature.equals(runtimeEvents.get(handle))) continue;
-            String id = null;
-            for (java.util.Map.Entry<String, Integer> entry : instances.entrySet()) if (entry.getValue() == handle) { id = entry.getKey(); break; }
-            if (id == null) continue;
+            String id = Integer.toString(handle);
+            if (!instanceTypes.containsKey(id)) continue;
             String pluginType = instanceTypes.get(id), type, causeName;
             if (pluginType.equals("TubeSimulatorPlugin")) { type = "tubeSimulatorCircuitFault"; causeName = cause == 1 ? "feedbackOscillation" : cause == 2 ? "processingSafetyFailure" : "none"; }
             else if (pluginType.equals("AdaptivePredictionEffectPlugin")) { type = "adaptivePredictionFault"; causeName = cause == 1 ? "numericalFailure" : "none"; }
@@ -1274,10 +1331,38 @@ public final class AudioService extends Service {
         }
     }
 
+    private void publishAssetNotices() {
+        int[] values = engine.readAssetNotices();
+        if (values == null) return;
+        for (int i = 0; i + 5 < values.length; i += 6) {
+            int id = values[i], assetSlot = values[i + 1];
+            String type = instanceTypes.get(Integer.toString(id));
+            if (type == null) continue;
+            boolean rejected = values[i + 3] != 0;
+            boolean completed = values[i + 5] != 0;
+            try {
+                AssetTransfers.Notice notice = assets.resolve(type + ":" + id + ":" + assetSlot,
+                        Integer.toUnsignedLong(values[i + 4]), rejected, completed);
+                if (notice == null) continue;
+                if (notice.committed()) commitAssetChange(id, assetSlot, null, notice.historyEntry(), notice.batch());
+                else if (completed && rejected) collectAssets();
+                if (notice.operationRevision() >= 0) {
+                    send("asset-state", object("pluginId", id, "slot", assetSlot,
+                            "state", values[i + 2], "rejected", rejected,
+                            "operationRevision", notice.operationRevision()));
+                }
+            } catch (Exception error) {
+                Log.w("EffeTuneAudio", "Cannot publish prepared asset state", error);
+            }
+        }
+    }
+
     private void persistSlots() {
         JSONObject saved = new JSONObject();
         for (String key : slots.keySet()) try { saved.put(key, slots.get(key)); } catch (Exception ignored) { }
-        getSharedPreferences("audio", MODE_PRIVATE).edit().putString("slots", saved.toString()).apply();
+        SharedPreferences.Editor editor = getSharedPreferences("audio", MODE_PRIVATE).edit().putString("slots", saved.toString());
+        if (slots.containsKey(slot)) editor.putString("pipeline", slots.get(slot).toString());
+        editor.apply();
     }
 
     private void midiEvent(String name, JSONObject value) {
@@ -1333,7 +1418,7 @@ public final class AudioService extends Service {
                 reconcileOutput();
                 discardRevokedRemoteRequests();
                 try { mappings.tick(SystemClock.elapsedRealtime(), System.currentTimeMillis()); } catch (Exception error) { Log.w("EffeTuneMidi", "Scheduled mapping failed", error); }
-                observePower(); publishRuntimeEvents();
+                observePower(); publishRuntimeEvents(); publishAssetNotices();
                 if (microphone && visible) {
                     float[] observation = engine.getPowerObservation();
                     double level = observation.length > 1 && observation[1] > 0 ? 20 * Math.log10(observation[1]) : -120;
@@ -1348,7 +1433,7 @@ public final class AudioService extends Service {
                     try { advanceQueue(1, true); changed(); } catch (Exception error) { Log.w("EffeTuneQueue", "Cannot play the next track", error); pause(false); }
                 }
                 if (visible && telemetryVisible && events != null) {
-                    byte[] data = remapTelemetry(engine.readTelemetry());
+                    byte[] data = validatedTelemetry(engine.readTelemetry());
                     if (data != null && data.length > 0) send("telemetry", object("revision", revision, "packet", Base64.encodeToString(data, Base64.NO_WRAP)));
                 }
                 if (playing && visible) send("snapshot", snapshot());

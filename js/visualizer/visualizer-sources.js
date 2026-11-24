@@ -3,6 +3,7 @@ import { getDspRolloutConfig } from '../audio/dsp-rollout.js';
 import { guitarAnalysis, NOTE_TEXT_TYPES } from './visualizer-model.js';
 import { MIDI_VISUALIZER_TYPES, MidiVisualizerAdapter } from './visualizer-midi.js';
 import { getMidiEventList } from '../midi/event-list.js';
+import { midiBeatAt } from '../midi/smf-timeline.js';
 
 const SOURCE_TYPES = Object.freeze({
     spectrum: { type: 'SpectrumAnalyzerPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM,
@@ -311,6 +312,12 @@ export class VisualizerSources {
         return this.sources.get(this.itemKeys.get(itemId))?.frame ?? null;
     }
 
+    // Seconds by which the item's newest analysed audio is ahead of the heard audio.
+    getTelemetryLeadSeconds(itemId) {
+        const tapId = this.sources.get(this.itemKeys.get(itemId))?.tapId;
+        return tapId === undefined ? 0 : this.audioManager.getTelemetryLeadSeconds?.(tapId) ?? 0;
+    }
+
     getSoundFontMixer() {
         this._syncMidiMixerMetering();
         return this.midiMixerTarget?.getVisualizerMidiMixerSnapshot?.() ?? null;
@@ -351,9 +358,14 @@ export class VisualizerSources {
 
     getModulators() {
         const beat = this.modulators.beat;
-        // Evaluate the beat between telemetry frames so every rendered frame moves smoothly.
-        beat.value = beat.period > 0 ? (1 + Math.cos(2 * Math.PI *
-            (beat.phase + Math.max(0, performance.now() / 1000 - beat.lastTime) / beat.period))) / 2 : 0;
+        const midi = this.modulatorKeys.beat ? this.getMidiPresentation() : null;
+        // MIDI playback supplies the file's quarter-note grid; otherwise extrapolate the
+        // detected beat between telemetry frames so every rendered frame moves smoothly.
+        const position = midi?.hasMidi && midi.timeline ? midiBeatAt(midi.timeline, midi.position).quarter
+            : beat.period > 0 ? beat.phase + Math.max(0, performance.now() / 1000 - beat.lastTime) / beat.period : null;
+        // Peak on each beat head and fade through the beat, as a percussive hit does; a
+        // symmetric wave makes its mid-beat trough look like the beat.
+        beat.value = position === null ? 0 : (1 - (position - Math.floor(position))) ** 2;
         return Object.fromEntries(Object.entries(this.modulators).map(([type, state]) => [type, state.value]));
     }
 

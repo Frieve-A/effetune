@@ -51,3 +51,45 @@ test('only the current main frame can request file access', () => {
   }
   assert.throws(() => access.assertSender(event, { ...main, isDestroyed: () => true }));
 });
+
+test('session paths preserve the original grant across restarts and named profile markers stay in their directory', t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-session-access-')));
+  t.after(() => { access.clear(); fs.rmSync(root, { recursive: true, force: true }); });
+  const profile = path.join(root, 'profile');
+  const original = path.join(root, 'selected');
+  const replacement = path.join(root, 'replacement');
+  for (const directory of [profile, original, replacement]) fs.mkdirSync(directory);
+  const selected = path.join(original, 'song.mid');
+  const marker = path.join(profile, 'player-session-marker.json');
+  fs.writeFileSync(selected, 'music');
+  const canonical = fs.realpathSync(selected);
+  access.assertPath(marker, 'write', root, profile);
+  assert.throws(() => access.assertPath(path.join(root, 'player-session-marker.json'), 'write', root, profile));
+  assert.equal(access.getGrantedReadPath(marker), null);
+  access.grantRead(selected);
+  fs.renameSync(original, path.join(root, 'moved'));
+  fs.symlinkSync(replacement, original, process.platform === 'win32' ? 'junction' : 'dir');
+  fs.writeFileSync(path.join(replacement, 'song.mid'), 'replacement');
+  const saved = access.getGrantedReadPath(selected);
+  assert.equal(saved, canonical);
+  access.clear();
+  access.restoreGrantedReadPath(saved);
+  assert.equal(access.getGrantedReadPath(saved), canonical);
+  assert.throws(() => access.assertPath(saved, 'read', root, profile));
+});
+
+test('session paths keep canonical filename case across grant and restore', t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-session-path-')));
+  t.after(() => { access.clear(); fs.rmSync(root, { recursive: true, force: true }); });
+  const selected = path.join(root, 'Song.mid');
+  fs.writeFileSync(selected, 'music');
+  const canonical = fs.realpathSync(selected);
+  const lookup = process.platform === 'win32' ? selected.toLowerCase() : selected;
+  access.grantRead(selected);
+  const saved = access.getGrantedReadPath(lookup);
+  assert.equal(saved, canonical);
+  access.clear();
+  access.restoreGrantedReadPath(saved);
+  assert.equal(access.getGrantedReadPath(lookup), canonical);
+  access.assertPath(saved, 'read', root);
+});

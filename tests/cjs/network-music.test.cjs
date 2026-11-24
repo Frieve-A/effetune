@@ -683,6 +683,36 @@ test('protocol compatibility is checked by declared MIME type', () => {
   assert.equal(supportsProtocol('', 'http-get:*:audio/flac:*'), false);
 });
 
+test('shared archived MIDI uses the entry MIME, size and byte ranges for resolved and browse identities', async t => {
+  const { zip } = await import('../helpers/archive-fixtures.mjs');
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-shared-midi-')));
+  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const file = path.join(directory, 'set.zip');
+  await fs.writeFile(file, zip([['score/song.kar', 'MThd012345'], ['notation.mxl', 'notes']]));
+  const { host, repository, runtime } = fixture();
+  repository.getTrackStorageIdentity = async uid => ({ folderId: 'shared', relativePath: 'set.zip', sourceKind: 'archive-entry',
+    entryKey: 'archive:set.zip#' + (uid === 'midi' ? 'score/song.kar' : 'notation.mxl'), size: 450 });
+  runtime.resolvePlaybackSource = async () => ({ folderId: 'shared', path: file, sourceKind: 'archive-entry', byteLength: 450 });
+  const row = { trackUid: 'midi', title: 'Song', entryKey: 'playlist-reference-id' };
+  const listing = await host.sharedTrack(row, '192.168.1.9');
+  assert.equal(listing.resources[0].protocolInfo, 'http-get:*:audio/midi:*');
+  assert.equal(listing.resources[0].size, '');
+  const resolved = await host.sharedTrack(row, '192.168.1.9', await host.sharedSource('midi'));
+  assert.equal(resolved.resources[0].size, 10);
+  const url = new URL(resolved.uri).pathname;
+  const range = await responseFor(host.server, url, { headers: { range: 'bytes=1-3' } });
+  assert.equal(range.status, 206);
+  assert.equal(range.body, 'Thd');
+  assert.equal(range.headers['Content-Type'], 'audio/midi');
+  assert.equal(range.headers['Content-Range'], 'bytes 1-3/10');
+  const head = await responseFor(host.server, url, { method: 'HEAD' });
+  assert.equal(head.headers['Content-Length'], 10);
+  assert.equal(head.body, '');
+  assert.equal((await responseFor(host.server, url, { headers: { range: 'bytes=10-' } })).status, 416);
+  assert.equal((await host.sharedTrack({ trackUid: 'xml' }, '192.168.1.9')).playable, false);
+  await assert.rejects(host.sharedSource('xml'), { code: 'unsupportedFormat' });
+});
+
 test('catalog sharing pages only selected folders using the actual SQLite repository', async t => {
   const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-network-catalog-')));
   const repository = await LibraryCatalogHost.open({ dbPath: path.join(directory, 'catalog.sqlite') });

@@ -16,8 +16,9 @@ struct Frame {
 };
 
 // A clean EOF is the only false result. Truncation is a protocol error.
-// Inbound multipart instrument transfers may carry real-time feed frames
-// between parts. Other control messages must wait for the whole transfer.
+// Inbound multipart instrument transfers may carry real-time source frames
+// and source controls between parts.
+bool isFileControl(const JsonValue &message);
 bool readFrame(std::istream &input, Frame &frame,
                const std::function<void(const Frame &)> &onFeed = {});
 void writeFrame(std::ostream &output, const Frame &frame);

@@ -388,6 +388,8 @@ public:
     result = {};
     if (!request)
       return DeviceError::None;
+    if (request->selection.id == systemAudioId)
+      return DeviceError::Unavailable;
     if (status_ != MA_SUCCESS)
       return classify(status_);
     auto stream = std::make_unique<MiniaudioStream>(callbacks_, DeviceDirection::Input);

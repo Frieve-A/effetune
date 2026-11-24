@@ -1,21 +1,26 @@
-function createMacPlaybackPower({ powerSaveBlocker, getConfig }) {
+function createMacPlaybackPower({ powerSaveBlocker, getConfig, recordDiagnosticEvent }) {
   let blockerId = null;
 
-  function stop() {
-    if (blockerId !== null) powerSaveBlocker.stop(blockerId);
+  function stop(reason) {
+    if (blockerId === null) return;
+    powerSaveBlocker.stop(blockerId);
     blockerId = null;
+    recordDiagnosticEvent?.('appNap', { state: 'released', reason });
   }
 
   function update(active) {
     if (active !== true || getConfig()?.powerSaving?.mode !== 'continuous') {
-      stop();
+      stop(active !== true ? 'playbackInactive' : 'powerSavingEnabled');
       return;
     }
-    if (blockerId === null) blockerId = powerSaveBlocker.start('prevent-app-suspension');
+    if (blockerId === null) {
+      blockerId = powerSaveBlocker.start('prevent-app-suspension');
+      recordDiagnosticEvent?.('appNap', { state: 'started' });
+    }
   }
 
   function refreshConfig() {
-    if (getConfig()?.powerSaving?.mode !== 'continuous') stop();
+    if (getConfig()?.powerSaving?.mode !== 'continuous') stop('powerSavingEnabled');
   }
 
   function status() { return { appSuspensionBlocked: blockerId !== null }; }

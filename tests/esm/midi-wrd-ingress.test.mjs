@@ -23,6 +23,17 @@ test('Web MIDI companions resolve the matching WRD without opening unrelated lyr
     });
 });
 
+test('archived MIDI prefers its literal WRD name and still accepts a sanitized companion', async () => {
+    const file = new File([midi], 'Café, Where Are You?.mid');
+    const literal = new File(['literal'], 'CAFE\u0301, WHERE ARE YOU?.WRD');
+    const sanitized = new File(['sanitized'], 'Café, Where Are You_.wrd');
+    const track = { file, sourceKind: 'archive-entry' };
+    attachLyricsFiles([file], [sanitized, literal]);
+    assert.equal(new TextDecoder().decode(await readMidiWrdBytes(track, {})), 'literal');
+    attachLyricsFiles([file], [sanitized]);
+    assert.equal(new TextDecoder().decode(await readMidiWrdBytes(track, {})), 'sanitized');
+});
+
 test('MIDI library WRD requests use the existing permitted sibling resolver', async () => {
     const requests = [], lyrics = new File(['@START\nLibrary'], 'Song.wrd');
     await withGlobals({ window: {} }, async () => {

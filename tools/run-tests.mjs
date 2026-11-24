@@ -145,15 +145,17 @@ const playwrightElectronImportPattern =
   /import\s*\{[^}]*\b_electron\b[^}]*\}\s*from\s+['"]playwright['"]/;
 const esmTestSources = new Map(allEsmTests.map(file =>
   [file, fs.readFileSync(path.join(repoRoot, file), 'utf8')]));
-const browserTests = allEsmTests.filter(file => playwrightImportPattern.test(esmTestSources.get(file)));
-const browserTestSet = new Set(browserTests);
 // Tests that launch Electron through Playwright need the Electron runtime and a
 // display, which the ubuntu `test:browser` CI jobs do not provide. They run on
 // the Windows build job through `npm run test:rolling-pcm:electron` so the
 // Round 2 continuity (cell A) and process-memory (cell B) evidence stays on one runner.
-const electronTests = browserTests.filter(file =>
+// Electron tests can import the launcher through a shared fixture.
+const electronTests = allEsmTests.filter(file => file.endsWith('-electron-browser.test.mjs') ||
   playwrightElectronImportPattern.test(esmTestSources.get(file)));
 const electronTestSet = new Set(electronTests);
+const browserTests = allEsmTests.filter(file => electronTestSet.has(file) ||
+  playwrightImportPattern.test(esmTestSources.get(file)));
+const browserTestSet = new Set(browserTests);
 // The accelerated rolling soak runs for about a minute; keep it on its own
 // script (`npm run test:rolling-pcm:endurance`) instead of the browser gate.
 const enduranceTests = ['tests/esm/rolling-pcm-endurance-browser.test.mjs'];

@@ -158,10 +158,14 @@ public final class AndroidHostTest {
             packer.packRecord(record);
             JSONObject pending = call(lease.service, "pipeline.set", packer.prepareRecords(new JSONArray().put(record), false, "A"), null, null);
             assertEquals("source-a", pending.getJSONArray("pipeline").getJSONObject(0).getJSONObject("parameters").getString("ir"));
+            assertEquals("source-a", pending.getJSONObject("pipelines").getJSONArray("A").getJSONObject(0)
+                    .getJSONObject("parameters").getString("ir"));
             uploadImpulse(lease.service, 7201, 0.25f, new JSONObject().put("ir", "source-b"));
             JSONObject committed = call(lease.service, "snapshot.get", new JSONObject(), null, null);
             JSONObject params = committed.getJSONArray("pipeline").getJSONObject(0).getJSONObject("parameters");
             assertEquals("source-b", params.getString("ir")); assertEquals(-6, params.getInt("dw")); assertEquals(2, params.getInt("inputBus")); assertEquals(3, params.getInt("outputBus"));
+            assertEquals("source-b", committed.getJSONObject("pipelines").getJSONArray("A").getJSONObject(0)
+                    .getJSONObject("parameters").getString("ir"));
             assertEquals("source-b", committed.getJSONObject("assetDefinitions").getJSONObject("IRReverbPlugin:7201:0").getJSONObject("externalAssetParameters").getString("ir"));
             assertTrue(committed.getJSONArray("retainedAssetDefinitions").toString().contains("source-a"));
             JSONObject undo = call(lease.service, "pipeline.undo", new JSONObject(), null, null);
@@ -205,15 +209,182 @@ public final class AndroidHostTest {
             assertFalse(call(lease.service, "snapshot.get", new JSONObject(), null, null).getJSONObject("assetRefs").has("IRReverbPlugin:7301:0"));
         }
     }
+    @Test public void ownDeferredAssetCompletionDoesNotInvalidateGuardedSiblingChunks() throws Exception {
+        try (ServiceLease lease = new ServiceLease()) {
+            int room = 7311, ir = 7312;
+            NativeParameterPacker packer = new NativeParameterPacker(lease.context);
+            JSONObject roomRecord = new JSONObject().put("id", room).put("type", "RoomEqPlugin").put("name", "Room EQ")
+                    .put("enabled", true).put("parameters", new JSONObject().put("lt", "128").put("fd", 0));
+            JSONObject irRecord = new JSONObject().put("id", ir).put("type", "IRReverbPlugin").put("name", "IR Reverb")
+                    .put("enabled", true).put("parameters", new JSONObject().put("lt", "0").put("cr", "full"));
+            packer.packRecord(roomRecord); packer.packRecord(irRecord);
+            call(lease.service, "pipeline.set", packer.prepareRecords(new JSONArray().put(roomRecord).put(irRecord), false, "A"), null, null);
+            NativeEngine engine = lease.onControl(() -> (NativeEngine) lease.field("engine"));
+            assertEquals(0, (int) lease.onControl(engine::start));
+            try {
+                uploadImpulse(lease.service, room, 1, new JSONObject(), 128);
+                String roomKey = "RoomEqPlugin:" + room + ":0";
+                String first = call(lease.service, "snapshot.get", new JSONObject(), null, null)
+                        .getJSONObject("assetRefs").getJSONObject(roomKey).getString("id");
+                long frame = lease.onControl(engine::getAudioFrameTime);
+                long deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+                while (lease.onControl(engine::getAudioFrameTime) - frame < 8192
+                        && android.os.SystemClock.elapsedRealtime() < deadline)
+                    android.os.SystemClock.sleep(10);
+                assertTrue(lease.onControl(engine::getAudioFrameTime) - frame >= 8192);
+                long base = call(lease.service, "snapshot.get", new JSONObject(), null, null).getLong("revision");
+                String batch = java.util.UUID.randomUUID().toString();
+                byte[] data = impulseBytes(0.5f);
+                for (int id : new int[]{ir, room}) {
+                    JSONObject begin = new JSONObject().put("pluginId", id).put("slot", 0).put("_assetBatch", batch)
+                            .put("byteLength", data.length).put("formatTag", 1).put("headBlock", id == room ? 128 : 0)
+                            .put("processingChannels", 2).put("footprintBytes", 32 * 1024 * 1024);
+                    call(lease.service, "pipeline.asset.begin", begin, base, null);
+                    int limit = id == ir ? 16 : data.length;
+                    JSONObject chunk = new JSONObject().put("pluginId", id).put("slot", 0).put("_assetBatch", batch)
+                            .put("offset", 0).put("data", android.util.Base64.encodeToString(data, 0, limit, android.util.Base64.NO_WRAP));
+                    call(lease.service, "pipeline.asset.chunk", chunk, base, null);
+                }
+                JSONObject roomTarget = new JSONObject().put("pluginId", room).put("slot", 0).put("_assetBatch", batch);
+                assertEquals("pending", call(lease.service, "pipeline.asset.commit", roomTarget, base, null).getString("state"));
+                long advanced = base;
+                deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+                while (advanced == base && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    advanced = call(lease.service, "snapshot.get", new JSONObject(), null, null).getLong("revision");
+                    android.os.SystemClock.sleep(10);
+                }
+                assertEquals(base + 1, advanced);
+                JSONObject sibling = new JSONObject().put("pluginId", ir).put("slot", 0).put("_assetBatch", batch);
+                JSONObject lastChunk = new JSONObject(sibling.toString()).put("offset", 16)
+                        .put("data", android.util.Base64.encodeToString(data, 16, data.length - 16, android.util.Base64.NO_WRAP));
+                AtomicReference<AudioService.HostError> rejected = new AtomicReference<>();
+                JSONObject competitor = new JSONObject(lastChunk.toString()).put("_assetBatch", java.util.UUID.randomUUID().toString());
+                assertNull(call(lease.service, "pipeline.asset.chunk", competitor, base, rejected));
+                assertEquals("revision-conflict", rejected.get().code);
+                assertEquals(advanced, call(lease.service, "pipeline.asset.chunk", lastChunk, base, null).getLong("revision"));
+                String latest = call(lease.service, "snapshot.get", new JSONObject(), null, null)
+                        .getJSONObject("assetRefs").getJSONObject(roomKey).getString("id");
+                assertNotEquals(first, latest);
+                frame = lease.onControl(engine::getAudioFrameTime);
+                deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+                while (lease.onControl(engine::getAudioFrameTime) - frame < 8192
+                        && android.os.SystemClock.elapsedRealtime() < deadline)
+                    android.os.SystemClock.sleep(10);
+                assertTrue(lease.onControl(engine::getAudioFrameTime) - frame >= 8192);
+                int beforeUndo = lease.onControl(() -> ((java.util.List<?>) lease.field("undo")).size());
+                lease.onControl(() -> { engine.stop(); return null; });
+                JSONObject undo = call(lease.service, "pipeline.undo", new JSONObject(), advanced, null);
+                assertEquals(latest, undo.getJSONObject("assetRefs").getJSONObject(roomKey).getString("id"));
+                assertNull(call(lease.service, "pipeline.asset.commit", sibling, advanced, rejected));
+                assertEquals("revision-conflict", rejected.get().code);
+                call(lease.service, "pipeline.asset.abort", sibling, null, null);
+                assertEquals(0, (int) lease.onControl(engine::start));
+                String restored = latest;
+                deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+                while (restored.equals(latest) && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    restored = call(lease.service, "snapshot.get", new JSONObject(), null, null)
+                            .getJSONObject("assetRefs").getJSONObject(roomKey).getString("id");
+                    android.os.SystemClock.sleep(10);
+                }
+                assertEquals(first, restored);
+                assertEquals(beforeUndo - 1, (int) lease.onControl(() -> ((java.util.List<?>) lease.field("undo")).size()));
+                assertEquals(1, (int) lease.onControl(() -> ((java.util.List<?>) lease.field("redo")).size()));
+            } finally {
+                lease.onControl(() -> { engine.stop(); return null; });
+            }
+        }
+    }
+
+    @Test public void stoppedSlotAndHistorySelectionsKeepTheirOwnDeferredFiles() throws Exception {
+        try (ServiceLease lease = new ServiceLease()) {
+            int room = 7321;
+            String key = "RoomEqPlugin:" + room + ":0";
+            NativeParameterPacker packer = new NativeParameterPacker(lease.context);
+            JSONObject record = new JSONObject().put("id", room).put("type", "RoomEqPlugin").put("name", "Room EQ")
+                    .put("enabled", true).put("parameters", new JSONObject().put("lt", "128").put("fd", 0));
+            packer.packRecord(record);
+            call(lease.service, "pipeline.set", packer.prepareRecords(new JSONArray().put(record), false, "A"), null, null);
+            NativeEngine engine = lease.onControl(() -> (NativeEngine) lease.field("engine"));
+            assertEquals(0, (int) lease.onControl(engine::start));
+            try {
+                uploadImpulse(lease.service, room, 1, new JSONObject(), 128);
+                String fileA = assetId(call(lease.service, "snapshot.get", new JSONObject(), null, null), key);
+                awaitFrames(lease, engine);
+                call(lease.service, "pipeline.copySlot", new JSONObject().put("from", "A").put("to", "B"), null, null);
+                call(lease.service, "pipeline.slot", new JSONObject().put("slot", "B"), null, null);
+                uploadImpulse(lease.service, room, 0.5f, new JSONObject(), 128);
+                String fileB = awaitChangedAsset(lease.service, key, fileA);
+                awaitFrames(lease, engine);
+                lease.onControl(() -> { engine.stop(); return null; });
+
+                for (String selected : new String[]{"A", "B", "A", "B"}) {
+                    JSONObject snapshot = call(lease.service, "pipeline.slot", new JSONObject().put("slot", selected), null, null);
+                    assertEquals(fileB, assetId(snapshot, key));
+                    assertSavedSelection(lease, key, selected, fileA, fileB);
+                }
+                assertEquals(fileB, assetId(call(lease.service, "pipeline.undo", new JSONObject(), null, null), key));
+                assertSavedSelection(lease, key, "A", fileA, fileB);
+                assertEquals(fileB, assetId(call(lease.service, "pipeline.redo", new JSONObject(), null, null), key));
+                assertSavedSelection(lease, key, "B", fileA, fileB);
+                call(lease.service, "pipeline.undo", new JSONObject(), null, null);
+                assertSavedSelection(lease, key, "A", fileA, fileB);
+                assertEquals(0, (int) lease.onControl(engine::start));
+                assertEquals(fileA, awaitChangedAsset(lease.service, key, fileB));
+                awaitFrames(lease, engine);
+                call(lease.service, "pipeline.redo", new JSONObject(), null, null);
+                assertEquals(fileB, awaitChangedAsset(lease.service, key, fileA));
+                assertSavedSelection(lease, key, "B", fileA, fileB);
+            } finally {
+                lease.onControl(() -> { engine.stop(); return null; });
+            }
+        }
+    }
+
+    private static String assetId(JSONObject pipeline, String key) throws Exception {
+        return pipeline.getJSONObject("assetRefs").getJSONObject(key).getString("id");
+    }
+
+    private static void assertSavedSelection(ServiceLease lease, String key, String selected, String fileA, String fileB) throws Exception {
+        android.content.SharedPreferences preferences = lease.service.getSharedPreferences("audio", Context.MODE_PRIVATE);
+        JSONObject slots = new JSONObject(preferences.getString("slots", "{}"));
+        JSONObject pipeline = new JSONObject(preferences.getString("pipeline", "{}"));
+        assertEquals(fileA, assetId(slots.getJSONObject("A"), key));
+        assertEquals(fileB, assetId(slots.getJSONObject("B"), key));
+        assertEquals(selected, pipeline.getString("slot"));
+        assertEquals(selected.equals("A") ? fileA : fileB, assetId(pipeline, key));
+    }
+
+    private static String awaitChangedAsset(AudioService service, String key, String original) throws Exception {
+        long deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+        do {
+            String current = assetId(call(service, "snapshot.get", new JSONObject(), null, null), key);
+            if (!current.equals(original)) return current;
+            android.os.SystemClock.sleep(10);
+        } while (android.os.SystemClock.elapsedRealtime() < deadline);
+        throw new AssertionError("The selected asset did not become resident");
+    }
+
+    private static void awaitFrames(ServiceLease lease, NativeEngine engine) throws Exception {
+        long start = lease.onControl(engine::getAudioFrameTime);
+        long deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+        while (lease.onControl(engine::getAudioFrameTime) - start < 8192
+                && android.os.SystemClock.elapsedRealtime() < deadline)
+            android.os.SystemClock.sleep(10);
+        assertTrue(lease.onControl(engine::getAudioFrameTime) - start >= 8192);
+    }
+
     private byte[] impulseBytes(float gain) {
         return java.nio.ByteBuffer.allocate(36).order(java.nio.ByteOrder.LITTLE_ENDIAN)
                 .putInt(0x31415445).putInt(1).putInt(1).putInt(48000).putInt(1).putInt(0).putInt(0).putInt(0).putFloat(gain).array();
     }
     private void uploadImpulse(AudioService service, int id, float gain) throws Exception { uploadImpulse(service, id, gain, new JSONObject()); }
     private void uploadImpulse(AudioService service, int id, float gain, JSONObject parameters) throws Exception {
+        uploadImpulse(service, id, gain, parameters, 0);
+    }
+    private void uploadImpulse(AudioService service, int id, float gain, JSONObject parameters, int headBlock) throws Exception {
         byte[] bytes = impulseBytes(gain);
         call(service, "pipeline.asset.begin", new JSONObject().put("pluginId", id).put("slot", 0).put("byteLength", bytes.length)
-                .put("formatTag", 1).put("processingChannels", 2).put("footprintBytes", 32 * 1024 * 1024)
+                .put("formatTag", 1).put("headBlock", headBlock).put("processingChannels", 2).put("footprintBytes", 32 * 1024 * 1024)
                 .put("externalAssetSignature", parameters.toString()).put("externalAssetParameters", parameters), null, null);
         call(service, "pipeline.asset.chunk", new JSONObject().put("pluginId", id).put("slot", 0).put("offset", 0)
                 .put("data", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)), null, null);

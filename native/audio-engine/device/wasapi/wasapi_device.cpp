@@ -14,6 +14,8 @@
 
 #include "device/device.h"
 #include "device/planar_buffer.h"
+#include "loopback_silence.h"
+#include "render_priority.h"
 #include "sample_format.h"
 
 #include <atomic>
@@ -47,6 +49,48 @@ struct CoTaskMemory {
 
 struct WinHandle {
   void operator()(void *handle) const noexcept { CloseHandle(handle); }
+};
+
+class AudioThreadPriority {
+public:
+  AudioThreadPriority() noexcept { restore(); }
+  ~AudioThreadPriority() {
+    demote();
+    if (failedOperation_)
+      std::fprintf(stderr,
+                   "WASAPI could not enable the audio thread priority (MMCSS "
+                   "%s error %lu).\n",
+                   failedOperation_, error_);
+  }
+
+  void restore() noexcept {
+    if (registered() || failedOperation_)
+      return;
+    DWORD index = 0;
+    task_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &index);
+    if (!task_)
+      rememberFailure("registration");
+    else if (!AvSetMmThreadPriority(task_, AVRT_PRIORITY_CRITICAL))
+      rememberFailure("adjustment");
+  }
+
+  void demote() noexcept {
+    if (task_ && AvRevertMmThreadCharacteristics(task_))
+      task_ = nullptr;
+  }
+
+  bool registered() const noexcept { return task_ != nullptr; }
+  bool available() const noexcept { return registered() || !failedOperation_; }
+
+private:
+  void rememberFailure(const char *operation) noexcept {
+    error_ = GetLastError();
+    failedOperation_ = operation;
+  }
+
+  HANDLE task_ = nullptr;
+  const char *failedOperation_ = nullptr;
+  DWORD error_ = 0;
 };
 
 DeviceError classify(HRESULT hr) noexcept {
@@ -235,18 +279,25 @@ private:
 };
 
 HRESULT initializeSharedStream(IAudioClient *client, const WAVEFORMATEX *format,
-                               DeviceDirection direction, DeviceLatency latency) {
+                               DeviceDirection direction, DeviceLatency latency, bool loopback,
+                               std::uint64_t &periodNs) {
   const auto flags = static_cast<DWORD>(AUDCLNT_STREAMFLAGS_EVENTCALLBACK) |
+                     (loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0u) |
                      (direction == DeviceDirection::Output ? AUDCLNT_STREAMFLAGS_NOPERSIST : 0u);
   // IAudioClient::Initialize supports the nonpersistent playback session flag.
   REFERENCE_TIME defaultPeriod = 0;
   const auto periodResult = client->GetDevicePeriod(&defaultPeriod, nullptr);
   if (FAILED(periodResult))
     return periodResult;
-  const auto bufferDuration = latency == DeviceLatency::Low    ? 0
-                              : latency == DeviceLatency::High ? 2 * defaultPeriod
-                                                               : defaultPeriod;
-  return client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, bufferDuration, 0, format, nullptr);
+  periodNs = static_cast<std::uint64_t>(defaultPeriod) * 100u;
+  // Each period event refills the whole buffer, so capacity beyond one period
+  // is the margin for a late render. Requests at or below the engine minimum
+  // (about two periods) all leave a single period and make the levels equal.
+  const REFERENCE_TIME periods = latency == DeviceLatency::Low    ? 3
+                                 : latency == DeviceLatency::High ? 9
+                                                                  : 5;
+  return client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, periods * defaultPeriod, 0, format,
+                            nullptr);
 }
 
 class WasapiStream {
@@ -255,26 +306,30 @@ public:
       : callbacks_(callbacks), direction_(direction) {}
   ~WasapiStream() { close(); }
 
-  DeviceError open(IMMDeviceEnumerator *enumerator, const DeviceRequest &request) {
+  DeviceError open(IMMDeviceEnumerator *enumerator, const DeviceRequest &request,
+                   const WasapiStream *output = nullptr) {
     // Resolve the counter frequency before either audio thread can use it.
     (void)monotonicNs();
     enumerator_ = enumerator;
     const bool input = direction_ == DeviceDirection::Input;
+    loopback_ = input && request.selection.id == systemAudioId;
+    measureClock_ = request.measureClock;
     const bool usingDefault = request.selection.id.empty() || request.selection.id == defaultId;
     ComPtr<IMMDevice> endpoint;
     HRESULT hr;
-    if (usingDefault) {
-      hr = enumerator_->GetDefaultAudioEndpoint(flow(direction_), deviceRole, &endpoint);
+    if (usingDefault || (loopback_ && request.loopbackEndpointId.empty())) {
+      hr = enumerator_->GetDefaultAudioEndpoint(loopback_ ? eRender : flow(direction_), deviceRole,
+                                                &endpoint);
     } else {
-      const auto id = wide(request.selection.id);
+      const auto id = wide(loopback_ ? request.loopbackEndpointId : request.selection.id);
       if (id.empty())
         return DeviceError::Unavailable;
       hr = enumerator_->GetDevice(id.c_str(), &endpoint);
     }
     if (FAILED(hr))
       return classify(hr);
-    const auto id = endpointId(endpoint.Get());
-    if (id.empty())
+    id_ = endpointId(endpoint.Get());
+    if (id_.empty() || (loopback_ && output && output->id_ == id_))
       return DeviceError::Unavailable;
 
     ComPtr<IAudioClient> enumerated;
@@ -300,7 +355,8 @@ public:
         mix->nSamplesPerSec == 0 ||
         !selectDeviceChannels(mix->nChannels, request.selection.channels, channels_))
       return DeviceError::UnsupportedFormat;
-    hr = initializeSharedStream(client_.Get(), mix.get(), direction_, request.latency);
+    hr = initializeSharedStream(client_.Get(), mix.get(), direction_, request.latency, loopback_,
+                                periodNs_);
     if (FAILED(hr))
       return classify(hr);
     event_.reset(CreateEventW(nullptr, FALSE, FALSE, nullptr));
@@ -323,7 +379,7 @@ public:
     format_ = {mix->nSamplesPerSec, mix->nChannels, static_cast<std::uint32_t>(channels_.size()),
                buffer, static_cast<std::uint32_t>(bufferedLatency + (input ? 0u : buffer))};
     planar_.resize(std::size_t(buffer) * channels_.size());
-    notifications_.Attach(new StreamNotification(callbacks_, direction_, id, usingDefault));
+    notifications_.Attach(new StreamNotification(callbacks_, direction_, id_, usingDefault));
     hr = client_->GetService(IID_PPV_ARGS(&sessionControl_));
     if (SUCCEEDED(hr))
       hr = sessionControl_->RegisterAudioSessionNotification(notifications_.Get());
@@ -373,23 +429,34 @@ private:
     return {planar_.data(), std::size_t(frames) * channels_.size()};
   }
 
-  HRESULT render(IAudioRenderClient *service) noexcept {
+  HRESULT render(IAudioRenderClient *service, IAudioClock *clock, std::uint64_t frequency,
+                 UINT32 &frames) noexcept {
     UINT32 padding = 0;
     const auto hr = client_->GetCurrentPadding(&padding);
     if (FAILED(hr))
       return hr;
     if (padding >= format_.periodFrames)
       return S_OK;
-    const auto frames = format_.periodFrames - padding;
+    frames = format_.periodFrames - padding;
     BYTE *bytes = nullptr;
     const auto got = service->GetBuffer(frames, &bytes);
     if (FAILED(got))
       return got;
     auto block = planar(frames);
     std::fill(block.begin(), block.end(), 0.0f);
+    std::uint64_t deviceNs = 0, devicePosition = 0, qpc = 0;
+    if (clock && frequency && clock->GetPosition(&devicePosition, &qpc) == S_OK) {
+      const double seconds = static_cast<double>(writtenFrames_) / format_.sampleRate -
+                             static_cast<double>(devicePosition) / frequency;
+      const double ns = static_cast<double>(qpc) * 100. + seconds * 1.e9;
+      if (ns > 0)
+        deviceNs = static_cast<std::uint64_t>(ns + .5);
+    }
     if (callbacks_.render)
-      callbacks_.render(callbacks_.context, block, {}, frames, {position_, monotonicNs(), false});
+      callbacks_.render(callbacks_.context, block, {}, frames,
+                        {position_, monotonicNs(), false, deviceNs});
     position_ += frames;
+    writtenFrames_ += frames;
     sample_.silence(bytes, std::size_t(frames) * format_.channels);
     packInterleaved(block, frames, format_.channels, channels_,
                     [&](std::size_t index, float value) {
@@ -402,8 +469,13 @@ private:
     UINT32 available = 0;
     for (;;) {
       auto hr = service->GetNextPacketSize(&available);
-      if (FAILED(hr) || available == 0)
+      if (FAILED(hr))
         return hr;
+      if (available == 0) {
+        if (loopback_ && silence_.takeBoundary(monotonicNs(), periodNs_) && callbacks_.capture)
+          callbacks_.capture(callbacks_.context, {}, 0, {});
+        return S_OK;
+      }
       BYTE *bytes = nullptr;
       DWORD flags = 0;
       UINT32 frames = 0;
@@ -424,8 +496,11 @@ private:
         if (invalidClock)
           position = position_;
         callbacks_.capture(callbacks_.context, block, frames,
-                           {position, now, (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0});
+                           {position, now, (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0,
+                            invalidClock ? 0 : now});
         position_ = position + frames;
+        if (loopback_)
+          silence_.supplied(monotonicNs());
       }
       hr = service->ReleaseBuffer(frames);
       if (FAILED(hr) || frames > format_.periodFrames)
@@ -437,9 +512,14 @@ private:
     ComThread com;
     ComPtr<IAudioRenderClient> renderService;
     ComPtr<IAudioCaptureClient> captureService;
+    ComPtr<IAudioClock> audioClock;
+    std::uint64_t frequency = 0;
     HRESULT hr = E_FAIL;
     if (com && direction_ == DeviceDirection::Output) {
       hr = client_->GetService(IID_PPV_ARGS(&renderService));
+      if (measureClock_ && SUCCEEDED(client_->GetService(IID_PPV_ARGS(&audioClock))))
+        audioClock->GetFrequency(&frequency);
+      writtenFrames_ = format_.periodFrames;
       if (SUCCEEDED(hr)) {
         BYTE *buffer = nullptr;
         hr = renderService->GetBuffer(format_.periodFrames, &buffer);
@@ -449,28 +529,47 @@ private:
     } else if (com) {
       hr = client_->GetService(IID_PPV_ARGS(&captureService));
     }
-    DWORD taskIndex = 0;
-    const HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
-    if (!mmcss)
-      std::fputs("WASAPI could not enable the audio thread priority.\n", stderr);
+    AudioThreadPriority priority;
+    WasapiRenderPriority renderPriority;
     if (SUCCEEDED(hr))
       hr = client_->Start();
     result.set_value(hr);
     if (SUCCEEDED(hr)) {
-      const auto timeout = static_cast<DWORD>(std::max<std::uint64_t>(
-          2000u, std::uint64_t(format_.periodFrames) * 10000u / format_.sampleRate));
+      const auto timeout = static_cast<DWORD>(
+          loopback_ ? std::max<std::uint64_t>(1, (periodNs_ + 999999) / 1000000)
+                    : std::max<std::uint64_t>(2000u, std::uint64_t(format_.periodFrames) * 10000u /
+                                                         format_.sampleRate));
       const HANDLE handles[] = {stopEvent_.get(), event_.get()};
       for (;;) {
         const DWORD status = WaitForMultipleObjects(2, handles, FALSE, timeout);
         if (status == WAIT_OBJECT_0)
           break;
-        if (status == WAIT_OBJECT_0 + 1) {
-          hr = renderService ? render(renderService.Get()) : capture(captureService.Get());
+        if (status == WAIT_OBJECT_0 + 1 || (loopback_ && status == WAIT_TIMEOUT)) {
+          if (renderService) {
+            UINT32 frames = 0;
+            const auto started = monotonicNs();
+            hr = render(renderService.Get(), audioClock.Get(), frequency, frames);
+            if (SUCCEEDED(hr) && frames && priority.available()) {
+              const auto audioNs = std::uint64_t(frames) * 1'000'000'000 / format_.sampleRate;
+              const auto change = renderPriority.observe(monotonicNs() - started, audioNs);
+              if (change == WasapiRenderPriority::Change::Demote)
+                priority.demote();
+              else if (change == WasapiRenderPriority::Change::Restore)
+                priority.restore();
+              // If Windows kept the MMCSS boost, actually wait between
+              // callbacks so a queued render event cannot monopolize a core.
+              if (renderPriority.demoted() && priority.registered() &&
+                  WaitForSingleObject(stopEvent_.get(), 1) == WAIT_OBJECT_0)
+                break;
+            }
+          } else {
+            hr = capture(captureService.Get());
+          }
           if (SUCCEEDED(hr))
             continue;
         }
         if (callbacks_.reset) {
-          const auto reason = status == WAIT_TIMEOUT               ? DeviceResetReason::Stalled
+          const auto reason = status == WAIT_TIMEOUT && !loopback_ ? DeviceResetReason::Stalled
                               : hr == AUDCLNT_E_DEVICE_INVALIDATED ? DeviceResetReason::Unavailable
                                                                    : DeviceResetReason::StreamError;
           callbacks_.reset(callbacks_.context, direction_, reason);
@@ -480,8 +579,6 @@ private:
       client_->Stop();
       client_->Reset();
     }
-    if (mmcss)
-      AvRevertMmThreadCharacteristics(mmcss);
   }
 
   DeviceCallbacks callbacks_;
@@ -496,6 +593,12 @@ private:
   std::vector<float> planar_;
   std::thread worker_;
   WasapiSampleFormat sample_;
+  std::wstring id_;
+  std::uint64_t periodNs_{};
+  LoopbackSilence silence_;
+  bool loopback_{};
+  bool measureClock_{};
+  std::uint64_t writtenFrames_{};
   DeviceStreamFormat format_;
   std::uint64_t position_{};
   bool endpointRegistered_{};
@@ -540,7 +643,7 @@ public:
     if (!enumerator_)
       return DeviceError::Internal;
     auto stream = std::make_unique<WasapiStream>(callbacks_, DeviceDirection::Input);
-    auto error = stream->open(enumerator_.Get(), *request);
+    auto error = stream->open(enumerator_.Get(), *request, output_.get());
     if (error == DeviceError::None)
       error = stream->start();
     if (error != DeviceError::None)

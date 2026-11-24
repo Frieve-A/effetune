@@ -4,6 +4,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace effetune::audio {
@@ -21,6 +22,22 @@ enum class DeviceResetReason {
 };
 enum class DeviceError { None, Unavailable, Busy, UnsupportedFormat, Permission, Internal };
 enum class DeviceLatency { Low, Balanced, High };
+inline constexpr char systemAudioId[] = "system-audio";
+
+inline std::string_view deviceErrorName(DeviceError value) {
+  switch (value) {
+  case DeviceError::Unavailable:
+    return "unavailable";
+  case DeviceError::Permission:
+    return "permission";
+  case DeviceError::Busy:
+    return "busy";
+  case DeviceError::UnsupportedFormat:
+    return "unsupportedFormat";
+  default:
+    return "internal";
+  }
+}
 
 struct DeviceInfo {
   std::string id;
@@ -44,6 +61,8 @@ struct DeviceRequest {
   DeviceSelection selection;
   std::uint32_t pipelineRate{48000};
   DeviceLatency latency{DeviceLatency::Balanced};
+  bool measureClock{};
+  std::string loopbackEndpointId{};
 };
 
 struct DeviceStreamFormat {
@@ -59,6 +78,7 @@ struct DeviceClock {
   std::uint64_t position{};
   std::uint64_t timeNs{};
   bool discontinuity{};
+  std::uint64_t deviceTimeNs{};
 };
 
 struct DeviceCallbacks {

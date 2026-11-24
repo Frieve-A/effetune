@@ -195,6 +195,18 @@ test('million-item catalog playback pages metadata and resolves only the selecte
   });
 });
 
+test('catalog page eviction does not invalidate a prepared automatic move', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+    await manager.loadCatalogSequence(catalogDescriptor({ itemCount: 10 }), { currentOrdinal: 0, autoPlay: false });
+    audioPlayer.stateManager.updateState({ isPlaying: true, isPaused: false, isStopped: false }, 'playing catalog');
+    const plan = await manager.preparePlannedAutomaticMove();
+    assert.equal(plan.nextOrdinal, 1);
+    manager.catalogSequence.clear();
+    assert.equal(manager.catalogSequence.getCacheStats().cachedPageCount, 0);
+    assert.equal(manager.isPlannedAutomaticMoveCurrent(plan), true);
+  });
+});
+
 test('opened files without catalog tags leave the title empty for embedded tag reading', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
     const loadedTracks = [];
@@ -466,6 +478,33 @@ test('premature catalog load recovery ignores Repeat ONE and reuses candidate sk
       calls.filter(call => call[0] === 'transientMessage').map(call => call[4]?.count ?? call[3]?.count),
       [1, 1]
     );
+  });
+});
+
+test('a failed prepared catalog next is loaded again instead of stopping silently', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    globalThis.window.uiManager = {
+      showTransientMessage(...args) {
+        calls.push(['transientMessage', ...args]);
+      }
+    };
+    await manager.loadCatalogSequence(catalogDescriptor({ itemCount: 3 }), {
+      currentOrdinal: 0,
+      autoPlay: false
+    });
+    audioPlayer.contextManager.loadTrack = async (track, ordinal) => {
+      calls.push(['recoveryLoadTrack', track.entryInstanceId, ordinal]);
+      return true;
+    };
+
+    const result = await manager.recoverCatalogTrackLoadFailure(new Error('transition failed'), 1);
+
+    assert.equal(result.accepted, true);
+    assert.equal(audioPlayer.stateManager.state.currentTrackIndex, 1);
+    assert.deepEqual(calls.filter(call => call[0] === 'recoveryLoadTrack'), [
+      ['recoveryLoadTrack', 'catalog-sequence:1', 1]
+    ]);
+    assert.equal(calls.some(call => call[0] === 'transientMessage'), false);
   });
 });
 

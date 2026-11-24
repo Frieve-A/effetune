@@ -32,6 +32,7 @@ public:
   }
   ClockedFifo &capture() noexcept { return *capture_; }
   unsigned captureChannels() const noexcept { return captureChannels_; }
+  // Runs on the audio thread; pendingDelayRequest belongs to the control thread.
   void requestLocalDelay(unsigned request, bool active, unsigned samples, bool local) noexcept;
   unsigned pendingDelayRequest = 0, requestedLocalDelay = 0, reportedOutputDelay = 0;
   std::atomic<unsigned> appliedDelayRequest{0};

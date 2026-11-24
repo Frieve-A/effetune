@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { LibraryManagerV2 } from '../../js/library/library-manager-v2.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 async function withAudioPlayerGlobals(options, callback) {
@@ -57,6 +58,53 @@ function createAudioManager() {
 function createPlayer() {
   return new AudioPlayer(createAudioManager());
 }
+
+test('the first source waits for the Auto target and catalog invalidation updates its measured gain', async () => {
+  let invalidated;
+  let plr = 14;
+  let integrated = -20;
+  let reads = 0;
+  let finishFirstLookup;
+  const firstLookup = new Promise(resolve => { finishFirstLookup = resolve; });
+  const client = {
+    getCounts() {}, createContext() {}, queryTracks() {}, queryEntities() {}, releaseContext() {}, getTrack() {},
+    subscribeInvalidations(listener) { invalidated = listener; },
+    async getLoudnessStats() { await firstLookup; return { albumPlr: plr }; },
+    async getTrackLoudness() { reads++; return { integrated, truePeak: -1, albumIntegrated: null }; },
+    async finalizeLoudness() { plr = 19; integrated = -23; }
+  };
+  const uiManager = {};
+  const library = new LibraryManagerV2({ uiManager, catalogClientFactory: async () => ({ client }) });
+  uiManager.libraryManager = library;
+  const window = {
+    uiManager, audioPreferences: { replayGainMode: 'album', replayGainTarget: 'auto', replayGainPreventClipping: false },
+    electronAPI: { readReplayGain() { assert.fail('a measured track must not use its file tags'); } }
+  };
+  await withAudioPlayerGlobals({ window }, async () => {
+    await library.init();
+    const player = createPlayer();
+    uiManager.audioPlayer = player;
+    const manager = player.contextManager;
+    const source = { connect() {} };
+    player.audioContext.createGain = () => ({ gain: { value: 1 }, connect() {} });
+    const track = { libraryTrackId: 'one', path: '/one.flac' };
+    const start = manager.readPlaybackReplayGain(track).then(reading => {
+      manager.rememberReplayGain(reading, track);
+      return manager.preparePlaybackSource(source, track);
+    });
+    await flushMicrotasks();
+    assert.equal(manager.playerVolumeGains.has(source), false);
+    finishFirstLookup();
+    const node = await start;
+    assert.equal(node.gain.value, 10 ** (6 / 20));
+    invalidated({ catalogVersion: 1, changedScopes: ['tracks'], counts: { tracks: 1 }, scopeVersions: { tracks: 1 } });
+    await Promise.resolve();
+    await library.loudnessRefresh;
+    assert.equal(reads, 2);
+    assert.equal(node.gain.value, 10 ** (4 / 20));
+    await library.close();
+  });
+});
 
 test('constructor wires sub-managers and refreshes UI only when a container exists', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {

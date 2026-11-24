@@ -413,6 +413,59 @@ test('trusted Catalog action uses one queue owner for local CUE and remote refs 
   harness.adapter.dispose();
 });
 
+test('Catalog archive providers and received MIDI reach score preparation without local lyrics lookup', async t => {
+  const score = new File(['MThd'], 'score.kar');
+  const manager = { getTrack: async () => ({ title: 'Score' }),
+    resolvePlaybackSource: async () => ({ sourceKind: 'archive-entry', path: 'book.zip' }),
+    bulkOperationService: { resolvePlaybackSessionLibrarySource: async () => ({ file: score }) } };
+  const h = createHarness();
+  t.after(() => h.adapter.dispose());
+  installRealPlaybackManager(h);
+  h.adapter.getLibraryManager = async () => manager;
+  h.bridge.emitAction({ requestId: 'local-score', service: 'Catalog', action: 'PlayItems',
+    args: { items: [{ serverId: 'local', trackId: 'score' }], operationKind: 'queue' } });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, true);
+  assert.equal((await h.audioPlayer.playbackManager.playlist[0].provider()).file, score);
+  const gateway = 'http://127.0.0.1:43123/openhome-media/0123456789abcdef0123456789abcdef';
+  h.adapter.queue.push({ id: 99, playbackUrl: gateway, uri: 'http://music.test/song',
+    meta: { title: 'Overture / Finale', protocolInfo: 'http-get:*:audio/midi:*' } });
+  h.adapter.syncQueueToPlayer(0, { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER });
+  const track = h.audioPlayer.playbackManager.playlist.at(-1);
+  const context = Object.create(AudioContextManager.prototype);
+  context.audioPlayer = { audioContext: { sampleRate: 48000 } };
+  const descriptor = context.createPlaybackSourceDescriptor(track);
+  const midi = Buffer.from('4d546864000000060000000101e04d54726b0000000d00903c648360803c0000ff2f00', 'hex');
+  const windowBefore = globalThis.window;
+  let wrdCalls = 0;
+  globalThis.window = { electronAPI: { readMidiWrd() { wrdCalls++; } } };
+  t.after(() => { if (windowBefore === undefined) delete globalThis.window; else globalThis.window = windowBefore; });
+  const request = t.mock.method(globalThis, 'fetch', (url, options) => {
+    assert.equal(url, gateway);
+    assert.equal(options.redirect, 'error');
+    return new Response(midi);
+  });
+  for (const title of ['Overture / Finale', 'Score.xml#2', 'http://example.org? Theme']) {
+    h.adapter.queue.at(-1).meta.title = title;
+    h.adapter.syncQueueToPlayer(0, { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER });
+    const queued = h.audioPlayer.playbackManager.playlist.at(-1);
+    assert.equal(context.isMidiTrack(queued), true);
+    const timeline = await context.prepareMidiTrack(queued, context.createPlaybackSourceDescriptor(queued), () => false);
+    assert.equal(timeline.duration, .5);
+    assert.equal(timeline.title, title);
+  }
+  assert.equal(wrdCalls, 0);
+  const chunk = new Uint8Array(1024 * 1024);
+  let cancelled = false;
+  request.mock.mockImplementation(() => new Response(new ReadableStream({
+    pull(controller) { controller.enqueue(chunk); }, cancel() { cancelled = true; }
+  })));
+  await assert.rejects(descriptor.readBytes(), { code: 'midi-too-large' });
+  assert.equal(cancelled, true);
+  h.adapter.queue.at(-1).playbackUrl = 'http://music.test/file.mid';
+  await assert.rejects(descriptor.readBytes(), { code: 'invalid-playback-url' });
+});
+
 test('Catalog preparation cancellation leaves the current queue untouched', async () => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
@@ -715,6 +768,8 @@ test('network append imports a paused local catalog queue without publishing its
   assert.equal(harness.stateManager.state.currentTrackPosition, 37);
   assert.equal(harness.calls.slice(callStart).some(([name]) => ['play', 'pause', 'stop'].includes(name)), false);
   assert.deepEqual(harness.adapter.queue.map(entry => entry.meta.title), ['First & local', 'added', 'Second local']);
+  const saved = manager.capturePlaybackSession(true);
+  assert.deepEqual(saved.queue.map(entry => entry.trackUid ?? null), ['private-1', null, 'private-2']);
   const localId = harness.adapter.getSnapshot().currentId;
   const read = (await runAction(harness, 'read-private', 'Read', { id: localId })).result;
   assert.equal(read.uri, '');
@@ -2342,6 +2397,41 @@ test('UPnP URI selection atomically replaces the canonical queue and accepts emp
   assert.equal(h.responses.at(-1).ok, false);
   assert.deepEqual(captureQueueContract(h), before);
   h.adapter.dispose();
+});
+
+test('UPnP empty URI clears the saved queue only after the host accepts its response', async t => {
+  const harness = createHarness();
+  const manager = installRealPlaybackManager(harness);
+  t.after(() => harness.adapter.dispose());
+
+  let savedSession;
+  harness.audioPlayer.playbackSession = {
+    request(_player, { full }) {
+      savedSession = manager.capturePlaybackSession(full);
+    },
+    remove() {
+      savedSession = null;
+    },
+    resume() {}
+  };
+  manager.replaceMaterializedPlaylist(['C:/music/previous.flac']);
+  assert.equal(savedSession.queue.length, 1);
+  const previousSession = savedSession;
+
+  const clearUri = async (requestId, accepted) => {
+    harness.bridge.acceptResponses = accepted;
+    harness.bridge.emitAction({ requestId, service: 'AVTransport', action: 'SetAVTransportURI', args: { uri: '' } });
+    await harness.adapter.commandChain;
+    assert.deepEqual(harness.responses.at(-1), { requestId, ok: true, result: {} });
+  };
+
+  await clearUri('rejected-clear', false);
+  assert.equal(manager.sequence.itemCount, 1);
+  assert.equal(savedSession, previousSession);
+
+  await clearUri('accepted-clear', true);
+  assert.equal(manager.sequence.itemCount, 0);
+  assert.equal(savedSession, null);
 });
 
 test('classified live playback follows the current player session and invalidates on stop or replacement', async () => {

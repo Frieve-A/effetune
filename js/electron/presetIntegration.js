@@ -363,6 +363,7 @@ export async function openMusicFile(isElectron) {
   const network = window.uiManager?.networkMusic;
   const playerId = network?.selectedPlayerId ?? 'local';
   const generation = network?.playerGeneration;
+  if (playerId === 'local') window.uiManager?.invalidatePlaybackSessionRestore?.();
   
   try {
     const result = await window.electronAPI.openPlaybackSelection();

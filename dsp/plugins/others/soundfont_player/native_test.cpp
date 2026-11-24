@@ -604,6 +604,46 @@ void variableModulationAudioAndCheckpoint() {
   CHECK(std::abs(restored.peak() - .25F) < .00001F);
   CHECK(original.kernel->midiClock() == restored.kernel->midiClock());
 }
+void sfzEffectControllerReset() {
+  // Reset All Controllers must also return SFZ effect controls to rest, both for
+  // played MIDI and for the accepted global values restored by live hydration.
+  const auto attenuated = .25F * std::pow(10.0F, -24.0F / 20.0F);
+  const auto steadyPeak = [](Player &player) {
+    player.process();
+    player.process();
+    return player.peak();
+  };
+  {
+    Player played;
+    if (!played.loadCompiled(kV3ControllerFxPayload, kV3ControllerFxFootprint))
+      return;
+    CHECK(played.events({event(0u, 0xb0u, 7u, 127u), event(0u, 0xb0u, 1u, 127u),
+                         event(0u, 0xd0u, 127u, 0u), event(0u, 0x90u, 60u, 127u, 1u)},
+                        0u, 2u) == ET_OK);
+    CHECK(std::abs(steadyPeak(played) - attenuated) < .00001F);
+    CHECK(played.events({event(0u, 0xb0u, 121u, 0u)}, 0u, 2u) == ET_OK);
+    CHECK(std::abs(steadyPeak(played) - .25F) < .00001F);
+  }
+  const auto global = [](et_midi_event message) {
+    message.flags = ET_MIDI_HYDRATE_GLOBAL_CC;
+    return message;
+  };
+  for (const bool reset : {false, true}) {
+    Player hydrated;
+    if (!hydrated.loadCompiled(kV3ControllerFxPayload, kV3ControllerFxFootprint))
+      return;
+    CHECK(hydrated.events({}, ET_MIDI_RETIME, 3u) == ET_OK);
+    CHECK(hydrated.events({event(0u, 0xb0u, 7u, 127u), global(event(0u, 0xb0u, 1u, 127u)),
+                           global(event(0u, 0xd0u, 127u, 0u))},
+                          ET_MIDI_HYDRATE_CHANNEL_STATE, 3u) == ET_OK);
+    if (reset)
+      CHECK(hydrated.events({global(event(0u, 0xb0u, 121u, 0u))}, ET_MIDI_HYDRATE_CHANNEL_STATE,
+                            3u) == ET_OK);
+    CHECK(hydrated.events({{0u, 0u, 0u, ET_MIDI_RESUME, 0u, 0u}, event(0u, 0x90u, 60u, 127u, 1u)},
+                          0u, 3u) == ET_OK);
+    CHECK(std::abs(steadyPeak(hydrated) - (reset ? .25F : attenuated)) < .00001F);
+  }
+}
 void genericModulationRetryAndCheckpoint() {
   Player reference, paged;
   if (!reference.loadPagedModulation(true) || !paged.loadPagedModulation(false))
@@ -4049,6 +4089,7 @@ int main() {
   }
   genericModulation();
   variableModulationAudioAndCheckpoint();
+  sfzEffectControllerReset();
   genericModulationRetryAndCheckpoint();
   genericPitchAndScope();
   genericSourceAndKeyOffsets();

@@ -26,6 +26,7 @@ import {
     resolveCheckboxToggle
 } from './audio-utils/channel-selection.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
+import { getNativeMeasurementDriver, nativeMeasurementDevice } from './audio-utils/native-measurement.js';
 import { essFrequencyLimit } from './measurement-model.js';
 import { takePipelineHandoffOnce } from '../../js/pipeline-analyzer/pipeline-handoff-store.js';
 import { cancelSpeakerDistortionAudio, openSpeakerDistortionSetup } from './ui/speaker-distortion-setup.js';
@@ -38,6 +39,7 @@ const sweepBandChannelValues = new Map();
 
 function getOutputChannelCount() {
     const count = Number(document.getElementById('outputChannelCount').value);
+    if (audioUtils.nativeMeasurement && Number.isInteger(count) && count >= 1 && count <= 16) return count;
     return SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(count) ? count : 2;
 }
 
@@ -333,6 +335,7 @@ async function initializeAudio() {
  * Check browser audio support and limitations
  */
 function checkBrowserAudioSupport() {
+    if (getNativeMeasurementDriver()) return;
     // Check if AudioContext is supported
     if (!(window.AudioContext || window.webkitAudioContext)) {
         console.error('AudioContext is not supported in this browser');
@@ -362,6 +365,11 @@ function setupEventConnections() {
     document.getElementById('configForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (configSubmissionPromise) return;
+        if (audioUtils.nativeMeasurement && (!document.getElementById('audioInput').value ||
+            !document.getElementById('audioOutput').value)) {
+            uiManager.showNotification(i18n.t('error:measurementDevicesUnavailable'), 'error');
+            return;
+        }
 
         const outputChannels = getOutputChannelSelection();
         const calibrationSelect = document.getElementById('interfaceCalibration');
@@ -638,11 +646,13 @@ function setupEventConnections() {
 /**
  * Populate audio device select elements
  */
-async function populateAudioDevices() {
+async function populateAudioDevices(refresh = false) {
     try {
         // Wait for audio to be initialized
         if (!audioUtils.initialized) {
             await audioUtils.initialize();
+        } else if (refresh && audioUtils.nativeMeasurement) {
+            await audioUtils.enumerateDevices();
         }
         
         // Get devices
@@ -650,6 +660,7 @@ async function populateAudioDevices() {
         
         // Populate input devices
         const inputSelect = document.getElementById('audioInput');
+        const previousInput = inputSelect.value;
         inputSelect.innerHTML = '';
         
         devices.inputs.forEach(device => {
@@ -661,6 +672,7 @@ async function populateAudioDevices() {
         
         // Populate output devices
         const outputSelect = document.getElementById('audioOutput');
+        const previousOutput = outputSelect.value;
         outputSelect.innerHTML = '';
         
         devices.outputs.forEach(device => {
@@ -669,9 +681,50 @@ async function populateAudioDevices() {
             option.text = device.label;
             outputSelect.appendChild(option);
         });
+        if (audioUtils.nativeMeasurement) {
+            // Keep the previous selection when it still exists; otherwise start
+            // from the system default device instead of the first enumerated one.
+            for (const [select, list, previous] of [[inputSelect, devices.inputs, previousInput],
+                [outputSelect, devices.outputs, previousOutput]]) {
+                const known = list.some(device => device.id === previous);
+                select.value = nativeMeasurementDevice(list, known ? previous : '')?.id ?? '';
+            }
+            syncNativeMeasurementChannels();
+        }
     } catch (error) {
         console.error('Error populating audio devices:', error);
     }
+}
+
+function syncNativeMeasurementChannels(settings = {}) {
+    if (!audioUtils.nativeMeasurement) return;
+    const input = nativeMeasurementDevice(audioUtils.devices.inputs, document.getElementById('audioInput').value);
+    const inputSelect = document.getElementById('inputChannel');
+    const inputChannel = settings.inputChannel ?? inputSelect.value;
+    for (const option of [...inputSelect.options]) {
+        if (option.dataset.nativeChannel) option.remove();
+    }
+    for (let channel = 2; channel < (input?.channels || 0); channel++) {
+        const option = document.createElement('option');
+        option.value = String(channel);
+        option.textContent = `Ch ${channel + 1}`;
+        option.dataset.nativeChannel = 'true';
+        inputSelect.appendChild(option);
+    }
+    inputSelect.value = [...inputSelect.options].some(option => option.value === inputChannel) ? inputChannel : 'both';
+
+    const output = nativeMeasurementDevice(audioUtils.devices.outputs, document.getElementById('audioOutput').value);
+    if (!output?.channels) return;
+    const outputCount = document.getElementById('outputChannelCount');
+    const width = Math.min(output.channels, 16);
+    const preferredWidth = Number(settings.outputChannelCount ?? outputCount.value) || 2;
+    outputCount.replaceChildren(...Array.from({ length: width }, (_, index) => {
+        const option = document.createElement('option');
+        option.textContent = option.value = String(index + 1);
+        return option;
+    }));
+    outputCount.value = String(Math.min(width, preferredWidth));
+    applyOutputChannelSelection(settings.outputChannels || settings.outputChannel || getOutputChannelSelection());
 }
 
 /**
@@ -883,6 +936,7 @@ function selectSavedAudioDevices() {
                 }
             }
         }
+        syncNativeMeasurementChannels(settings);
     }
 }
 
@@ -1006,8 +1060,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     document.getElementById('averaging').addEventListener('change', saveUserSettings);
-    document.getElementById('audioInput').addEventListener('change', saveUserSettings);
-    document.getElementById('audioOutput').addEventListener('change', saveUserSettings);
+    for (const id of ['audioInput', 'audioOutput']) {
+        document.getElementById(id).addEventListener('change', () => {
+            syncNativeMeasurementChannels();
+            saveUserSettings();
+        });
+    }
+    navigator.mediaDevices?.addEventListener('devicechange', () => {
+        if (audioUtils.nativeMeasurement) void populateAudioDevices(true);
+    });
     
     // Save PEQ settings when values change
     document.getElementById('smoothing').addEventListener('change', savePEQSettings);

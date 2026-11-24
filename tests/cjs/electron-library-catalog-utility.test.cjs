@@ -495,3 +495,29 @@ test('the utility process heartbeats while it initializes', async () => {
   assert.match(utilitySource, /setInterval\(\(\) => post\(\{ type: 'heartbeat' \}\), UTILITY_HEARTBEAT_INTERVAL_MS\)/);
   assert.match(utilitySource, /function ready\(ok, payload, error\) \{\s*stopHeartbeat\(\);/);
 });
+
+test('only a matching archive playback request can return large score bytes', async t => {
+  const payload = { kind: 'archive-entry', bytes: new Uint8Array(5 * 1024 * 1024),
+    wrd: { name: 'score.wrd', bytes: Uint8Array.of(4) } };
+  for (const scenario of ['valid', 'wrong-method', 'large-wrd', 'large-metadata']) {
+    const child = new FakeUtilityProcess({ autoRespond: false });
+    const host = await LibraryCatalogUtilityHost.open({
+      dialog: { async showOpenDialog() {} }, processFactory: () => child, dbPath: TEST_DB_PATH
+    });
+    t.after(() => host.close());
+    const result = scenario === 'wrong-method' ? host.repository.getCounts()
+      : host.coordinator.resolveSequenceEntrySource({ trackUid: 'score' });
+    await new Promise(resolve => setImmediate(resolve));
+    child.autoRespond = true;
+    child.emit('message', { type: 'response', ok: true, protocolVersion: LIBRARY_CATALOG_UTILITY_PROTOCOL_VERSION,
+      requestId: child.sent.at(-1).requestId, payload: { ...payload,
+        ...(scenario === 'large-wrd' && { wrd: { bytes: new Uint8Array(1024 * 1024 + 1) } }),
+        ...(scenario === 'large-metadata' && { extra: new Uint8Array(4 * 1024 * 1024) }) } });
+    if (scenario === 'valid') {
+      assert.equal((await result).bytes.length, payload.bytes.length);
+      assert.equal((await host.repository.getCounts()).method, 'getCounts');
+    } else {
+      await assert.rejects(result, { code: 'utilityUnavailable' });
+    }
+  }
+});

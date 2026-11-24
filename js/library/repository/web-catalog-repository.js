@@ -201,6 +201,17 @@ export class WebSqliteCatalogRepository {
   createPlaylist(request) { return this.#call('createPlaylist', request); }
   createPlaylistWithItems(request) { return this.#call('createPlaylistWithItems', request); }
   recordRecentlyPlayed(request) { return this.#call('recordRecentlyPlayed', request); }
+  listPendingLoudness(request) { return this.#call('listPendingLoudness', request); }
+  playbackSession(request) {
+    if (request.action === 'append' && request.rows.some(row => row.track)) {
+      throw new TypeError('Web playback sessions require library tracks');
+    }
+    return this.#call('playbackSession', { ...request, profileKey: '' });
+  }
+  saveTrackLoudness(request) { return this.#call('saveTrackLoudness', request); }
+  finalizeLoudness(request) { return this.#call('finalizeLoudness', request); }
+  getTrackLoudness(request) { return this.#call('getTrackLoudness', request); }
+  getLoudnessStats(request) { return this.#call('getLoudnessStats', request); }
   setTrackFavorite(request) { return this.#call('setTrackFavorite', request); }
   getFavoriteTrackUids(request = {}) { return this.#call('getFavoriteTrackUids', request); }
   getSystemPlaylists() { return this.#call('getSystemPlaylists', {}); }

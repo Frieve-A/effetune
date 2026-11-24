@@ -299,6 +299,7 @@ function createElectronAPI(calls, options = {}) {
     onConfigApp: register('configApp'),
     remoteV1: { settings: {}, onOpenPanel: register('remoteControl') },
     onBackupRestore: register('backupRestore'),
+    onShowDiagnostics: register('showDiagnostics'),
     onLoadUserPreset: register('loadUserPreset'),
     onShowAboutDialog: register('showAboutDialog'),
     onIPC(channel, callback) {
@@ -505,6 +506,16 @@ test('Electron save failures do not publish an unpersisted config', async () => 
   });
 });
 
+test('the Help menu opens diagnostic information in the current renderer', async () => {
+  const calls = [];
+  const electronAPI = createElectronAPI(calls);
+  await withIntegrationGlobals({ electronAPI, calls, uiManager: createUIManager(calls) }, async ({ windowRef }) => {
+    windowRef.uiManager.stateManager = { openDiagnostics() { calls.push(['openDiagnostics']); } };
+    electronAPI.handlers.showDiagnostics();
+    assert.ok(calls.some(call => call[0] === 'openDiagnostics'));
+  });
+});
+
 test('Electron constructor defers preferences and config while callbacks dispatch current methods', async () => {
   const calls = [];
   const uiManager = createUIManager(calls);
@@ -530,7 +541,6 @@ test('Electron constructor defers preferences and config while callbacks dispatc
     await instance.loadConfig();
     assert.deepEqual(instance.audioPreferences, {
       audioDriver: 'standard',
-      audioDriverDeviceMemory: '',
       inputDeviceId: 'default',
       outputDeviceId: 'default',
       inputDeviceLabel: '',
@@ -540,8 +550,11 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       useWasmDsp: true,
       gaplessPlayback: true,
       replayGainMode: 'off',
+      replayGainTarget: 'manual',
       replayGainPreampDb: 0,
+      replayGainAutoCoverage: 95,
       replayGainPreventClipping: true,
+      replayGainPeakCeilingDb: 0,
       midiInputDeviceKey: '',
       midiOutputDeviceKey: '',
       outputChannels: 2,
@@ -629,6 +642,32 @@ test('Electron constructor defers preferences and config while callbacks dispatc
     assert.ok(calls.some(call => call[0] === 'loadPreset' && call[1] === 'Ready'));
     assert.ok(calls.some(call => call[0] === 'startDoubleBlindTest'));
     assert.ok(calls.some(call => call[0] === 'openBackupRestore'));
+  });
+});
+
+test('a startup archive IPC waits for presentation without changing input mixing', async () => {
+  const calls = [];
+  const electronAPI = createElectronAPI(calls);
+  const descriptors = [
+    { path: 'D:\\Music\\Scores.zip', name: 'Scores.zip', byteLength: 100 },
+    { path: 'D:\\Music\\Song.wav', name: 'Song.wav', byteLength: 50 }
+  ];
+  await withIntegrationGlobals({ electronAPI, calls, uiManager: {
+    createAudioPlayer(files, replace) { calls.push(['open', files, replace]); }
+  } }, async ({ instance, windowRef }) => {
+    windowRef.electronIntegration = instance;
+    instance.audioPreferences = { useInputWithPlayer: true };
+    windowRef.app = { initialized: false, audioManager: { workletNode: {} } };
+    windowRef.isFirstLaunch = false;
+    electronAPI.handlers.openMusicFiles(descriptors);
+    assert.equal(instance.audioPreferences.useInputWithPlayer, true);
+    assert.equal(windowRef.pendingMusicFiles, descriptors);
+    assert.ok(!calls.some(([step]) => step === 'open'));
+
+    windowRef.app.initialized = true;
+    electronAPI.handlers.openMusicFiles(descriptors);
+    assert.deepEqual(calls.find(([step]) => step === 'open'), ['open', descriptors, false]);
+    assert.equal(instance.audioPreferences.useInputWithPlayer, true);
   });
 });
 

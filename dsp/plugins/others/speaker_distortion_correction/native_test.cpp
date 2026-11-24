@@ -939,6 +939,57 @@ void testPhysicalRouting() {
   SDC_CHECK(harness.kernel()->latencySamples() == 0u);
 }
 
+void testPreparedBank() {
+  constexpr float rate = 96000.0F;
+  const effetune::PrepareInfo prepare{rate, 2u, kMaximumFrames};
+  Harness native(rate);
+  Harness staged(rate);
+  const auto preparer = native.kernel()->assetPreparer(0u);
+  SDC_CHECK(preparer != nullptr);
+  if (!preparer)
+    return;
+  SDC_CHECK(native.kernel()->assetPreparer(1u) == nullptr);
+
+  const auto signal = testSignal(900u, rate, 0.4);
+  for (const auto length : {kShort, kLong}) {
+    auto bytes = makeAsset(length, 0.05, 3u);
+    addOdd(bytes, 0u, 9754u);
+    std::vector<std::uint8_t> unaligned(bytes.size() + 1);
+    std::copy(bytes.begin(), bytes.end(), unaligned.begin() + 1);
+    std::unique_ptr<effetune::PreparedAsset> update;
+    SDC_CHECK(preparer(prepare, assetInfo(), unaligned.data() + 1, ET_ASSET_F32_MULTICH, update) ==
+              ET_OK);
+    SDC_CHECK(update != nullptr);
+    const auto priorState = length == kShort ? ET_ASSET_STATE_NONE : ET_ASSET_STATE_ACTIVE;
+    SDC_CHECK(native.state() == static_cast<std::uint32_t>(priorState));
+    SDC_CHECK(native.kernel()->exchangePreparedAsset(0u, update) == ET_OK);
+    SDC_CHECK(staged.commit(bytes) == ET_OK);
+    SDC_CHECK(native.state() == ET_ASSET_STATE_PREPARING);
+    SDC_CHECK(native.kernel()->latencySamples() == staged.kernel()->latencySamples());
+    SDC_CHECK(native.render(signal, signal, kOddBlocks) ==
+              staged.render(signal, signal, kOddBlocks));
+    SDC_CHECK(native.state() == ET_ASSET_STATE_ACTIVE);
+  }
+
+  auto rejectedInfo = assetInfo();
+  rejectedInfo.processingChannels = prepare.maxChannels + 1u;
+  auto corrupt = makeAsset(kShort, 0.05, 3u);
+  corrupt[0] = 0;
+  std::unique_ptr<effetune::PreparedAsset> update;
+  SDC_CHECK(preparer(prepare, rejectedInfo, corrupt.data(), ET_ASSET_F32_MULTICH, update) ==
+            ET_ERR_ARGS);
+  SDC_CHECK(native.state() == ET_ASSET_STATE_ACTIVE);
+  SDC_CHECK(preparer(prepare, assetInfo(), corrupt.data(), ET_ASSET_F32_MULTICH, update) == ET_OK);
+  SDC_CHECK(native.state() == ET_ASSET_STATE_ACTIVE);
+  SDC_CHECK(native.kernel()->exchangePreparedAsset(0u, update) == ET_ERR_ARGS);
+  SDC_CHECK(native.kernel()->assetState(0u) == (ET_ASSET_STATE_ERROR | (1u << 8u)));
+  SDC_CHECK(native.kernel()->latencySamples() == 0u);
+  SDC_CHECK(preparer(prepare, {}, nullptr, 0u, update) == ET_OK);
+  SDC_CHECK(native.kernel()->exchangePreparedAsset(0u, update) == ET_OK);
+  SDC_CHECK(native.state() == ET_ASSET_STATE_NONE);
+  SDC_CHECK(native.render(signal, signal, kOddBlocks)[0] == signal);
+}
+
 } // namespace
 
 int main() {
@@ -959,6 +1010,7 @@ int main() {
   testRecommit();
   testOverloadTelemetry();
   testPhysicalRouting();
+  testPreparedBank();
   if (failures != 0) {
     std::fprintf(stderr, "%d Speaker Distortion Correction check(s) failed\n", failures);
     return 1;

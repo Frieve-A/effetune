@@ -31,6 +31,13 @@ export class SweepCancelledError extends Error {
     }
 }
 
+export class NativeMeasurementInterruptedError extends Error {
+    constructor() {
+        super(i18n.t('error:measurementInterrupted'));
+        this.name = 'NativeMeasurementInterruptedError';
+    }
+}
+
 function clearSweepTimers(elements) {
     if (!elements) return;
     for (const key of ['preRollTimer', 'playbackSafetyTimer', 'finishTimer', 'finalSafetyTimer']) {
@@ -150,6 +157,44 @@ const AudioProcessing = {
         };
     },
 
+    async recordNativePlayback({ outputChannel, explicitOutputChannels, createPlayback, finish, stopWhen, onNativeCaptureStart }) {
+        const abort = new AbortController();
+        this.nativeMeasurementAbort = abort;
+        const elements = {};
+        const cancelAnalysis = () => elements.cancelAnalysis?.();
+        abort.signal.addEventListener('abort', cancelAnalysis, { once: true });
+        try {
+            const outputChannels = audioUtils.nativeMeasurement.session?.outputChannels || 0;
+            if (!outputChannels || (channelIndexOf(outputChannel) ?? 0) >= outputChannels ||
+                explicitOutputChannels > outputChannels || activePipelineSnapshot(this)?.channelCount > outputChannels) {
+                throw new Error(i18n.t('error:measurementDevicesUnavailable'));
+            }
+            const { buffer, gain } = await createPlayback(audioUtils.audioContext, outputChannels, elements);
+            abort.signal.throwIfAborted();
+            let capture;
+            try {
+                capture = await audioUtils.nativeMeasurement.record(
+                    buffer, gain, stopWhen?.overload, abort.signal, onNativeCaptureStart);
+            } catch (error) {
+                abort.signal.throwIfAborted();
+                console.error('Native measurement stopped:', error);
+                throw new NativeMeasurementInterruptedError();
+            }
+            abort.signal.throwIfAborted();
+            const peak = peakAbsolute([capture.recording]);
+            if (stopWhen && capture.overloadStopped) stopWhen.overloadStopped = true;
+            const result = await finish(capture.recording, { outputRoute: { mode: 'direct' },
+                scheduledPlaybackFrame: capture.playbackStartFrame, captureStartFrame: capture.captureStartFrame,
+                hasOverload: capture.overloadStopped || peak >= 0.999,
+                maxSignalLevel: peak > 0 ? 20 * Math.log10(peak) : -Infinity, sampleRate: capture.sampleRate });
+            abort.signal.throwIfAborted();
+            return result;
+        } finally {
+            abort.signal.removeEventListener('abort', cancelAnalysis);
+            if (this.nativeMeasurementAbort === abort) this.nativeMeasurementAbort = null;
+        }
+    },
+
     /**
      * Active audio elements for the current sweep
      */
@@ -198,6 +243,7 @@ const AudioProcessing = {
         return this.recordPlayback({
             outputChannel,
             explicitOutputChannels,
+            onNativeCaptureStart: duration => this.startChannelLevelGraph(duration),
             createPlayback: async (audioContext, outputChannels, elements) => {
                 if (!activePipelineSnapshot(this)) {
                     return {
@@ -316,7 +362,11 @@ const AudioProcessing = {
      * recording the measurement input, and resolves with `finish(recording, timing)`. When
      * `stopWhen(chunk)` returns true for a recorded chunk, playback stops and the recording ends early.
      */
-    recordPlayback({ outputChannel, explicitOutputChannels, createPlayback, finish, stopWhen }) {
+    recordPlayback(options) {
+        if (audioUtils.nativeMeasurement) {
+            return this.recordNativePlayback(options);
+        }
+        const { outputChannel, explicitOutputChannels, createPlayback, finish, stopWhen } = options;
         return new Promise(async (resolve, reject) => {
             const operation = {
                 settled: false,

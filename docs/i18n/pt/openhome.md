@@ -24,7 +24,7 @@ A reprodução sem intervalos não é garantida, e os metadados técnicos podem 
 
 Ative **Permitir reprodução UPnP AV / DLNA nesta rede** em **Configurações > Configuração... > Rede**. No aplicativo controlador, escolha o destino UPnP AV / DLNA do EffeTune e uma música de um servidor acessível pelo computador. A permissão OpenHome é independente e não precisa estar ativada.
 
-Esse destino recebe MP3, FLAC, WAV em PCM e AAC (ADTS ou MP4/M4A) por HTTP ou HTTPS. Também são compatíveis Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus) e áudio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC). Mesmo em um tipo de arquivo compatível, o codec interno também precisa ser compatível; ALAC não é compatível.
+Esse destino recebe MP3, FLAC, WAV em PCM e AAC (ADTS ou MP4/M4A) por HTTP ou HTTPS. Também são compatíveis Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus) e áudio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC). Mesmo em um tipo de arquivo compatível, o codec interno também precisa ser compatível; ALAC não é compatível. O EffeTune também recebe arquivos MIDI (`.mid`, `.midi`, `.kar`), inclusive faixas em arquivos compactados de uma biblioteca compartilhada do EffeTune. Para ouvir MIDI com os efeitos do EffeTune, adicione **SoundFont Player** e carregue um instrumento no computador que recebe a música, como na reprodução local.
 
 Os controladores podem reproduzir, pausar, parar, mudar de faixa, avançar na música quando a fonte permitir e ajustar o volume ou silenciar o reprodutor. Esse volume também afeta a música local e OpenHome, sem mudar o volume do computador nem os efeitos. Escolher uma nova faixa substitui a fila atual por essa única faixa. O controlador e o EffeTune mostram o mesmo estado de reprodução. Quando fornecidas pelo servidor de música, as tags e as informações do áudio de origem também ficam disponíveis no item **Informações da faixa** do Visualizer.
 
@@ -126,7 +126,7 @@ Se um dispositivo UPnP acessível não aparecer, use **Adicionar um dispositivo 
 
 ## Limites da reprodução em rede
 
-A descoberta automática e o compartilhamento de pastas exigem o aplicativo de desktop. Os formatos e a busca dentro da faixa dependem do reprodutor e da fonte. O EffeTune não converte áudio de rede; um servidor Subsonic pode fornecer um fluxo convertido. Subfaixas CUE não podem ser enviadas separadamente. Reprodução sem intervalos e sincronização entre ambientes não são garantidas. Se um dispositivo desaparecer, verifique se está acordado, acessível e autorizado pelo firewall da rede privada, e atualize a lista. O compartilhamento para ao fechar o aplicativo de origem ou suspender seu computador.
+A descoberta automática e o compartilhamento de pastas exigem o aplicativo de desktop. Os formatos e a busca dentro da faixa dependem do reprodutor e da fonte. O EffeTune não converte áudio de rede; um servidor Subsonic pode fornecer um fluxo convertido. Subfaixas CUE não podem ser enviadas separadamente. Arquivos MusicXML não podem ser transmitidos de uma biblioteca compartilhada. Reprodução sem intervalos e sincronização entre ambientes não são garantidas. Se um dispositivo desaparecer, verifique se está acordado, acessível e autorizado pelo firewall da rede privada, e atualize a lista. O compartilhamento para ao fechar o aplicativo de origem ou suspender seu computador.
 
 Ao enviar áudio para caixas de som de rede, tenha em mente:
 

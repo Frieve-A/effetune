@@ -5,16 +5,27 @@ import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 import { checkDsdWasm } from './build-dsd-wasm.mjs';
 
-checkDsdWasm();
-
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(repoRoot, 'node_modules', 'mediabunny', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const expectedVersion = '1.66.2';
+const expectedVersion = '1.66.3';
 if (packageJson.version !== expectedVersion) {
   throw new Error(`Expected mediabunny ${expectedVersion}, found ${packageJson.version}`);
 }
 
+await esbuild.build({
+  entryPoints: [path.join(repoRoot, 'js/library/loudness/worker-entry.js')],
+  outfile: path.join(repoRoot, 'js/vendor/loudness-analysis-worker.mjs'),
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  target: ['es2021'],
+  minify: true,
+  legalComments: 'none',
+  banner: { js: `/* EffeTune loudness analysis; mediabunny ${expectedVersion}, MPL-2.0. Source and license: see rolling-pcm-decoder-worker.NOTICE.txt. */` }
+});
+if (process.argv.includes('--loudness-only')) process.exit(0);
+checkDsdWasm();
 const outputPath = path.join(repoRoot, 'js', 'vendor', 'rolling-pcm-decoder-worker.mjs');
 const noticePath = path.join(repoRoot, 'js', 'vendor', 'rolling-pcm-decoder-worker.NOTICE.txt');
 await esbuild.build({

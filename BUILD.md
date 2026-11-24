@@ -35,7 +35,7 @@ or an unverified Chromium version cutoff.
 
 ## Android builds
 
-The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio; foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.8.2; the project pins Android Gradle Plugin 9.5.0, Oboe 1.11.0, and AndroidX WebKit 1.18.0.
+The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio and uses the desktop host library from `native/audio-engine` with `ET_AUDIO_ENGINE_HOST_ONLY` enabled. Foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.9.2. The project pins Android Gradle Plugin 9.5.0, Oboe 1.11.0, and AndroidX WebKit 1.18.0.
 
 Android 10 (API 29) is the minimum, and API 37 is the target. Use an updated Android System WebView with `WEB_MESSAGE_LISTENER` support; an old system-image WebView is not sufficient even when native audio tests pass. The supported APK ABIs are `arm64-v8a` and `x86_64`.
 
@@ -58,7 +58,7 @@ Set `ANDROID_SERIAL` to the intended device (PowerShell: `$env:ANDROID_SERIAL='e
 
 Debug packages use the `.development` application ID suffix. Candidate Release APK/AAB packages use `.candidate` and the development signing key; they are for validation and do not establish a production signing identity. For a normally signed Release, set `EFFETUNE_ANDROID_KEYSTORE`, `EFFETUNE_ANDROID_STORE_PASSWORD`, `EFFETUNE_ANDROID_KEY_ALIAS`, and `EFFETUNE_ANDROID_KEY_PASSWORD`; without a keystore, an ordinary Release is unsigned. Keep credentials outside the repository. Inspect the resulting APK/AAB, validate 16 KB native-library alignment and signatures, and test installation and data retention when updating a package signed with the same key. Run instrumentation with the minimum and target Android versions and current WebViews. Emulator checks cover software behavior; they do not establish device-specific microphone calibration, USB/Bluetooth routing, latency, or OEM background-power behavior.
 
-Focused host contract tests are in `tests/esm/android-host.test.mjs`. Existing file-export, library, MIDI, measurement, and remote protocol tests also apply to the corresponding shared paths. Native checks use `tools/android/verify-native.mjs` and `android/app/src/main/cpp/native_engine_test.cpp`; instrumentation lives under `android/app/src/androidTest`. Keep Android build outputs and local SDK/toolchain installations untracked. Bundled third-party dependency notices must accompany distributed packages.
+Focused host contract tests are in `tests/esm/android-host.test.mjs`. Existing file-export, library, MIDI, measurement, and remote protocol tests also apply to the corresponding shared paths. Use `tools/android/verify-native.mjs` to exercise the shared host through Android's `native_engine_test.cpp`. Run the desktop host tests in a separate desktop build. Instrumentation lives under `android/app/src/androidTest`. Keep Android build outputs and local SDK/toolchain installations untracked. Bundled third-party dependency notices must accompany distributed packages.
 
 For the API 37 local-network permission check, run `node tools/android/test-lan.mjs` with the same `ANDROID_HOME` and `ANDROID_SERIAL`. This test owns a temporary gateway peer, resets only the development app's local-network permission, and verifies denial, approval, and an authenticated request through the emulator's non-loopback host address. It closes its peer when finished.
 
@@ -1167,6 +1167,8 @@ Application stylesheets in `css/` and root web assets such as `sw.js`, `sw-preca
    - Add exceptions for the project directory
 
 ### Runtime Issues
+
+To see the original caller of a wrapped `console.warn` or `console.error` in DevTools, add `js/diagnostics/diagnostic-log.js` to the Ignore List.
 
 1. **Audio device access problems**:
    - Ensure proper permissions are granted to the application

@@ -1,8 +1,11 @@
+import { beginDiagnosticSelection, diagnosticTrackNames } from './diagnostics/diagnostic-log.js';
 import { getSettingsStorage } from './settings-storage.js';
+import { readPlaybackSessionMarker, writePlaybackSessionMarker } from './ui/audio-player/playback-session-marker.js';
 import { initNetworkOutputPicker } from './electron/networkOutputPicker.js';
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
 import { getAndroidBridge } from './android/bridge.js';
 import { getDsdPlaybackErrorKey } from './ui/audio-player/dsd-source.js';
+import { ARCHIVE_EXTENSIONS } from './library/archive/archive-reader.js';
 import { SCORE_EXTENSIONS } from './midi/score-file.js';
 import { parseCommentedJSON } from './utils/parse-commented-json.js';
 import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
@@ -33,7 +36,8 @@ import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
 import { BrowserView } from './browser/browser-view.js';
-import { attachLyricsFiles, attachArtworkFiles } from './ui/audio-player/lyrics-file-links.js';
+import { attachLyricsFiles, attachArtworkFiles, getLyricsFiles, getArtworkFiles } from './ui/audio-player/lyrics-file-links.js';
+import { expandArchivePlaybackSelection, isArchivePlaybackInput } from './ui/audio-player/archive-playback-selection.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
 import { enableStandardSelects } from './ui/standard-select.js';
@@ -55,13 +59,17 @@ const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const SLEEP_MODE_LABEL = 'Sleep Mode';
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
-const WEB_MUSIC_FILE_ACCEPT = `audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,${SCORE_EXTENSIONS.map(ext => `.${ext}`).join(',')},.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png`;
+const WEB_MUSIC_FILE_ACCEPT = `audio/*,video/mp4,image/jpeg,image/png,.dsf,.dff,${[...SCORE_EXTENSIONS, ...ARCHIVE_EXTENSIONS].map(ext => `.${ext}`).join(',')},.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.wrd,.jpg,.png`;
 const WEB_MUSIC_PICKER_TYPES = [{
     accept: {
         'audio/*': ['.dsf', '.dff', '.aac', '.flac', '.m4a', '.mid', '.midi', '.kar', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
         'video/*': ['.3gp', '.m4v', '.mkv', '.mov', '.mp4', '.webm'],
         'application/vnd.recordare.musicxml+xml': ['.musicxml', '.xml'],
         'application/vnd.recordare.musicxml': ['.mxl'],
+        'application/zip': ['.zip'],
+        'application/x-lzh-compressed': ['.lzh', '.lha'],
+        'application/x-tar': ['.tar'],
+        'application/gzip': ['.gz', '.tgz'],
         'text/plain': ['.cue', '.lrc', '.wrd'],
         'image/jpeg': ['.jpg', '.jpeg'],
         'image/png': ['.png']
@@ -176,6 +184,18 @@ function fileExtension(name) {
     return index < 0 ? '' : value.slice(index + 1).toLowerCase();
 }
 
+function beginPlaybackSelectionDiagnostics(files) {
+    const finishInputNames = beginDiagnosticSelection('track', Array.from(files).flatMap(diagnosticTrackNames));
+    let finishArchiveNames;
+    return {
+        rememberArchiveNames(names) { finishArchiveNames = beginDiagnosticSelection('track', names); },
+        finish() {
+            finishArchiveNames?.();
+            finishInputNames();
+        }
+    };
+}
+
 function readStoredBoolean(key) {
     try {
         return getSettingsStorage()?.getItem?.(key) === 'true';
@@ -224,7 +244,7 @@ export class UIManager {
         this.transientMessageRevision = 0;
         this.libraryManager = null;
         this.libraryView = null;
-        this.libraryInitPromise = null;
+        this.libraryInitialization = null;
         this.libraryFeatureModules = null;
         this.libraryPlaybackBridge = null;
         this.libraryLifecycleCloseHandler = null;
@@ -1695,6 +1715,9 @@ export class UIManager {
                     // Use Electron's openMusicFile function
                     await window.electronIntegration.openMusicFile();
                 } else {
+                    if (!this.networkMusic || this.networkMusic.selectedPlayerId === 'local') {
+                        this.invalidatePlaybackSessionRestore();
+                    }
                     await this.openWebMusicFilePicker({
                         accept: WEB_MUSIC_FILE_ACCEPT,
                         onFiles: (files, fileHandles) => this.handleWebPlaybackFiles(files, fileHandles)
@@ -1778,21 +1801,26 @@ export class UIManager {
     }
 
     async openWebPlaybackSelection(files, gestureResume, { fileHandles = null } = {}) {
+        const selectedFiles = Array.from(files ?? []);
+        const artworkFiles = selectedFiles.filter(file => /^(cover|folder)\.jpg$/i.test(file?.name || ''));
+        const lyricFiles = selectedFiles.filter(file => /^(lrc|wrd)$/.test(fileExtension(file?.name)));
+        files = selectedFiles.filter(file => !/^(lrc|wrd)$/.test(fileExtension(file?.name)) && !artworkFiles.includes(file));
+        const controller = files.length ? this.beginPlaybackFileSelection() : null;
         if (this.networkMusic && this.networkMusic.selectedPlayerId !== 'local') {
             this.setError('networkMusic.libraryRequired', true);
             return false;
         }
         const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
-        const selectedFiles = Array.from(files ?? []);
-        const artworkFiles = selectedFiles.filter(file => /^(cover|folder)\.jpg$/i.test(file?.name || ''));
-        const lyricFiles = selectedFiles.filter(file => /^(lrc|wrd)$/.test(fileExtension(file?.name)));
-        files = selectedFiles.filter(file => !/^(lrc|wrd)$/.test(fileExtension(file?.name)) && !artworkFiles.includes(file));
-        if (!files.length) return false;
-        this.playbackSelectionAbortController?.abort();
-        const controller = new AbortController();
+        if (!controller) return false;
+        const { finish, rememberArchiveNames } = beginPlaybackSelectionDiagnostics(selectedFiles);
+        this.invalidatePlaybackSessionRestore();
         const generation = ++this.playbackSelectionGeneration;
-        this.playbackSelectionAbortController = controller;
+        const isCurrent = () => !controller.signal.aborted && targetGeneration === (this.networkMusic?.playerGeneration ?? 0);
         try {
+            if (!this.audioManager?.isAndroid && files.some(isArchivePlaybackInput)) {
+                files = await this.expandArchivePlaybackFiles(files, controller.signal, rememberArchiveNames);
+                if (!files.length || !isCurrent()) return false;
+            }
             const cueFile = Array.from(files ?? []).find(file => fileExtension(file?.name) === 'cue');
             const cueFileHandle = cueFile ? fileHandles?.get?.(cueFile) : null;
             let resolveSelection = this.playbackSelectionResolver;
@@ -1816,26 +1844,28 @@ export class UIManager {
                 }),
                 Promise.resolve(gestureResume).then(value => value !== false, () => false)
             ]);
-            if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
-            if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
+            if (!isCurrent()) return false;
 
-            attachLyricsFiles(selection.tracks.map(track => track.file ?? track), lyricFiles);
-            attachArtworkFiles(selection.tracks.map(track => track.file ?? track), artworkFiles);
+            const trackFiles = selection.tracks.map(track => track.file ?? track);
+            attachLyricsFiles(trackFiles.filter(file => !getLyricsFiles(file).length), lyricFiles);
+            attachArtworkFiles(trackFiles.filter(file => !getArtworkFiles(file).length), artworkFiles);
 
             const player = await this.createAudioPlayer([], false);
-            if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
+            if (!isCurrent()) return false;
             if (resumeReady) {
                 await player.loadFiles(selection.tracks, false);
             } else {
                 await player.stop();
+                if (!isCurrent()) return false;
                 player.playbackManager.loadFiles(selection.tracks, false);
                 if (!player.ui.container) player.ui.createPlayerUI();
                 await player.loadTrack(player.stateManager.getCurrentTrackIndex());
             }
+            if (!isCurrent()) return false;
             if (this.mobileNav?.getCurrentView?.() !== 'visualizer') this.mobileNav?.setView('player');
             return true;
         } catch (error) {
-            if (generation !== this.playbackSelectionGeneration || error?.name === 'AbortError') return false;
+            if (!isCurrent() || error?.name === 'AbortError') return false;
             console.error('Open Music selection diagnostic:', JSON.stringify({
                 code: error?.code || error?.name || 'unknown',
                 reason: error?.diagnosticCode || error?.cause?.code || null,
@@ -1854,7 +1884,29 @@ export class UIManager {
             }[error?.code] || 'error.musicSelectionUnavailable';
             this.setError(errorKey, true);
             return false;
+        } finally {
+            finish();
         }
+    }
+
+    beginPlaybackFileSelection() {
+        this.playbackSelectionAbortController?.abort();
+        const controller = new AbortController();
+        this.playbackSelectionAbortController = controller;
+        return controller;
+    }
+
+    expandArchivePlaybackFiles(files, signal, rememberArchiveNames) {
+        return expandArchivePlaybackSelection(files, {
+            chooseEntries: async (choices, options) => {
+                const { chooseArchivePlaybackEntries } = await import('./ui/audio-player/archive-playback-dialog.js');
+                return chooseArchivePlaybackEntries(choices, { ...options, t: this.t.bind(this) });
+            },
+            readFileBytes: (path, size) => window.electronAPI.readFileBytes(path, size),
+            reportError: key => this.setError(key, true),
+            rememberArchiveNames,
+            signal
+        });
     }
 
     /**
@@ -2130,8 +2182,11 @@ export class UIManager {
         }
         if (!options.skipRecoveryWait) await this.ensureLibraryRecoveryReady();
         if (!this.libraryRecoveryState?.available) return null;
-        if (!this.libraryInitPromise) {
-            this.libraryInitPromise = (async () => {
+        let attempt = this.libraryInitialization;
+        if (!attempt) {
+            attempt = { reportError: !options.silent };
+            this.libraryInitialization = attempt;
+            attempt.promise = (async () => {
                 this.libraryFeatureModules = await loadLibraryFeatureModules();
                 await this.ensureWebLibraryRecoveryController();
                 const manager = this.createLibraryManager();
@@ -2150,19 +2205,21 @@ export class UIManager {
                 this.registerLibraryLifecycleCleanup();
                 return this.libraryManager;
             })().catch(async error => {
-                this.libraryInitPromise = null;
+                this.libraryInitialization = null;
                 console.error('Failed to initialize the Music Library:', error);
                 if (typeof this.libraryRecoveryApi?.reportOpenFailure === 'function') {
                     this.libraryRecoveryApi.reportOpenFailure(error);
                     if (!options.insideRecoveryQueue) await this.libraryRecoveryStateQueue;
                 } else {
-                    this.setError('library.error.actionFailed', true);
+                    if (attempt.reportError) this.setError('library.error.actionFailed', true);
                     await this.disposeLibraryManager({ destroyView: true });
                 }
                 return null;
             });
+        } else if (!options.silent) {
+            attempt.reportError = true;
         }
-        return this.libraryInitPromise;
+        return attempt.promise;
     }
 
     createLibraryManager() {
@@ -2205,6 +2262,7 @@ export class UIManager {
             uiManager: this,
             service,
             sequenceClient,
+            sessionClient: this.libraryManager.client,
             runtime: this.libraryManager.runtime,
             requestFolderAccess: (...args) => this.libraryManager?.requestFolderAccess(...args)
         });
@@ -2224,11 +2282,12 @@ export class UIManager {
     async disposeLibraryManager(options = {}) {
         const manager = this.libraryManager;
         const view = this.libraryView;
+        const loudnessTask = view?.finishLoudnessAction?.();
         this.libraryPlaybackBridge?.close?.();
         this.libraryPlaybackBridge = null;
         this.libraryManager = null;
         this.libraryView = null;
-        this.libraryInitPromise = null;
+        this.libraryInitialization = null;
         if (window.libraryManager === manager) window.libraryManager = null;
         if (options.destroyView && view) {
             view.hide?.({ restoreFocus: false });
@@ -2238,6 +2297,7 @@ export class UIManager {
             view.handleMobilePopState = () => {};
             view.root?.remove?.();
         }
+        if (loudnessTask) await loudnessTask;
         await manager?.close?.();
     }
 
@@ -2636,19 +2696,80 @@ export class UIManager {
      * @param {string[]} filePaths - Array of file paths to load
      * @param {boolean} replaceExisting - Whether to replace existing player or add to it
      */
-    async createAudioPlayer(filePaths, replaceExisting = false) {
+    invalidatePlaybackSessionRestore() {
+        this.playbackSessionRestoreInvalidated = true;
+    }
+
+    async getPlaybackSessionStore() {
+        if (this.playbackSessionStore) return this.playbackSessionStore;
+        const { PlaybackSessionStore } = await import('./ui/audio-player/playback-session.js');
+        return this.playbackSessionStore ??= new PlaybackSessionStore({
+            getBridge: async () => await this.ensureLibraryManager({ silent: true }) && this.libraryPlaybackBridge,
+            writeMarker: writePlaybackSessionMarker
+        });
+    }
+
+    async restorePlaybackSession() {
+        const isCurrent = () => !this.playbackSessionRestoreInvalidated &&
+            !this.audioPlayer?.playbackManager?.sequence?.itemCount;
+        if (!isCurrent() || !await readPlaybackSessionMarker() || !isCurrent()) return;
+        const store = await this.getPlaybackSessionStore();
+        const session = await store.load();
+        if (!isCurrent() || session === undefined) return;
+        if (!session?.count) {
+            const removed = await store.remove({ onlyIfUnscheduled: true, markerOnly: !session, isCurrent });
+            if (session && removed && isCurrent()) {
+                this.showTransientMessage('status.playbackSessionNotRestored');
+            }
+            return;
+        }
+        const player = this.audioPlayer ?? await this.createAudioPlayer([], false);
+        await player.stateRestored;
+        if (!isCurrent() || player !== this.audioPlayer) return;
+        player.playbackManager.installPlaybackSession(session);
+        if (!player.ui.container) player.ui.createPlayerUI();
+        const count = session.itemCount - session.count;
+        if (count > 0) this.showTransientMessage('status.playbackSessionPartiallyRestored', false, { count });
+    }
+
+    async createAudioPlayer(filePaths, replaceExisting = false, { beforeLoad } = {}) {
+        if (!filePaths?.length) return this._createAudioPlayer(filePaths, replaceExisting);
+        const { finish, rememberArchiveNames } = beginPlaybackSelectionDiagnostics(filePaths);
+        let loading;
+        const loadFiles = (player, selection) => {
+            beforeLoad?.();
+            loading = player.loadFiles(selection, false);
+        };
+        try {
+            return await this._createAudioPlayer(filePaths, replaceExisting, loadFiles, rememberArchiveNames);
+        } finally {
+            // The caller can use the player immediately while its file selection is still being prepared.
+            if (loading) void Promise.resolve(loading).finally(finish);
+            else finish();
+        }
+    }
+
+    async _createAudioPlayer(filePaths, replaceExisting, loadFiles, rememberArchiveNames) {
+        const controller = filePaths?.length ? this.beginPlaybackFileSelection() : null;
         if (filePaths?.length && this.networkMusic && this.networkMusic.selectedPlayerId !== 'local') {
             await this.networkMusic.playFiles(filePaths);
             return this.audioPlayer;
         }
         const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
+        if (controller) {
+            this.invalidatePlaybackSessionRestore();
+            if (!this.audioManager?.isAndroid && Array.from(filePaths).some(isArchivePlaybackInput)) {
+                filePaths = await this.expandArchivePlaybackFiles(filePaths, controller.signal, rememberArchiveNames);
+                if (!filePaths.length || controller.signal.aborted || targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) {
+                    return this.audioPlayer ?? null;
+                }
+            }
+        }
         // If we already have an audio player and we're not replacing it,
         // just load the new files into the existing player
         if (this.audioPlayer && !replaceExisting) {
             // Load files into existing player
-            if (filePaths && filePaths.length > 0) {
-                this.audioPlayer.loadFiles(filePaths, false); // false = replace playlist
-            }
+            loadFiles?.(this.audioPlayer, filePaths);
             return this.audioPlayer;
         }
 
@@ -2659,15 +2780,17 @@ export class UIManager {
         }
 
         // Load the player only when playback or remote control actually needs it.
-        const AudioPlayer = await loadAudioPlayerClass();
+        const [AudioPlayer, playbackSession] = await Promise.all([
+            loadAudioPlayerClass(),
+            this.audioManager.isAndroid ? null : this.getPlaybackSessionStore()
+        ]);
+        if (controller?.signal.aborted) return this.audioPlayer ?? null;
         if (filePaths?.length && targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return null;
         if (this.audioPlayer && !replaceExisting) {
-            if (filePaths && filePaths.length > 0) {
-                this.audioPlayer.loadFiles(filePaths, false);
-            }
+            loadFiles?.(this.audioPlayer, filePaths);
             return this.audioPlayer;
         }
-        this.audioPlayer = new AudioPlayer(this.audioManager);
+        this.audioPlayer = new AudioPlayer(this.audioManager, { playbackSession });
         if (this.isNetworkPlayerRequired() && this.openHomeRemoteRuntimeReady) {
             this.audioPlayer.activateOpenHomePlaybackAdapter?.();
             this.openHomeRendererPlayer = this.audioPlayer;
@@ -2677,10 +2800,7 @@ export class UIManager {
         }
         this.mobileNav?.attachPlayerState();
 
-        // Load files
-        if (filePaths && filePaths.length > 0) {
-            this.audioPlayer.loadFiles(filePaths, false); // false = replace playlist
-        }
+        loadFiles?.(this.audioPlayer, filePaths);
 
         return this.audioPlayer;
     }

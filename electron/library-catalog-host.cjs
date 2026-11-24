@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const fileAccess = require('./file-access.cjs');
+const { getSettingsName } = require('./settings-profile.cjs');
+const { createLoudnessTagJob } = require('./loudness-tag-job.cjs');
+const { normalizeLanguageHints } = require('./library-catalog-scan-runtime.cjs');
 
 const LIBRARY_CATALOG_PROTOCOL_VERSION = 1;
 const LIBRARY_CATALOG_RENDERER_API_VERSION = 1;
@@ -30,6 +33,12 @@ const LIBRARY_CATALOG_RENDERER_CHANNELS = Object.freeze({
   createPlaylist: 'library-catalog-v1:create-playlist',
   createPlaylistWithItems: 'library-catalog-v1:create-playlist-with-items',
   recordRecentlyPlayed: 'library-catalog-v1:record-recently-played',
+  listPendingLoudness: 'library-catalog-v1:list-pending-loudness',
+  playbackSession: 'library-catalog-v1:playback-session',
+  saveTrackLoudness: 'library-catalog-v1:save-track-loudness',
+  finalizeLoudness: 'library-catalog-v1:finalize-loudness',
+  getTrackLoudness: 'library-catalog-v1:get-track-loudness',
+  getLoudnessStats: 'library-catalog-v1:get-loudness-stats',
   setTrackFavorite: 'library-catalog-v1:set-track-favorite',
   getFavoriteTrackUids: 'library-catalog-v1:get-favorite-track-uids',
   getSystemPlaylists: 'library-catalog-v1:get-system-playlists',
@@ -44,6 +53,9 @@ const LIBRARY_CATALOG_CONTROL_CHANNELS = Object.freeze({
   addFolder: 'library-catalog-v1:add-folder',
   requestFolderAccess: 'library-catalog-v1:request-folder-access',
   resolvePlaybackSource: 'library-catalog-v1:resolve-playback-source',
+  prepareLoudnessTagWrite: 'library-catalog-v1:prepare-loudness-tag-write',
+  discardLoudnessTagSnapshot: 'library-catalog-v1:discard-loudness-tag-snapshot',
+  writeLoudnessTags: 'library-catalog-v1:write-loudness-tags',
   showTrackInFolder: 'library-catalog-v1:show-track-in-folder',
   scanFolders: 'library-catalog-v1:scan-folders',
   cancelScan: 'library-catalog-v1:cancel-scan',
@@ -595,6 +607,58 @@ class LibraryCatalogLifecycle {
   }
 }
 
+async function readLoudnessTagCandidates(repository) {
+  const { id, count } = await repository.request('beginLoudnessTagSnapshot');
+  const tracks = [];
+  try {
+    while (tracks.length < count) {
+      const page = await repository.request('readLoudnessTagPage', { id, offset: tracks.length });
+      tracks.push(...page);
+    }
+    return { tracks };
+  } finally {
+    await repository.request('closeLoudnessTagSnapshot', { id });
+  }
+}
+
+async function handlePlaybackSession(host, request) {
+  const payload = { ...request, profileKey: getSettingsName() };
+  let excludedCount = 0;
+  if (payload.action === 'append') {
+    payload.rows = [];
+    for (const row of request.rows) {
+      const { ordinal, originalOrdinal, trackUid, track } = row;
+      if (trackUid) {
+        payload.rows.push({ ordinal, originalOrdinal, trackUid });
+        continue;
+      }
+      const grantedPath = !track?.uri && fileAccess.getGrantedReadPath(track?.path);
+      if (!grantedPath) {
+        excludedCount++;
+        continue;
+      }
+      const file = { path: grantedPath };
+      for (const key of ['name', 'entryInstanceId', 'sourceKind', 'physicalSourceKey', 'canonicalSourceKey', 'sourceKey',
+        'byteLength', 'fileSize', 'startFrame', 'endFrame', 'durationSec']) {
+        if (typeof track[key] === 'string' || Number.isFinite(track[key]) || track[key] === null) file[key] = track[key];
+      }
+      if (track.meta) {
+        file.meta = Object.fromEntries(Object.entries(track.meta).filter(([key, value]) =>
+          key !== 'picture' && (value === null || typeof value === 'string' || Number.isFinite(value) ||
+            typeof value === 'boolean' || (Array.isArray(value) && value.every(item => typeof item === 'string')))));
+      }
+      payload.rows.push({ ordinal, originalOrdinal, track: file });
+    }
+  }
+  const result = await host.request('playbackSession', payload);
+  if (payload.action === 'append') return { excludedCount };
+  if (payload.action === 'read') fileAccess.restoreGrantedReadPath(result?.currentTrack?.track?.path);
+  if (payload.action === 'page') {
+    for (const row of result.rows) fileAccess.restoreGrantedReadPath(row.track?.path);
+  }
+  return result;
+}
+
 function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
   if (!ipcMain || typeof ipcMain.handle !== 'function' || typeof ipcMain.removeHandler !== 'function') {
     throw createHostError('invalidIpcAdapter', 'Catalog IPC adapter is invalid');
@@ -621,6 +685,15 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
     createPlaylist: (_event, request) => host.createPlaylist(request),
     createPlaylistWithItems: (_event, request) => host.createPlaylistWithItems(request),
     recordRecentlyPlayed: (_event, request) => host.recordRecentlyPlayed(request),
+    listPendingLoudness: (_event, request) => host.request('listPendingLoudness', request),
+    playbackSession: (event, request) => {
+      fileAccess.assertSender(event, getMainWindow());
+      return handlePlaybackSession(host, request);
+    },
+    saveTrackLoudness: (_event, request) => host.request('saveTrackLoudness', request),
+    finalizeLoudness: (_event, request) => host.request('finalizeLoudness', request),
+    getTrackLoudness: (_event, request) => host.request('getTrackLoudness', request),
+    getLoudnessStats: (_event, request) => host.request('getLoudnessStats', request),
     setTrackFavorite: (_event, request) => host.setTrackFavorite(request),
     getFavoriteTrackUids: (_event, request = {}) => host.getFavoriteTrackUids(request),
     getSystemPlaylists: (_event, request = {}) => host.getSystemPlaylists(request),
@@ -666,7 +739,7 @@ function registerLibraryCatalogIpc({ ipcMain, host, getMainWindow }) {
   };
 }
 
-function registerLibraryCatalogControlIpc({ ipcMain, runtime, shell, getMainWindow }) {
+function registerLibraryCatalogControlIpc({ ipcMain, runtime, repository, shell, getMainWindow }) {
   if (!ipcMain || typeof ipcMain.handle !== 'function' || typeof ipcMain.removeHandler !== 'function') {
     throw createHostError('invalidIpcAdapter', 'Catalog control IPC adapter is invalid');
   }
@@ -674,11 +747,17 @@ function registerLibraryCatalogControlIpc({ ipcMain, runtime, shell, getMainWind
       typeof shell?.showItemInFolder !== 'function' || typeof getMainWindow !== 'function') {
     throw createHostError('invalidIpcAdapter', 'Catalog control dependencies are invalid');
   }
+  const tagJob = createLoudnessTagJob({
+    readSnapshot: () => readLoudnessTagCandidates(repository),
+    resolveSource: uid => runtime.resolvePlaybackSource(uid),
+    updateSignatures: rows => repository.request('updateLoudnessTagSignatures', { rows }),
+    rescanFolder: (folderId, options) => runtime.rescanLoudnessFolder(folderId, options)
+  });
   const resolvePlaybackSource = async request => {
     assertTrackUidRendererRequest(request);
     try {
       const source = publicCatalogPlaybackSource(await runtime.resolvePlaybackSource(request.trackUid));
-      fileAccess.grantRead(source.path);
+      if (source.sourceKind !== 'archive-entry') fileAccess.grantRead(source.path);
       return source;
     } catch (error) {
       if (error?.code === 'folderPermissionRequired') return publicCatalogFolderPermissionError(error);
@@ -689,6 +768,31 @@ function registerLibraryCatalogControlIpc({ ipcMain, runtime, shell, getMainWind
     addFolder: request => runtime.addFolder(request),
     requestFolderAccess: request => runtime.requestFolderAccess(request),
     resolvePlaybackSource,
+    prepareLoudnessTagWrite: (request = {}) => {
+      assertEmptyRendererRequest(request);
+      return tagJob.prepare();
+    },
+    discardLoudnessTagSnapshot: request => {
+      if (!request || typeof request.snapshotId !== 'string' || Object.keys(request).length !== 1) {
+        throw createHostError('invalidRequest', 'A tag snapshot identifier is required');
+      }
+      return tagJob.discard(request.snapshotId);
+    },
+    writeLoudnessTags: request => {
+      if (!request || typeof request.snapshotId !== 'string' ||
+          Object.keys(request).some(key => !['snapshotId', 'scanOptions'].includes(key))) {
+        throw createHostError('invalidRequest', 'Tag writing requires a confirmed snapshot');
+      }
+      const options = request.scanOptions ?? {};
+      if (typeof options !== 'object' || Array.isArray(options) ||
+          Object.keys(options).some(key => !['includeVideo', 'includeMidi', 'includeMidiArchives', 'languageHints'].includes(key))) {
+        throw createHostError('invalidRequest', 'Invalid tag rescan options');
+      }
+      return tagJob.write({ snapshotId: request.snapshotId, scanOptions: {
+        languageHints: normalizeLanguageHints(options.languageHints),
+        includeVideo: options.includeVideo === true, includeMidi: options.includeMidi === true, includeMidiArchives: options.includeMidiArchives === true
+      } });
+    },
     showTrackInFolder: async request => {
       const source = await resolvePlaybackSource(request);
       if (source?.code === 'folderPermissionRequired') return source;
@@ -838,6 +942,7 @@ function createHostError(code, message, details = {}) {
 }
 
 module.exports = {
+  readLoudnessTagCandidates,
   LIBRARY_CATALOG_PROTOCOL_VERSION,
   LIBRARY_CATALOG_RENDERER_API_VERSION,
   LIBRARY_CATALOG_INVALIDATION_CHANNEL,

@@ -766,6 +766,67 @@ test('three contiguous CUE regions consume one planned move per boundary without
   });
 });
 
+test('contiguous measured CUE tracks schedule gain on the audio clock and follow live changes', async () => {
+  const first = { ...regionTrack('One', 0, 750, 10), libraryTrackId: 'cue1' };
+  const next = { ...regionTrack('Two', 750, null, 20), libraryTrackId: 'cue2' };
+  const client = { async getTrackLoudness({ trackUid }) {
+    return { integrated: trackUid === 'cue1' ? -18 : -24, truePeak: -3 };
+  } };
+  const timers = [];
+  await withGlobals({
+    window: { uiManager: { libraryManager: { client } } },
+    setTimeout(callback) { timers.push(callback); return timers.length; }, clearTimeout() {}
+  }, async () => {
+    const { audioPlayer, manager } = createContextHarness({ currentTrack: first });
+    audioPlayer.replayGain = { mode: 'track', target: 'auto', autoTarget: -18 };
+    audioPlayer.audioContext.currentTime = 10;
+    audioPlayer.audioElement = { duration: 30, playbackRate: 2, currentTime: 8, paused: false };
+    let plan = { nextTrack: next };
+    audioPlayer.playbackManager = {
+      preparePlannedRegionMove: async () => plan,
+      isPlannedRegionMoveCurrent: candidate => !!plan && candidate === plan,
+      commitPlannedRegionMove() { plan = null; return true; }
+    };
+    manager.loadMetadata = () => {};
+    manager.mediaSource = {};
+    let scheduled;
+    const volume = { gain: {
+      value: 1,
+      cancelScheduledValues() { scheduled = null; },
+      setValueAtTime(value, time) { scheduled = { time, value }; }
+    } };
+    manager.playerVolumeGains.set(manager.mediaSource, volume);
+    manager.playerVolumeNodes.add(volume);
+    manager.playerVolumeTracks.set(volume, first);
+    manager.activeSourceGeneration = 1;
+    manager.setValidatedActiveRegion(first, 1);
+    manager.armRegionBoundaryTimer();
+    await manager.prepareRegionTransportPlan();
+    assert.deepEqual(scheduled, { value: 10 ** (6 / 20), time: 11 });
+
+    plan = null;
+    manager.refreshActiveRegionTransportPlan();
+    assert.equal(scheduled, null);
+    await manager.activeRegion.transportPlanPromise;
+    plan = { nextTrack: next };
+    manager.refreshActiveRegionTransportPlan();
+    await manager.activeRegion.transportPlanPromise;
+    audioPlayer.replayGain.autoTarget = -20;
+    await manager.applyReplayGainPreference();
+    assert.deepEqual(scheduled, { value: 10 ** (4 / 20), time: 11 });
+    manager.setPlayerMute(true);
+    assert.deepEqual(scheduled, { value: 0, time: 11 });
+
+    audioPlayer.audioElement.currentTime = 10.8;
+    audioPlayer.audioContext.currentTime = 11.4;
+    timers[0]();
+    assert.equal(manager.playerVolumeTracks.get(volume), next);
+    assert.equal(volume.gain.value, 0);
+    manager.setPlayerMute(false);
+    assert.equal(volume.gain.value, 10 ** (4 / 20));
+  });
+});
+
 test('non-contiguous and shuffled CUE moves keep the prepared automatic plan', async () => {
   await withGlobals({
     File: TestFile,

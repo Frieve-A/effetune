@@ -19,6 +19,7 @@ namespace audio {
 class Pipeline;
 struct PluginSettings;
 class ClockedFifo;
+class FileFifo;
 class IoPipeline;
 struct SessionFormat {
   std::uint32_t sampleRate = 48000;
@@ -36,8 +37,8 @@ public:
   bool open(SessionFormat format);
   bool reconfigureDevice(SessionFormat format);
   void close() noexcept;
-  bool render(std::span<float> planar, std::uint32_t frames,
-              std::optional<FeedTime> feedTime = {}) noexcept;
+  bool render(std::span<float> planar, std::uint32_t frames, std::optional<FeedTime> feedTime = {},
+              bool sourceActive = false) noexcept;
   void reserveBoundaries(unsigned replace, StreamBoundaries::List &incoming,
                          StreamBoundaries::List &reclaimed) noexcept {
     boundaries_.reserve(replace, incoming, reclaimed);
@@ -48,6 +49,9 @@ public:
     position_.fetch_add(frames, std::memory_order_relaxed);
   }
   ClockedFifo &feed() noexcept { return *feed_; }
+  void setFileInput(FileFifo *file) noexcept { file_ = file; }
+  FileFifo *file() noexcept { return file_; }
+  void noteFileBoundary(std::uint64_t frame) noexcept { boundaries_.addFileBoundary(frame); }
   ClockedFifo &capture() noexcept;
   bool replaceInput(unsigned channels, unsigned sampleRate);
   IoPipeline *io() noexcept { return io_.get(); }
@@ -67,7 +71,7 @@ public:
   double takeCpuUsage() noexcept { return cpuUsage_.exchange(-1); }
   int takeOverload() noexcept { return overloadEvent_.exchange(-1); }
   Telemetry *telemetry() noexcept { return telemetry_.get(); }
-  bool setTelemetryRate(float hz) noexcept;
+  bool setTelemetryRate(float hz, bool midiMetering = false) noexcept;
   void exchangeVisualizer(std::unique_ptr<Visualizer> &next) noexcept;
   PowerControl &power() noexcept { return *power_; }
   SpectrumTaps &spectrum() noexcept { return *spectrum_; }
@@ -85,7 +89,8 @@ private:
   struct Parallel {
     std::unique_ptr<Session> b;
     std::vector<float> input;
-    // Low bit selects branch B. The remaining bits give the crossfade duration in frames.
+    // Low bit selects branch B. The remaining bits give the crossfade duration
+    // in frames.
     std::atomic<unsigned> selection{0};
     float gainB = 0, step = 0;
     bool targetB = false;
@@ -96,6 +101,7 @@ private:
   std::unique_ptr<Engine> engine_;
   std::unique_ptr<Pipeline> pipeline_;
   std::unique_ptr<ClockedFifo> feed_;
+  FileFifo *file_ = nullptr;
   std::unique_ptr<IoPipeline> io_;
   bool bypass_ = false;
   bool ranDsp_ = false, latencyGate_ = false;

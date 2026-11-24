@@ -555,7 +555,16 @@ class LibraryServiceCoordinator extends EventEmitter {
         'Grant-aware playback source resolution is unavailable'
       );
     }
-    const source = await this.importSourceProvider.resolvePlaybackSource(trackUid);
+    let source = await this.importSourceProvider.resolvePlaybackSource(trackUid);
+    if (source.sourceKind === 'archive-entry') {
+      const track = await this.repository.getTrackStorageIdentity(trackUid);
+      const { withFileArchive } = require('./library-archive.cjs');
+      const { readArchivePlaybackEntry } = await import('../js/library/archive/playback-source.js');
+      const { size, mtimeMs } = await require('node:fs/promises').stat(source.path);
+      const entryData = await withFileArchive(source.path, size, mtimeMs, archive => readArchivePlaybackEntry(archive, track));
+      source = { kind: 'archive-entry', sourceKind: track.sourceKind, entryKey: track.entryKey,
+        physicalSourceKey: track.physicalSourceKey, durationSec: track.durationSec, ...entryData };
+    }
     return {
       ...source,
       sequenceId: request.sequenceId ?? null,
@@ -1333,6 +1342,7 @@ function registerLibraryServiceIpc({
         return publicSource;
       } catch (error) {
         if (error?.code === 'folderPermissionRequired') return publicFolderPermissionError(error);
+        if (['sourceUnavailable', 'archive-corrupt', 'archive-too-large', 'archive-unsupported'].includes(error?.code)) return { code: error.code };
         throw error;
       }
     }

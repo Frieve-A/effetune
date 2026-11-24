@@ -521,6 +521,8 @@ class MeasurementDisplay {
         } else if (channelValue === 'right') {
             return 'Right Channel';
         }
+        const index = Number(channelValue);
+        if (Number.isInteger(index) && index >= 2) return `Ch ${index + 1}`;
         return channelValue;
     }
 

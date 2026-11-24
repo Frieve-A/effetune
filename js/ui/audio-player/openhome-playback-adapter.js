@@ -1,4 +1,5 @@
 import { NetworkLivePcm } from './network-live-pcm.js';
+import { SMF_MAX_BYTES } from '../../midi/smf-parser.js';
 
 export const MAX_QUEUE_LENGTH = 4096;
 const MAX_METADATA_LENGTH = 64 * 1024;
@@ -91,6 +92,15 @@ export class OpenHomePlaybackAdapter {
   }
 
   enqueueAction(action) {
+    const changesSession = isSessionTransportAction(action ?? {}) ||
+      (action?.service === 'Playlist' && ['Insert', 'DeleteId', 'DeleteAll'].includes(action.action)) ||
+      (action?.service === 'AVTransport' && action.action === 'SetAVTransportURI') ||
+      (action?.service === 'Catalog' && action.action === 'PlayItems');
+    if (
+      (action?.service === 'Playlist' && ['DeleteAll', 'Insert', 'Play'].includes(action.action)) ||
+      (action?.service === 'AVTransport' && ['SetAVTransportURI', 'Play'].includes(action.action)) ||
+      (action?.service === 'Catalog' && action.action === 'PlayItems')
+    ) globalThis.window?.uiManager?.invalidatePlaybackSessionRestore?.();
     const requestId = typeof action?.requestId === 'string' ? action.requestId : '';
     const context = {
       requestId,
@@ -103,6 +113,11 @@ export class OpenHomePlaybackAdapter {
     context.isCurrent = () => context.active && !this.disposed;
     if (requestId) this.actionContexts.set(requestId, context);
     this.commandChain = this.commandChain.then(async () => {
+      const playback = this.audioPlayer.playbackManager;
+      const release = changesSession ? playback?.blockPlaybackSessionWrites?.({ suppress: true }) : null;
+      const sequenceBefore = playback?.sequence;
+      let committed = false;
+      let queueChanged = false;
       let suppressingState = false;
       try {
         this.assertActionActive(context);
@@ -116,7 +131,9 @@ export class OpenHomePlaybackAdapter {
           result
         }));
         if (accepted === true && context.active) {
+          queueChanged = Boolean(context.queueTransaction) || sequenceBefore !== playback?.sequence;
           this.finalizeQueueMutation(context);
+          committed = true;
         } else {
           this.rollbackQueueMutation(context);
         }
@@ -135,6 +152,14 @@ export class OpenHomePlaybackAdapter {
         });
       } finally {
         if (!context.active) this.rollbackQueueMutation(context);
+        release?.();
+        if (committed && changesSession) {
+          if (queueChanged && playback?.sequence?.itemCount === 0) {
+            playback.removePlaybackSession?.();
+          } else {
+            playback?.savePlaybackSession?.(queueChanged);
+          }
+        }
         if (suppressingState) {
           this.suppressState -= 1;
           if (this.suppressState === 0) this.flushSuppressedStateChanges();
@@ -162,7 +187,7 @@ export class OpenHomePlaybackAdapter {
     const playbackManager = this.audioPlayer?.playbackManager;
     if (context.playRequest && playbackManager?.activePlayRequest === context.playRequest) {
       context.playRequest = null;
-      void Promise.resolve(this.audioPlayer.stop()).catch(() => {});
+      void Promise.resolve(this.audioPlayer.stop({ saveSession: false })).catch(() => {});
     }
     return true;
   }
@@ -188,9 +213,16 @@ export class OpenHomePlaybackAdapter {
 
   async resetRemoteQueue() {
     if (this.ownsPlayerQueue()) {
-      await this.audioPlayer.stop();
-      if (this.ownsPlayerQueue()) {
-        this.audioPlayer.playbackManager.replaceMaterializedPlaylist([], 0);
+      const player = this.audioPlayer;
+      const release = player.playbackManager.blockPlaybackSessionWrites?.({ suppress: true });
+      try {
+        await player.stop({ saveSession: false });
+        if (this.ownsPlayerQueue()) {
+          player.playbackSession?.cancelPending(player);
+          player.playbackManager.replaceMaterializedPlaylist([], 0, { saveSession: false });
+        }
+      } finally {
+        release?.();
       }
     }
     this.queue = [];
@@ -291,7 +323,7 @@ export class OpenHomePlaybackAdapter {
           signal.addEventListener('abort', onAbort, { once: true });
           if (signal.aborted) onAbort();
           timer = setTimeout(() => {
-            if (context.playRequest) void Promise.resolve(this.audioPlayer.stop()).catch(() => {});
+            if (context.playRequest) void Promise.resolve(this.audioPlayer.stop({ saveSession: false })).catch(() => {});
             reject(createActionError('action-timeout'));
           }, Math.max(0, context.deadlineEpochMs - this.now()));
         })
@@ -464,12 +496,12 @@ export class OpenHomePlaybackAdapter {
       }
       case 'Pause':
         this.assertActionActive(context);
-        await this.audioPlayer.pause();
+        await this.audioPlayer.pause({ saveSession: false });
         this.assertActionActive(context);
         return {};
       case 'Stop':
         this.assertActionActive(context);
-        await this.audioPlayer.stop();
+        await this.audioPlayer.stop({ saveSession: false });
         this.assertActionActive(context);
         return {};
       case 'Next':
@@ -535,7 +567,7 @@ export class OpenHomePlaybackAdapter {
       }
       const entry = this.createNetworkEntry(args);
       if (entry.liveSessionId) {
-        await this.audioPlayer.stop();
+        await this.audioPlayer.stop({ saveSession: false });
         this.assertActionActive(context);
         this.networkLive.stop();
         this.beginQueueMutation(context);
@@ -599,7 +631,7 @@ export class OpenHomePlaybackAdapter {
       });
       this.assertActionActive(context);
       if (selected === false || selected?.accepted === false) throw createActionError('no-media');
-      if (state.isPaused) await this.audioPlayer.pause();
+      if (state.isPaused) await this.audioPlayer.pause({ saveSession: false });
       this.assertActionActive(context);
       return {};
     }
@@ -615,16 +647,21 @@ export class OpenHomePlaybackAdapter {
       const volume = request.args.volume;
       if (!Number.isInteger(volume) || volume < 0 || volume > 100) throw createActionError('invalid-action');
       manager.setPlayerVolume(volume);
+      this.audioPlayer.playbackManager?.saveExplicitPlayerSetting?.('playerVolume');
     } else if (request.action === 'SetMute') {
       if (typeof request.args.mute !== 'boolean') throw createActionError('invalid-action');
       manager.setPlayerMute(request.args.mute);
+      this.audioPlayer.playbackManager?.saveExplicitPlayerSetting?.('playerMute');
     } else if (request.service === 'Volume' && (request.action === 'VolumeInc' || request.action === 'VolumeDec')) {
       const current = manager.getPlayerVolume();
       manager.setPlayerVolume(Math.max(0, Math.min(100, current + (request.action === 'VolumeInc' ? 1 : -1))));
+      this.audioPlayer.playbackManager?.saveExplicitPlayerSetting?.('playerVolume');
     } else if (request.action === 'SelectPreset') {
       if (request.args.preset !== 'FactoryDefaults') throw createActionError('invalid-preset');
       manager.setPlayerVolume(100);
       manager.setPlayerMute(false);
+      this.audioPlayer.playbackManager?.saveExplicitPlayerSetting?.('playerVolume');
+      this.audioPlayer.playbackManager?.saveExplicitPlayerSetting?.('playerMute');
     } else throw createActionError('unsupported-action');
     return {};
   }
@@ -634,17 +671,24 @@ export class OpenHomePlaybackAdapter {
     for (const requestId of this.actionContexts.keys()) this.cancelAction({ requestId });
     const pending = this.commandChain.then(async () => {
       if (this.disposed || !isCurrent()) return false;
-      await this.audioPlayer.stop();
-      if (this.disposed || !isCurrent()) return false;
-      this.queue = [];
-      this.queueEntryIds.clear();
-      this.ownedQueueIds.clear();
-      this.audioPlayer.playbackManager.replaceMaterializedPlaylist([], 0);
-      this.queueSequence = this.audioPlayer.playbackManager.sequence;
-      this.followsPlayerQueue = true;
-      this.bumpIdArrayToken();
-      this.publishState();
-      return true;
+      const player = this.audioPlayer;
+      const release = player.playbackManager.blockPlaybackSessionWrites?.({ suppress: true });
+      try {
+        await player.stop({ saveSession: false });
+        if (this.disposed || !isCurrent()) return false;
+        this.queue = [];
+        this.queueEntryIds.clear();
+        this.ownedQueueIds.clear();
+        player.playbackSession?.cancelPending(player);
+        player.playbackManager.replaceMaterializedPlaylist([], 0, { saveSession: false });
+        this.queueSequence = player.playbackManager.sequence;
+        this.followsPlayerQueue = true;
+        this.bumpIdArrayToken();
+        this.publishState();
+        return true;
+      } finally {
+        release?.();
+      }
     });
     this.commandChain = pending.catch(() => {});
     return pending;
@@ -682,18 +726,25 @@ export class OpenHomePlaybackAdapter {
   }
 
   async playPreparedEntries(entries, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
+    globalThis.window?.uiManager?.invalidatePlaybackSessionRestore?.();
     await this.ready;
     const pending = this.commandChain.then(async () => {
       const context = { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER, isCurrent };
+      const playback = this.audioPlayer.playbackManager;
+      const release = playback.blockPlaybackSessionWrites?.({ suppress: true });
+      let committed = false;
       this.suppressState += 1;
       try {
         const result = await this.applyPreparedEntries(entries, operationKind, startIndex, context);
         this.finalizeQueueMutation(context);
+        committed = true;
         return result;
       } catch (error) {
         this.rollbackQueueMutation(context);
         throw error;
       } finally {
+        release?.();
+        if (committed) playback.savePlaybackSession?.(true);
         this.suppressState -= 1;
         if (this.suppressState === 0) this.flushSuppressedStateChanges();
         this.publishState();
@@ -737,14 +788,17 @@ export class OpenHomePlaybackAdapter {
         if (!manager || typeof item.trackId !== 'string' || !item.trackId || item.trackId.length > 1024) throw createActionError('invalid-action');
         const row = await this.awaitAction(context, manager.getTrack(item.trackId));
         if (!row) throw createActionError('trackUnavailable');
-        try { await this.awaitAction(context, manager.resolvePlaybackSource(item.trackId)); }
+        let source;
+        try { source = await this.awaitAction(context, manager.resolvePlaybackSource(item.trackId)); }
         catch (_) { throw createActionError('trackUnavailable'); }
         this.assertActionActive(context);
         const meta = { title: row.title || 'Track', artist: row.artist || '', album: row.album || '', duration: row.durationSec || 0 };
         const sourceKey = `catalog:${item.trackId}`;
         entries.push({ uri: '', meta, playerTrack: {
           name: meta.title, meta, sourceKind: 'catalog', sourceKey, libraryTrackId: item.trackId,
-          provider: () => manager.resolvePlaybackSource(item.trackId)
+          provider: source?.sourceKind === 'archive-entry'
+            ? () => manager.bulkOperationService.resolvePlaybackSessionLibrarySource(item.trackId)
+            : () => manager.resolvePlaybackSource(item.trackId)
         } });
       } else {
         if (typeof item.serverId !== 'string' || !item.serverId || typeof item.trackId !== 'string' || !item.trackId) throw createActionError('invalid-action');
@@ -803,7 +857,7 @@ export class OpenHomePlaybackAdapter {
     const wasPlaying = this.getPlayerState().isPlaying === true;
     this.beginQueueMutation(context);
     if (replace) {
-      await this.audioPlayer.stop();
+      await this.audioPlayer.stop({ saveSession: false });
       this.captureQueueMutationTransport(context);
       this.markQueueMutationOwner(context);
       this.assertActionActive(context);
@@ -847,7 +901,7 @@ export class OpenHomePlaybackAdapter {
     this.beginQueueMutation(context);
     if (deletingCurrent) {
       this.assertActionActive(context);
-      await this.audioPlayer.stop();
+      await this.audioPlayer.stop({ saveSession: false });
       this.captureQueueMutationTransport(context);
       this.markQueueMutationOwner(context);
       this.assertActionActive(context);
@@ -875,7 +929,7 @@ export class OpenHomePlaybackAdapter {
   async deleteAll(context) {
     this.assertActionActive(context);
     this.beginQueueMutation(context);
-    await this.audioPlayer.stop();
+    await this.audioPlayer.stop({ saveSession: false });
     this.captureQueueMutationTransport(context);
     this.markQueueMutationOwner(context);
     this.assertActionActive(context);
@@ -933,7 +987,7 @@ export class OpenHomePlaybackAdapter {
     const state = this.getPlayerState();
     const applyShuffleMode = state.shuffleMode === true;
     if (!hadRemoteOwnership && (state.isPlaying === true || state.isPaused === true)) {
-      await this.audioPlayer.stop();
+      await this.audioPlayer.stop({ saveSession: false });
       this.captureQueueMutationTransport(context);
       this.markQueueMutationOwner(context);
       this.assertActionActive(context);
@@ -997,7 +1051,7 @@ export class OpenHomePlaybackAdapter {
     if (!Number.isFinite(seconds)) throw createActionError('invalid-seek');
     await this.ensureQueueActive(context);
     this.assertActionActive(context);
-    await this.audioPlayer.contextManager.seek(Math.max(0, seconds));
+    await this.audioPlayer.contextManager.seek(Math.max(0, seconds), { saveSession: false });
     this.assertActionActive(context);
   }
 
@@ -1007,7 +1061,7 @@ export class OpenHomePlaybackAdapter {
     const repeatMode = enabled ? 'ALL' : 'OFF';
     if (state.repeatMode !== repeatMode) {
       this.assertActionActive(context);
-      await this.audioPlayer.playbackManager.setRepeatMode(repeatMode);
+      await this.audioPlayer.playbackManager.setRepeatMode(repeatMode, { saveSession: false });
       this.assertActionActive(context);
     }
   }
@@ -1029,7 +1083,8 @@ export class OpenHomePlaybackAdapter {
     if (this.getPlayerState().shuffleMode === enabled) return;
     await this.audioPlayer.playbackManager.setShuffleMode(enabled, {
       userInitiated: false,
-      preserveTransport: true
+      preserveTransport: true,
+      saveSession: false
     });
     this.assertActionActive(context);
   }
@@ -1039,7 +1094,8 @@ export class OpenHomePlaybackAdapter {
     if (this.getPlayerState().shuffleMode !== true) return false;
     await this.audioPlayer.playbackManager.setShuffleMode(false, {
       userInitiated: false,
-      preserveTransport: true
+      preserveTransport: true,
+      saveSession: false
     });
     this.markQueueMutationOwner(context, true);
     this.assertActionActive(context);
@@ -1052,14 +1108,15 @@ export class OpenHomePlaybackAdapter {
     if (state.shuffleMode !== true) {
       await this.audioPlayer.playbackManager.setShuffleMode(true, {
         userInitiated: false,
-        preserveTransport: true
+        preserveTransport: true,
+        saveSession: false
       });
       this.markQueueMutationOwner(context, true);
       this.assertActionActive(context);
     }
     if (!wasPlaying && this.getPlayerState().isPlaying) {
       this.assertActionActive(context);
-      await this.audioPlayer.pause();
+      await this.audioPlayer.pause({ saveSession: false });
       this.markQueueMutationOwner(context);
       this.assertActionActive(context);
     }
@@ -1073,7 +1130,11 @@ export class OpenHomePlaybackAdapter {
     const tracks = this.queue.map(entry => {
       const sourceKey = `openhome:${entry.id}`;
       const track = entry.playerTrack ?? {
-        path: entry.playbackUrl, name: entry.meta.title, meta: entry.meta, sourceKind: 'openhome'
+        path: entry.playbackUrl, name: entry.meta.title, meta: entry.meta, sourceKind: 'openhome',
+        ...(entry.meta.protocolInfo?.split(':')[2]?.toLowerCase() === 'audio/midi' && {
+          fileName: 'track.mid',
+          readBytes: () => readNetworkMidi(entry.playbackUrl)
+        })
       };
       return { ...track, sourceKey, meta: { ...track.meta, openHomeQueueEntry: {
         id: entry.id, uri: entry.uri, metadata: entry.metadata, liveSessionId: entry.liveSessionId
@@ -1086,7 +1147,8 @@ export class OpenHomePlaybackAdapter {
       : 0;
     this.assertActionActive(context);
     this.audioPlayer.playbackManager.replaceMaterializedPlaylist(tracks, currentIndex, {
-      applyShuffleMode
+      applyShuffleMode,
+      saveSession: false
     });
     this.ownedQueueIds = new Set(this.queue.map(entry => entry.id));
     this.queueSequence = this.audioPlayer.playbackManager.sequence;
@@ -1384,6 +1446,28 @@ function normalizePlaybackUrl(uri) {
   return parsed.href;
 }
 
+async function readNetworkMidi(playbackUrl) {
+  const response = await fetch(normalizePlaybackUrl(playbackUrl), { redirect: 'error', credentials: 'omit' });
+  if (!response.ok || !response.body) {
+    await response.body?.cancel();
+    throw createActionError('trackUnavailable');
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    if (Number(response.headers.get('Content-Length')) > SMF_MAX_BYTES) throw createActionError('midi-too-large');
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > SMF_MAX_BYTES) throw createActionError('midi-too-large');
+      chunks.push(value);
+    }
+  } finally { await reader.cancel(); }
+  return new Blob(chunks).arrayBuffer();
+}
+
 function normalizeMetadata(metadata) {
   if (metadata === undefined || metadata === null) return '';
   if (typeof metadata !== 'string' || metadata.length > MAX_METADATA_LENGTH) {
@@ -1528,6 +1612,12 @@ function getTransportState(state) {
   if (state.isPlaying) return 'Playing';
   if (state.isPaused) return 'Paused';
   return 'Stopped';
+}
+
+function isSessionTransportAction({ service, action }) {
+  return ['Playlist', 'AVTransport'].includes(service) &&
+    ['Play', 'Pause', 'Stop', 'Next', 'Previous', 'Seek', 'SeekSecondAbsolute', 'SeekSecondRelative',
+      'SeekId', 'SeekIndex', 'SetShuffle', 'SetRepeat'].includes(action);
 }
 
 function toOpenHomeSeconds(value) {

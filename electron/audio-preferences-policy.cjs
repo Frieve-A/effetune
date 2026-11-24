@@ -1,8 +1,10 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   audioDriver: 'standard',
-  audioDriverDeviceMemory: '',
   inputDeviceId: '__effetune_no_audio_input__',
   midiInputDeviceKey: '',
   midiOutputDeviceKey: '',
@@ -14,8 +16,11 @@ const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   useWasmDsp: true,
   gaplessPlayback: true,
   replayGainMode: 'off',
+  replayGainTarget: 'manual',
   replayGainPreampDb: 0,
+  replayGainAutoCoverage: 95,
   replayGainPreventClipping: true,
+  replayGainPeakCeilingDb: 0,
   outputChannels: 2,
   latencyHint: 'interactive'
 });
@@ -24,8 +29,11 @@ const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
 const PLAYER_PREFERENCE_KEYS = Object.freeze([
   'gaplessPlayback',
   'replayGainMode',
+  'replayGainTarget',
   'replayGainPreampDb',
-  'replayGainPreventClipping'
+  'replayGainAutoCoverage',
+  'replayGainPreventClipping',
+  'replayGainPeakCeilingDb'
 ]);
 
 const REPLAY_GAIN_MODES = Object.freeze(['off', 'track', 'album']);
@@ -41,6 +49,17 @@ const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
   latencyHint: AUDIO_PREFERENCE_DEFAULTS.latencyHint
 });
 
+function initializeAudioPreferences(configPath, preferencesPath, nativeDriver) {
+  try {
+    // Existing profiles can have a config file without any audio preferences.
+    if (fs.statSync(configPath, { throwIfNoEntry: false })) return;
+    fs.mkdirSync(path.dirname(preferencesPath), { recursive: true });
+    fs.writeFileSync(preferencesPath, JSON.stringify({ audioDriver: nativeDriver }, null, 2), { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') console.warn('Could not initialize audio preferences:', error);
+  }
+}
+
 function normalizeAudioPreferences(preferences) {
   const normalized = { ...(preferences || {}) };
   delete normalized.lowLatencyOutput;
@@ -53,6 +72,13 @@ function normalizeAudioPreferences(preferences) {
 
 // Mirrors normalizeReplayGainPreferences in js/electron/webSettingsStorage.js.
 function normalizeReplayGainPreferences(preferences) {
+  preferences.replayGainTarget = preferences.replayGainTarget === 'auto' ? 'auto' : 'manual';
+  const coverage = Math.round(Number(preferences.replayGainAutoCoverage));
+  preferences.replayGainAutoCoverage = Number.isFinite(coverage)
+    ? Math.max(1, Math.min(100, coverage)) : AUDIO_PREFERENCE_DEFAULTS.replayGainAutoCoverage;
+  const ceiling = Math.round(Number(preferences.replayGainPeakCeilingDb) * 2) / 2;
+  preferences.replayGainPeakCeilingDb = Number.isFinite(ceiling)
+    ? Math.max(-15, Math.min(0, ceiling)) + 0 : AUDIO_PREFERENCE_DEFAULTS.replayGainPeakCeilingDb;
   if (!REPLAY_GAIN_MODES.includes(preferences.replayGainMode)) {
     preferences.replayGainMode = AUDIO_PREFERENCE_DEFAULTS.replayGainMode;
   }
@@ -158,6 +184,7 @@ module.exports = {
   AUDIO_PREFERENCE_DEFAULTS,
   AUDIO_PIPELINE_DEFAULTS,
   PLAYER_PREFERENCE_KEYS,
+  initializeAudioPreferences,
   normalizeAudioPreferences,
   mergeAudioPreferences,
   audioPipelineConfigurationEqual,

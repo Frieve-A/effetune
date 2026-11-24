@@ -287,7 +287,7 @@ function getSaveFileDenialReason(filePath) {
     getSettingsPath(fileHandlers.getUserDataPath())
   ));
   if (targetParent === activeSettingsPath &&
-      getSaveFileBasenameForComparison(canonicalTarget) === 'player-state.json') return null;
+      ['player-state.json', 'player-session-marker.json'].includes(getSaveFileBasenameForComparison(canonicalTarget))) return null;
   if (targetParent !== settingsPath) return SETTINGS_DIR_SAVE_FILE_DENIAL;
 
   if (SETTINGS_DIR_SAVE_FILE_ALLOWLIST.has(getSaveFileBasenameForComparison(canonicalTarget))) {
@@ -622,6 +622,10 @@ function createApplicationMenuTemplate(menuState = {}) {
           label: 'Support the Project',
           click: () => shell.openExternal('https://ko-fi.com/frievea')
         }),
+        item('help.diagnostics', {
+          label: 'Diagnostic Information…',
+          click: () => sendToRenderer('show-diagnostics')
+        }),
         { type: 'separator' },
         item('help.about', {
           label: 'About',
@@ -864,6 +868,15 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
     if (result?.success && result.path) fileAccess.grantRead(result.path);
     return result;
   });
+
+  fileIpc.handle('prepare-loudness-source', async (event, filePath, requestId, signature) => {
+    assertFile(filePath);
+    const result = await alacPlaybackSource.prepareAnalysis(filePath, requestId, signature);
+    if (result?.converted) fileAccess.grantRead(result.path);
+    return result;
+  });
+  fileIpc.handle('cancel-loudness-source', (_event, requestId) => alacPlaybackSource.cancelAnalysis(requestId));
+  fileIpc.handle('release-loudness-source', (_event, filePath) => alacPlaybackSource.releaseAnalysis(filePath));
 
   // File operations
   fileIpc.handle('save-file', async (event, filePath, content) => {
@@ -1132,7 +1145,7 @@ function registerIpcHandlers({ onConfigSaved, onDesktopAudioActivity, getDesktop
         setTimeout(() => {
           const mainWin = constants.getMainWindow();
           if (mainWin) {
-            mainWin.reload();
+            mainWin.webContents.send('reload-with-pipeline-state');
           }
         }, 3000); // 3 seconds delay
       }

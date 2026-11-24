@@ -414,13 +414,12 @@ export class PagedLibraryViewController {
     const attempt = this.firstPage.pageAttemptId;
     const requestId = ++this.pageRequestId;
     const navigationRequestId = ++this.navigationRequestId;
+    const current = this.pages.get(this.currentPageIndex);
+    const forward = pageIndex > this.currentPageIndex;
+    const boundary = forward ? current.pageStartOrdinal + current.rows.length : current.pageStartOrdinal;
     let page = this.pages.get(pageIndex);
-    if (!page) {
-      const current = this.pages.get(this.currentPageIndex);
-      const fallbackStart = pageIndex > this.currentPageIndex
-        ? (current?.pageStartOrdinal ?? 0) + (current?.rows?.length ?? this.pageLimit)
-        : Math.max(0, (current?.pageStartOrdinal ?? 0) - this.pageLimit);
-      page = normalizePageStart(await this.queryPage(cursor), fallbackStart);
+    if (!page || (forward ? page.pageStartOrdinal : page.pageStartOrdinal + page.rows.length) !== boundary) {
+      page = normalizeAdjacentPage(await this.queryPage(cursor), boundary, forward);
     }
     if (!this.firstPage.isCurrent(generation, attempt) || requestId !== this.pageRequestId ||
         navigationRequestId !== this.navigationRequestId) {
@@ -446,12 +445,13 @@ export class PagedLibraryViewController {
     const current = this.pages.get(this.currentPageIndex);
     const currentStart = current?.pageStartOrdinal ?? 0;
     const currentEnd = currentStart + (current?.rows?.length ?? 0);
+    let adjacent;
     if (current?.nextCursor && ordinal >= currentEnd && ordinal < currentEnd + this.pageLimit) {
-      return this.nextPage();
+      adjacent = await this.nextPage();
+    } else if (current?.previousCursor && ordinal < currentStart && ordinal >= Math.max(0, currentStart - this.pageLimit)) {
+      adjacent = await this.previousPage();
     }
-    if (current?.previousCursor && ordinal < currentStart && ordinal >= Math.max(0, currentStart - this.pageLimit)) {
-      return this.previousPage();
-    }
+    if (adjacent && (!adjacent.accepted || this.findCachedPageIndex(ordinal) !== null)) return adjacent;
     return this.seekToOrdinal(ordinal);
   }
 
@@ -578,6 +578,9 @@ export class PagedLibraryViewController {
       return { accepted: false, reason: 'stale-page' };
     }
     this.validateBoundedPage(page);
+    if (ordinal < page.pageStartOrdinal || ordinal >= page.pageStartOrdinal + page.rows.length) {
+      return { accepted: false, reason: 'row-not-cached' };
+    }
     return {
       accepted: true,
       cachedPageIndex: null,
@@ -728,10 +731,8 @@ export class PagedLibraryViewController {
         continue;
       }
 
-      const fallbackStart = direction > 0
-        ? adjacentOrdinal
-        : Math.max(0, start - this.pageLimit);
-      const loadedPage = normalizePageStart(await this.queryPage(cursor), fallbackStart);
+      const boundary = direction > 0 ? adjacentOrdinal : start;
+      const loadedPage = normalizeAdjacentPage(await this.queryPage(cursor), boundary, direction > 0);
       if (requestId !== this.prefetchRequestId ||
           !this.firstPage.isCurrent(generation, attempt) ||
           this.contextToken !== contextToken) {
@@ -1194,6 +1195,9 @@ export class PagedLibraryViewController {
       return { accepted: false, reason: 'stale-page' };
     }
     this.validateBoundedPage(page);
+    if (ordinal < page.pageStartOrdinal || ordinal >= page.pageStartOrdinal + page.rows.length) {
+      return { accepted: false, reason: 'row-not-cached' };
+    }
     this.pages.clear();
     this.currentPageIndex = Math.floor(page.pageStartOrdinal / this.pageLimit);
     this.cacheCenterPageIndex = this.currentPageIndex;
@@ -1241,6 +1245,10 @@ export class PagedLibraryViewController {
       selectionProjection: this.getSelectionProjection(state.totalCount)
     };
   }
+}
+
+function normalizeAdjacentPage(page, boundary, forward) {
+  return normalizePageStart(page, forward ? boundary : boundary - page.rows.length);
 }
 
 function normalizePageStart(page, fallbackStartOrdinal) {

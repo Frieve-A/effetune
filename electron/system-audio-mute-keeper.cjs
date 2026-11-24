@@ -6,7 +6,8 @@ const { spawn: defaultSpawn } = require('child_process');
 // capture starts and unmutes it when that capture stops, but it does not watch
 // the endpoint in between. Raising the volume with the Windows volume keys or
 // flyout unmutes the endpoint, so the original sound would play twice: once
-// directly and once through EffeTune. This hidden PowerShell helper watches
+// directly and once through EffeTune. Native loopback also needs an initial mute.
+// This hidden PowerShell helper watches
 // that endpoint and mutes it again whenever it is unmuted during a capture.
 //
 // Protocol: the helper prints `ready <0|1>` with the mute state it found before
@@ -26,6 +27,7 @@ using System.Threading;
 interface IMMDeviceEnumerator {
   void EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
   void GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
+  void GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice endpoint);
 }
 
 [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -65,8 +67,9 @@ public class EffeTuneMuteKeeper : IAudioEndpointVolumeCallback {
   public EffeTuneMuteKeeper() {
     var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")));
     IMMDevice device;
-    // eRender / eConsole: the endpoint Chromium's loopbackWithMute captures and mutes.
-    enumerator.GetDefaultAudioEndpoint(0, 0, out device);
+    var id = Environment.GetEnvironmentVariable("EFFETUNE_SYSTEM_AUDIO_ENDPOINT");
+    if (String.IsNullOrEmpty(id)) enumerator.GetDefaultAudioEndpoint(0, 0, out device);
+    else enumerator.GetDevice(id, out device);
     var iid = typeof(IAudioEndpointVolume).GUID;
     object activated;
     device.Activate(ref iid, 23, IntPtr.Zero, out activated);
@@ -81,9 +84,12 @@ public class EffeTuneMuteKeeper : IAudioEndpointVolumeCallback {
     }
   }
 
-  public void Keep() {
+  public bool Keep() {
     lock (gate) keeping = true;
     MuteIfKeeping();
+    bool muted;
+    volume.GetMute(out muted);
+    return muted;
   }
 
   public void Restore() {
@@ -113,11 +119,9 @@ const HELPER_SCRIPT = [
   `Add-Type -TypeDefinition @'\n${HELPER_SOURCE}\n'@`,
   '$keeper = New-Object EffeTuneMuteKeeper',
   "[Console]::Out.WriteLine('ready ' + [int]$keeper.WasMuted)",
-  'while ($null -ne ($line = [Console]::In.ReadLine())) {',
-  "  if ($line -eq 'keep') { $keeper.Keep() } elseif ($line -eq 'restore') { break }",
-  '}',
-  '$keeper.Restore()',
-  '$keeper.Close()'
+  'try { while ($null -ne ($line = [Console]::In.ReadLine())) {',
+  "  if ($line -eq 'keep') { if ($keeper.Keep()) { [Console]::Out.WriteLine('kept') } } elseif ($line -eq 'restore') { break }",
+  '} } finally { $keeper.Restore(); $keeper.Close() }'
 ].join('\n');
 
 function encodePowerShell(script) {
@@ -131,6 +135,8 @@ function encodePowerShell(script) {
  */
 function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } = {}) {
   let helper = null;
+  let restoring = null;
+  let generation = 0;
   let holds = 0;
   let disposed = false;
 
@@ -140,31 +146,32 @@ function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } 
     try { current.child.kill(); } catch { /* already exited */ }
   }
 
-  function startHelper() {
+  function startHelper(endpointId) {
     let child;
     try {
       child = spawn('powershell.exe', [
         '-NoProfile', '-NonInteractive', '-Mta', '-ExecutionPolicy', 'Bypass',
         '-EncodedCommand', encodePowerShell(HELPER_SCRIPT)
-      ], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+      ], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
+        env: { ...process.env, EFFETUNE_SYSTEM_AUDIO_ENDPOINT: endpointId } });
     } catch (error) {
       logger.error?.('System Audio mute keeper could not start:', error?.code || error?.message || 'unknown');
-      return;
+      return false;
     }
 
-    const current = helper = { child };
+    const current = helper = { child, endpointId };
     current.startup = new Promise(resolve => {
       let output = '';
       const onData = chunk => {
         output += chunk;
-        if (/^ready [01]\r?\n/.test(output)) settle();
+        if (/^ready [01]\r?\n/.test(output)) settle(true);
       };
-      const settle = () => {
+      const settle = (ready = false) => {
         clearTimeout(timer);
         child.stdout.off('data', onData);
         current.startup = null;
         current.cancelStartup = null;
-        resolve();
+        resolve(ready);
       };
       const fail = () => {
         if (!current.cancelStartup) return;
@@ -173,9 +180,13 @@ function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } 
       };
       const timer = setTimeout(fail, READY_TIMEOUT_MS);
       current.cancelStartup = settle;
-      child.on('error', fail);
+      child.on('error', () => {
+        fail();
+        current.settleHold?.(false);
+      });
       child.on('exit', () => {
         fail();
+        current.settleHold?.(false);
         if (helper === current) helper = null;
       });
       child.stdin.on('error', () => { /* the helper exited; nothing to restore */ });
@@ -187,28 +198,67 @@ function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } 
 
   // Starts a fresh helper unless a capture is already held: while one is,
   // the endpoint is muted by EffeTune and the original state is already known.
-  async function prepare() {
-    if (disposed) return;
-    if (helper?.startup) return helper.startup;
-    if (holds > 0 && helper) return;
+  async function prepare(endpointId = '') {
+    if (disposed) return false;
+    if (restoring) {
+      const requested = generation;
+      if (!await restoring || requested !== generation || disposed) return false;
+    }
+    if (helper?.startup && helper.endpointId === endpointId) return helper.startup;
+    if (holds > 0 && helper) return helper.endpointId === endpointId;
     if (helper) stopHelper(helper);
-    return startHelper();
+    return startHelper(endpointId);
   }
 
   function send(command) {
     try { helper?.child.stdin.write(`${command}\n`); } catch { /* the helper exited */ }
   }
 
-  function hold() {
-    if (disposed) return;
+  async function hold() {
+    if (disposed) return false;
     holds++;
-    if (holds === 1 && !helper?.startup) send('keep');
+    const current = helper;
+    if (!current || current.startup) return false;
+    if (current.confirmed) return true;
+    if (current.confirmation) return current.confirmation;
+    current.confirmation = new Promise(resolve => {
+      let output = '';
+      const onData = chunk => {
+        output += chunk;
+        if (/^kept\r?\n/.test(output)) current.settleHold(true);
+      };
+      const timer = setTimeout(() => current.settleHold(false), READY_TIMEOUT_MS);
+      current.settleHold = confirmed => {
+        clearTimeout(timer);
+        current.child.stdout.off('data', onData);
+        current.settleHold = null;
+        current.confirmed = confirmed;
+        if (!confirmed && helper === current && holds > 0)
+          logger.error?.('System Audio mute keeper could not confirm the endpoint mute.');
+        resolve(confirmed);
+      };
+      current.child.stdout.on('data', onData);
+      send('keep');
+    });
+    return current.confirmation;
   }
 
   function release() {
     if (holds === 0) return;
     holds--;
     if (holds > 0 || !helper || helper.startup) return;
+    helper.settleHold?.(false);
+    // The next helper must sample the user's own mute state after this one restores it.
+    const previous = helper;
+    restoring = new Promise(resolve => {
+      const timeout = setTimeout(() => resolve(false), READY_TIMEOUT_MS);
+      timeout.unref?.();
+      previous.child.once('exit', () => {
+        clearTimeout(timeout);
+        restoring = null;
+        resolve(true);
+      });
+    });
     send('restore');
     helper.child.stdin.end();
     helper = null;
@@ -216,6 +266,7 @@ function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } 
 
   // Captures ended without their releases (renderer reload or crash).
   function reset() {
+    generation++;
     if (helper && (helper.startup || holds === 0)) stopHelper(helper);
     if (holds === 0) return;
     holds = 1;
@@ -227,7 +278,11 @@ function createSystemAudioMuteKeeper({ spawn = defaultSpawn, logger = console } 
     reset();
   }
 
-  return { prepare, hold, release, reset, dispose };
+  function discardPrepared() {
+    generation++;
+    if (!holds && helper) stopHelper(helper);
+  }
+  return { prepare, hold, release, discardPrepared, reset, dispose };
 }
 
 module.exports = { createSystemAudioMuteKeeper };

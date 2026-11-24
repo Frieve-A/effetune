@@ -2,9 +2,10 @@
 #include "engine.h"
 namespace effetune::audio {
 void Telemetry::read(Engine &engine, std::uint64_t endFrame, std::uint64_t revision,
-                     VisualizerStage stage) noexcept {
+                     VisualizerStage stage, bool independent) noexcept {
   const auto next = write_.load(std::memory_order_relaxed);
-  if (!enabled || next - read_.load(std::memory_order_acquire) >= packets_.size()) {
+  if ((!enabled && !independent && !midiMetering) ||
+      next - read_.load(std::memory_order_acquire) >= packets_.size()) {
     if (!backlog_)
       backlog_ = endFrame;
     return;

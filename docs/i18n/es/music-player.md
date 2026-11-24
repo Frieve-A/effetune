@@ -35,7 +35,11 @@ Para ver la letra en **Lyrics** de Visualizer, usa la letra integrada en el MIDI
 
 Para mostrar una carátula con MIDI o MusicXML, coloca `cover.jpg` (preferido) o `folder.jpg` en la misma carpeta. En la web, selecciona o arrastra la imagen junto con el archivo de música, salvo que la carpeta sea accesible desde Music Library.
 
-Si falta SoundFont Player, no hay un instrumento cargado o todavía se está cargando, y no hay ningún [dispositivo de salida MIDI externo](#midi-output-device) conectado, el reproductor muestra indicaciones y sigue enviando MIDI a su ritmo, en silencio, sin saltar a la siguiente canción. La canción termina con normalidad. Puedes añadir SoundFont Player o cargar un instrumento durante la reproducción: cuando esté listo, responderá a los eventos MIDI que lleguen a partir de ese momento, con los sonidos y ajustes de control actuales de cada canal. Las notas anteriores no se vuelven a tocar, aunque sigan sostenidas en la canción.
+Usa **Abrir archivos de música** o arrastra y suelta un archivo ZIP, LZH/LHA, tar, gzip o tar comprimido con gzip para reproducir los archivos MIDI, KAR y MusicXML que contiene. Puedes hacerlo con los ajustes de la biblioteca desactivados. Si la selección contiene dos o más archivos reproducibles dentro de los paquetes, elige cuáles quieres abrir. Si ocupan demasiado para abrirlos juntos, selecciona menos archivos. El reproductor usa las letras del archivo `.wrd` correspondiente y la carátula de la carpeta de la pista dentro del paquete.
+
+Si inicias una canción mientras se carga el instrumento seleccionado, la reproducción espera para que puedas oír las primeras notas. Si ya hay otro instrumento disponible o una salida MIDI conectada, la canción empieza de inmediato.
+
+Si falta SoundFont Player o no has seleccionado ningún instrumento, y no hay ningún [dispositivo de salida MIDI externo](#midi-output-device) conectado, el reproductor muestra indicaciones y sigue enviando MIDI a su ritmo, en silencio, sin saltar a la siguiente canción. La canción termina con normalidad. Puedes añadir SoundFont Player o cargar un instrumento durante la reproducción: cuando esté listo, responderá a los eventos MIDI que lleguen a partir de ese momento, con los sonidos y ajustes de control actuales de cada canal. Las notas anteriores no se vuelven a tocar, aunque sigan sostenidas en la canción.
 
 Usa los controles habituales de reproducción, pausa, búsqueda, repetición, orden aleatorio, velocidad, volumen y silencio. La velocidad cambia el ritmo del MIDI sin alterar la altura de las notas. **Mantener el tono** no se puede cambiar durante la reproducción MIDI. Con una colección SF2/SF3, un solo SoundFont Player sigue Bank Select y Program Change de forma independiente en los 16 canales, con el banco de percusión en el canal 10 de forma predeterminada. Usa **MIDI Mixer** para ajustar el **Patch**, el nivel y otros controles de interpretación de cada canal. Los cambios son temporales, siguen los mensajes MIDI posteriores y se restablecen para la siguiente canción. Los instrumentos SFZ mantienen sus propias asignaciones.
 
@@ -66,21 +70,35 @@ El reproductor de escritorio también muestra [música en red y AirPlay](openhom
 
 El deslizador de volumen y el botón de silencio permiten ajustar el sonido del reproductor antes de que pase por los efectos. Los cambios realizados a distancia también se reflejan aquí, de modo que puedes comprobar el volumen y desactivar el silencio desde el dispositivo que reproduce la música.
 
+## Continuar donde lo dejaste
+
+Al volver a abrir la aplicación de escritorio o web, el reproductor recupera la cola y queda en pausa en la última posición guardada de la pista actual. La velocidad inicial es de 1x. La posición se guarda aproximadamente cada 10 segundos durante la reproducción, por lo que pueden perderse los últimos cambios antes de salir.
+
+Ambas versiones recuperan las pistas de la biblioteca. La de escritorio también recupera los archivos locales que abriste directamente. En la web, es posible que el navegador te pida volver a seleccionar la carpeta de música al pulsar Reproducir. Vuelve a añadir los archivos que abriste directamente en la web y las pistas de red.
+
+Para recuperar las pistas de un archivo comprimido, reprodúcelas desde la biblioteca. Si abriste el archivo comprimido directamente, vuelve a abrirlo.
+
+Para borrar la cola guardada, cierra el reproductor con **×**. Si una función de recepción o de control remoto conserva la cola, desactívala primero y luego cierra el reproductor visible con **×**.
+
 ## Reproducción sin pausas
 
 **Reproducción sin pausas**, en **Configuración de audio**, está activada de forma predeterminada y reproduce sin pausa las pistas locales compatibles; su compatibilidad está limitada por el formato del archivo y por el entorno del navegador o de la aplicación. Los formatos no compatibles y algunos entornos móviles usan un modo alternativo seguro que ahorra memoria, por lo que puede quedar una pausa breve. Al desactivarla se da prioridad a un menor uso de memoria y a la estabilidad, a costa de una posible pausa breve; el cambio no interrumpe la pista actual. La reproducción sin pausas solo funciona a velocidad 1x; si cambias la velocidad durante la reproducción sin pausas, la pista se reanuda desde la misma posición tras una breve interrupción.
 
+En la aplicación de escritorio, si el **Controlador** de **Configuración de audio** es cualquiera distinto de **Estándar**, los archivos WAV y FLAC multicanal de hasta seis canales también se reproducen sin pausas. Sus canales llegan a los efectos en el orden del archivo. Si no coincide con el orden de las salidas de tus altavoces, coloca [**Matrix**](plugins/basics.md#matrix) al principio de la cadena de efectos, igual que con el [DSD multicanal](#dsd-files).
+
 ## ReplayGain
 
-Muchos archivos de música llevan etiquetas ReplayGain, que un programa de etiquetado escribe tras medir el volumen de cada canción. Ajusta **ReplayGain** en **Configuración de audio** para seguir esas etiquetas y escuchar con un volumen parecido canciones de álbumes distintos. EffeTune solo lee las etiquetas: no mide el volumen ni escribe etiquetas. Los archivos sin etiquetas ReplayGain se reproducen a su nivel original. En los archivos Opus también se usan las etiquetas `R128_TRACK_GAIN` y `R128_ALBUM_GAIN`.
+En **Configuración de audio**, activa **ReplayGain** para reducir las diferencias de volumen entre grabaciones. El reproductor da prioridad a las [mediciones de la biblioteca](music-library.md#loudness-analysis). Si no hay medición, usa las etiquetas ReplayGain del archivo, incluidas `R128_TRACK_GAIN` y `R128_ALBUM_GAIN` en Opus. Si tampoco hay etiquetas, mantiene el volumen original.
 
-- **Desactivado** (predeterminado): no se usan las etiquetas.
+- **Desactivado** (valor predeterminado) mantiene el volumen original.
 - **Pista**: lleva todas las canciones a un volumen parecido. Es lo adecuado para el modo aleatorio y para listas que mezclan álbumes.
 - **Álbum**: ajusta cada álbum como un conjunto y conserva las diferencias de volumen entre sus canciones, como una introducción suave. Es lo adecuado para escuchar álbumes completos de principio a fin.
 
-Si un archivo solo tiene el valor de pista o solo el de álbum, se usa ese valor en cualquiera de los dos modos. Las pistas de una hoja CUE usan las etiquetas del archivo de audio al que remiten.
+Si solo hay un valor de pista o de álbum, ambos modos usan ese valor. Cada pista CUE medida tiene su propio valor. Si falta, se usan las etiquetas del archivo de audio al que hace referencia.
 
-**Preamplificación de ReplayGain** (de -15 a +15 dB; 0 dB de forma predeterminada) sube o baja el nivel solo de los archivos con etiquetas. ReplayGain suele bajar varios dB las grabaciones actuales, así que, si las canciones con etiquetas suenan más bajas que las que no las tienen, súbelo. **Evitar la saturación digital** (activado de forma predeterminada) usa los valores de pico de las etiquetas para limitar la ganancia y que las canciones amplificadas no superen la escala completa. Estos dos ajustes están disponibles cuando **ReplayGain** está en **Pista** o **Álbum**. Los cambios se aplican al momento, sin interrumpir la reproducción.
+Con **Nivel objetivo** en **Manual** (opción predeterminada), el objetivo es −18 LUFS. **Preamplificación de ReplayGain** (de −15 a +15 dB, por defecto 0 dB) permite subirlo o bajarlo. **Automático** muestra el nivel más alto que puede alcanzar el porcentaje de pistas o álbumes medidos indicado en **Cobertura automática (%)** sin superar el **Límite de pico (dB)**. La cobertura inicial es del 95 %. Auméntala para que más pistas alcancen el objetivo, o redúcela para permitir un objetivo más alto. Sin mediciones, el objetivo automático es −18 LUFS.
+
+**Evitar la saturación digital** está activado de forma predeterminada. Reduce la ganancia si el pico verdadero medido o el pico de la etiqueta superaría el límite. Baja el límite desde 0 dB para dejar margen a los efectos que amplifican la señal. El modo automático usa el límite para calcular el objetivo incluso con la protección desactivada. Los cambios se aplican durante la reproducción.
 
 El ajuste se aplica al sonido del reproductor antes de entrar en la cadena de efectos; la posición del control de volumen no cambia. ReplayGain no se aplica a la reproducción de MIDI o MusicXML, la música en red, la recepción por AirPlay, la reproducción en reproductores OpenHome o UPnP AV / DLNA ni el procesamiento de archivos sin conexión. ReplayGain está disponible en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación de Android.
 

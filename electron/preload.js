@@ -33,10 +33,20 @@ const libraryCatalogV1 = Object.freeze({
     { trackUid }
   ),
   resolvePlaybackSource: (trackUid) => ipcRenderer.invoke('library-catalog-v1:resolve-playback-source', { trackUid }),
+  prepareLoudnessTagWrite: () => ipcRenderer.invoke('library-catalog-v1:prepare-loudness-tag-write'),
+  discardLoudnessTagSnapshot: snapshotId => ipcRenderer.invoke('library-catalog-v1:discard-loudness-tag-snapshot', { snapshotId }),
+  writeLoudnessTags: ({ snapshotId, scanOptions }) => ipcRenderer.invoke('library-catalog-v1:write-loudness-tags',
+    scanOptions ? { snapshotId, scanOptions } : { snapshotId }),
   showTrackInFolder: (trackUid) => ipcRenderer.invoke('library-catalog-v1:show-track-in-folder', { trackUid }),
   createPlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist', request),
   createPlaylistWithItems: (request) => ipcRenderer.invoke('library-catalog-v1:create-playlist-with-items', request),
   recordRecentlyPlayed: (request) => ipcRenderer.invoke('library-catalog-v1:record-recently-played', request),
+  listPendingLoudness: request => ipcRenderer.invoke('library-catalog-v1:list-pending-loudness', request),
+  playbackSession: request => ipcRenderer.invoke('library-catalog-v1:playback-session', request),
+  saveTrackLoudness: request => ipcRenderer.invoke('library-catalog-v1:save-track-loudness', request),
+  finalizeLoudness: request => ipcRenderer.invoke('library-catalog-v1:finalize-loudness', request),
+  getTrackLoudness: request => ipcRenderer.invoke('library-catalog-v1:get-track-loudness', request),
+  getLoudnessStats: request => ipcRenderer.invoke('library-catalog-v1:get-loudness-stats', request),
   setTrackFavorite: (request) => ipcRenderer.invoke('library-catalog-v1:set-track-favorite', request),
   getFavoriteTrackUids: (request = {}) => ipcRenderer.invoke('library-catalog-v1:get-favorite-track-uids', request),
   getSystemPlaylists: () => ipcRenderer.invoke('library-catalog-v1:get-system-playlists', {}),
@@ -47,7 +57,7 @@ const libraryCatalogV1 = Object.freeze({
   queryPlaylistItems: (request) => ipcRenderer.invoke('library-catalog-v1:query-playlist-items', request),
   tombstonePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:tombstone-playlist', request),
   addFolder: (request = {}) => ipcRenderer.invoke('library-catalog-v1:add-folder', request),
-  requestFolderAccess: (folderId, options = {}) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId, includeVideo: options.includeVideo === true, includeMidi: options.includeMidi === true }),
+  requestFolderAccess: (folderId, options = {}) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId, includeVideo: options.includeVideo === true, includeMidi: options.includeMidi === true, includeMidiArchives: options.includeMidiArchives === true }),
   scanFolders: (request) => ipcRenderer.invoke('library-catalog-v1:scan-folders', request),
   cancelScan: (scanId) => ipcRenderer.invoke('library-catalog-v1:cancel-scan', { scanId }),
   removeFolder: (folderId) => ipcRenderer.invoke('library-catalog-v1:remove-folder', { folderId }),
@@ -258,8 +268,8 @@ ipcRenderer.on('network-output-v1:port', event => {
   }
 });
 
-ipcRenderer.on('audio-engine:ports', (event, token) => {
-  if (event.ports?.length === 2) window.postMessage({ type: 'effetune-audio-engine-ports', token }, '*', event.ports);
+ipcRenderer.on('audio-engine:ports', (event, {token,variant}) => {
+  if (event.ports?.length === 3) window.postMessage({ type: 'effetune-audio-engine-ports', token, variant }, '*', event.ports);
 });
 
 // LAN remote control (remote-v1). The WebSocket server lives in main; the
@@ -403,6 +413,9 @@ contextBridge.exposeInMainWorld(
       onMedia: callback => addSingleArgIpcListener('browser:media', callback)
     }),
     systemAudio: Object.freeze({
+      nativeBegin: endpointId => ipcRenderer.invoke('system-audio:native-begin', endpointId),
+      nativeHold: token => ipcRenderer.invoke('system-audio:native-hold', token),
+      nativeEnd: token => ipcRenderer.invoke('system-audio:native-end', token),
       prepareCapture: () => ipcRenderer.sendSync('system-audio:prepare-capture'),
       captureStarted: () => { ipcRenderer.sendSync('system-audio:capture-started'); },
       captureStopped: () => { ipcRenderer.sendSync('system-audio:capture-stopped'); }
@@ -413,6 +426,9 @@ contextBridge.exposeInMainWorld(
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
     openPlaybackSelection: () => ipcRenderer.invoke('open-playback-selection'),
     prepareLocalPlaybackSource: filePath => ipcRenderer.invoke('prepare-local-playback-source', filePath),
+    prepareLoudnessSource: (filePath, requestId, signature) => ipcRenderer.invoke('prepare-loudness-source', filePath, requestId, signature),
+    cancelLoudnessSource: requestId => ipcRenderer.invoke('cancel-loudness-source', requestId),
+    releaseLoudnessSource: filePath => ipcRenderer.invoke('release-loudness-source', filePath),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
@@ -473,6 +489,7 @@ contextBridge.exposeInMainWorld(
     networkOutputV1,
     audioEngine: Object.freeze({
       startupDriver: () => ipcRenderer.sendSync('audio-engine:startup-driver'),
+      available: () => ipcRenderer.invoke('audio-engine:available'),
       start: (driver, token) => ipcRenderer.invoke('audio-engine:start', driver, token),
       stop: () => ipcRenderer.invoke('audio-engine:stop'),
       list: driver => ipcRenderer.invoke('audio-engine:list', driver)
@@ -513,6 +530,7 @@ contextBridge.exposeInMainWorld(
     loadAudioPreferences: () => ipcRenderer.invoke('load-audio-preferences'),
     getWindowVisibility: () => ipcRenderer.invoke('get-window-visibility'),
     getBackgroundProcessingStatus: () => ipcRenderer.invoke('get-background-processing-status'),
+    diagnostics: { collect: () => ipcRenderer.invoke('diagnostics:collect') },
     reportDesktopAudioActivity: activity => ipcRenderer.send('desktop-audio-activity', {
       processingActive: activity?.processingActive === true,
       playbackActive: activity?.playbackActive === true
@@ -555,6 +573,7 @@ contextBridge.exposeInMainWorld(
     onBackupRestore: (callback) => {
       return addNoArgIpcListener('backup-restore', callback);
     },
+    onShowDiagnostics: callback => addNoArgIpcListener('show-diagnostics', callback),
     onShowAboutDialog: (callback) => {
       return addSingleArgIpcListener('show-about-dialog', callback);
     },

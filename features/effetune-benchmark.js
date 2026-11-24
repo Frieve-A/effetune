@@ -6,7 +6,10 @@ import {
     getPluginExecutionUnsupportedReason
 } from '../js/audio/plugin-execution-capabilities.js';
 import { getDspRolloutConfig } from '../js/audio/dsp-rollout.js';
+import { DSP_PARAM_PACKERS } from '../js/audio/dsp-params.generated.js';
 import { instantiateDsp, loadDspModule } from '../js/audio/dsp-wasm-loader.js';
+import { connectAudioEngine, NativeControlClient } from '../js/native/engine-connection.js';
+import { packed, packRecords } from '../js/native/engine-endpoint.js';
 import {
     buildIrAssetPayload,
     IR_ASSET_FORMAT_TAG,
@@ -19,7 +22,8 @@ import {
 
 export const BENCHMARK_DSP_MODES = Object.freeze({
     JAVASCRIPT: 'javascript',
-    WEBASSEMBLY: 'webassembly'
+    WEBASSEMBLY: 'webassembly',
+    NATIVE: 'native'
 });
 
 export const BENCHMARK_DSP_MAX_CHANNELS = 16;
@@ -91,6 +95,9 @@ const FIR_BENCHMARK_WORKLOADS = new Map([
 const DSP_OK = 0;
 const DSP_ASSET_STATE_PREPARING = 2;
 const DSP_ASSET_STATE_ACTIVE = 3;
+const NATIVE_BENCHMARK_BATCH_BLOCKS = 1024;
+const NATIVE_BENCHMARK_DURATION_NS = 1e9;
+const NATIVE_BENCHMARK_ASSET_TIMEOUT_MS = 2000;
 const IR_REVERB_ASSET_SLOT = 0;
 const IR_REVERB_CHANNELS = 4;
 
@@ -564,6 +571,7 @@ class JavascriptBenchmarkRuntime {
         this.label = 'JavaScript';
         this.variant = BENCHMARK_DSP_MODES.JAVASCRIPT;
         this.usesWasm = false;
+        this.supportsAssets = false;
         this.closed = false;
     }
 
@@ -694,6 +702,7 @@ class WasmBenchmarkRuntime {
         this.label = moduleInfo.simd ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)';
         this.variant = moduleInfo.simd ? 'simd' : 'baseline';
         this.usesWasm = true;
+        this.supportsAssets = true;
         this.closed = false;
         this.activeSession = null;
         this.telemetryPacket = new ArrayBuffer(BENCHMARK_DSP_TELEMETRY_BYTES);
@@ -871,6 +880,164 @@ class WasmBenchmarkRuntime {
     }
 }
 
+class NativeBenchmarkRuntime {
+    constructor({ connect, bridge, sampleRate, blockSize, warning }) {
+        this.connect = connect;
+        this.bridge = bridge;
+        this.sampleRate = sampleRate;
+        this.blockSize = blockSize;
+        this.warning = warning;
+        this.supportsAssets = true;
+    }
+
+    async openDriver() {
+        try {
+            const { ports: [control, ...unused], variant } = await this.connect('null', { bridge: this.bridge });
+            for (const port of unused) port.close();
+            this.client = new NativeControlClient(control);
+            this.variant = variant;
+            this.label = variant === 'v3' ? 'Native (AVX2)' : variant === 'baseline' ? 'Native (baseline)' : 'Native';
+        } catch (error) {
+            this.warning(`Native benchmark could not start: ${error.message}`);
+            await this.bridge.stop();
+            throw new DspBenchmarkUnavailableError('Native DSP could not start');
+        }
+    }
+
+    getPluginUnsupportedReason(plugin, { channelCount = 2 } = {}) {
+        if (!DSP_PARAM_PACKERS.has(getPluginType(plugin))) return 'Native DSP is not available for this plugin';
+        return getBenchmarkFormatUnsupportedReason(plugin, this.sampleRate, channelCount);
+    }
+
+    supportsPlugin(plugin, options) {
+        return this.getPluginUnsupportedReason(plugin, options) === null;
+    }
+
+    render(frames, attachment) {
+        return this.client.request({ type: 'renderNull', frames, attachment }, 'nullOutput',
+            result => result.frames === frames);
+    }
+
+    async prepareAssets(pluginId, assets, channelCount) {
+        if (!assets.size) return;
+        const pending = new Set(assets.keys());
+        let rejected = false;
+        const receiveAsset = ({ data }) => {
+            if (data.pluginId !== pluginId || !pending.has(data.slot)) return;
+            if (data.type === 'assetState' && data.state === DSP_ASSET_STATE_ACTIVE) pending.delete(data.slot);
+            if (data.type === 'assetLoadRejected') rejected = true;
+        };
+        this.client.port.addEventListener('message', receiveAsset);
+        try {
+            for (const [slot, { payload, ...asset }] of assets) {
+                this.client.send({ type: 'setPluginAsset', pluginId, slot, ...asset, attachment: payload });
+            }
+            const deadline = performance.now() + NATIVE_BENCHMARK_ASSET_TIMEOUT_MS;
+            const silence = new Float32Array(this.blockSize * channelCount);
+            while (pending.size && performance.now() < deadline) {
+                await this.render(this.blockSize, silence.buffer);
+                if (rejected) throw new Error('Asset rejected');
+            }
+            if (pending.size) throw new Error('Asset preparation timed out');
+        } finally {
+            this.client.port.removeEventListener('message', receiveAsset);
+        }
+    }
+
+    async benchmarkPlugin(plugin, audioBuffer, { channelCount, assets, warmupFrames }) {
+        if (this.client.lifetime.signal.aborted) await this.openDriver();
+        const { sampleRate, blockSize } = this;
+        const type = getPluginType(plugin);
+        const id = plugin.id;
+        const result = { category: '', name: plugin.name, implementation: this.label };
+        let failureNote = 'Native DSP could not start processing this effect';
+        let opened = false;
+        try {
+            const parameters = preparePlugin(plugin, sampleRate, blockSize, channelCount);
+            if (channelCount > 2) parameters.channel = 'A';
+            const descriptor = buildDspPipelineDescriptor([plugin], {
+                getInstanceId: () => id,
+                getParameters: () => parameters,
+                omitInactive: true
+            });
+            const { records, ...binary } = packRecords([packed({ id, type, parameters, channel: plugin.channel,
+                executionCapabilities: getPluginExecutionCapabilities(plugin) }, sampleRate, channelCount, true)], descriptor);
+            const state = await this.client.request({ type: 'openSession', sampleRate, outputChannels: channelCount,
+                inputChannels: 0, periodFrames: blockSize }, 'sessionState',
+            reply => reply.state === 'open' || reply.state === 'failed');
+            if (state.state !== 'open') throw new Error(`Could not open benchmark session: ${state.reason}`);
+            opened = true;
+            await this.client.request({ type: 'configurePipeline', revision: 1, plugins: records, ...binary },
+                'pipelineApplied', reply => reply.revision === 1);
+
+            failureNote = 'Native DSP could not load this effect’s audio data';
+            await this.prepareAssets(id, assets, channelCount);
+
+            failureNote = 'Native DSP stopped processing this effect';
+            const blockSamples = blockSize * channelCount;
+            const totalBlocks = Math.floor(audioBuffer.length / blockSamples);
+            if (!totalBlocks) throw new Error('Benchmark input must contain a complete block');
+            let blockIndex = 0;
+            const renderBlocks = (blocks, samples) => {
+                const frames = blocks * blockSize;
+                for (let block = 0; block < blocks; block++) {
+                    const source = (blockIndex++ % totalBlocks) * blockSamples;
+                    for (let channel = 0; channel < channelCount; channel++) {
+                        const offset = source + channel * blockSize;
+                        samples.set(audioBuffer.subarray(offset, offset + blockSize), channel * frames + block * blockSize);
+                    }
+                }
+                return this.render(frames, samples.buffer);
+            };
+            const batchBlocks = NATIVE_BENCHMARK_BATCH_BLOCKS;
+            const warmupBlocks = Math.max(batchBlocks, Math.ceil(warmupFrames / blockSize));
+            const batch = new Float32Array(batchBlocks * blockSamples);
+            await renderBlocks(warmupBlocks, warmupBlocks === batchBlocks ? batch :
+                new Float32Array(warmupBlocks * blockSamples));
+            let elapsedNs = 0;
+            let totalCalls = 0;
+            while (elapsedNs < NATIVE_BENCHMARK_DURATION_NS) {
+                const { processingNanoseconds } = await renderBlocks(batchBlocks, batch);
+                if (!Number.isFinite(processingNanoseconds) || processingNanoseconds <= 0) {
+                    throw new Error('Native benchmark response has no processing time');
+                }
+                elapsedNs += processingNanoseconds;
+                totalCalls += batchBlocks;
+            }
+            const elapsedSeconds = elapsedNs / 1e9;
+            const samplesPerSecond = Math.round(totalCalls * blockSize / elapsedSeconds);
+            return { ...result, samplesPerSecond, totalCalls, elapsedTime: elapsedSeconds.toFixed(3),
+                speedupFactor: (samplesPerSecond / sampleRate).toFixed(1) };
+        } catch (error) {
+            this.warning(`Native benchmark failed for ${type}: ${error.message}`);
+            return { ...result, samplesPerSecond: null, speedupFactor: null, skipped: true, note: failureNote };
+        } finally {
+            if (opened && !this.client.lifetime.signal.aborted) {
+                try {
+                    await this.client.request({ type: 'closeSession' }, 'sessionState', reply => reply.state === 'closed');
+                } catch (error) {
+                    this.warning(`Native benchmark session could not close: ${error.message}`);
+                }
+            }
+        }
+    }
+
+    async close() {
+        this.client.close();
+        await this.bridge.stop();
+    }
+}
+
+async function createNativeBenchmarkRuntime({ sampleRate, blockSize, dependencies }) {
+    const warning = dependencies.warning || defaultWarning;
+    const bridge = dependencies.audioEngine || globalThis.window?.electronAPI?.audioEngine;
+    if (!bridge) throw new DspBenchmarkUnavailableError('Native DSP is unavailable');
+    const connect = dependencies.connectAudioEngine || connectAudioEngine;
+    const runtime = new NativeBenchmarkRuntime({ connect, bridge, sampleRate, blockSize, warning });
+    await runtime.openDriver();
+    return runtime;
+}
+
 async function createWasmBenchmarkRuntime({
     sampleRate,
     blockSize,
@@ -990,6 +1157,9 @@ export async function createDspBenchmarkRuntime({
             basePath,
             dependencies
         });
+    }
+    if (mode === BENCHMARK_DSP_MODES.NATIVE) {
+        return createNativeBenchmarkRuntime({ sampleRate, blockSize, dependencies });
     }
     throw new RangeError(`Unsupported benchmark DSP mode: ${String(mode)}`);
 }

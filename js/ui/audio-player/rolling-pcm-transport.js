@@ -22,6 +22,7 @@ import {
   normalizePcm16WaveFillTarget,
   normalizePcm16WaveSeekFrame,
   PCM16_STEREO_44100_TO_96000_PROFILE,
+  pcmFramesForDuration,
   planPcm16WaveFragment,
   sourceToOutputFrames
 } from './rolling-pcm-core.js';
@@ -29,6 +30,7 @@ import {
 const DEFAULT_WORKER_URL = new URL('../../vendor/rolling-pcm-decoder-worker.mjs', import.meta.url);
 const DISPOSE_TIMEOUT_MS = 1000;
 const IMMEDIATE_START_LEAD_SECONDS = 0.02;
+const NATIVE_FILE_SLAB_FRAMES = 16384;
 let transportSequence = 0;
 
 export class RollingPcmTransport {
@@ -41,6 +43,7 @@ export class RollingPcmTransport {
     reservationRole = 'candidate',
     preparationOwner = null,
     sourceReacquirer = null,
+    nativeFile = null,
     onEnded = null,
     onFailure = null
   } = {}) {
@@ -70,6 +73,8 @@ export class RollingPcmTransport {
     this.reservationRole = reservationRole;
     this.preparationOwner = preparationOwner;
     this.sourceReacquirer = typeof sourceReacquirer === 'function' ? sourceReacquirer : null;
+    this.nativeFile = nativeFile;
+    this.nativeGain = 1;
     this.reservationOwner = Object.freeze({ transportId: `reservation-${transportSequence + 1}` });
     this.reservationHeld = false;
     this.transportId = `rolling-pcm-${++transportSequence}`;
@@ -145,7 +150,7 @@ export class RollingPcmTransport {
     if (this.disposed) throw new Error('Rolling PCM transport is disposed');
     if (this.prepared) return this.metadata;
     if (!Number.isSafeInteger(snapshot?.byteLength) || snapshot.byteLength < 0 ||
-        (!snapshot.dsd && snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP)) {
+        (!this.nativeFile && !snapshot.dsd && snapshot.byteLength > ROLLING_COMPRESSED_SOURCE_BYTE_CAP)) {
       throw codedError('compressed-source-budget');
     }
     const requestedDecoderContract = outputSampleRate !== null || decoderProfile !== null ||
@@ -159,32 +164,19 @@ export class RollingPcmTransport {
     if (decoderContract && decoderContract.outputSampleRate !== this.audioContext.sampleRate) {
       throw codedError('decoded-format-ineligible');
     }
-    const reservedPcmBytes = this.reservationRole === 'next'
-      ? this.profile.nextPcmByteCap
-      : this.profile.currentPcmByteCap;
-    // Only a canonical snapshot that keeps its own compressed bytes alive overlaps with the
-    // candidate copy. A path-backed snapshot re-reads the file and transfers it to the worker,
-    // so the peak is one copy and charging a second one would reject admissible tracks.
-    const canonicalCompressedBytes = !snapshot.dsd && hasResidentCanonicalSource(snapshot) ? snapshot.byteLength : 0;
-    if (!this.reservationLedger.reserve(this.reservationOwner, this.reservationRole, {
-      canonicalIdentity: snapshot.canonicalIdentity ?? snapshot,
-      canonicalCompressedBytes,
-      workerCompressedBytes: snapshot.dsd ? DSD_RESIDENT_BYTE_CAP : snapshot.byteLength,
-      pcmBytes: reservedPcmBytes,
-      inFlightBytes: this.profile.slabFrames * this.channelCountHint *
-        Float32Array.BYTES_PER_ELEMENT
-    }, this.reservationProfile)) {
-      throw codedError('rolling-admission-rejected');
-    }
-    this.reservationHeld = true;
+    if (!this.reserveAdmission(snapshot, this.profile)) throw codedError('rolling-admission-rejected');
     let source;
     try {
-      if (snapshot.dsd) this.dsdOpenController = new AbortController();
-      source = snapshot.dsd
-        ? { kind: 'dsd-range', reader: await snapshot.createRangeReader(this.dsdOpenController.signal) }
-        : sourceOverride === null
-        ? await acquireRollingCandidateSource(snapshot, this.sourceReacquirer)
-        : takeRollingCandidateSourceOverride(snapshot, sourceOverride);
+      const rangeKind = snapshot.dsd ? 'dsd-range' : this.nativeFile && snapshot.createRangeReader ? 'range' : null;
+      if (rangeKind) {
+        this.dsdOpenController = new AbortController();
+        source = { kind: rangeKind, reader: await snapshot.createRangeReader(this.dsdOpenController.signal) };
+      } else if (this.nativeFile && snapshot.sourceKind === 'blob') {
+        source = { kind: 'blob', blob: snapshot.blob };
+      } else {
+        source = sourceOverride === null ? await acquireRollingCandidateSource(snapshot, this.sourceReacquirer)
+          : takeRollingCandidateSourceOverride(snapshot, sourceOverride);
+      }
     } catch (error) {
       this.releaseReservation();
       throw error;
@@ -203,7 +195,7 @@ export class RollingPcmTransport {
       throw codedError('canonical-source-ineligible');
     }
     this.decoderContract = decoderContract;
-    if (source.kind === 'dsd-range') this.dsdRangeChannel = createDsdRangeChannel(source.reader);
+    if (source.reader) this.dsdRangeChannel = createDsdRangeChannel(source.reader);
     this.sourceSnapshot = snapshot;
     this.segmentId = String(segmentId || 'current');
     this.generation++;
@@ -230,16 +222,17 @@ export class RollingPcmTransport {
     const ready = this.waitFor(message => message.type === RollingPcmEvent.READY);
     const open = createRollingPcmEnvelope(RollingPcmCommand.OPEN, ids, {
       sourceKind: source.kind,
-      source: source.kind === 'dsd-range' ? this.dsdRangeChannel.port
+      source: this.dsdRangeChannel ? this.dsdRangeChannel.port
         : source.kind === 'blob' ? source.blob : source.bytes,
+      ...(source.kind === 'range' ? { sourceSize: source.reader.size } : {}),
       ...(snapshot.dsd ? { sourceSize: snapshot.byteLength, dsdOutputRate: this.audioContext.sampleRate,
         playbackSpeed: snapshot.playbackSpeed ?? 1, preservePitch: snapshot.preservePitch !== false } : {}),
-      slabFrames: this.profile.slabFrames,
+      slabFrames: this.nativeFile ? NATIVE_FILE_SLAB_FRAMES : this.profile.slabFrames,
       freePoolPerSizeClass: this.profile.freePoolPerSizeClass,
       ...(decoderContract ?? {})
     });
     try {
-      worker.postMessage(open, source.kind === 'dsd-range' ? [this.dsdRangeChannel.port]
+      worker.postMessage(open, this.dsdRangeChannel ? [this.dsdRangeChannel.port]
         : source.kind === 'bytes' ? [source.bytes] : []);
       if (source.reacquired === true &&
           !this.reservationLedger.transferSourceOwnership(
@@ -287,9 +280,20 @@ export class RollingPcmTransport {
       decoderProfile: readyMessage.decoderProfile ?? null,
       resamplerProfile: readyMessage.resamplerProfile ?? null
     });
-    // The admission reservation was sized from the hint, so the source must fit within it.
-    if (this.metadata.sampleRate !== this.audioContext.sampleRate ||
-        this.metadata.channelCount > this.channelCountHint) {
+    // Native file playback learns the channel count only from the decoder, so resize its
+    // admission now. Other paths were admitted from the hint and must fit within it.
+    if (this.nativeFile && this.metadata.channelCount > this.reservationProfile.channelCount) {
+      this.releaseReservation();
+      const profile = getRollingPcmProfile(this.audioContext.sampleRate, this.metadata.channelCount,
+        this.profile.id);
+      if (!profile || !this.reserveAdmission(snapshot, profile)) {
+        await this.dispose();
+        throw codedError('rolling-admission-rejected');
+      }
+    }
+    if ((!this.nativeFile && this.metadata.sampleRate !== this.audioContext.sampleRate) ||
+        (this.nativeFile && (this.metadata.sampleRate < 8000 || this.metadata.sampleRate > 384000)) ||
+        this.metadata.channelCount > this.reservationProfile.channelCount) {
       await this.dispose();
       throw codedError('decoded-format-ineligible');
     }
@@ -339,7 +343,7 @@ export class RollingPcmTransport {
         await seekReady;
         initialFrame = adoptedFrame;
       }
-      const headFrames = Number.isSafeInteger(minimumHeadFrames)
+      const headFrames = this.nativeFile ? NATIVE_FILE_SLAB_FRAMES : Number.isSafeInteger(minimumHeadFrames)
         ? minimumHeadFrames
         : this.profile.nextMinimumHeadFrames;
       const initialTargetFrame = checkedFrameTarget(
@@ -349,6 +353,7 @@ export class RollingPcmTransport {
       );
       if (initialTargetFrame === null) throw codedError('fill-target-invalid');
       await this.fillTo(initialTargetFrame);
+      if (this.nativeFile && initialFrame === this.metadata.totalFrames) this.decoderEnded = true;
       if (this.lastReceivedFrame < initialTargetFrame) {
         throw codedError('minimum-head-not-resident');
       }
@@ -372,12 +377,19 @@ export class RollingPcmTransport {
   activate({
     when = this.audioContext.currentTime,
     frame = this.positionFrame,
-    deferRefill = false
+    deferRefill = false,
+    fadeIn = false,
+    nextAfter = null
   } = {}) {
     if (!this.prepared || this.disposed || this.failed || !this.metadata) return false;
     if (!Number.isSafeInteger(frame) || frame < 0 || frame > this.metadata.totalFrames ||
         !Number.isFinite(when)) return false;
     if (this.playing) return true;
+    if (this.nativeFile) {
+      this.nativeFileEntry = this.nativeFile.start(this, frame, { gain: this.nativeGain, fadeIn, nextAfter });
+      if (!this.nativeFileEntry) return false;
+      this.nativeNeedsSeek = false;
+    }
     this.positionFrame = frame;
     this.anchorFrame = frame;
     this.anchorContextTime = when;
@@ -385,7 +397,7 @@ export class RollingPcmTransport {
     this.playing = true;
     this.endPublished = false;
     this.scheduleAvailable(!deferRefill);
-    if (frame === this.metadata.totalFrames) this.publishEnded();
+    if (!this.nativeFile && frame === this.metadata.totalFrames) this.publishEnded();
     return true;
   }
 
@@ -394,6 +406,10 @@ export class RollingPcmTransport {
     this.seekSequence++;
     void this.cancelPendingSeek();
     const frame = this.getPositionFrame();
+    if (this.nativeFile) {
+      this.nativeNeedsSeek = true;
+      this.flushNativeFile();
+    }
     this.playing = false;
     this.positionFrame = frame;
     this.anchorFrame = frame;
@@ -425,7 +441,8 @@ export class RollingPcmTransport {
       channelCountHint: this.metadata.channelCount,
       reservationLedger: this.reservationLedger,
       reservationRole: 'candidate',
-      sourceReacquirer: this.sourceReacquirer
+      sourceReacquirer: this.sourceReacquirer,
+      nativeFile: this.nativeFile
     });
     this.pendingSeek = { operationId, candidate };
     try {
@@ -475,6 +492,9 @@ export class RollingPcmTransport {
   getPositionFrame() {
     if (!this.metadata) return 0;
     if (!this.playing) return this.positionFrame;
+    if (this.nativeFile) {
+      return Math.max(this.anchorFrame, Math.min(this.nativeFile.position(this.nativeFileEntry), this.metadata.totalFrames));
+    }
     const elapsedFrames = Math.floor(
       (this.audioContext.currentTime - this.anchorContextTime) * this.metadata.sampleRate
     );
@@ -498,6 +518,7 @@ export class RollingPcmTransport {
 
   async performDispose() {
     this.disposing = true;
+    this.flushNativeFile();
     this.dsdOpenController?.abort();
     this.dsdOpenController = null;
     this.seekSequence++;
@@ -626,7 +647,7 @@ export class RollingPcmTransport {
         expectedTransportId: this.transportId,
         expectedGeneration: this.generation,
         expectedSegmentId: this.segmentId,
-        maxFrames: this.profile.slabFrames
+        maxFrames: this.nativeFile ? NATIVE_FILE_SLAB_FRAMES : this.profile.slabFrames
       }) || message.slabId !== this.lastSlabId + 1 ||
           message.startFrame !== this.lastReceivedFrame || !this.metadata ||
           message.channelCount !== this.metadata.channelCount) {
@@ -641,7 +662,9 @@ export class RollingPcmTransport {
         return;
       }
       this.decoderEnded = true;
-      if (this.playing && this.scheduled.size === 0 && this.queue.length === 0) {
+      if (this.nativeFile) {
+        if (this.playing) this.scheduleAvailable();
+      } else if (this.playing && this.scheduled.size === 0 && this.queue.length === 0) {
         if (this.getPositionFrame() >= message.totalFrames) this.publishEnded();
         else this.fail('underrun');
       }
@@ -661,7 +684,7 @@ export class RollingPcmTransport {
         this.fail('queue-state-ended-invalid');
         return;
       }
-      if (this.playing && this.scheduled.size === 0 && this.queue.length === 0 &&
+      if (!this.nativeFile && this.playing && this.scheduled.size === 0 && this.queue.length === 0 &&
           !this.decoderEnded) {
         this.fail('underrun');
         return;
@@ -774,20 +797,23 @@ export class RollingPcmTransport {
   }
 
   acceptSlab(message) {
-    const audioBuffer = this.audioContext.createBuffer(
+    const audioBuffer = this.nativeFile ? null : this.audioContext.createBuffer(
       message.channelCount,
       message.frameCount,
       this.metadata.sampleRate
     );
-    for (let channel = 0; channel < message.channelCount; channel++) {
-      audioBuffer.copyToChannel(new Float32Array(message.planes[channel]), channel);
+    if (audioBuffer) {
+      for (let channel = 0; channel < message.channelCount; channel++) {
+        audioBuffer.copyToChannel(new Float32Array(message.planes[channel]), channel);
+      }
     }
     const bytes = message.frameCount * message.channelCount * Float32Array.BYTES_PER_ELEMENT;
     this.queue.push({
       audioBuffer,
       startFrame: message.startFrame,
       frameCount: message.frameCount,
-      bytes
+      bytes,
+      ...(this.nativeFile && { planes: message.planes, slabId: message.slabId, sent: 0 })
     });
     this.lastSlabId = message.slabId;
     this.lastReceivedFrame += message.frameCount;
@@ -796,10 +822,7 @@ export class RollingPcmTransport {
     if (this.diagnostics.livePcmBytes > this.diagnostics.maxLivePcmBytes) {
       this.diagnostics.maxLivePcmBytes = this.diagnostics.livePcmBytes;
     }
-    this.post(RollingPcmCommand.RECYCLE, {
-      slabId: message.slabId,
-      planes: message.planes
-    }, message.planes);
+    if (!this.nativeFile) this.recycleSlab(message);
     const pcmByteCap = this.reservationRole === 'next'
       ? this.profile.nextPcmByteCap
       : this.profile.currentPcmByteCap;
@@ -813,6 +836,10 @@ export class RollingPcmTransport {
 
   scheduleAvailable(requestAhead = true) {
     if (!this.playing || this.disposed || this.failed || !this.metadata) return;
+    if (this.nativeFile) {
+      this.scheduleNativeFile(requestAhead);
+      return;
+    }
     while (this.queue.length > 0 && this.scheduled.size < this.profile.sourceNodeCap) {
       const record = this.queue.shift();
       const recordEnd = record.startFrame + record.frameCount;
@@ -887,6 +914,13 @@ export class RollingPcmTransport {
 
   requestAhead() {
     if (!this.worker || !this.metadata || this.decoderEnded || this.failed || this.disposed) return;
+    if (this.nativeFile) {
+      if (!this.queue.length && this.lastReceivedFrame >= this.lastFillTarget) {
+        const target = Math.min(this.metadata.totalFrames, this.lastReceivedFrame + NATIVE_FILE_SLAB_FRAMES);
+        if (target > this.lastFillTarget) this.requestFill(target);
+      }
+      return;
+    }
     const aheadFrames = this.reservationRole === 'next'
       ? this.profile.nextMinimumHeadFrames
       : this.profile.currentHighWaterFrames;
@@ -972,6 +1006,46 @@ export class RollingPcmTransport {
     record.released = true;
     this.diagnostics.liveAudioBuffers--;
     this.diagnostics.livePcmBytes -= record.bytes;
+    if (record.planes) this.recycleSlab(record);
+  }
+
+  recycleSlab({ slabId, planes }) {
+    this.post(RollingPcmCommand.RECYCLE, { slabId, planes }, planes);
+  }
+
+  setNativeGain(gain) {
+    this.nativeGain = gain;
+    this.nativeFile?.setGain(this.nativeFileEntry,gain);
+  }
+
+  flushNativeFile() {
+    if (this.nativeFileEntry) this.nativeFile.flush(this.nativeFileEntry);
+  }
+
+  rejectNativeFileReservation(entry) {
+    if (this.nativeFileEntry !== entry) return;
+    this.nativeFileEntry = null;
+    this.playing = false;
+    if (!entry.cancellation) this.onNativeFileReservationRejected?.();
+  }
+
+  scheduleNativeFile(requestAhead) {
+    const entry = this.nativeFileEntry;
+    if (!entry) return;
+    try {
+      while (this.queue.length) {
+        const record = this.queue[0];
+        const sent = this.nativeFile.sendPcm(entry,record,record.sent);
+        if (!sent) return;
+        record.sent += sent;
+        if (record.sent === record.frameCount) this.releaseBufferRecord(this.queue.shift());
+      }
+      if (this.decoderEnded) this.nativeFile.end(entry,this.metadata.totalFrames);
+      else if (requestAhead) this.requestAhead();
+    } catch (error) {
+      console.warn('Could not send native file audio:', error);
+      this.fail('native-file-transport-failed');
+    }
   }
 
   fail(reason) {
@@ -1070,6 +1144,10 @@ export class RollingPcmTransport {
     const candidateReservationOwner = candidate.reservationOwner;
     const candidateReservationProfile = candidate.reservationProfile;
     this.playing = false;
+    if (this.nativeFile) {
+      this.flushNativeFile();
+      this.nativeNeedsSeek = false;
+    }
     this.nodeGeneration++;
     const replacedScheduled = this.scheduled;
     this.scheduled = new Set();
@@ -1176,7 +1254,7 @@ export class RollingPcmTransport {
       })
     );
     try {
-      const activated = !resume || this.activate({ frame: target, deferRefill: true });
+      const activated = !resume || this.activate({ frame: target, deferRefill: true, fadeIn: Boolean(this.nativeFile) });
       if (!activated || !this.reservationLedger.promote(
         candidateReservationOwner,
         oldReservationOwner,
@@ -1203,6 +1281,24 @@ export class RollingPcmTransport {
       this.fail('seek-adoption-failed');
       return false;
     }
+  }
+
+  reserveAdmission(snapshot, profile) {
+    // Only a canonical snapshot that keeps its own compressed bytes alive overlaps with the
+    // candidate copy. A path-backed snapshot re-reads the file and transfers it to the worker,
+    // so the peak is one copy and charging a second one would reject admissible tracks.
+    const canonicalCompressedBytes = !this.nativeFile && !snapshot.dsd && hasResidentCanonicalSource(snapshot)
+      ? snapshot.byteLength : 0;
+    if (!this.reservationLedger.reserve(this.reservationOwner, this.reservationRole, {
+      canonicalIdentity: snapshot.canonicalIdentity ?? snapshot,
+      canonicalCompressedBytes,
+      workerCompressedBytes: snapshot.dsd || this.nativeFile ? DSD_RESIDENT_BYTE_CAP : snapshot.byteLength,
+      pcmBytes: this.reservationRole === 'next' ? profile.nextPcmByteCap : profile.currentPcmByteCap,
+      inFlightBytes: profile.slabFrames * profile.channelCount * Float32Array.BYTES_PER_ELEMENT
+    }, profile)) return false;
+    this.reservationProfile = profile;
+    this.reservationHeld = true;
+    return true;
   }
 
   releaseReservation() {
@@ -1333,7 +1429,7 @@ function isValidReadyMessage(message, decoderContract = null, dsd = false) {
     message.resamplerProfile !== undefined;
   if (!decoderContract) {
     return !hasSourceOutputMetadata &&
-      message.totalFrames === Math.ceil(message.durationSec * message.sampleRate);
+      message.totalFrames === pcmFramesForDuration(message.durationSec, message.sampleRate);
   }
   const profile = PCM16_STEREO_44100_TO_96000_PROFILE;
   const authoritativeTotalFrames = sourceToOutputFrames(

@@ -63,6 +63,7 @@ public:
   PartitionedConvolver &operator=(PartitionedConvolver &&) noexcept;
   PartitionedConvolver(const PartitionedConvolver &) = delete;
   PartitionedConvolver &operator=(const PartitionedConvolver &) = delete;
+  void swap(PartitionedConvolver &other) noexcept;
 
   bool reserve(const ConvolverConfig &config) noexcept;
   // CONTROL only. Admits reported storage and preparation scratch before each

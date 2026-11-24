@@ -1430,6 +1430,32 @@ test('blind switches complete only the fade token owned by the latest switch', a
   });
 });
 
+test('DBT teardown restores an interrupted switch only while it owns the fade', async () => {
+  for (const externalFade of [false,true]) {
+    let resolveTeardown;
+    const disableParallelPromise = new Promise(resolve => { resolveTeardown = resolve; });
+    await withHarness({disableParallelPromise}, async h => {
+      h.dbt.enterFresh();
+      await flushMicrotasks();
+      h.dbt.els.countInput.value = '1';
+      await h.dbt._startTest('ABX');
+      h.dbt._switchToLabel('X');
+      const fadeToken = h.uiManager.audioManager._outputFadeToken;
+      const closing = h.dbt.exit();
+
+      h.runTimers();
+      assert.equal(h.calls.some(call => call[0] === 'fadeInOutput'), false);
+      if (externalFade) h.uiManager.audioManager.fadeOutOutput(0);
+      resolveTeardown(true);
+      await closing;
+
+      assert.deepEqual(h.calls.filter(call => call[0] === 'fadeInOutputForToken'),
+        [['fadeInOutputForToken',fadeToken,0.05]]);
+      assert.equal(h.calls.some(call => call[0] === 'fadeInOutput'), !externalFade);
+    });
+  }
+});
+
 test('clears the switch highlight when an answer advances to the next trial', async () => {
   await withHarness({}, async h => {
     h.dbt.enterFresh();

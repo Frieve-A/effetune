@@ -93,7 +93,7 @@ test('central CI changes do not select unrelated product builds', () => {
   const dspCoreFilter = scope.slice(scope.indexOf('            dsp_core:'), scope.indexOf('            dsp_library:'));
   const dspLibraryFilter = scope.slice(scope.indexOf('            dsp_library:'), scope.indexOf('            dsp_docs:'));
   const dspDocsFilter = scope.slice(scope.indexOf('            dsp_docs:'), scope.indexOf('            openhome:'));
-  const openHomeFilter = scope.slice(scope.indexOf('            openhome:'));
+  const openHomeFilter = scope.slice(scope.indexOf('            openhome:'), scope.indexOf('            audio_engine:'));
 
   assert.doesNotMatch(dspCoreFilter, /\.github\/workflows\/ci\.yml/);
   assert.doesNotMatch(openHomeFilter, /\.github\/workflows\/ci\.yml/);

@@ -49,7 +49,8 @@ public:
     cell_count_ = spectrogram ? kSpectrogramCells : kSpectrumCells;
     const std::uint32_t maximum_hop = hopForSize(kMaximumSize);
     short_size_ = 1u;
-    while (short_size_ < kMaximumSize + maximum_hop + kFirTaps + 4u) {
+    // The short window ends 1.5 sizes before the capture end (see startJob).
+    while (short_size_ < kMaximumSize * 5u / 2u + maximum_hop + kFirTaps + 4u) {
       short_size_ <<= 1u;
     }
     long_size_ = 1u;
@@ -330,7 +331,8 @@ private:
       return;
     }
     job_capture_end_ = latest_decimator_end_ - kFirDelay;
-    job_short_begin_ = job_capture_end_ - active_->size;
+    // Both windows share the long window's centre, so every cell describes the same instant.
+    job_short_begin_ = job_capture_end_ - active_->size * 5u / 2u;
     job_long_begin_ = decimated_samples_ - active_->size;
     job_slot_ = 0u;
     next_slot_sample_ = samples_ + kSlotSamples;

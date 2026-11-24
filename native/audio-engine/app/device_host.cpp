@@ -10,6 +10,7 @@
 
 namespace effetune::audio {
 DeviceHost::DeviceHost(std::string_view backend, bool muteOutput) : muteOutput_(muteOutput) {
+  session.setFileInput(&file);
   [[maybe_unused]] DeviceCallbacks callbacks{this, render, capture, reset};
   if (backend == "null") {
 #if defined(_MSC_VER)
@@ -47,17 +48,80 @@ DeviceList DeviceHost::list() {
   return result;
 }
 
+DeviceError DeviceHost::openMeasurement(unsigned rate, const std::string &outputId,
+                                        unsigned channels, const std::string &inputId,
+                                        std::vector<unsigned> indices, unsigned deviceRate,
+                                        unsigned captureRate, bool synchronous) {
+  if (measuring() || session.isOpen())
+    return DeviceError::Busy;
+  if (rate < 8000 || rate > 384000 || !channels || channels > 16 || indices.empty() ||
+      indices.size() > 2 || (indices.size() == 2 && indices[0] == indices[1]) ||
+      (!device_ && *std::max_element(indices.begin(), indices.end()) >= 16))
+    return DeviceError::UnsupportedFormat;
+  measurement.beginDeviceSession();
+  measuring_.store(true);
+  DeviceError status = DeviceError::None;
+  if (device_) {
+    DeviceRequest outputRequest{{outputId, {}}, rate, DeviceLatency::Balanced, true};
+    outputRequest.selection.channels.resize(channels);
+    std::iota(outputRequest.selection.channels.begin(), outputRequest.selection.channels.end(), 0u);
+    status = device_->openOutput(outputRequest, output_);
+    if (status == DeviceError::None) {
+      const DeviceRequest inputRequest{{inputId, indices}, rate, DeviceLatency::Balanced, true};
+      status = device_->replaceInput(&inputRequest, input_);
+    }
+  } else {
+    output_ = {deviceRate ? deviceRate : rate, channels, channels, 128, 0};
+    input_ = {captureRate ? captureRate : rate,
+              16,
+              static_cast<unsigned>(indices.size()),
+              128,
+              0,
+              synchronous};
+    if (inputId == systemAudioId)
+      status = DeviceError::Unavailable;
+  }
+  if (status == DeviceError::None) {
+    try {
+      measurement.configure(rate, output_, input_);
+      measurementIndices_ = std::move(indices);
+      if (device_)
+        status = device_->start();
+    } catch (const std::invalid_argument &) {
+      status = DeviceError::UnsupportedFormat;
+    }
+  }
+  if (status != DeviceError::None)
+    closeMeasurement();
+  return status;
+}
+
+void DeviceHost::closeMeasurement() noexcept {
+  if (device_)
+    device_->close();
+  measurement.cancel();
+  output_ = {};
+  input_ = {};
+  measuring_.store(false);
+}
+
 DeviceError DeviceHost::open(SessionFormat &format, const std::string &output,
-                             const std::string &input, DeviceLatency latency) {
-  if (session.isOpen() && !reopening_)
+                             const std::string &input, DeviceLatency latency,
+                             const std::string &loopbackEndpointId) {
+  if (measuring() || (session.isOpen() && !reopening_))
     return DeviceError::Busy;
   if (!reopening_) {
     requested_ = format;
     outputId_ = output;
     inputId_ = input;
+    loopbackEndpointId_ = loopbackEndpointId;
     latency_ = latency;
   }
   inputError_ = DeviceError::None;
+  if (!device_ && input == systemAudioId) {
+    inputError_ = DeviceError::Unavailable;
+    format.inputChannels = 0;
+  }
   if (device_) {
     DeviceList devices;
     auto status = device_->list(devices);
@@ -78,7 +142,8 @@ DeviceError DeviceHost::open(SessionFormat &format, const std::string &output,
       return status;
     }
     if (!input.empty() && input != "none") {
-      const DeviceRequest captureRequest{{input, {}}, format.sampleRate, latency};
+      const DeviceRequest captureRequest{
+          {input, {}}, format.sampleRate, latency, false, loopbackEndpointId};
       inputError_ = device_->replaceInput(&captureRequest, input_);
     }
     format.outputChannels = output_.selectedChannels;
@@ -106,6 +171,8 @@ DeviceError DeviceHost::open(SessionFormat &format, const std::string &output,
     return DeviceError::UnsupportedFormat;
   }
   format = session.format();
+  if (input == systemAudioId)
+    session.io()->inputEnabled = false;
   captureGeneration_.fetch_add(1, std::memory_order_relaxed);
   captureReady_.store(format.inputChannels != 0, std::memory_order_release);
   return DeviceError::None;
@@ -148,6 +215,8 @@ void DeviceHost::stop() noexcept {
 }
 
 void DeviceHost::close() noexcept {
+  if (measuring())
+    closeMeasurement();
   stop();
   resumeAfterStall_ = false;
   captureReady_.store(false, std::memory_order_release);
@@ -270,15 +339,20 @@ void DeviceHost::applyCommands() noexcept {
   }
 }
 
-DeviceError DeviceHost::replaceInput(const std::string &id, DeviceLatency latency) {
+DeviceError DeviceHost::replaceInput(const std::string &id, DeviceLatency latency,
+                                     const std::string &loopbackEndpointId) {
   if (!session.isOpen())
     return DeviceError::Unavailable;
   inputId_ = id;
+  loopbackEndpointId_ = loopbackEndpointId;
   rebuilt_ = false;
   captureReady_.store(false, std::memory_order_release);
-  if (!device_)
-    return DeviceError::None;
-  const DeviceRequest request{{id, {}}, session.format().sampleRate, latency};
+  if (!device_) {
+    inputError_ = id == systemAudioId ? DeviceError::Unavailable : DeviceError::None;
+    return inputError_;
+  }
+  const DeviceRequest request{
+      {id, {}}, session.format().sampleRate, latency, false, loopbackEndpointId};
   const bool releaseInput = id.empty() || id == "none";
   input_ = {};
   inputError_ = device_->replaceInput(releaseInput ? nullptr : &request, input_);
@@ -288,11 +362,16 @@ DeviceError DeviceHost::replaceInput(const std::string &id, DeviceLatency latenc
     auto next = std::make_shared<IoPipeline::Capture>(
         IoPipeline::prepareInput(session.format(), channels, rate));
     const auto generation = captureGeneration_.fetch_add(1, std::memory_order_acq_rel) + 1;
-    if (!submit([next, channels](Session &s) { s.io()->exchangeInput(*next, channels); },
-                [this, generation, channels] {
-                  if (captureGeneration_.load(std::memory_order_acquire) == generation)
-                    captureReady_.store(channels != 0, std::memory_order_release);
-                }))
+    if (!submit(
+            [next, channels, loopback = id == systemAudioId](Session &s) {
+              if (loopback)
+                s.io()->inputEnabled = false;
+              s.io()->exchangeInput(*next, channels);
+            },
+            [this, generation, channels] {
+              if (captureGeneration_.load(std::memory_order_acquire) == generation)
+                captureReady_.store(channels != 0, std::memory_order_release);
+            }))
       return DeviceError::Busy;
   } else {
     return recover(false);
@@ -300,11 +379,23 @@ DeviceError DeviceHost::replaceInput(const std::string &id, DeviceLatency latenc
   return inputError_;
 }
 
+DeviceError DeviceHost::recoverReset(int reasons) {
+  const bool inputOnly = (reasons & 0xff) == 0;
+  if (inputId_ != systemAudioId || !(reasons & 0xff00))
+    return recover(inputOnly);
+  // A new default endpoint has not been checked against the renderer's mute
+  // keeper.
+  inputId_ = "none";
+  const auto result = recover(inputOnly);
+  inputError_ = DeviceError::Unavailable;
+  return result;
+}
+
 DeviceError DeviceHost::recover(bool inputOnly) {
   if (!session.isOpen())
     return DeviceError::Unavailable;
   if (inputOnly)
-    return replaceInput(inputId_, latency_);
+    return replaceInput(inputId_, latency_, loopbackEndpointId_);
   const bool resume = running_ || resumeAfterStall_;
   resumeAfterStall_ = false;
   stop();
@@ -315,7 +406,7 @@ DeviceError DeviceHost::recover(bool inputOnly) {
   output_ = {};
   reopening_ = true;
   auto format = requested_;
-  const auto result = open(format, outputId_, inputId_, latency_);
+  const auto result = open(format, outputId_, inputId_, latency_, loopbackEndpointId_);
   reopening_ = false;
   if (result != DeviceError::None) {
     close();
@@ -341,6 +432,14 @@ bool DeviceHost::setTestInput(float level) { return setRealtimeNullInput(device_
 void DeviceHost::render(void *context, std::span<float> out, std::span<const float> in,
                         unsigned frames, DeviceClock clock) noexcept {
   auto &host = *static_cast<DeviceHost *>(context);
+  if (host.measuring()) {
+    if (!in.empty())
+      host.measurement.capture(in, frames, clock);
+    host.measurement.render(out, frames, clock);
+    if (host.muteOutput_)
+      std::fill(out.begin(), out.end(), 0.f);
+    return;
+  }
   const auto start = std::chrono::steady_clock::now();
   host.renderOutput(out, in, frames, clock);
   const auto elapsed =
@@ -389,21 +488,32 @@ void DeviceHost::renderOutput(std::span<float> out, std::span<const float> in, u
 void DeviceHost::capture(void *context, std::span<const float> samples, unsigned frames,
                          DeviceClock clock) noexcept {
   auto &host = *static_cast<DeviceHost *>(context);
-  if (!frames || !host.captureReady_.load(std::memory_order_acquire) ||
+  if (host.measuring()) {
+    host.measurement.capture(samples, frames, clock);
+    return;
+  }
+  if (!host.captureReady_.load(std::memory_order_acquire) ||
       host.captureBusy_.exchange(true, std::memory_order_acquire))
     return;
   if (clock.discontinuity) {
     host.captureGeneration_.fetch_add(1, std::memory_order_relaxed);
     host.discontinuities_.fetch_add(1, std::memory_order_relaxed);
   }
-  host.session.capture().write(samples.data(), static_cast<unsigned>(samples.size() / frames),
-                               frames, host.captureGeneration_.load(std::memory_order_relaxed),
-                               clock.position);
+  const auto generation = host.captureGeneration_.load(std::memory_order_relaxed);
+  if (frames)
+    host.session.capture().write(samples.data(), static_cast<unsigned>(samples.size() / frames),
+                                 frames, generation, clock.position);
+  else
+    host.session.capture().silence(generation);
   host.captureBusy_.store(false, std::memory_order_release);
 }
 void DeviceHost::reset(void *context, DeviceDirection direction,
                        DeviceResetReason reason) noexcept {
   auto &host = *static_cast<DeviceHost *>(context);
+  if (host.measuring()) {
+    host.measurement.deviceReset();
+    return;
+  }
   const int bit = static_cast<int>(reason) + (direction == DeviceDirection::Output ? 0 : 8);
   host.reset_.fetch_or(1 << bit, std::memory_order_release);
 }

@@ -566,7 +566,7 @@ test('Level and frequency-band modulation use separate adaptive ranges and share
     }
 });
 
-test('Beat and Width share analyzer sources and Beat interpolates real DSP telemetry between draws', async () => {
+test('Beat and Width share analyzer sources and Beat interpolates real DSP telemetry or follows MIDI beats', async () => {
     const oldWindow = globalThis.window, oldDocument = globalThis.document;
     const oldPerformance = globalThis.performance;
     const subscriptions = new Map(), published = [];
@@ -606,8 +606,14 @@ test('Beat and Width share analyzer sources and Beat interpolates real DSP telem
         }
         return { frameType: 28, formatVersion: 5, payload };
     };
-    const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
-    const sources = new VisualizerSources(manager);
+    const near = (actual, expected, message = `${actual} != ${expected}`) =>
+        assert.ok(Math.abs(actual - expected) < 1e-6, message);
+    const score = { division: 480, secondsPerTick: null,
+        tempoMap: [{ seconds: 0, tick: 0, quarter: 0, microsecondsPerQuarter: 500000 },
+            { seconds: 1, tick: 960, quarter: 2, microsecondsPerQuarter: 1000000 }],
+        timeSignatures: [{ seconds: 0, quarter: 0, numerator: 4, denominator: 4 }] };
+    let midi = null;
+    const sources = new VisualizerSources(manager, () => midi);
     try {
         const items = [{ id: 'rhythm', type: 'rhythm-analyzer', params: {} },
             { id: 'stereo', type: 'stereo', params: {}, effects: [{ mod: { source: 'beat' } }] }];
@@ -622,21 +628,28 @@ test('Beat and Width share analyzer sources and Beat interpolates real DSP telem
         const receiveBeat = subscriptions.get(rhythm.tapId).callback;
         receiveBeat(frame());
         assert.equal(sources.getFrame('rhythm').periodSeconds, 0.5, 'The real Rhythm parser consumes the payload');
-        for (const [time, value] of [[0, 1], [125, 0.5], [250, 0], [500, 1]]) {
+        // Beat peaks on each beat head and fades through the beat.
+        for (const [time, value] of [[0, 1], [125, 0.5625], [250, 0.25], [375, 0.0625], [500, 1]]) {
             milliseconds = time;
             near(sources.getModulators().beat, value);
         }
         milliseconds = 1000;
         receiveBeat(frame(1));
         milliseconds = 1250;
-        near(sources.getModulators().beat, 0.5);
+        near(sources.getModulators().beat, 0.5625);
         milliseconds = 1500;
-        near(sources.getModulators().beat, 0);
+        near(sources.getModulators().beat, 0.25);
         // The current preview takes precedence over the older committed interval.
         receiveBeat(frame(0.5, { frame: 75, period: 1 }));
-        near(sources.getModulators().beat, 0.5);
+        near(sources.getModulators().beat, 0.5625);
         milliseconds = 1750;
-        near(sources.getModulators().beat, 0);
+        near(sources.getModulators().beat, 0.25);
+        // MIDI playback replaces the detected grid with the file's quarter notes.
+        midi = { hasMidi: true, timeline: score, position: 0.5 };
+        near(sources.getModulators().beat, 1, 'Quarter 1 is a beat head');
+        midi.position = 1.25;
+        near(sources.getModulators().beat, 0.5625, 'Quarter 2.25 follows the slower tempo');
+        midi = null;
         receiveBeat(frame(0));
         assert.equal(sources.getModulators().beat, 0);
         for (const [correlation, width] of [[1, 0], [-1, 0], [0, 1], [0.5, 0.5], [-0.5, 0.5]]) {

@@ -24,6 +24,7 @@ const GraphUtils = {
         const height = canvas.height;
         
         // Get current input level
+        if (audioUtils.nativeMeasurement) void audioUtils.refreshNativeInputLevel();
         const inputLevel = audioUtils.getInputLevel();
         
         // Calculate elapsed time

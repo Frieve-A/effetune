@@ -78,6 +78,6 @@ void Visualizer::render(const float *audio, unsigned channels, unsigned frames,
     }
     engine_->processInstance(slot.instance, scratch, 2, frames, double(position) / rate_);
   }
-  telemetry.read(*engine_, position + frames, revision, stage);
+  telemetry.read(*engine_, position + frames, revision, stage, true);
 }
 } // namespace effetune::audio

@@ -48,6 +48,33 @@ function sequenceClient(overrides = {}) {
   };
 }
 
+test('accepting local Library playback supersedes startup restore before loading the player', async () => {
+  const calls = [];
+  const uiManager = {
+    networkMusic: { selectedPlayerId: 'local', playSelection: () => calls.push('remote') },
+    invalidatePlaybackSessionRestore: () => calls.push('supersede'),
+    createAudioPlayer: () => {
+      calls.push('create');
+      return { playbackManager: {} };
+    }
+  };
+  const bridge = new CatalogPlaybackBridge({
+    uiManager,
+    service: { start: () => calls.push('start') },
+    sequenceClient: sequenceClient()
+  });
+  for (const kind of ['play', 'playNext', 'queue']) {
+    calls.length = 0;
+    await bridge.start(playbackRequest(kind));
+    assert.deepEqual(calls, ['supersede', 'create', 'start']);
+  }
+  calls.length = 0;
+  uiManager.networkMusic.selectedPlayerId = 'remote';
+  await bridge.start(playbackRequest());
+  await bridge.start(playbackRequest('addToPlaylist'));
+  assert.deepEqual(calls, ['remote', 'start']);
+});
+
 function stalledPlaybackBridge({ install, commit, status, requestFolderAccess, client } = {}) {
   let workerListener;
   let finishProvisional;

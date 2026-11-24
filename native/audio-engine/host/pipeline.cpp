@@ -30,6 +30,11 @@ std::uint32_t Pipeline::instance(std::uint32_t id) const noexcept {
   return found != slots_.end() ? found->second.kernel : 0u;
 }
 
+bool Pipeline::readRuntimeEvent(std::uint32_t id, RuntimeEventState &state) const noexcept {
+  const auto kernel = instance(id);
+  return kernel && engine_.readInstanceRuntimeEvent(kernel, state) == ET_OK;
+}
+
 bool Pipeline::stage(Slot &slot, const PluginSettings &settings, bool force) {
   if (slot.kernel == 0)
     return true;
@@ -41,7 +46,7 @@ bool Pipeline::stage(Slot &slot, const PluginSettings &settings, bool force) {
     previewParams[settings.params.size() - 1] = preview_ ? 1.f : 0.f;
     parameters = previewParams.data();
   }
-  if (!slot.dryParameters.empty() && deferred(settings.id, 0)) {
+  if (!slot.dryParameters.empty()) {
     if (slot.dryParameters.size() != settings.params.size())
       return false;
     std::copy(settings.params.begin(), settings.params.end(), slot.dryParameters.begin());
@@ -147,14 +152,13 @@ bool Pipeline::configure(std::vector<PluginSettings> plugins,
     if (item.second.settings.type == "SoundFontPlayerPlugin" ||
         item.second.settings.type == "SFZNotePlayerPlugin")
       ++runtimeRevision_;
+    cancelBanks(item.first);
     if (item.second.kernel)
       engine_.destroyInstance(item.second.kernel);
     if (item.second.passthrough)
       engine_.destroyInstance(item.second.passthrough);
     streams_.erase(item.first);
     pendingStreams_.erase(item.first);
-    std::erase_if(pendingAssets_,
-                  [&](const auto &asset) { return asset.first.first == item.first; });
     std::erase_if(assets_, [&](const auto &asset) { return asset.first.first == item.first; });
     return true;
   });
@@ -177,10 +181,11 @@ bool Pipeline::configure(std::vector<PluginSettings> plugins,
         return false;
       for (auto it = assets_.lower_bound({id, 0}); it != assets_.end() && it->first.first == id;
            ++it) {
-        if ((settings.type == "SoundFontPlayerPlugin" || settings.type == "SFZNotePlayerPlugin") &&
-            !materializeInstrument(settings.type == "SoundFontPlayerPlugin", it->second))
+        const bool soundfont = settings.type == "SoundFontPlayerPlugin";
+        const bool sampler = soundfont || settings.type == "SFZNotePlayerPlugin";
+        if (sampler && !materializeInstrument(soundfont, it->second))
           return false;
-        if (!applyAsset(id, slot.kernel, it->first.second, &it->second))
+        if (!applyAsset(id, slot.kernel, it->first.second, it->second, sampler))
           return false;
       }
     }
@@ -267,7 +272,12 @@ bool Pipeline::applyRouting() {
       return false;
     activeDescriptor_ = std::move(active);
   }
-  if (engine_.refreshPipelineLatencyRealtime() != ET_OK)
+  // A bank can publish between two identical configurations, before a render
+  // reserves its new latency. This path owns the pipeline and may grow delays.
+  auto status = engine_.refreshPipelineLatencyRealtime();
+  if (status == ET_ERR_STATE)
+    status = engine_.reservePipelineLatency();
+  if (status != ET_OK)
     return false;
   connectAnalysisSources();
   return true;
@@ -355,10 +365,10 @@ unsigned Pipeline::midiTargets(std::array<MidiScheduler::Instrument, 128> &targe
   }
   return count;
 }
-void Pipeline::prepareMidi(unsigned rate) {
+bool Pipeline::prepareMidi() {
   std::array<MidiScheduler::Instrument, 128> targets;
   const auto count = midiTargets(targets);
-  midi.prepare(engine_, {targets.data(), count}, rate);
+  return midi.prepare(engine_, {targets.data(), count});
 }
 void Pipeline::renderMidi(std::uint64_t frame, unsigned frames, unsigned rate) noexcept {
   for (auto &[id, slot] : slots_) {
@@ -375,6 +385,14 @@ void Pipeline::renderMidi(std::uint64_t frame, unsigned frames, unsigned rate) n
          readiness.pending_pages ||
          (readiness.scope == ET_STREAM_SCOPE_KNOWN_MIDI && !readiness.ready_ahead_frames)))
       continue;
+    if (slot.settings.type == "SoundFontPlayerPlugin") {
+      // File playback and a new live input already own their clock. An existing
+      // live input resumes its frozen voices within the scheduler's next batch.
+      if (!f.fresh && f.generation == midi.generation())
+        midi.resumeInput(slot.kernel);
+      slot.frozen.reset();
+      continue;
+    }
     const auto clock =
         f.clock + (f.sameContext && !(f.nativeState & 6) && frame >= f.frame ? frame - f.frame : 0);
     const unsigned gen = f.generation + (f.fresh ? 0 : 1);
@@ -496,8 +514,7 @@ bool Pipeline::assetPending() const noexcept {
 bool Pipeline::needsInstrumentCheckpoint() const noexcept {
   for (const auto &[id, s] : slots_)
     if (!s.frozen &&
-        (s.settings.type == "SFZNotePlayerPlugin" ||
-         (s.settings.type == "SoundFontPlayerPlugin" && midi.generation())) &&
+        (s.settings.type == "SFZNotePlayerPlugin" || s.settings.type == "SoundFontPlayerPlugin") &&
         (assetState(id, 0) & 255u) == ET_ASSET_STATE_ACTIVE)
       return true;
   return false;

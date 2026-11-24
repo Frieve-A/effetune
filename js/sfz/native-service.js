@@ -1,3 +1,4 @@
+import { rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
 import { sfzRequiresSampleStreaming } from './asset.js';
 import { getSfzMaxBytes, requireSfzMaxBytes } from './limits.js';
 import { normalizeSfzPath, parseSfz, sfzError } from './parser.js';
@@ -54,8 +55,12 @@ export class NativeSfzLibraryService {
     if (isCurrent?.() === false) return null;
     const selected = responseData(await this.bridge.select({ mode }));
     if (isCurrent?.() === false || !selected) return null;
-    return entriesFromResponse({ ok: true, data: selected.banks })
-      .map(({ id, name, importedAt }) => ({ id, name, ...(importedAt && { importedAt }) }));
+    const entries = entriesFromResponse({ ok: true, data: selected.banks });
+    for (const entry of entries) {
+      const paths = [entry.selectedPath, ...(entry.bankPaths || [])];
+      rememberDiagnosticNames('file', [entry.name, ...paths.flatMap(path => [path, path.split('/').pop()])]);
+    }
+    return entries.map(({ id, name, importedAt }) => ({ id, name, ...(importedAt && { importedAt }) }));
   }
 
   async list() {

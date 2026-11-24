@@ -1,3 +1,4 @@
+import { archivePlaybackFile } from '../archive/playback-source.js';
 import { OperationProgressFence } from './bulk-operation-protocol.js';
 
 export const ELECTRON_LIBRARY_SERVICE_API_VERSION = 1;
@@ -51,6 +52,10 @@ export class ElectronLibraryServiceClient {
 
   async resolveSequenceEntrySource(request) {
     const source = unwrapPlaybackResponse(await this.playbackApi.resolveSequenceEntrySource(request));
+    if (source?.kind === 'archive-entry') {
+      const { bytes, fileName, wrd, ...identity } = source;
+      return { ...identity, kind: 'file', file: archivePlaybackFile({ bytes, fileName, wrd }).file };
+    }
     return source;
   }
 
@@ -82,6 +87,9 @@ export class ElectronLibraryServiceClient {
 }
 
 function unwrapPlaybackResponse(response) {
+  if (['sourceUnavailable', 'archive-corrupt', 'archive-too-large', 'archive-unsupported'].includes(response?.code)) {
+    throw Object.assign(new Error('Library source is unavailable'), { code: response.code });
+  }
   if (response?.code !== 'folderPermissionRequired') return response;
   const error = new Error('Playback folder access must be restored');
   error.name = 'LibraryRepositoryError';

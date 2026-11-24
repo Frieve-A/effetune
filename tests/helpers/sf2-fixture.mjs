@@ -35,3 +35,40 @@ export function createSf2Fixture({ version = 4, sm24 = true, invalidIndex = fals
   return chunk('RIFF', Buffer.concat([text('sfbk'), list('INFO', [chunk('ifil', ifil), chunk('INAM', text('Test\0\0'))]),
     list('sdta', data), list('pdta', Object.entries(tables).map(([name, bytes]) => chunk(name, bytes)))]));
 }
+
+// Each key selects a distinct, long PCM waveform. Its loop begins beyond the
+// first second so a sustained chord must keep fetching new pages.
+export function createMultisampleSf2(keys, sampleFrames, {separatePrograms = false} = {}) {
+  const programs = separatePrograms ? keys.length : 1;
+  const phdr = Buffer.alloc((programs + 1) * 38), inst = Buffer.alloc((programs + 1) * 22);
+  for (let i = 0; i < programs; i++) {
+    phdr.write('Program ' + i, i * 38);
+    phdr.writeUInt16LE(i, i * 38 + 20);
+    phdr.writeUInt16LE(i, i * 38 + 24);
+    inst.write('Key zones ' + i, i * 22);
+    inst.writeUInt16LE(i, i * 22 + 20);
+  }
+  phdr.writeUInt16LE(programs, programs * 38 + 24);
+  inst.writeUInt16LE(keys.length, programs * 22 + 20);
+  const pcm = Buffer.alloc(keys.length * (sampleFrames + 46) * 2);
+  const shdr = Buffer.alloc(46 * (keys.length + 1));
+  const zones = [];
+  keys.forEach((key, index) => {
+    const start = index * (sampleFrames + 46), offset = index * 46;
+    shdr.write('Key ' + key, offset);
+    for (const [field, value] of [[20, start], [24, start + sampleFrames], [28, start + 65536],
+      [32, start + sampleFrames - 64], [36, 48000]]) shdr.writeUInt32LE(value, offset + field);
+    shdr[offset + 40] = key;
+    shdr.writeUInt16LE(1, offset + 44);
+    for (let frame = 0; frame < sampleFrames; ++frame)
+      pcm.writeInt16LE(Math.round(4096 * Math.sin(frame * 2 * Math.PI / (40 + index * 3))), (start + frame) * 2);
+    zones.push(gen(43, key | key << 8), gen(54, 1), gen(53, index));
+  });
+  const tables = { phdr, pbag: Buffer.concat(Array.from({length:programs + 1},(_,i) => bag(i))), pmod: Buffer.alloc(10),
+    pgen: Buffer.concat([...Array.from({length:programs},(_,i) => gen(41, i)), gen(0, 0)]), inst,
+    ibag: Buffer.concat(Array.from({ length: keys.length + 1 }, (_, i) => bag(i * 3))),
+    imod: Buffer.alloc(10), igen: Buffer.concat([...zones, gen(0, 0)]), shdr };
+  return chunk('RIFF', Buffer.concat([text('sfbk'), list('INFO', [chunk('ifil', Buffer.from([2, 0, 4, 0])),
+    chunk('INAM', text('Polyphonic'))]), list('sdta', [chunk('smpl', pcm)]),
+    list('pdta', Object.entries(tables).map(([name, bytes]) => chunk(name, bytes)))]));
+}

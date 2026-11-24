@@ -77,38 +77,39 @@ void applyProgramChange(MidiChannel &state, std::uint32_t program) noexcept {
   state.xgDrumBank = xg && state.cc[0] >= 126u;
   state.bank = channelBank(state);
 }
+struct ImpliedController {
+  std::uint8_t controller, value;
+};
+constexpr ImpliedController kRpnDeselect[]{{100u, 127u}, {101u, 127u}};
+constexpr ImpliedController kNrpnDeselect[]{{98u, 127u}, {99u, 127u}};
+constexpr ImpliedController kResetAllControllers[]{{1u, 0u},    {11u, 127u},  {64u, 0u},
+                                                   {66u, 0u},   {67u, 0u},    {98u, 127u},
+                                                   {99u, 127u}, {100u, 127u}, {101u, 127u}};
+// Controllers a controller message sets implicitly: an NRPN selection deselects RPN and vice
+// versa, and Reset All Controllers (CC121) returns the resettable controllers to power-on values.
+std::span<const ImpliedController> impliedControllers(std::uint32_t key) noexcept {
+  if (key == 98u || key == 99u)
+    return kRpnDeselect;
+  if (key == 100u || key == 101u)
+    return kNrpnDeselect;
+  if (key == 121u)
+    return kResetAllControllers;
+  return {};
+}
 void applyChannelControllerState(MidiChannel &state, std::uint32_t key,
                                  std::uint32_t value) noexcept {
-  state.cc[key] = state.inputCC[key] = static_cast<std::uint8_t>(value);
-  state.normalizedCC[key] = value / 127.0F;
-  state.preciseCC[key] = false;
-  for (auto *controllers : {&state.cc, &state.inputCC}) {
-    if (key == 98u || key == 99u)
-      (*controllers)[100] = (*controllers)[101] = 127u;
-    if (key == 100u || key == 101u)
-      (*controllers)[98] = (*controllers)[99] = 127u;
-    if (key == 121u) {
-      (*controllers)[1] = (*controllers)[64] = (*controllers)[66] = (*controllers)[67] = 0u;
-      (*controllers)[11] = 127u;
-      (*controllers)[98] = (*controllers)[99] = (*controllers)[100] = (*controllers)[101] = 127u;
-    }
-  }
+  const auto set = [&state](std::uint32_t controller, std::uint32_t controllerValue) {
+    state.cc[controller] = state.inputCC[controller] = static_cast<std::uint8_t>(controllerValue);
+    state.normalizedCC[controller] = controllerValue / 127.0F;
+    state.preciseCC[controller] = false;
+  };
+  set(key, value);
+  for (const auto [controller, implied] : impliedControllers(key))
+    set(controller, implied);
   if (key == 121u) {
-    for (const auto reset : {1u, 11u, 64u, 66u, 67u, 98u, 99u, 100u, 101u}) {
-      state.normalizedCC[reset] = state.cc[reset] / 127.0F;
-      state.preciseCC[reset] = false;
-    }
     state.bend = state.inputBend = 0;
     state.aftertouch = state.inputAftertouch = 0u;
     state.pressure.fill(0u);
-  }
-  if (key == 98u || key == 99u) {
-    state.normalizedCC[100] = state.normalizedCC[101] = 1;
-    state.preciseCC[100] = state.preciseCC[101] = false;
-  }
-  if (key == 100u || key == 101u) {
-    state.normalizedCC[98] = state.normalizedCC[99] = 1;
-    state.preciseCC[98] = state.preciseCC[99] = false;
   }
   if ((key == 6u || key == 38u) && state.cc[100] == 0u && state.cc[101] == 0u)
     state.bendRange = state.cc[6] + state.cc[38] * .01F;
@@ -204,7 +205,9 @@ struct RenderState {
   double modulation_host_time_ = 0;
   float modulation_last_offset_ = 0;
   std::array<float, 128> accepted_global_cc_{};
-  std::array<float, 3> accepted_global_extended_{8192.0F / 16383.0F, 0, 0};
+  // Normalized pitch bend, channel aftertouch and polyphonic pressure at rest.
+  static constexpr std::array<float, 3> kAcceptedExtendedDefaults{8192.0F / 16383.0F, 0, 0};
+  std::array<float, 3> accepted_global_extended_ = kAcceptedExtendedDefaults;
   std::uint32_t script_message_head_ = 0, script_message_count_ = 0, script_messages_dropped_ = 0;
   script::Error script_error_ = script::Error::None;
   std::uint32_t script_error_pc_ = 0;
@@ -1165,7 +1168,7 @@ public:
           if (systemResetEvent(event)) {
             initializeMidiChannels(*midi_channels_, false, event.note_id);
             accepted_global_cc_ = (*midi_channels_)[0].normalizedCC;
-            accepted_global_extended_ = {8192.0F / 16383.0F, 0, 0};
+            accepted_global_extended_ = kAcceptedExtendedDefaults;
             ++midi_revision_;
             continue;
           }
@@ -3194,14 +3197,29 @@ private:
   void acceptGlobalState(std::uint32_t message) noexcept {
     const auto kind = message & 0xf0u, key = (message >> 8u) & 127u,
                value = (message >> 16u) & 127u;
-    if (kind == 0xb0u)
+    if (kind == 0xb0u) {
       accepted_global_cc_[key] = value / 127.0F;
-    else if (kind == 0xe0u)
+      for (const auto [controller, implied] : impliedControllers(key))
+        accepted_global_cc_[controller] = implied / 127.0F;
+      if (key == 121u)
+        accepted_global_extended_ = kAcceptedExtendedDefaults;
+    } else if (kind == 0xe0u)
       accepted_global_extended_[0] = (key | (value << 7u)) / 16383.0F;
     else if (kind == 0xd0u)
       accepted_global_extended_[1] = key / 127.0F;
     else if (kind == 0xa0u)
       accepted_global_extended_[2] = value / 127.0F;
+  }
+  // Journals every global controller one accepted controller message changed for SFZ effects.
+  bool recordAcceptedControllers(std::uint32_t key) noexcept {
+    auto &effects = *bank()->sfz_effects_;
+    if (!effects.recordCC(sf2_frame_, key, accepted_global_cc_[key]))
+      return false;
+    for (const auto &implied : impliedControllers(key))
+      if (!effects.recordCC(sf2_frame_, implied.controller,
+                            accepted_global_cc_[implied.controller]))
+        return false;
+    return true;
   }
   void hydrateChannelState(std::uint32_t message) noexcept {
     const auto channel = message & 15u, kind = message & 0xf0u;
@@ -3315,7 +3333,7 @@ private:
       midi_meters_.clear();
     mixer_mute_ = mixer_solo_ = 0;
     accepted_global_cc_.fill(0);
-    accepted_global_extended_ = {8192.0F / 16383.0F, 0, 0};
+    accepted_global_extended_ = kAcceptedExtendedDefaults;
     modulation_velocity_ = modulation_release_velocity_ = modulation_key_ = 0;
     modulation_random_ = modulation_alternate_ = modulation_key_delta_ = modulation_last_offset_ =
         0;
@@ -3844,9 +3862,8 @@ private:
         return;
       const double previous = c.preciseCC[key] ? c.normalizedCC[key] * 127.0 : c.cc[key];
       applyChannelControllerState(c, key, value);
-      accepted_global_cc_[key] = c.normalizedCC[key];
-      if (sfz_quantum_started_ &&
-          !bank()->sfz_effects_->recordCC(sf2_frame_, key, accepted_global_cc_[key])) {
+      acceptGlobalState(event.message);
+      if (sfz_quantum_started_ && !recordAcceptedControllers(key)) {
         failRuntime();
         return;
       }
@@ -4620,6 +4637,10 @@ private:
   static et_status prepareBank(const PrepareInfo &preparation, const AssetBeginInfo &info,
                                const std::uint8_t *payload, std::uint32_t format,
                                std::unique_ptr<PreparedAsset> &asset) noexcept {
+    if (!payload) {
+      asset.reset();
+      return ET_OK;
+    }
     return SFZBank::prepare(preparation, info, payload, format, asset, kVoices);
   }
   static bool hasStolenTail(const Voice &voice) noexcept {

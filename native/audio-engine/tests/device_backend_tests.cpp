@@ -1,6 +1,8 @@
 #include "device/device.h"
 #include "device/miniaudio/negotiation.h"
 #include "device/planar_buffer.h"
+#include "device/wasapi/loopback_silence.h"
+#include "device/wasapi/render_priority.h"
 #include "device/wasapi/sample_format.h"
 
 #include <array>
@@ -22,6 +24,14 @@ void check(bool condition, const char *message) {
 }
 
 void formatConversion() {
+  LoopbackSilence silence;
+  check(!silence.takeBoundary(100, 10), "empty input emitted a boundary");
+  silence.supplied(100);
+  check(!silence.takeBoundary(109, 10) && silence.takeBoundary(110, 10) &&
+            !silence.takeBoundary(130, 10),
+        "silence must emit one boundary per idle interval");
+  silence.supplied(140);
+  check(silence.takeBoundary(151, 10), "capture did not rearm the silence boundary");
   const std::array formats{WasapiSampleFormat{1, 8, false},  WasapiSampleFormat{2, 16, false},
                            WasapiSampleFormat{3, 24, false}, WasapiSampleFormat{4, 24, false},
                            WasapiSampleFormat{4, 32, false}, WasapiSampleFormat{4, 32, true}};
@@ -56,6 +66,42 @@ void formatConversion() {
                   [&](std::size_t at, float value) { written[at] = value; });
   check(written == std::array{0.0f, 20.0f, 0.0f, 40.0f, 0.0f, 21.0f, 0.0f, 41.0f},
         "output selected channels or silence are wrong");
+}
+
+void wasapiRenderPriority() {
+  using Change = WasapiRenderPriority::Change;
+  constexpr auto block = 10'000'000u;
+  WasapiRenderPriority priority;
+  check(priority.observe(block * 20, block) == Change::None,
+        "one slow render must retain priority");
+  for (int i = 0; i < 10; ++i)
+    check(priority.observe(block / 2, block) == Change::None,
+          "a transient followed by headroom must retain priority");
+  for (int i = 0; i < 20; ++i) {
+    const auto work = i % 2 ? 8'900'000u : 9'100'000u;
+    check(priority.observe(work, block) == (i == 19 ? Change::Demote : Change::None),
+          "jitter around the sustained load threshold must demote once");
+  }
+  check(priority.demoted(), "sustained load must relinquish multimedia priority");
+  for (int i = 0; i < 90; ++i)
+    check(priority.observe(block / 2, block) == Change::None,
+          "brief headroom must not reacquire multimedia priority");
+  for (int i = 0; i < 10; ++i)
+    check(priority.observe(block, block) == Change::None,
+          "renewed contention must reset recovery without demoting twice");
+  for (int i = 0; i < 100; ++i)
+    check(priority.observe(block / 2, block) == (i == 99 ? Change::Restore : Change::None),
+          "one second of headroom must restore multimedia priority");
+  check(!priority.demoted(), "restored render priority must handle later overload");
+  check(priority.observe(0, 0) == Change::None, "empty wakes do not carry audio");
+  int demotions = 0;
+  for (int i = 0; i < 20; ++i) {
+    const auto work = i % 2 ? block / 5 : block * 2;
+    if (priority.observe(work, block) == Change::Demote)
+      ++demotions;
+  }
+  check(priority.demoted() && demotions == 1,
+        "alternating bursts beyond the audio budget must demote again");
 }
 
 void negotiation() {
@@ -161,6 +207,9 @@ void miniaudioNull() {
         "a stopped device delivered callbacks, bad data or an unexpected reset");
   check(device->start() == DeviceError::None && waitFor(progress.output, stopped + 3),
         "playback could not restart");
+  const DeviceRequest loopback{{systemAudioId, {}}, 44100, DeviceLatency::Balanced};
+  check(device->replaceInput(&loopback, capture) == DeviceError::Unavailable,
+        "miniaudio must reject the Windows loopback endpoint");
   device->close();
 }
 
@@ -168,6 +217,7 @@ void miniaudioNull() {
 
 int main() {
   formatConversion();
+  wasapiRenderPriority();
   negotiation();
   miniaudioNull();
 }

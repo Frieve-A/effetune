@@ -7,7 +7,7 @@ const GPU_FAILURE_REASONS = new Set([
 ]);
 
 function initializeGpuAcceleration({ app, config, queueRestart, isQuitting = () => false,
-  now = Date.now, onDiagnostic = console.error }) {
+  now = Date.now, onDiagnostic = console.error, onChildProcessGone }) {
   const startupConfig = config.loadConfig();
   const enabled = startupConfig?.hardwareAcceleration !== false;
   if (!enabled) app.disableHardwareAcceleration();
@@ -19,6 +19,7 @@ function initializeGpuAcceleration({ app, config, queueRestart, isQuitting = () 
   let recentFailures = [];
   let recoveryQueued = false;
   app.on('child-process-gone', (_event, details) => {
+    onChildProcessGone?.(details);
     if (details?.type !== 'GPU' || !GPU_FAILURE_REASONS.has(details.reason)) return;
     onDiagnostic('[graphics] GPU process failure:', details.reason, details.exitCode);
     if (!enabled || recoveryQueued || isQuitting()) return;

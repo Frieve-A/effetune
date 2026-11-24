@@ -11,10 +11,12 @@
 #include <set>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace effetune {
 class Engine;
+struct RuntimeEventState;
 namespace audio {
 struct NetworkPaths;
 struct BoundarySlice;
@@ -63,6 +65,7 @@ public:
   bool stageUpdate(PluginSettings &settings, bool allowGate, bool &deferred);
   bool finishUpdates() noexcept;
   std::uint32_t instance(std::uint32_t id) const noexcept;
+  bool readRuntimeEvent(std::uint32_t id, RuntimeEventState &state) const noexcept;
   unsigned kernelLatency(unsigned id) const noexcept;
   bool setNetworkRouting(bool receive, bool bypass);
   void traceOutputs(NetworkPaths &paths) const noexcept;
@@ -70,18 +73,17 @@ public:
   std::uint32_t sendInstance() const noexcept { return sendInstance_; }
   std::uint32_t sendId() const noexcept { return sendId_; }
   std::uint32_t receiveId() const noexcept { return receiveId_; }
-  bool setAsset(std::uint32_t id, std::uint32_t slot, AssetData candidate);
   class AssetChange {
   public:
     virtual ~AssetChange() = default;
-    enum class Progress { Direct, Prepare, Failed };
-    virtual Progress capture() = 0;
+    virtual bool capture() = 0;
     virtual bool prepare() = 0;
     virtual bool captureRoute() noexcept = 0;
     virtual bool prepareRoute() = 0;
     virtual bool apply() noexcept = 0;
     virtual void finish() = 0;
     virtual bool deferred() const noexcept = 0;
+    virtual bool stale() const noexcept = 0;
     virtual unsigned state() const noexcept = 0;
     virtual const char *failureStage() const noexcept = 0;
     virtual bool awaitsPages() const noexcept = 0;
@@ -92,17 +94,16 @@ public:
   };
   std::shared_ptr<AssetChange> assetChange(unsigned id, unsigned slot,
                                            std::optional<AssetData> asset);
-  bool clearAsset(std::uint32_t id, std::uint32_t slot);
   std::uint32_t assetState(std::uint32_t id, std::uint32_t slot) const noexcept;
   struct AssetNotice {
     std::uint32_t id = 0, slot = 0, state = 0;
     std::optional<std::uint32_t> revision, epoch;
     bool rejected = false;
     unsigned identity = 0;
+    AssetChange *completed = nullptr;
   };
-  bool deferred(std::uint32_t id, std::uint32_t slot) const {
-    return pendingAssets_.contains({id, slot});
-  }
+  std::shared_ptr<AssetChange> releaseBank(AssetChange *bank);
+  bool takeAssetLatencyChange() noexcept { return std::exchange(assetLatencyChanged_, false); }
   void serviceAssets();
   bool takeNotice(AssetNotice &notice) noexcept;
   struct SampleStream {
@@ -120,7 +121,7 @@ public:
                    std::uint64_t page, std::span<const float> pcm, std::uint32_t frames,
                    std::uint32_t channels, bool resident);
   MidiScheduler midi;
-  void prepareMidi(unsigned rate);
+  bool prepareMidi();
   void renderMidi(std::uint64_t frame, unsigned frames, unsigned rate) noexcept;
   bool hydrateMidi(unsigned id, unsigned token, unsigned generation,
                    std::span<const et_midi_event> events);
@@ -169,7 +170,7 @@ private:
   };
   bool stage(Slot &slot, const PluginSettings &settings, bool force);
   bool applyAsset(std::uint32_t id, std::uint32_t kernel, std::uint32_t slot,
-                  const AssetData *asset);
+                  const AssetData &asset, bool sampler);
   std::map<std::uint32_t, SampleStream> streams_;
   std::map<unsigned, std::shared_ptr<AssetChange>> pendingStreams_;
   std::uint64_t streamGeneration_ = 0;
@@ -178,9 +179,15 @@ private:
   unsigned runtimeRevision_ = 0;
   std::map<std::uint32_t, Slot> slots_;
   std::map<std::pair<std::uint32_t, std::uint32_t>, AssetData> assets_;
-  std::map<std::pair<std::uint32_t, std::uint32_t>, AssetData> pendingAssets_;
+  Bank *waitingBanks_ = nullptr;
+  std::atomic<Bank *> completedBanks_{nullptr};
+  Bank *collectedBanks_ = nullptr;
+  std::map<AssetChange *, std::shared_ptr<AssetChange>> pendingBanks_;
   std::atomic<bool> hasPendingAssets_{false};
-  bool commitAsset(std::uint32_t id, std::uint32_t slot, AssetData &candidate);
+  bool assetLatencyChanged_ = false;
+  void serviceBanks() noexcept;
+  void cancelBanks(unsigned id, std::optional<unsigned> slot = {}) noexcept;
+  bool takeBankNotice(AssetNotice &notice) noexcept;
   bool validAsset(unsigned id, unsigned slot, const AssetData &candidate) const;
   bool materializeInstrument(bool soundfont, AssetData &asset) const;
   std::uint64_t availableAssetBytes(unsigned id, unsigned slot) const;

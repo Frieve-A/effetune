@@ -161,6 +161,7 @@ test('Windows power resume notifies the current registered window without a glob
   // mainWindow exists only inside createWindow, so do not inject it into this scope.
   vm.runInNewContext(`${source.slice(start, end)}\nregisterWatchdogPowerEvents();`, {
     constants: { getMainWindow: () => currentWindow },
+    mainDiagnostics: { record() {} },
     process: hostProcess,
     powerMonitor,
     disposePowerMonitorEvents: null,

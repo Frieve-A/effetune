@@ -1,11 +1,15 @@
 import { readScoreArtwork } from './score-artwork-source.js';
 import { isScoreFile, isMusicXmlFile, parseScoreAsync, SCORE_MAX_BYTES } from '../../midi/score-file.js';
 import { validateMidiSchedule } from '../../midi/smf-scheduler.js';
+import { midiBeatAt } from '../../midi/smf-timeline.js';
 import { MidiFileOutput } from '../../midi/midi-file-output.js';
 import { audibleContextTime } from '../../audio/visual-sync.js';
 import { readMidiWrdBytes } from './midi-wrd-source.js';
 
 const MIDI_INSTRUMENT_TYPE = 'SoundFontPlayerPlugin';
+const MIDI_BANK_READINESS_POLL_MS = 25;
+// Renderers report the MIDI position this often; extrapolation never runs further ahead.
+const MIDI_POSITION_REPORT_SECONDS = 1 / 30;
 
 // Connected external output selected in Audio Configuration, or null.
 const selectedMidiOutput = () => globalThis.window?.midiControllerManager?.getSelectedOutput?.() ?? null;
@@ -53,6 +57,7 @@ export const midiPlaybackMethods = {
     if (isStale()) return null;
     const timeline = await parseScoreAsync(bytes.slice(0), {
       fileName,
+      fallbackTitle: playableTrack.sourceKind === 'openhome' ? playableTrack.meta?.title : undefined,
       languageHints: this.getMetadataRepairHints?.(), wrdBytes
     });
     if (isStale()) return null;
@@ -180,6 +185,9 @@ export const midiPlaybackMethods = {
           } else if (node !== this.audioManager.workletNode) return;
           if (data.type === 'midiPosition' && Number.isFinite(data.position) && data.position >= 0) {
             this.midiPosition = Math.min(data.position, this.midiTimeline?.duration ?? 0);
+            // Worklet reports carry their AudioContext frame; native frames are already on the engine clock.
+            this.midiPositionReport = { generation: data.generation, position: this.midiPosition,
+                frame: data.contextFrame ?? data.processedFrame };
             this.midiOutput?.pump(data.generation);
           } else if (data.type === 'midiEnded' && this.midiPlaying && !this.midiEndNotified) {
             this.midiOutput?.finish(data.generation);
@@ -439,6 +447,7 @@ export const midiPlaybackMethods = {
         getClockOffset: now => this.getMidiOutputClockOffset(now) });
       this.midiOutput.start(this.midiTimeline, { position, anchorTime: this.midiAnchorTime,
         speed: this.midiSpeed, generation: this.midiGeneration });
+      this.midiStartedTimeline = this.midiTimeline;
     }
     this.audioManager.clearSfzRuntimeCheckpoints?.({ types: [MIDI_INSTRUMENT_TYPE] });
     this.midiCheckpointAvailable = false;
@@ -469,37 +478,88 @@ export const midiPlaybackMethods = {
     return Math.max(0, Math.min(this.midiPosition ?? 0, this.midiTimeline?.duration ?? 0));
   },
 
+  // While playing, the last position report is carried forward on the output clock so
+  // every display frame advances, at most one report period ahead of rendered audio,
+  // and the result never steps back within one song's generation.
   getMidiPresentation() {
     const state = this.getCurrentState();
     const position = this.getCurrentMidiTime();
+    const speed = state?.playbackSpeed ?? 1;
+    const playing = this.midiPlaying === true;
+    const generation = this.midiGeneration ?? 0;
+    const presentationEpoch = this.midiPresentationEpoch ?? 0;
+    const timeline = state?.playbackMode === 'midi' ? this.midiTimeline : null;
+    const sourceGeneration = this.activeSourceGeneration;
+    const report = this.midiPositionReport;
+    const frame = playing && report?.generation === generation && report.position === this.midiPosition
+      ? report.frame : undefined;
+    let audible = this.audioManager.getAudiblePlaybackPosition?.(position, speed, { source: 'midi', frame }) ?? position;
+    if (frame !== undefined && audible > position + MIDI_POSITION_REPORT_SECONDS * speed) {
+      audible = position + MIDI_POSITION_REPORT_SECONDS * speed;
+    }
+    // A song transition assigns the next song's generation while the previous song is
+    // still presented, so the song identity also bounds the monotonic guard.
+    const last = this.midiPresented;
+    if (playing && last?.generation === generation && last.presentationEpoch === presentationEpoch &&
+      last.timeline === timeline && last.sourceGeneration === sourceGeneration &&
+      audible < last.position) audible = last.position;
+    this.midiPresented = { generation, presentationEpoch, timeline, sourceGeneration, position: audible };
     return { hasMidi: state?.playbackMode === 'midi' && !!this.midiTimeline,
-      timeline: state?.playbackMode === 'midi' ? this.midiTimeline : null,
-      position: this.audioManager.getAudiblePlaybackPosition?.(position, state?.playbackSpeed ?? 1) ?? position,
-      speed: state?.playbackSpeed ?? 1,
-      presentationEpoch: this.midiPresentationEpoch ?? 0,
-      sourceGeneration: this.activeSourceGeneration,
-      generation: this.midiGeneration ?? 0, playing: this.midiPlaying === true,
+      timeline,
+      position: audible,
+      speed,
+      presentationEpoch,
+      sourceGeneration,
+      generation, playing,
       preparing: !!this.midiPreparation || !!this.midiCheckpointRequest,
       paused: state?.isPaused === true };
   },
 
-  async prepareMidiInstruments(isCurrent = null) {
-    const manager = this.audioManager;
-    if (isCurrent?.() === false) return false;
-    let runtimeFailed = false;
-    let readyTargets = 0;
-    let unavailable = false;
-    for (const { node, plugin } of this.getMidiInstrumentTargets()) {
-      if (isRuntimeRetiredMidiTarget(manager, plugin, node)) { runtimeFailed = true; continue; }
-      const snapshot = manager.getEffectiveActiveWasmAssetSnapshot?.(plugin, [0], { primaryWorklet: node });
-      if (plugin.sf && !plugin._pending && !plugin._missing && !plugin._error && snapshot?.ready &&
-          !snapshot.stale && !manager.getSfzSamplePreparation?.(plugin, node)) readyTargets++;
-      else unavailable = true;
+  // Beat clock for the Rhythm Analyzer effect. Its source identity changes only when
+  // another song or presentation begins, so checkpoints keep the beat history.
+  getMidiBeatClock() {
+    const { timeline, position, speed, playing, paused, presentationEpoch, sourceGeneration } = this.getMidiPresentation();
+    if (!timeline) return null;
+    const clock = this.midiBeatClock;
+    if (clock?.timeline !== timeline || clock.presentationEpoch !== presentationEpoch ||
+      clock.sourceGeneration !== sourceGeneration) {
+      this.midiBeatClock = { timeline, presentationEpoch, sourceGeneration, source: {} };
     }
-    if (runtimeFailed && !readyTargets && !unavailable) throw new Error('The instrument stopped playing. Load it again or choose another instrument.');
-    this.midiHasInstruments = readyTargets > 0;
-    if (unavailable || !readyTargets) this.showMidiInstrumentNotice();
-    return true;
+    const clamped = Math.max(0, Math.min(timeline.duration, position));
+    return { sourceKind: 'midi', source: this.midiBeatClock.source, position: clamped, speed: speed || 1,
+      playing, paused, beat: midiBeatAt(timeline, clamped), beatAt: seconds => midiBeatAt(timeline, seconds) };
+  },
+
+  async prepareMidiInstruments(isCurrent = null, { waitForSelectedBank = false } = {}) {
+    const manager = this.audioManager;
+    while (isCurrent?.() !== false) {
+      let runtimeFailed = false;
+      let readyTargets = 0;
+      let unavailable = false;
+      let selectedBankLoading = false;
+      for (const { node, plugin } of this.getMidiInstrumentTargets()) {
+        if (isRuntimeRetiredMidiTarget(manager, plugin, node)) { runtimeFailed = true; continue; }
+        const snapshot = manager.getEffectiveActiveWasmAssetSnapshot?.(plugin, [0], { primaryWorklet: node });
+        const selected = plugin.sf && !plugin._missing && !plugin._error && !snapshot?.stale;
+        const selectedBankActive = waitForSelectedBank && snapshot?.assets?.get(0)?.externalAssetSignature === plugin.sf;
+        const pending = selected && ((plugin._pending && !selectedBankActive) || snapshot?.pendingSlots?.includes(0) ||
+          manager.getSfzSamplePreparation?.(plugin, node));
+        if (selected && snapshot?.ready && !pending) readyTargets++;
+        else unavailable = true;
+        if (pending) selectedBankLoading = true;
+      }
+      if (waitForSelectedBank && selectedBankLoading && !readyTargets && typeof selectedMidiOutput()?.send !== 'function') {
+        // Library loading and DSP activation settle independently. Recheck ownership and
+        // other usable outputs without holding the song on a retired asset's promise.
+        await new Promise(resolve => setTimeout(resolve, MIDI_BANK_READINESS_POLL_MS));
+        continue;
+      }
+      if (runtimeFailed && !readyTargets && !unavailable) throw new Error('The instrument stopped playing. Load it again or choose another instrument.');
+      this.midiHasInstruments = readyTargets > 0;
+      if (unavailable || !readyTargets) this.showMidiInstrumentNotice();
+      return true;
+    }
+    return false;
   },
 
   showMidiInstrumentNotice() {
@@ -517,7 +577,8 @@ export const midiPlaybackMethods = {
     const current = () => this.stopRequestToken === stopToken &&
       this.activeSourceGeneration === generation && isCurrent?.() !== false &&
       (this.midiGeneration ?? 0) === commandGeneration;
-    if (!await this.prepareMidiInstruments(current) || !current()) return false;
+    const waitForSelectedBank = !draining && this.midiStartedTimeline !== this.midiTimeline;
+    if (!await this.prepareMidiInstruments(current, { waitForSelectedBank }) || !current()) return false;
     const position = this.getCurrentMidiTime();
     const stage = await this.stagePlaybackActivation('midi', generation, position);
     try {
@@ -569,6 +630,7 @@ export const midiPlaybackMethods = {
   },
 
   async stopMidi() {
+    this.midiStartedTimeline = null;
     this.midiPresentationEpoch = (this.midiPresentationEpoch ?? 0) + 1;
     this.postMidiTransport(false, 0, { mode: this.midiNaturalTail ? 'drain' : 'reset' });
     this.clearBufferMonitoring();
@@ -598,6 +660,7 @@ export const midiPlaybackMethods = {
     this.midiOutput?.stop();
     if (!this.midiTimeline && !this.midiSource) return;
     if (!preserveTransport) this.postMidiTransport(false, 0, { mode: preserveCheckpoint ? 'pause' : 'reset' });
+    if (!preserveCheckpoint) this.midiStartedTimeline = null;
     this.midiTimeline = null;
     if (this.midiSource) this.releasePipelineSource(this.midiSource, true);
     this.midiSource = null;

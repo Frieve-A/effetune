@@ -303,6 +303,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES test/asset_preparation_context_test.cpp
     INCLUDE_DIRS core generated/cpp)
   et_add_dsp_test(
+    effetune_dsp_prepared_convolver_asset_tests
+    SOURCES test/prepared_convolver_asset_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_oscilloscope_tests SOURCES test/oscilloscope_frame_test.cpp)
   et_add_dsp_test(
     effetune_dsp_analog_meter_tests

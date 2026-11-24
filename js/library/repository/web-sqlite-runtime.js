@@ -70,7 +70,7 @@ import {
   createTrigramFtsQuery,
   cueDirectoryStage,
   duplicatePlaylist,
-  encodeBoundaryCursor,
+  finishTrackPage,
   enqueueScanSweep,
   ensureDirectoriesSynchronized,
   ensureFolderDeletionJob,
@@ -155,8 +155,10 @@ import {
   scheduleDeletionMaintenance,
   sealOperationSnapshot,
   sealPlaybackSequence,
+  projectArchiveEntryOffset,
+  loudnessCatalog,
+  playbackSession,
   setTrackFavorite,
-  stripOrderFields,
   tombstonePlaylist,
   trackFieldExpression,
   transitionOperation,
@@ -621,6 +623,7 @@ export async function initializeWebSqliteRuntime(databaseAdapter, {
   pendingScanSweepRecoveries.clear();
   pendingScanInvalidations.clear();
   assertSchemaSearchFields(schema.MUSIC_LIBRARY_SEARCH_FIELDS);
+  schema.upgradeArchiveEntryTables(catalogState.database);
   catalogState.database.exec(schema.getMusicLibraryV3InitializationSql({ journalMode: 'persist' }));
   catalogState.database.prepare('DELETE FROM artwork_claims').run();
   verifyPragmas();
@@ -831,6 +834,12 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'createPlaylist': return createPlaylist(payload);
     case 'createPlaylistWithItems': return createPlaylistWithItems(payload);
     case 'recordRecentlyPlayed': return recordRecentlyPlayed(payload);
+    case 'listPendingLoudness':
+    case 'saveTrackLoudness':
+    case 'finalizeLoudness':
+    case 'getTrackLoudness':
+    case 'getLoudnessStats': return loudnessCatalog[command](payload);
+    case 'playbackSession': return playbackSession(payload);
     case 'setTrackFavorite': return setTrackFavorite(payload);
     case 'getFavoriteTrackUids': return getFavoriteTrackUids(payload);
     case 'getSystemPlaylists': return getSystemPlaylists(payload);
@@ -1046,7 +1055,7 @@ function resolvePlaylistContextOrdinal(context, entityId) {
 function executeContextPage(
   context,
   order,
-  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null, ordinal = null }
 ) {
   const source = createContextTrackSource(context);
   const base = createContextFilter(context);
@@ -1082,21 +1091,15 @@ function executeContextPage(
   if (continuation === 'after' && hasExtra) hasAfter = true;
   if (continuation === 'before' && hasExtra) hasBefore = true;
 
-  const response = {
-    rows: rows.map(stripOrderFields),
-    nextCursor: hasAfter ? encodeBoundaryCursor(context, order, rows.at(-1), 'after') : null,
-    previousCursor: hasBefore ? encodeBoundaryCursor(context, order, rows[0], 'before') : null,
-    totalCount: Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true },
-    catalogVersion: context.snapshotVersion,
-    contextToken: context.token
-  };
-  catalogState.modules.queryContract.validatePageResponse(response, { limit });
-  return response;
+  const totalCount = Number.isSafeInteger(context.totalCount) ? context.totalCount : { pending: true };
+  return finishTrackPage(context, order, rows, { totalCount }, {
+    hasBefore, hasAfter, reverse, limit, pageStartOrdinal, ordinal
+  });
 }
 
 function executePlaylistContextPage(
   context,
-  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null }
+  { continuation, cursorTuple, limit, offset = null, pageStartOrdinal = null, ordinal = null }
 ) {
   const counts = ensurePlaylistContextCounts(context);
   const order = createPlaylistOrder();
@@ -1138,18 +1141,9 @@ function executePlaylistContextPage(
   }
   if (continuation === 'after' && hasExtra) hasAfter = true;
   if (continuation === 'before' && hasExtra) hasBefore = true;
-  const response = {
-    rows: rows.map(stripOrderFields),
-    nextCursor: hasAfter ? encodeBoundaryCursor(context, order, rows.at(-1), 'after') : null,
-    previousCursor: hasBefore ? encodeBoundaryCursor(context, order, rows[0], 'before') : null,
-    totalCount: counts.totalCount,
-    resolvedCount: counts.resolvedCount,
-    unresolvedCount: counts.unresolvedCount,
-    catalogVersion: context.snapshotVersion,
-    contextToken: context.token
-  };
-  catalogState.modules.queryContract.validatePageResponse(response, { limit });
-  return response;
+  return finishTrackPage(context, order, rows, counts, {
+    hasBefore, hasAfter, reverse, limit, pageStartOrdinal, ordinal
+  });
 }
 
 function playlistContextHasRows(context, tuple, continuation) {
@@ -1524,6 +1518,7 @@ function createTrackPageSelection(order) {
 
 function normalizePageRow(row) {
   if (row.rootPath !== undefined && row.relativePath !== undefined) {
+    projectArchiveEntryOffset(row);
     row.path = `${row.rootPath}/${row.relativePath}`;
     delete row.rootPath;
     delete row.relativePath;
@@ -1994,7 +1989,7 @@ function prepareAutomaticPlaylistImport(payload) {
 
 function resolveImportedPlaylistTrack(unresolved) {
   if (!unresolved) return null;
-  if (unresolved.sourceKind === 'cue-track' || unresolved.cueProvenance != null) {
+  if (['cue-track', 'archive-entry'].includes(unresolved.sourceKind) || unresolved.cueProvenance != null) {
     return resolveCuePlaylistTrack(unresolved);
   }
   const trustedOriginMatch = resolveImportedTrackFromOrigin(unresolved);
@@ -2218,6 +2213,7 @@ function getArtworkSource(payload) {
     extractorVersion: 'web-artwork-v2',
     utilitySessionId: catalogState.activeArtworkUtilitySession,
     trackSourceKind: track.sourceKind,
+    ...(track.sourceKind === 'archive-entry' && { entryKey: track.entryKey }),
     cueRelativePath: track.cueRelativePath
   };
 }
@@ -2238,7 +2234,8 @@ function artworkClaimMatchesCurrentTrack(claim) {
     if ((!isPreclaim && !isBoundClaim) || claim.externalArtworkStat !== null) return false;
   } else {
     if (!claim.externalArtworkStat || claim.embeddedOffset !== null || claim.embeddedLength !== null ||
-        !isTrackCoverRelativePath(track.sourceKind === 'cue-track' ? track.cueRelativePath : null, track.relativePath, claim.canonicalSourceIdentity)) {
+        !isTrackCoverRelativePath(track.cueRelativePath, track.relativePath, claim.canonicalSourceIdentity,
+          track.sourceKind === 'archive-entry' ? track.fileName : null)) {
       return false;
     }
   }

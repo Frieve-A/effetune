@@ -25,6 +25,7 @@ function textOf(element) {
 
 function createHarness({
   variant = 'simd', useWasmDsp = true, missing = null, fail = null,
+  audioEngine,
   unsupportedReason = 'WebAssembly DSP is not enabled for this plugin'
 } = {}) {
   const document = createFakeDocument();
@@ -77,6 +78,7 @@ function createHarness({
     Float32Array,
     window: {
       location: { href: 'https://example.test/features/effetune_bench.html' },
+      ...(audioEngine && { electronAPI: { audioEngine, async hideApplicationMenu() { return { success: true }; } } }),
       addEventListener(type, callback) { events[type] = callback; }
     },
     startRendererWatchdogHeartbeat() {},
@@ -97,6 +99,7 @@ function createHarness({
           ? (variant === 'simd' ? 'WebAssembly (SIMD)' : 'WebAssembly (baseline)')
           : 'JavaScript',
         usesWasm,
+        supportsAssets: usesWasm,
         sessions: [],
         closed: false,
         getPluginUnsupportedReason(plugin) {
@@ -176,6 +179,29 @@ test('initial JavaScript preference and engine changes immediately gate score di
   await select.dispatchEvent('change');
   assert.equal(h.document.getElementById('run-score').disabled, false);
   assert.match(textOf(h.panel()), /Run Benchmarks to measure the score\./);
+});
+
+test('native is offered only when an Electron executable is available and disables score', async () => {
+  let starts = 0;
+  for (const availability of [undefined, false, true]) {
+    const audioEngine = availability === undefined ? undefined : {
+      available: async () => availability,
+      start: () => { starts++; }
+    };
+    const h = createHarness({ audioEngine });
+    await h.events.load();
+    const mode = h.document.getElementById('dsp-mode');
+    assert.equal(mode.children.some(option => option.value === BENCHMARK_DSP_MODES.NATIVE), availability === true);
+    assert.equal(mode.value, BENCHMARK_DSP_MODES.WEBASSEMBLY);
+    if (availability === true) {
+      mode.value = BENCHMARK_DSP_MODES.NATIVE;
+      await mode.dispatchEvent('change');
+      await h.scorePass(BENCHMARK_DSP_MODES.NATIVE);
+      assert.equal(h.document.getElementById('run-score').disabled, true);
+      assert.equal(h.runtimes.length, 0);
+    }
+  }
+  assert.equal(starts, 0);
 });
 
 test('JavaScript creates no score runtime and baseline closes without processing any blocks', async () => {

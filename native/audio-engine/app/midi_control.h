@@ -2,7 +2,6 @@
 #include "device_host.h"
 #include "frame.h"
 namespace effetune::audio {
-bool midiNeedsOwner(std::string_view type) noexcept;
 bool isMidiControl(std::string_view type) noexcept;
 void handleMidiControl(DeviceHost &device, Session &session, const Frame &frame);
 void notifyMidi(Session &session, unsigned branch);

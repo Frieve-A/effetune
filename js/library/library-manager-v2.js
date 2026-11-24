@@ -3,6 +3,7 @@ import { createRepositoryError } from './repository/contract-errors.js';
 import { coalesceInvalidations } from './repository/invalidation.js';
 import { createWebLibraryServices } from './scan/web-library-services.js';
 import { createPagedPlaylistService } from './playlists/paged-playlist-service.js';
+import { invalidateReplayGain } from '../ui/audio-player/replay-gain.js';
 
 const MAX_LISTENERS_PER_EVENT = 32;
 const MAX_ARTWORK_URL_CACHE_ENTRIES = 32;
@@ -278,6 +279,27 @@ export class LibraryManagerV2 {
     return this.addListener('invalidation', listener);
   }
 
+  refreshLoudness() {
+    if (!this.client?.finalizeLoudness || this.closed) return Promise.resolve();
+    this.loudnessRefreshRequested = true;
+    if (!this.loudnessRefresh) {
+      this.loudnessRefresh = (async () => {
+        try {
+          while (this.loudnessRefreshRequested && !this.closed) {
+            this.loudnessRefreshRequested = false;
+            await this.client.finalizeLoudness({});
+            const player = this.uiManager?.audioPlayer;
+            await player?.refreshReplayGainTarget?.(this.client);
+            await invalidateReplayGain(player?.contextManager);
+          }
+        } finally {
+          this.loudnessRefresh = null;
+        }
+      })();
+    }
+    return this.loudnessRefresh;
+  }
+
   async getCounts(request = {}) {
     await this.#ensureReady();
     return this.client.getCounts(request);
@@ -294,7 +316,7 @@ export class LibraryManagerV2 {
     this.contexts.set(contextToken, {
       query: normalized.publicRequest,
       totalCount: Number.isSafeInteger(result?.totalCount) ? result.totalCount : null,
-      cursorOrdinals: new Map([[null, 0]])
+      cursorBoundaries: new Map()
     });
     return contextToken;
   }
@@ -399,10 +421,34 @@ export class LibraryManagerV2 {
 
   async releaseContext(contextToken) {
     await this.#ensureReady();
+    const context = this.contexts.get(contextToken);
+    if (context?.trackQueryReaders > 0) {
+      context.releaseRequested = true;
+      return { released: true, retained: true };
+    }
+    if (context?.releasePromise) return context.releasePromise;
+    const client = this.client;
+    const release = Promise.resolve().then(() => client.releaseContext(contextToken))
+      .finally(() => this.contexts.delete(contextToken));
+    if (context) context.releasePromise = release;
+    return release;
+  }
+
+  async withTrackQueryContext(contextToken, read) {
+    const context = this.contexts.get(contextToken);
+    if (this.closed || !context || context.releaseRequested || context.releasePromise) {
+      throw createRepositoryError('STALE_CURSOR', 'Library track context is unavailable');
+    }
+    context.trackQueryReaders = (context.trackQueryReaders ?? 0) + 1;
     try {
-      return await this.client.releaseContext(contextToken);
+      return await read();
     } finally {
-      this.contexts.delete(contextToken);
+      context.trackQueryReaders -= 1;
+      if (!this.closed && context.trackQueryReaders === 0 && context.releaseRequested) {
+        await this.releaseContext(contextToken).catch(error => {
+          this.logger?.warn?.('Failed to release the retained Library track context:', error);
+        });
+      }
     }
   }
 
@@ -468,9 +514,7 @@ export class LibraryManagerV2 {
     const request = options?.kind === 'directory'
       ? { handle: options }
       : { ...(options && typeof options === 'object' ? options : {}) };
-    request.languageHints = this.#getMetadataRepairHints();
-    request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
-    request.includeMidi = this.windowRef?.appConfig?.libraryIncludeMidi === true;
+    Object.assign(request, this.getScanOptions());
     return this.#invokeService(this.folderService, 'addFolder', 'folderService', [request]);
   }
 
@@ -479,11 +523,11 @@ export class LibraryManagerV2 {
   }
 
   requestFolderAccess(folderId, options = {}) {
+    const { includeVideo, includeMidi, includeMidiArchives } = this.getScanOptions();
     return this.#invokeService(this.folderService, 'requestFolderAccess', 'folderService', [
       folderId, {
         ...options,
-        includeVideo: this.windowRef?.appConfig?.libraryIncludeVideo === true,
-        includeMidi: this.windowRef?.appConfig?.libraryIncludeMidi === true
+        includeVideo, includeMidi, includeMidiArchives
       }
     ]);
   }
@@ -492,14 +536,22 @@ export class LibraryManagerV2 {
     const request = Array.isArray(options)
       ? { folderIds: options }
       : { ...(options && typeof options === 'object' ? options : {}) };
-    request.languageHints = this.#getMetadataRepairHints();
-    request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
-    request.includeMidi = this.windowRef?.appConfig?.libraryIncludeMidi === true;
+    Object.assign(request, this.getScanOptions());
     return this.#invokeService(this.scanService, 'scanFolders', 'scanService', [request]);
   }
 
   cancelScan(...args) {
     return this.#invokeService(this.scanService, 'cancelScan', 'scanService', args);
+  }
+
+  getScanOptions() {
+    const includeMidi = this.windowRef?.appConfig?.libraryIncludeMidi === true;
+    return {
+      languageHints: this.#getMetadataRepairHints(),
+      includeVideo: this.windowRef?.appConfig?.libraryIncludeVideo === true,
+      includeMidi,
+      includeMidiArchives: includeMidi && this.windowRef?.appConfig?.libraryIncludeMidiArchives === true
+    };
   }
 
   #getMetadataRepairHints() {
@@ -583,10 +635,11 @@ export class LibraryManagerV2 {
     this.unsubscribeFolderRemovalEvents?.();
     this.unsubscribeFolderRemovalEvents = null;
     const client = this.client;
-    const contextTokens = [...this.contexts.keys()];
+    const contexts = [...this.contexts];
     this.contexts.clear();
     if (client) {
-      await Promise.allSettled(contextTokens.map(contextToken => client.releaseContext(contextToken)));
+      await Promise.allSettled(contexts.map(([contextToken, context]) =>
+        context.releasePromise ?? client.releaseContext(contextToken)));
       await Promise.resolve(client.close?.()).catch(error => {
         this.logger?.warn?.('Failed to close the v2 Library catalog client:', error);
       });
@@ -613,27 +666,20 @@ export class LibraryManagerV2 {
   #normalizePageResponse(request, page, explicitStartOrdinal = null) {
     if (!page || !Array.isArray(page.rows)) return page;
     const context = this.contexts.get(request.contextToken);
-    if (!context) {
-      return Number.isSafeInteger(explicitStartOrdinal)
-        ? { ...page, pageStartOrdinal: explicitStartOrdinal }
-        : page;
-    }
-    const cursor = request.cursor ?? null;
-    const knownStart = context.cursorOrdinals.get(cursor);
+    const boundary = context?.cursorBoundaries.get(request.cursor);
+    const inferredStart = boundary?.before !== undefined
+      ? Math.max(0, boundary.before - page.rows.length)
+      : boundary?.after ?? 0;
     const pageStartOrdinal = Number.isSafeInteger(page.pageStartOrdinal)
       ? page.pageStartOrdinal
-      : Number.isSafeInteger(explicitStartOrdinal)
-        ? explicitStartOrdinal
-        : Number.isSafeInteger(knownStart) ? knownStart : 0;
+      : Number.isSafeInteger(explicitStartOrdinal) ? explicitStartOrdinal : inferredStart;
+    if (!context) return Number.isSafeInteger(explicitStartOrdinal) ? { ...page, pageStartOrdinal } : page;
     if (Number.isSafeInteger(page.totalCount)) context.totalCount = page.totalCount;
     if (page.nextCursor) {
-      context.cursorOrdinals.set(page.nextCursor, pageStartOrdinal + page.rows.length);
+      context.cursorBoundaries.set(page.nextCursor, { after: pageStartOrdinal + page.rows.length });
     }
     if (page.previousCursor) {
-      context.cursorOrdinals.set(
-        page.previousCursor,
-        Math.max(0, pageStartOrdinal - (request.limit ?? page.rows.length))
-      );
+      context.cursorBoundaries.set(page.previousCursor, { before: pageStartOrdinal });
     }
     return { ...page, pageStartOrdinal };
   }
@@ -696,6 +742,10 @@ export class LibraryManagerV2 {
     const event = this.pendingInvalidation;
     this.pendingInvalidation = null;
     if (!event || this.closed) return;
+    if (event.changedScopes.some(scope => ['tracks', 'albums', 'folders'].includes(scope) ||
+        scope.startsWith('folder:'))) {
+      void this.refreshLoudness().catch(error => this.logger?.warn?.('Library loudness refresh failed:', error));
+    }
     this.#emit('invalidation', event);
     this.#emit('catalog-changed', event);
     if (event.changedScopes.some(scope => scope === 'folders' || scope.startsWith('folder:'))) {

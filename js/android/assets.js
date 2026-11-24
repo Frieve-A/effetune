@@ -8,8 +8,35 @@ export class AndroidAssets {
         this.resident = new Map();
         this.subscriptions = new Map();
         this.authoritative = new Map();
+        this.nativeTypes = new Map();
         this.pendingClears = new Map();
         this.suppressed = false;
+        this.bridge.on?.('asset-state', (notice) => this.acceptAssetNotice(notice));
+    }
+
+    reconcilePipeline(pipeline) {
+        const types = new Map(pipeline.map(plugin => [String(plugin.id), plugin.constructor.name]));
+        for (const assets of [this.resident, this.authoritative]) {
+            for (const key of assets.keys()) {
+                const id = key.split(':')[0];
+                if (this.nativeTypes.get(id) !== types.get(id)) assets.delete(key);
+            }
+        }
+        this.nativeTypes = types;
+    }
+
+    acceptAssetNotice({ pluginId, slot, state, rejected, operationRevision }) {
+        const plugin = [...this.subscriptions.keys()].find(item => item.id === pluginId);
+        if (!plugin) return;
+        if (rejected) {
+            const key = `${pluginId}:${slot}`;
+            if (this.resident.get(key)?.operationRevision === operationRevision) {
+                this.resident.delete(key);
+            }
+            plugin.onWasmAssetRejected?.(slot, 'prepare', operationRevision);
+        } else {
+            plugin.onWasmAssetState?.(slot, state, operationRevision);
+        }
     }
 
     synchronize(pipeline, changed) {
@@ -41,6 +68,7 @@ export class AndroidAssets {
     }
 
     adopt(pipeline, references = {}, definitions = {}) {
+        this.reconcilePipeline(pipeline);
         this.resident.clear();
         this.authoritative.clear();
         this.pendingClears.clear();
@@ -67,10 +95,11 @@ export class AndroidAssets {
     }
 
     async transfer(pipeline, options, clears = [], expectedRevision) {
+        const batch = expectedRevision === undefined ? {} : { _assetBatch: crypto.randomUUID() };
+        const remote = options?.remoteRequestId ? { _remoteRequestId: options.remoteRequestId } : {};
         const request = async (command, payload) => {
             await options?.beforeCommit?.();
-            const result = await this.bridge.request(command, { ...payload,
-                ...(options?.remoteRequestId ? { _remoteRequestId: options.remoteRequestId } : {}) }, expectedRevision);
+            const result = await this.bridge.request(command, { ...payload, ...batch, ...remote }, expectedRevision);
             if (expectedRevision !== undefined) {
                 if (!Number.isSafeInteger(result?.revision)) throw new Error('Invalid Android asset revision');
                 expectedRevision = result.revision;
@@ -106,11 +135,13 @@ export class AndroidAssets {
                         await request('pipeline.asset.chunk', { pluginId: plugin.id, slot, offset,
                             data: bytesToBase64(bytes.subarray(offset, offset + 256 * 1024)) });
                     }
-                    await request('pipeline.asset.commit', { pluginId: plugin.id, slot });
+                    const result = await request('pipeline.asset.commit', { pluginId: plugin.id, slot });
                     this.resident.set(key, asset);
-                    plugin.onWasmAssetState?.(slot, 3, asset.operationRevision);
+                    if (result?.state !== 'pending') {
+                        plugin.onWasmAssetState?.(slot, 3, asset.operationRevision);
+                    }
                 } catch (error) {
-                    await this.bridge.request('pipeline.asset.abort', { pluginId: plugin.id, slot }, expectedRevision).catch(() => {});
+                    await this.bridge.request('pipeline.asset.abort', { pluginId: plugin.id, slot, ...batch, ...remote }, expectedRevision).catch(() => {});
                     plugin.onWasmAssetRejected?.(slot, 'prepare', asset.operationRevision);
                     throw error;
                 }

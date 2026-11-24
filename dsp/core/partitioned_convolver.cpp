@@ -1649,6 +1649,9 @@ bool PartitionedConvolver::storageRequirements(const ConvolverConfig &config,
   return Impl::storageRequirements(config, storage);
 }
 PartitionedConvolver::~PartitionedConvolver() { delete impl_; }
+void PartitionedConvolver::swap(PartitionedConvolver &other) noexcept {
+  std::swap(impl_, other.impl_);
+}
 PartitionedConvolver::PartitionedConvolver(PartitionedConvolver &&other) noexcept
     : impl_(std::exchange(other.impl_, nullptr)) {}
 PartitionedConvolver &PartitionedConvolver::operator=(PartitionedConvolver &&other) noexcept {

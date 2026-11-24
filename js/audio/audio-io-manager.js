@@ -1,3 +1,4 @@
+import { recordDiagnosticEvent, rememberDiagnosticNames } from '../diagnostics/diagnostic-log.js';
 import { NO_AUDIO_INPUT_DEVICE_ID, SYSTEM_AUDIO_INPUT_DEVICE_ID } from './audio-device-constants.js';
 import { createAudioSessionTypeController } from './audio-session-type-controller.js';
 import {
@@ -143,9 +144,11 @@ export class AudioIOManager {
         this._removeInputTrackListeners();
         const tracks = stream?.getAudioTracks?.() || stream?.getTracks?.() || [];
         for (const track of tracks) {
-            const refresh = () => this._refreshInputTrackState({ notify: true });
-            const ended = () => this._refreshInputTrackState({ notify: true });
-            const listeners = { mute: refresh, unmute: refresh, ended };
+            const onTrack = type => () => {
+                this._refreshInputTrackState({ notify: true });
+                recordDiagnosticEvent('inputTrack', { type, state: this.inputResourceState, availability: this.inputAvailability });
+            };
+            const listeners = { mute: onTrack('mute'), unmute: onTrack('unmute'), ended: onTrack('ended') };
             track.addEventListener?.('mute', listeners.mute);
             track.addEventListener?.('unmute', listeners.unmute);
             track.addEventListener?.('ended', listeners.ended);
@@ -188,6 +191,7 @@ export class AudioIOManager {
         this._syncAudioSessionType();
         this.inputRouteConnected = false;
         this._observeInputTracks(stream);
+        recordDiagnosticEvent('inputAcquisition', { result: 'acquired', inputGeneration: this.inputGeneration });
         return inputSourceNode;
     }
 
@@ -344,7 +348,32 @@ export class AudioIOManager {
         }
     }
 
-    _routeToDefaultOutput(preferences) {
+    getDiagnosticDeviceStatus(preferences) {
+        const requested = this.contextManager?.diagnosticRequestedOutputId;
+        const nativeFeed = this.contextManager?.diagnosticRequest?.nativeFeed;
+        const sink = nativeFeed ? null : (this.audioElement || this.contextManager?.audioContext)?.sinkId;
+        const compare = (id, actual) => typeof actual !== 'string' ? 'unknown' :
+            (id || 'default') === (actual || 'default') ? 'matched' : 'mismatched';
+        const input = this.inputStream?.getAudioTracks?.()[0]?.getSettings?.()?.deviceId;
+        const fallback = this.diagnosticFallbackInput;
+        return {
+            inputMatch: fallback && fallback.id === preferences?.inputDeviceId
+                ? fallback.match : compare(preferences?.inputDeviceId, input),
+            outputMatch: this.contextManager?.diagnosticOutputMatch || (requested ? compare(requested, sink) : 'unknown'),
+            route: nativeFeed ? 'nativeFeed' :
+                (this.audioContextSinkMode ? 'contextSink' : this.directOutputMode ? 'direct' : 'mediaElement')
+        };
+    }
+
+    _recordOutputFallback(preferences, reason, result, details = {}) {
+        const match = result === 'success' ? 'fellBackToDefault' : result === 'unknown' ? 'unknown' : 'fallbackFailed';
+        this.contextManager.diagnosticOutputMatch = match;
+        recordDiagnosticEvent('outputFallback', { reason, result,
+            outputSelection: preferences?.outputDeviceId && preferences.outputDeviceId !== 'default' ? 'explicit' : 'default',
+            outputDeviceLabel: preferences?.outputDeviceLabel, ...details });
+    }
+
+    _routeToDefaultOutput(preferences, cause, errorName) {
         if (this.audioElement) {
             this.audioElement.pause();
             this.audioElement.srcObject = null;
@@ -352,7 +381,10 @@ export class AudioIOManager {
         }
         this.directOutputMode = true;
         this._applyDefaultOutputPreference(preferences, { useDefaultDestination: true });
-        return this._connectOutputGainToDefaultDestination();
+        const error = this._connectOutputGainToDefaultDestination();
+        this._recordOutputFallback(preferences, 'elementFallback',
+            error ? 'failed' : this.defaultDestinationConnection ? 'success' : 'unknown', { cause, errorName });
+        return error;
     }
 
     /**
@@ -376,6 +408,7 @@ export class AudioIOManager {
         };
         try {
             this.lastInputInitializationError = null;
+            this.diagnosticFallbackInput = null;
             this.systemAudioDisabled = false;
             this.systemAudioDefaultGroupId = null;
             this.inputResourceState = 'acquiring';
@@ -412,6 +445,7 @@ export class AudioIOManager {
                 } catch (error) {
                     if (error?.name === 'AbortError') throw error;
                     console.warn('System Audio capture failed:', error.name, error.message);
+                    recordDiagnosticEvent('inputAcquisition', { result: 'failed', errorName: error?.name });
                     this.lastInputInitializationError = error;
                     this.markSystemAudioDisabled();
                     this._settleInputNotConfigured();
@@ -438,6 +472,7 @@ export class AudioIOManager {
             }
 
             // Try to get user media with audio constraints
+            let fallbackErrorName;
             let lastMicError = null;
             let acquiredStream = null;
             try {
@@ -448,6 +483,7 @@ export class AudioIOManager {
                 if (audioConstraints.deviceId) {
                     // If failed with saved device, try again with default device.
                     console.warn('Failed to use saved audio input device, falling back to default:', error.name, error.message);
+                    fallbackErrorName = error.name;
                     delete audioConstraints.deviceId;
                     try {
                         acquiredStream = await acquireMicrophone();
@@ -507,10 +543,17 @@ export class AudioIOManager {
                 }
             }
 
+            if (fallbackErrorName) {
+                this.diagnosticFallbackInput = { id: preferences?.inputDeviceId,
+                    match: acquiredStream ? 'fellBackToDefault' : 'fallbackFailed' };
+                recordDiagnosticEvent('inputFallback', { errorName: fallbackErrorName, result: this.diagnosticFallbackInput.match,
+                    inputDeviceLabel: preferences?.inputDeviceLabel });
+            }
             // If we have microphone access, create source from stream
             if (usingMicrophoneInput && acquiredStream) {
                 this._adoptInputStream(acquiredStream);
             } else {
+                recordDiagnosticEvent('inputAcquisition', { result: 'failed', errorName: lastMicError?.name });
                 this.lastInputInitializationError = lastMicError;
                 this.inputResourceState = lastMicError?.name === 'NotAllowedError' ||
                     lastMicError?.name === 'PermissionDeniedError'
@@ -542,6 +585,7 @@ export class AudioIOManager {
                 acquisitionGeneration !== this._inputAcquisitionGeneration) {
                 return '';
             }
+            recordDiagnosticEvent('inputAcquisition', { result: 'failed', errorName: error?.name });
             this.lastInputInitializationError = error;
             this.inputResourceState = 'error';
             this._syncAudioSessionType();
@@ -790,12 +834,15 @@ export class AudioIOManager {
                         await this._persistElectronDefaultOutputPreference(preferences);
                         try {
                             await this._setSinkIdWithTimeout(context, 'default', 3000);
+                            this._recordOutputFallback(preferences, 'sinkFailed', 'success', { errorName: error.name });
                         } catch (fallbackError) {
+                            this._recordOutputFallback(preferences, 'sinkFailed', 'failed', { errorName: fallbackError.name });
                             console.warn('[audioCtxSink] Default output recovery failed:', fallbackError);
                         }
                     }
                     this.audioContextSinkMode = true;
                 } else if (hasExplicitOutputDevice) {
+                    this._recordOutputFallback(preferences, 'selectionUnavailable', 'unknown');
                     console.warn('AudioContext output selection is unavailable; using default output.');
                     await this._persistElectronDefaultOutputPreference(preferences);
                 }
@@ -821,19 +868,19 @@ export class AudioIOManager {
                 this.audioElement = new Audio();
                 if (typeof this.audioElement.setSinkId !== 'function' ||
                     typeof context.createMediaStreamDestination !== 'function') {
-                    return this._routeToDefaultOutput(preferences);
+                    return this._routeToDefaultOutput(preferences, 'apiUnavailable');
                 }
                 this.destinationNode = context.createMediaStreamDestination();
                 await this._setSinkIdWithTimeout(this.audioElement, requestedOutputDeviceId, 3000);
                 this.currentOutputDeviceId = requestedOutputDeviceId;
                 this.audioElement.srcObject = this.destinationNode.stream;
                 this.audioElement.addEventListener('error', () => {
-                    this._routeToDefaultOutput(preferences);
+                    this._routeToDefaultOutput(preferences, 'mediaError');
                 });
                 await this.audioElement.play();
             } catch (error) {
                 console.warn('Browser output selection failed; using default output:', error);
-                return this._routeToDefaultOutput(preferences);
+                return this._routeToDefaultOutput(preferences, 'selectionOrPlaybackFailed', error?.name);
             }
 
             return '';
@@ -992,6 +1039,8 @@ export class AudioIOManager {
             return;
         }
         if (!prefs || !prefs.outputDeviceId) return;
+        // The saved device belongs to a native driver this renderer is about to reload into.
+        if ((prefs.audioDriver ?? 'standard') !== 'standard') return;
 
         let devices;
         try { devices = await navigator.mediaDevices.enumerateDevices(); } catch (e) {
@@ -1019,6 +1068,11 @@ export class AudioIOManager {
             ? (ctx?.sinkId ?? 'no-ctx')
             : (el?.sinkId ?? 'no-element');
 
+        const pollMatch = foundDevice ? (foundByLabel ? 'label' : 'id') : 'absent';
+        if (pollMatch !== this.diagnosticPollMatch) {
+            this.diagnosticPollMatch = pollMatch;
+            recordDiagnosticEvent('outputDevicePoll', { result: pollMatch });
+        }
         if (!foundDevice) return;
         if (!this.audioContextSinkMode && !el) return;
 
@@ -1040,10 +1094,7 @@ export class AudioIOManager {
         // ctx back to 'running', defer to onReset (= _doMacosRelaunch on macOS).
         if (this.audioContextSinkMode && ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
             try {
-                await Promise.race([
-                    ctx.resume(),
-                    new Promise(resolve => setTimeout(resolve, 3000))
-                ]);
+                await this._resumeForDevicePoll(ctx, 3000);
             } catch (e) {
             }
             if (ctx.state !== 'running') {
@@ -1078,10 +1129,7 @@ export class AudioIOManager {
                     await this._setSinkIdWithTimeout(ctx, '');
                     await new Promise(r => setTimeout(r, 1000));
                     await this._setSinkIdWithTimeout(ctx, activeDeviceId);
-                    await Promise.race([
-                        ctx.resume(),
-                        new Promise(resolve => setTimeout(resolve, 15000))
-                    ]).catch(() => {});
+                    await this._resumeForDevicePoll(ctx, 15000).catch(() => {});
                     if (ctx.state === 'running') {
                         await window.audioManager?.rebuildPipeline(false).catch(() => {});
                     }
@@ -1104,10 +1152,31 @@ export class AudioIOManager {
         }
     }
 
+    async _resumeForDevicePoll(ctx, timeoutMs) {
+        const startedAtEpochMs = Date.now();
+        let timer;
+        try {
+            await Promise.race([ctx.resume(), new Promise(resolve => { timer = setTimeout(resolve, timeoutMs); })]);
+        } finally {
+            clearTimeout(timer);
+            recordDiagnosticEvent('resume', { trigger: 'devicePoll', startedAtEpochMs, result: ctx.state });
+        }
+    }
+
     _setSinkIdWithTimeout(target, sinkId, ms = 10000) {
+        if (sinkId && sinkId !== 'default') rememberDiagnosticNames('id', [sinkId]);
         let timerId;
         return Promise.race([
-            target.setSinkId(sinkId).finally(() => clearTimeout(timerId)),
+            target.setSinkId(sinkId).then(result => {
+                const manager = this.contextManager;
+                if (manager && (target === manager.audioContext || target === this.audioElement)) {
+                    const stillUsingFallback = manager.diagnosticOutputMatch && manager.diagnosticRequestedOutputId !== 'default' &&
+                        (!sinkId || sinkId === 'default');
+                    manager.diagnosticOutputMatch = stillUsingFallback ? 'fellBackToDefault' : null;
+                }
+                recordDiagnosticEvent('outputDeviceApplied', { outputSelection: sinkId && sinkId !== 'default' ? 'explicit' : 'default' });
+                return result;
+            }).finally(() => clearTimeout(timerId)),
             new Promise((_, reject) => {
                 timerId = setTimeout(
                     () => reject(new Error(`setSinkId('${sinkId}') timed out after ${ms}ms`)),
@@ -1179,6 +1248,7 @@ export class AudioIOManager {
             // No assignment happens on this path; the snapshot above already
             // refreshed the state, so this only keeps the session in step.
             this._syncAudioSessionType();
+            recordDiagnosticEvent('inputRelease', { result: 'alreadyAbsent' });
             return {
                 reason,
                 alreadyAbsent: true,
@@ -1187,6 +1257,7 @@ export class AudioIOManager {
                 after: before
             };
         }
+        this.diagnosticFallbackInput = null;
         this._removeInputTrackListeners();
         if (disconnect && source) {
             try { source.disconnect(); } catch { /* already disconnected */ }
@@ -1202,6 +1273,7 @@ export class AudioIOManager {
         this._syncAudioSessionType();
         this._setInputAvailability('unknown');
         this.inputGeneration++;
+        recordDiagnosticEvent('inputRelease', { result: 'released', stoppedTrackCount });
         return {
             reason,
             stoppedTrackCount,
@@ -1271,8 +1343,10 @@ export class AudioIOManager {
                 throw this._createStaleInputAcquisitionError();
             }
             this._adoptInputStream(privateStream, { adoptPipelineSource: false });
+            this.diagnosticFallbackInput = null;
             return this.getInputSnapshot();
         }).catch(error => {
+            recordDiagnosticEvent('inputAcquisition', { result: 'failed', errorName: error?.name });
             if (acquisitionGeneration === this._inputAcquisitionGeneration) {
                 this.inputResourceState = error?.name === 'NotAllowedError' ||
                     error?.name === 'PermissionDeniedError' ? 'denied' : 'error';

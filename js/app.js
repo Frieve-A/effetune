@@ -1,3 +1,4 @@
+import { recordDiagnosticEvent, rememberDiagnosticNames } from './diagnostics/diagnostic-log.js';
 import { getSettingsStorage } from './settings-storage.js';
 import { LIBRARY_STYLESHEET } from './utils/app-stylesheets.js';
 import { PluginManager } from './plugin-manager.js';
@@ -7,6 +8,7 @@ import { AndroidAudioManager } from './android/audio-manager.js';
 import { NativeAudioManager } from './native/audio-manager.js';
 import { isAndroidHost } from './android/bridge.js';
 import { UIManager } from './ui-manager.js';
+import { isArchivePlaybackInput } from './ui/audio-player/archive-playback-selection.js';
 import { electronIntegration } from './electron-integration.js';
 import { applySerializedState } from './utils/serialization-utils.js';
 import { startRendererWatchdogHeartbeat } from './electron-watchdog.js';
@@ -550,7 +552,10 @@ class App {
         } catch (error) {
             console.error('Failed to reload the application:', error);
         }
-        if (!reloaded) this.audioManager.fadeInOutputForToken?.(fadeToken);
+        if (!reloaded) {
+            this.audioManager.fadeInOutputForToken?.(fadeToken);
+            this.uiManager.setError('error.pipelineReloadFailed', true);
+        }
     }
 
     async initialize() {
@@ -663,8 +668,8 @@ class App {
                 });
             }
             
-            // Process command line arguments after all initialization is complete
-            await this.processCommandLineArguments();
+            // The archive picker needs a presented window before it can receive input.
+            if (!window.pendingMusicFiles?.some(isArchivePlaybackInput)) await this.processCommandLineArguments();
 
             // Apply the configured initial view after startup content has been handled.
             await this.applyStartupViewPreference();
@@ -686,6 +691,13 @@ class App {
             }
             this.initialized = true;
             window.electronAPI?.signalReadyForPresentation?.();
+        }
+
+        if (window.pendingMusicFiles?.some(isArchivePlaybackInput)) await this.processCommandLineArguments();
+
+        if (!isAndroidHost()) {
+            void this.uiManager.restorePlaybackSession().catch(error =>
+                console.warn('Could not restore playback session:', error));
         }
 
         // Chromium needs the native window to be presented before Browser capture
@@ -1085,6 +1097,7 @@ class App {
                     !webUrlState &&
                     startupConfig.pipelineStartup === 'preset' &&
                     startupConfig.startupPreset) {
+                    rememberDiagnosticNames('preset', [startupConfig.startupPreset]);
                     const presetManager = this.uiManager.pipelineManager.presetManager;
                     const presets = await presetManager.getPresets();
 
@@ -1119,6 +1132,7 @@ class App {
                     isElectron &&
                     startupConfig.pipelineStartup === 'preset' &&
                     startupConfig.startupPreset) {
+                    rememberDiagnosticNames('preset', [startupConfig.startupPreset]);
                     const presetManager = this.uiManager.pipelineManager.presetManager;
                     const presets = await presetManager.getPresets();
                     
@@ -1396,12 +1410,12 @@ class App {
             console.warn('Audio recovery after system resume failed:', error);
             this.uiManager.setError('error.audioResetFailed', true);
         };
-        const resumeAudioFromInteraction = () => {
+        const resumeAudioFromInteraction = trigger => {
             if (document.hidden) return;
             if (powerController?.enabled) {
                 try {
                     Promise.resolve(
-                        powerController.requestResumeFromUserInteraction?.()
+                        powerController.requestResumeFromUserInteraction?.(trigger)
                     ).catch(error => {
                         if (this.audioManager.needsSystemResumeRecovery) {
                             reportSystemResumeFailure(error);
@@ -1414,7 +1428,15 @@ class App {
                 }
                 return;
             }
-            Promise.resolve(this.audioManager.contextManager?.resumeAudioContext?.()).catch(error => {
+            const manager = this.audioManager.contextManager;
+            const before = manager?.audioContext?.state;
+            const fields = before && before !== 'running' ? { trigger, resumeKind: 'unexpected-recovery', reason: 'policyDisabled', startedAtEpochMs: Date.now(),
+                contextState: before, effectiveState: powerController?.effectiveState,
+                inputState: this.audioManager.ioManager?.inputResourceState } : null;
+            Promise.resolve(manager?.resumeAudioContext?.()).then(() => {
+                if (fields) recordDiagnosticEvent('resume', { ...fields, result: manager.audioContext?.state });
+            }).catch(error => {
+                if (fields) recordDiagnosticEvent('resume', { ...fields, result: 'error', errorName: error?.name });
                 if (this.audioManager.needsSystemResumeRecovery) {
                     reportSystemResumeFailure(error);
                     return;
@@ -1425,6 +1447,7 @@ class App {
         // Page-lifecycle events are registered on their specified targets in
         // capture phase because freeze/resume do not reliably bubble.
         const handleDocumentLifecycle = (event, eventType = event?.type) => {
+            if (eventType === 'visibilitychange') recordDiagnosticEvent('visibility', { hidden: document.hidden });
             if (eventType === 'visibilitychange' && document.hidden) {
                 this.uiManager.flushPipelineStateToLocalStorage?.();
             }
@@ -1436,7 +1459,7 @@ class App {
             }
             if (!document.hidden &&
                 (eventType === 'visibilitychange' || eventType === 'resume')) {
-                resumeAudioFromInteraction();
+                resumeAudioFromInteraction(eventType === 'visibilitychange' ? 'visible' : 'resume');
             }
         };
         document.addEventListener(
@@ -1456,7 +1479,7 @@ class App {
                 hidden: document.hidden
             });
             if (eventType === 'pageshow' && !document.hidden) {
-                resumeAudioFromInteraction();
+                resumeAudioFromInteraction('pageshow');
             }
         };
         window.addEventListener?.(
@@ -1479,27 +1502,47 @@ class App {
         // The controller returns immediately when the required resources are active.
         // Touch and pen acquire activation on release, unlike mouse pointerdown.
         document.addEventListener('pointerdown', event => {
-            if (event.pointerType === 'mouse') resumeAudioFromInteraction();
+            if (event.pointerType === 'mouse') resumeAudioFromInteraction('pointer');
         }, { passive: true });
         if (typeof window.PointerEvent === 'function') {
             document.addEventListener('pointerup', event => {
-                if (event.pointerType !== 'mouse') resumeAudioFromInteraction();
+                if (event.pointerType !== 'mouse') resumeAudioFromInteraction('pointer');
             }, { passive: true });
         } else {
-            document.addEventListener('touchend', resumeAudioFromInteraction, { passive: true });
+            document.addEventListener('touchend', () => resumeAudioFromInteraction('pointer'), { passive: true });
         }
-        document.addEventListener('keydown', resumeAudioFromInteraction);
-        window.addEventListener?.('focus', resumeAudioFromInteraction, true);
+        document.addEventListener('keydown', () => resumeAudioFromInteraction('key'));
+        let focused = document.hasFocus?.();
+        const observeFocus = () => {
+            const next = document.hasFocus?.();
+            if (next !== focused) recordDiagnosticEvent('focus', { focused: next });
+            focused = next;
+        };
+        window.addEventListener?.('blur', observeFocus, true);
+        window.addEventListener?.('focus', () => { observeFocus(); resumeAudioFromInteraction('focus'); }, true);
 
         window.electronAPI?.onSystemResume?.(() => {
+            const startedAtEpochMs = Date.now();
             this.audioManager.handleSystemResume().then(error => {
+                recordDiagnosticEvent('resume', { trigger: 'systemResume', startedAtEpochMs, result: !error });
                 if (error) reportSystemResumeFailure(error);
-            }).catch(reportSystemResumeFailure);
+            }).catch(error => {
+                recordDiagnosticEvent('resume', { trigger: 'systemResume', startedAtEpochMs, result: 'error', errorName: error?.name });
+                reportSystemResumeFailure(error);
+            });
         });
 
         // Handle audio device changes (e.g., USB device reconnected)
         if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
             navigator.mediaDevices.addEventListener('devicechange', () => {
+                const devices = navigator.mediaDevices;
+                if (devices.enumerateDevices) {
+                    void devices.enumerateDevices().then(list => {
+                        const inputs = list.filter(device => device.kind === 'audioinput').length;
+                        const outputs = list.filter(device => device.kind === 'audiooutput').length;
+                        recordDiagnosticEvent('deviceChange', { inputs, outputs });
+                    }).catch(() => recordDiagnosticEvent('deviceChange', {}));
+                } else recordDiagnosticEvent('deviceChange', {});
                 this.handleOutputDeviceChange();
             });
         }
@@ -1533,8 +1576,8 @@ class App {
      * Handle and display any errors
      */
     handleErrors() {
-        if (this.audioManager.outputErrorKey || this.audioManager.inputWarning) {
-            this.uiManager.setError(this.audioManager.outputErrorKey || this.audioManager.inputWarning,true);
+        if (this.audioManager.outputErrorKey) {
+            this.uiManager.setError(this.audioManager.outputErrorKey,true);
             return;
         }
         // Check sample rate after initialization
@@ -1545,15 +1588,16 @@ class App {
         // Clear any existing error messages
         this.uiManager.clearError();
 
-        if (this.startupWarningMessage && !this.hasAudioError) {
+        const inputWarning = this.audioManager.inputWarning ||
+            (this.hasAudioError ? 'error.microphoneAccessDenied' : null);
+        if (this.startupWarningMessage && !inputWarning) {
             this.uiManager.setError(this.startupWarningMessage, false);
         }
 
-        // Display microphone error message if there was one
-        if (this.hasAudioError) {
-            // Show a non-blocking warning message to the user, then auto-clear
-            // after 3 s so the warning does not linger indefinitely.
-            this.uiManager.showTransientMessage('error.microphoneAccessDenied', false, {}, 3000);
+        // Display input warnings without blocking, then auto-clear after 3 s
+        // so the warning does not linger indefinitely.
+        if (inputWarning) {
+            this.uiManager.showTransientMessage(inputWarning, false, {}, 3000);
         }
     }
 
@@ -1603,6 +1647,8 @@ class App {
             return;
         }
         if (!prefs || !prefs.outputDeviceId) return;
+        // The saved device belongs to a native driver this renderer is about to reload into.
+        if ((prefs.audioDriver ?? 'standard') !== 'standard') return;
 
         let devices;
         try {
@@ -1802,49 +1848,39 @@ class App {
      * This method handles both preset files and music files passed via command line
      */
     async processCommandLineArguments() {
-        // Check if running in Electron environment
-        const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
-        if (!isElectron) return;
+        const integration = window.electronIntegration;
+        const pending = window.pendingMusicFiles;
+        if (!integration?.isElectron || !pending?.length) return;
 
-        // We no longer need to process preset files here as they are handled in initializeAndBuildPipeline
-        // This prevents double-loading of preset files
+        const disableInputMixing = () => {
+            if (!integration.audioPreferences) return;
+            integration.audioPreferences.useInputWithPlayer = false;
+            if (this.audioManager) this.audioManager.useInputWithPlayer = false;
+        };
+        const archiveSelection = pending.some(isArchivePlaybackInput);
+        if (!archiveSelection) disableInputMixing();
+        if (!this.uiManager) return;
 
-        // Process command line music files if specified
-        if (window.pendingMusicFiles && window.pendingMusicFiles.length > 0) {
-            
-            // Set useInputWithPlayer to false for command line music files
-            if (window.electronIntegration && window.electronIntegration.audioPreferences) {
-                window.electronIntegration.audioPreferences.useInputWithPlayer = false;
-                
-                // Make sure the audio manager is updated with this preference
-                if (this.audioManager) {
-                    this.audioManager.useInputWithPlayer = false;
-                }
+        window.pendingMusicFiles = [];
+        const playbackDescriptors = pending.filter(item =>
+            item && typeof item === 'object' && typeof item.path === 'string' &&
+            Number.isSafeInteger(item.byteLength) && item.byteLength >= 0
+        );
+        if (!playbackDescriptors.length) {
+            console.error('Initial music file admission returned no playable files');
+            return;
+        }
+        try {
+            if (archiveSelection) {
+                await this.uiManager.createAudioPlayer(playbackDescriptors, false, { beforeLoad: disableInputMixing });
+                return;
             }
-            
-            // Use the UIManager to create an audio player and load the files
-            if (this.uiManager) {
-                
-                const playbackDescriptors = window.pendingMusicFiles.filter(item =>
-                    item && typeof item === 'object' && typeof item.path === 'string' &&
-                    Number.isSafeInteger(item.byteLength) && item.byteLength >= 0
-                );
-                if (playbackDescriptors.length > 0) {
-                    try {
-                        await this.uiManager.createAudioPlayer(playbackDescriptors, false);
-                        setTimeout(() => {
-                            if (this.uiManager.audioPlayer) this.uiManager.audioPlayer.play();
-                        }, 1000);
-                    } catch (error) {
-                        console.error('Initial music playback setup diagnostic:', error);
-                    }
-                } else {
-                    console.error('Initial music file admission returned no playable files');
-                }
-                
-                // Clear the pending music files after processing
-                window.pendingMusicFiles = [];
-            }
+            await this.uiManager.createAudioPlayer(playbackDescriptors, false);
+            setTimeout(() => {
+                if (this.uiManager.audioPlayer) this.uiManager.audioPlayer.play();
+            }, 1000);
+        } catch (error) {
+            console.error('Initial music playback setup diagnostic:', error);
         }
     }
 }
@@ -1860,6 +1896,7 @@ async function displayAppVersion() {
         // Get version from Electron if available
         if (window.electronIntegration && window.electronIntegration.isElectron) {
             const version = await window.electronIntegration.getAppVersion();
+            if (window.app) window.app.appVersion = version;
             versionElement.textContent = version;
         } else {
             // For web version, fetch package.json from the relative path
@@ -1867,6 +1904,7 @@ async function displayAppVersion() {
                 const response = await fetch('./package.json');
                 if (response.ok) {
                     const packageData = await response.json();
+                    if (window.app) window.app.appVersion = packageData.version;
                     versionElement.textContent = packageData.version;
                 } else {
                     console.error('Failed to fetch package.json:', response.status);

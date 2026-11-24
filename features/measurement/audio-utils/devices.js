@@ -8,8 +8,14 @@
  * @returns {Promise<Object>} - Object with inputs and outputs arrays
  */
 import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+import { nativeMeasurementDevice, nativeMeasurementInputIndices } from './native-measurement.js';
+import i18n from '../i18n.js';
 
 async function enumerateDevices() {
+    if (this.nativeMeasurement) {
+        this.devices = await this.nativeMeasurement.listDevices();
+        return this.devices;
+    }
     if (isAndroidHost()) {
         this.devices = await getAndroidBridge().request('audio.devices');
         this.devices.inputs = this.devices.inputs.filter(device => Number(device.id) >= 0);
@@ -39,6 +45,20 @@ async function enumerateDevices() {
     }
 }
 
+async function refreshNativeInputLevel() {
+    if (this.nativeLevelPending || !this.microphone) return;
+    const microphone = this.microphone;
+    this.nativeLevelPending = true;
+    try {
+        const { inputPeak } = await this.nativeMeasurement.status() ?? {};
+        if (this.microphone === microphone) this.currentInputLevel = inputPeak > 0 ? 20 * Math.log10(inputPeak) : -100;
+    } catch (error) {
+        console.warn('Native measurement input level was unavailable:', error);
+    } finally {
+        this.nativeLevelPending = false;
+    }
+}
+
 // Browsers cannot dismiss a pending permission prompt. Release any stream it grants after cancellation.
 function requestMicrophoneStream(constraints, signal) {
     const acquisition = navigator.mediaDevices.getUserMedia(constraints);
@@ -61,16 +81,34 @@ function requestMicrophoneStream(constraints, signal) {
  * @param {string} deviceId - The input device ID, or null for default
  * @param {string} channel - The input channel to use ('left', 'right', 'both')
  */
-async function startMicrophoneInput(deviceId = null, channel = 'left', { signal: ownerSignal } = {}) {
+async function startMicrophoneInput(deviceId = null, channel = 'left',
+    { signal: ownerSignal, outputDeviceId, outputChannelCount } = {}) {
     ownerSignal?.throwIfAborted();
     const android = isAndroidHost();
+    const previousNativeClose = this.nativeMeasurement ? this.stopMicrophoneInput() : null;
     if (android) this.microphoneRequest?.abort();
-    else this.stopMicrophoneInput();
+    else if (!this.nativeMeasurement) this.stopMicrophoneInput();
     const request = new AbortController();
     this.microphoneRequest = request;
     const signal = ownerSignal ? AbortSignal.any([request.signal, ownerSignal]) : request.signal;
     const useRightChannel = channel === 'right' || channel === 1;
     try {
+        if (this.nativeMeasurement) {
+            await previousNativeClose;
+            signal.throwIfAborted();
+            const input = nativeMeasurementDevice(this.devices.inputs, deviceId);
+            const output = nativeMeasurementDevice(this.devices.outputs, outputDeviceId);
+            if (!input?.channels || !output?.channels) throw new Error(i18n.t('error:measurementDevicesUnavailable'));
+            const inputChannelIndices = nativeMeasurementInputIndices(channel, input.channels);
+            const session = await this.nativeMeasurement.open({ sampleRate: this.audioContext.sampleRate,
+                inputDeviceId: input.id, outputDeviceId: output.id, inputChannelIndices,
+                outputChannels: Math.min(outputChannelCount ?? output.channels, output.channels, 16) }, signal);
+            signal.throwIfAborted();
+            this.microphone = { native: true };
+            this.selectedInputChannel = channel;
+            console.debug('Native measurement device format:', session);
+            return true;
+        }
         if (android) {
             const nativeDeviceId = deviceId ? Number(deviceId) : 0;
             if (!Number.isInteger(nativeDeviceId) || nativeDeviceId < 0) {
@@ -228,6 +266,11 @@ async function startMicrophoneInput(deviceId = null, channel = 'left', { signal:
 function stopMicrophoneInput() {
     this.microphoneRequest?.abort();
     this.microphoneRequest = null;
+    if (this.nativeMeasurement) {
+        this.microphone = null;
+        this.currentInputLevel = -100;
+        return this.nativeMeasurement.close().catch(error => console.warn('Native measurement device release failed:', error));
+    }
     if (isAndroidHost()) {
         if (this.microphone?.native) {
             this.microphone = null;
@@ -387,6 +430,7 @@ async function createRecorderWorkletNode() {
 export {
     enumerateDevices,
     startMicrophoneInput,
+    refreshNativeInputLevel,
     stopMicrophoneInput,
     createLevelMeterWorkletNode,
     createRecorderWorkletNode

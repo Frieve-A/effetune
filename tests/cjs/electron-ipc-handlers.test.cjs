@@ -714,7 +714,6 @@ test('registers core handlers and delegates file, config, update, path, and URL 
       success: true,
       preferences: {
         audioDriver: 'standard',
-        audioDriverDeviceMemory: '',
         inputDeviceId: '__effetune_no_audio_input__',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
@@ -726,6 +725,9 @@ test('registers core handlers and delegates file, config, update, path, and URL 
         useWasmDsp: true,
         gaplessPlayback: true,
         replayGainMode: 'off',
+        replayGainTarget: 'manual',
+        replayGainAutoCoverage: 95,
+        replayGainPeakCeilingDb: 0,
         replayGainPreampDb: 0,
         replayGainPreventClipping: true,
         outputChannels: 2,
@@ -1229,7 +1231,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
         },
         {
           id: 'menu.help',
-          submenu: ['help.help', 'help.tour', 'help.discord', 'help.support', 'separator', 'help.about']
+          submenu: ['help.help', 'help.tour', 'help.discord', 'help.support', 'help.diagnostics', 'separator', 'help.about']
         }
       ]
     );
@@ -1267,7 +1269,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
       'settings.config', 'settings.remoteControl', 'settings.audioDevices', 'settings.performanceBenchmark',
       'settings.frequencyResponseMeasurement',
       'menu.help',
-      'help.help', 'help.tour', 'help.discord', 'help.support', 'help.about'
+      'help.help', 'help.tour', 'help.discord', 'help.support', 'help.diagnostics', 'help.about'
     ]);
     clickMenu(translatedMenu);
     await Promise.resolve();
@@ -1278,6 +1280,10 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.deepEqual(
       calls.find(call => call[0] === 'webContents.send' && call[1] === 'backup-restore'),
       ['webContents.send', 'backup-restore']
+    );
+    assert.deepEqual(
+      calls.find(call => call[0] === 'webContents.send' && call[1] === 'show-diagnostics'),
+      ['webContents.send', 'show-diagnostics']
     );
     assert.deepEqual(
       calls.find(call => call[0] === 'webContents.send' && call[1] === 'start-onboarding-tour'),
@@ -1651,6 +1657,10 @@ test('named audio and renderer settings use the active settings directory and re
       assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'audio-preferences.json'), 'utf8')).sampleRate, 48000);
       assert.equal((await ipcMain.handlers.get('load-audio-preferences')()).preferences.sampleRate, 48000);
       const event = ipcMain.fileEvent();
+      const sessionMarker = path.join(directory, 'player-session-marker.json');
+      assert.deepEqual(await ipcMain.handlers.get('save-file')(event, sessionMarker, '{"present":true}'), { success: true });
+      await ipcMain.handlers.get('read-file')(event, sessionMarker);
+      assert.ok(calls.some(call => call[0] === 'fileHandlers.readFile' && call[1] === sessionMarker));
       ipcMain.listeners.get('settings-storage')(event, { operation: 'set', key: 'theme', value: 'paper' });
       assert.equal(event.returnValue.ok, true);
       ipcMain.listeners.get('settings-storage')(event, { operation: 'get', key: 'theme' });
@@ -1697,13 +1707,15 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       {
         ...silentPreferences,
         audioDriver: 'standard',
-        audioDriverDeviceMemory: '',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
         gaplessPlayback: true,
         replayGainMode: 'off',
+        replayGainTarget: 'manual',
+        replayGainAutoCoverage: 95,
+        replayGainPeakCeilingDb: 0,
         replayGainPreampDb: 0,
         replayGainPreventClipping: true
       }
@@ -1730,7 +1742,8 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       call[0] === 'webContents.send' && call[1] === 'show-message'
     ), true);
     assert.equal(calls.some(call => call[0] === 'setTimeout' && call[1] === 3000), true);
-    assert.equal(calls.some(call => call[0] === 'window.reload'), true);
+    assert.ok(calls.some(call => call[0] === 'webContents.send' && call[1] === 'reload-with-pipeline-state'));
+    assert.equal(calls.some(call => call[0] === 'window.reload'), false);
   });
 });
 
@@ -1769,12 +1782,14 @@ test('audio preference IPC persists a verified output-device fallback without re
       {
         ...defaultOutputPreferences,
         audioDriver: 'standard',
-        audioDriverDeviceMemory: '',
         midiInputDeviceKey: '',
         midiOutputDeviceKey: '',
         inputDeviceLabel: '',
         gaplessPlayback: true,
         replayGainMode: 'off',
+        replayGainTarget: 'manual',
+        replayGainAutoCoverage: 95,
+        replayGainPeakCeilingDb: 0,
         replayGainPreampDb: 0,
         replayGainPreventClipping: true
       }
@@ -1792,7 +1807,8 @@ test('audio preference IPC persists a verified output-device fallback without re
       call[0] === 'webContents.send' && call[1] === 'show-message'
     ), true);
     assert.equal(calls.some(call => call[0] === 'setTimeout' && call[1] === 3000), true);
-    assert.equal(calls.some(call => call[0] === 'window.reload'), true);
+    assert.ok(calls.some(call => call[0] === 'webContents.send' && call[1] === 'reload-with-pipeline-state'));
+    assert.equal(calls.some(call => call[0] === 'window.reload'), false);
   });
 });
 

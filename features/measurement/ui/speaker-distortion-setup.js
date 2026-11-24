@@ -117,7 +117,8 @@ export const speakerDistortionAudio = {
         if (android) await configureAndroidMeasurementOutput(config);
         signal?.throwIfAborted();
         measurementController.measurementConfig = config;
-        await audioUtils.startMicrophoneInput(settings.audioInputId, settings.inputChannel, { signal });
+        await audioUtils.startMicrophoneInput(settings.audioInputId, settings.inputChannel,
+            { signal, outputDeviceId: config.audioOutputId, outputChannelCount: config.outputChannelCount });
         signal?.throwIfAborted();
     },
     async play(buffer, settings, signal, stopWhen) {

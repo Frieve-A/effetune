@@ -5,7 +5,8 @@ const readable = new Map();
 const writable = new Map();
 const outputDirectories = new Map();
 const SETTINGS_FILES = new Set([
-  'effetune_presets.json', 'effetune_plugin_presets.json', 'player-state.json', 'effetune_dbt_tests.json'
+  'effetune_presets.json', 'effetune_plugin_presets.json', 'player-state.json', 'player-session-marker.json',
+  'effetune_dbt_tests.json'
 ]);
 
 function pathKey(value) {
@@ -25,11 +26,18 @@ function canonicalPath(value) {
 function grant(map, value) {
   if (typeof value !== 'string' || !value) return;
   const canonical = canonicalPath(value);
-  map.set(pathKey(value), pathKey(canonical));
-  map.set(pathKey(canonical), pathKey(canonical));
+  map.set(pathKey(value), canonical);
+  map.set(pathKey(canonical), canonical);
 }
 
 function grantRead(value) { grant(readable, value); }
+function getGrantedReadPath(value) {
+  if (typeof value !== 'string' || !path.isAbsolute(value)) return null;
+  return readable.get(pathKey(value)) ?? null;
+}
+function restoreGrantedReadPath(value) {
+  if (typeof value === 'string' && path.isAbsolute(value)) readable.set(pathKey(value), path.resolve(value));
+}
 function grantWrite(value) { grant(writable, value); grantRead(value); }
 function grantOutputDirectory(value) { grant(outputDirectories, value); }
 
@@ -50,16 +58,19 @@ function assertPath(value, mode, settingsDirectory, profileDirectory = settingsD
   const key = pathKey(resolved);
   const canonical = pathKey(canonicalPath(resolved));
   const map = mode === 'write' ? writable : readable;
-  if (map.get(key) === canonical) return;
+  const granted = map.get(key);
+  if (granted !== undefined && pathKey(granted) === canonical) return;
   if (mode === 'write') {
-    const parent = pathKey(path.dirname(resolved));
-    const canonicalParent = pathKey(canonicalPath(path.dirname(resolved)));
-    if (outputDirectories.get(parent) === canonicalParent &&
+    const parent = path.dirname(resolved);
+    const grantedDirectory = outputDirectories.get(pathKey(parent));
+    const canonicalParent = canonicalPath(parent);
+    if (grantedDirectory !== undefined && pathKey(grantedDirectory) === pathKey(canonicalParent) &&
         canonical === pathKey(path.join(canonicalParent, path.basename(resolved)))) return;
   }
   if (settingsDirectory) {
     const name = path.basename(resolved);
-    const directory = name === 'pipeline-state.json' || name === 'player-state.json' ? profileDirectory : settingsDirectory;
+    const directory = ['pipeline-state.json', 'player-state.json', 'player-session-marker.json'].includes(name)
+      ? profileDirectory : settingsDirectory;
     const settings = canonicalPath(directory);
     const allowedSetting = SETTINGS_FILES.has(name) || (mode !== 'write' && name === 'pipeline-state.json');
     if (allowedSetting && key === pathKey(path.join(path.resolve(directory), name)) &&
@@ -74,4 +85,7 @@ function clear() {
   outputDirectories.clear();
 }
 
-module.exports = { SETTINGS_FILES, assertSender, assertPath, grantRead, grantWrite, grantOutputDirectory, clear };
+module.exports = {
+  SETTINGS_FILES, assertSender, assertPath, grantRead, getGrantedReadPath, restoreGrantedReadPath,
+  grantWrite, grantOutputDirectory, clear
+};

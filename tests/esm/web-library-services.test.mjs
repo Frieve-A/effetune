@@ -51,7 +51,7 @@ test('Web folder services select an FSA directory and reconnect its persisted pe
     scanReason: 'manual',
     languageHints: { language: 'ja' },
     includeVideo: true,
-    includeMidi: true
+    includeMidi: true, includeMidiArchives: true
   });
   const store = new WebFolderHandleStore({ indexedDB });
   await store.put({ folderId: 'folder-fsa', handle });
@@ -74,7 +74,7 @@ test('Web folder services select an FSA directory and reconnect its persisted pe
       scanReason: 'manual',
       languageHints: { language: 'ja' },
       includeVideo: true,
-      includeMidi: true
+      includeMidi: true, includeMidiArchives: true
     }],
     ['requestFolderAccess', { folderId: 'folder-fsa', handle, displayName: 'Music' }]
   ]);

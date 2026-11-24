@@ -1,3 +1,6 @@
+import { createArchiveCache } from '../archive/archive-cache.js';
+import { withBlobArchive } from '../archive/blob-archive.js';
+import { archivePlaybackFile, readArchivePlaybackEntry } from '../archive/playback-source.js';
 import { DurableLibraryService } from './durable-library-service.js';
 import { validateBulkOperationStart } from './bulk-operation-protocol.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
@@ -31,6 +34,7 @@ export class WebLibraryServiceCoordinator {
     this.repository = repository;
     this.handleStore = handleStore;
     this.sourceProvider = sourceProvider;
+    this.archives = createArchiveCache();
     this.now = now;
     this.idFactory = idFactory;
     this.onEvent = onEvent;
@@ -419,8 +423,22 @@ export class WebLibraryServiceCoordinator {
         );
       }
     }
+    let wrdFile = null;
+    if (track.sourceKind === 'archive-entry') {
+      const key = track.folderId + '\0' + track.relativePath;
+      try {
+        const extracted = await withBlobArchive(this.archives, key, file, archive => readArchivePlaybackEntry(archive, track));
+        ({ file, wrdFile } = archivePlaybackFile(extracted));
+      } catch (error) {
+        if (['archive-corrupt', 'archive-unsupported', 'archive-too-large', 'sourceUnavailable'].includes(error?.code)) {
+          throw createRepositoryError(error.code, 'Archived score could not be opened');
+        }
+        throw error;
+      }
+    }
     return {
       kind: 'file',
+      ...(wrdFile && { wrdFile }),
       sequenceId,
       ordinal,
       entryInstanceId: entry?.entryInstanceId ?? entryInstanceId,

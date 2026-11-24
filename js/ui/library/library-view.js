@@ -1,4 +1,5 @@
 import { getSettingsStorage } from '../../settings-storage.js';
+import { isAndroidHost } from '../../android/bridge.js';
 import {
   MUSIC_LIBRARY_UI_STORAGE_KEY,
   UNKNOWN_ALBUM,
@@ -244,7 +245,9 @@ export class LibraryView {
       <aside class="library-nav" aria-label="${escapeHtml(this.t('library.title'))}"><div class="library-local-nav"></div></aside>
       ${libraryMain(
         libraryButton(this.t('library.action.addFolder'), { className: 'library-add-folder', icon: ICONS.add }) +
-        libraryButton(this.t('library.action.rescan'), { className: 'library-rescan', icon: ICONS.refresh, iconOnly: true })
+        libraryButton(this.t('library.action.rescan'), { className: 'library-rescan', icon: ICONS.refresh, iconOnly: true }) +
+        (!isAndroidHost() ? libraryButton(this.t('library.action.analyzeLoudness'), { className: 'library-analyze', icon: ICONS.loudness, iconOnly: true }) : '') +
+        (this.manager.runtime === 'electron' ? libraryButton(this.t('library.action.writeLoudnessTags'), { className: 'library-write-tags', icon: ICONS.edit, iconOnly: true }) : '')
       )}
     `;
     const mainContainer = document.querySelector('.main-container');
@@ -271,6 +274,10 @@ export class LibraryView {
     this.root.querySelector('.library-rescan')?.addEventListener('click', () => {
       this.runLibraryCommand(() => this.handleScanFolders(), { logMessage: 'Music Library rescan failed:' });
     });
+    this.root.querySelector('.library-analyze')?.addEventListener('click', () =>
+      this.runLoudnessAction(() => this.analyzeLoudness()));
+    this.root.querySelector('.library-write-tags')?.addEventListener('click', () =>
+      this.runLoudnessAction(() => this.writeLoudnessTags()));
     if (typeof this.manager.addListener === 'function') {
       this.unsubscribe.push(
         this.manager.addListener('ready', () => {
@@ -298,11 +305,12 @@ export class LibraryView {
     const addFolderLabel = this.root.querySelector('.library-add-folder span');
     if (addFolderLabel) addFolderLabel.textContent = this.t('library.action.addFolder');
 
-    const rescanButton = this.root.querySelector('.library-rescan');
-    if (rescanButton) {
-      const rescanLabel = this.t('library.action.rescan');
-      rescanButton.title = rescanLabel;
-      rescanButton.setAttribute('aria-label', rescanLabel);
+    for (const [selector, key] of [['.library-rescan', 'rescan'], ['.library-analyze', 'analyzeLoudness'], ['.library-write-tags', 'writeLoudnessTags']]) {
+      const button = this.root.querySelector(selector);
+      if (button) {
+        button.title = this.t(`library.action.${key}`);
+        button.setAttribute('aria-label', button.title);
+      }
     }
 
     this.render();
@@ -2763,7 +2771,11 @@ export class LibraryView {
     const cueLabel = isFileRow && isCueTrackDetails(item)
       ? [item.trackNo, item.title].filter(Boolean).join('. ')
       : '';
-    const trackTitle = cueLabel ? `${primaryTitle} [${cueLabel}]` : primaryTitle;
+    const archiveLabel = isFileRow && item.sourceKind === 'archive-entry' && Number.isSafeInteger(item.archiveEntryOffset)
+      ? item.entryKey?.slice(item.archiveEntryOffset)
+      : '';
+    const entryLabel = cueLabel || archiveLabel;
+    const trackTitle = entryLabel ? `${primaryTitle} [${entryLabel}]` : primaryTitle;
     const nowPlaying = isTrackQuery && this.nowPlayingTrackId === trackUid;
     const canFavorite = Boolean(trackUid && !unresolvedPlaylistItem);
     const favorite = canFavorite && this.favoriteTrackUids?.has(trackUid) === true;
@@ -3039,6 +3051,8 @@ export class LibraryView {
       operationKind: 'play',
       targetName,
       start: async () => {
+        const { selectedPlayerId = 'local' } = this.uiManager.networkMusic ?? {};
+        if (selectedPlayerId === 'local') this.uiManager.invalidatePlaybackSessionRestore?.();
         this.uiManager.beginPlaybackSelectionGestureResume?.();
         let contextToken = null;
         const releaseContext = async () => {
@@ -3364,8 +3378,8 @@ export class LibraryView {
     );
   }
 
-  getPagedTrackIdentity(item) {
-    if (this.detail?.type === 'playlist') {
+  getPagedTrackIdentity(item, usePlaylistItemKey = this.detail?.type === 'playlist') {
+    if (usePlaylistItemKey) {
       const itemKey = item?.playlistItemKey ?? item?.itemKey;
       if (itemKey !== null && itemKey !== undefined && String(itemKey)) {
         return String(itemKey);
@@ -3508,6 +3522,80 @@ export class LibraryView {
     }
   }
 
+  runLoudnessAction(operation) {
+    if (this.loudnessTask) return this.loudnessTask;
+    const buttons = ['.library-analyze', '.library-write-tags'].map(selector => this.root?.querySelector(selector)).filter(Boolean);
+    for (const button of buttons) button.disabled = true;
+    this.loudnessTask = this.runLibraryCommand(operation, { logMessage: 'Music Library loudness operation failed:' })
+      .finally(() => {
+        for (const button of buttons) button.disabled = false;
+        this.loudnessTask = null;
+      });
+    return this.loudnessTask;
+  }
+
+  finishLoudnessAction() {
+    this.analysisController?.abort();
+    return this.loudnessTask;
+  }
+
+  async analyzeLoudness() {
+    const controller = new AbortController();
+    this.analysisController = controller;
+    this.analysisProgress = { processed: 0, total: 0 };
+    this.renderStatus();
+    try {
+      const { runLoudnessAnalysis } = await import('../../library/loudness/analysis-job.js');
+      const catalog = this.manager.client;
+      const counts = await runLoudnessAnalysis({
+        catalog,
+        resolveSource: ({ trackUid }) => this.manager.runtime === 'electron'
+          ? this.manager.resolvePlaybackSource(trackUid) : catalog.resolveSequenceEntrySource({ trackUid }),
+        signal: controller.signal,
+        onProgress: progress => {
+          this.analysisProgress = progress;
+          const label = this.status?.querySelector('.library-analysis-progress');
+          if (label) label.textContent = this.t('library.loudness.progress', progress);
+        },
+        refreshLoudness: () => this.manager.refreshLoudness()
+      });
+      this.uiManager?.setError?.(this.t('library.loudness.result', counts), false);
+    } finally {
+      this.analysisController = null;
+      this.analysisProgress = null;
+      this.renderStatus();
+    }
+  }
+
+  async writeLoudnessTags() {
+    if (this.manager.runtime !== 'electron') return;
+    const api = window.electronAPI.libraryCatalogV1;
+    const { eligible, snapshotId } = await api.prepareLoudnessTagWrite();
+    if (!eligible) {
+      this.uiManager?.setError?.(this.t('library.loudness.noTags'), false);
+      return;
+    }
+    if (!window.confirm(this.t('library.loudness.confirmWrite', { count: eligible }))) {
+      await api.discardLoudnessTagSnapshot(snapshotId);
+      return;
+    }
+    const result = await api.writeLoudnessTags({ snapshotId, scanOptions: this.manager.getScanOptions() });
+    const messages = [this.t('library.loudness.writeResult', result)];
+    for (const reason of ['unsupported', 'changed', 'unavailable']) {
+      const count = result.reasons?.[reason];
+      if (count) messages.push(this.t(`library.loudness.skip.${reason}`, { count }));
+    }
+    let syncFailed = result.syncFailed;
+    try { await this.manager.refreshLoudness(); }
+    catch (error) {
+      console.warn('ReplayGain refresh failed:', error);
+      syncFailed = true;
+    }
+    if (syncFailed) messages.push(this.t('library.error.actionFailed'));
+    if (result.rescanFailed) messages.push(this.t('library.state.scanError'));
+    this.uiManager?.setError?.(messages.join(' · '), Boolean(result.rescanFailed || syncFailed));
+  }
+
   async handleReconnectFolder(folderId) {
     try {
       const result = await this.manager.requestFolderAccess(folderId);
@@ -3598,6 +3686,22 @@ export class LibraryView {
     }
     if (this.removingFolderIds?.size) parts.push(this.getFolderRemovalStatusText());
     this.status.innerHTML = `<span>${escapeHtml(parts.join(' · '))}</span>`;
+    if (this.analysisController) {
+      const progress = document.createElement('span');
+      progress.className = 'library-analysis-progress';
+      progress.textContent = this.t('library.loudness.progress', this.analysisProgress);
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'library-status-button';
+      cancel.textContent = this.t('library.action.cancel');
+      cancel.setAttribute('aria-label', `${cancel.textContent} (${this.t('library.action.analyzeLoudness')})`);
+      cancel.addEventListener('click', () => {
+        cancel.disabled = true;
+        this.analysisController?.abort();
+      });
+      this.status.appendChild(progress);
+      this.status.appendChild(cancel);
+    }
     if (this.nowPlayingTrackId) {
       const jump = document.createElement('button');
       jump.type = 'button';
@@ -3782,6 +3886,19 @@ function fallbackText(key, params = {}) {
     'library.search.showAll': 'Show all',
     'library.action.addFolder': 'Add Music Folder',
     'library.action.rescan': 'Rescan',
+    'library.action.analyzeLoudness': 'Analyze Loudness',
+    'library.action.writeLoudnessTags': 'Write ReplayGain Tags',
+    'library.properties.loudness': 'Loudness',
+    'library.properties.truePeak': 'True Peak',
+    'library.properties.loudnessRange': 'Loudness Range',
+    'library.loudness.progress': `Analyzing loudness ${params.processed ?? 0}/${params.total ?? 0}`,
+    'library.loudness.result': `Analyzed ${params.processed ?? 0}/${params.total ?? 0} · Measured ${params.measured ?? 0} · Unsupported ${params.unsupported ?? 0} · Could not decode ${params.failed ?? 0} · Unavailable ${params.unavailable ?? 0}`,
+    'library.loudness.confirmWrite': `Write ReplayGain tags to ${params.count ?? 0} files? This changes the original files and replaces their existing ReplayGain tags.`,
+    'library.loudness.noTags': 'No measured FLAC, MP3 or M4A files are available for tag writing.',
+    'library.loudness.writeResult': `Files updated: ${params.written ?? 0} · Skipped: ${params.skipped ?? 0} · Failed: ${params.failed ?? 0}`,
+    'library.loudness.skip.unsupported': `Unsupported file structure: ${params.count ?? 0}`,
+    'library.loudness.skip.changed': `Changed since measurement: ${params.count ?? 0}`,
+    'library.loudness.skip.unavailable': `Inaccessible or in use: ${params.count ?? 0}`,
     'library.action.removeFolder': 'Remove',
     'library.action.play': 'Play',
     'library.action.shuffle': 'Shuffle',
@@ -3857,7 +3974,7 @@ function fallbackText(key, params = {}) {
     'library.paged.reselect': 'Reselect in Current Results',
     'library.paged.selectionTooLarge': 'This sparse selection is too large. Use Select All or select a contiguous range.',
     'library.paged.exportTooLarge': `This browser limits playlist downloads to ${params.limit || 32} MB. Use the desktop app or a browser with file system access.`,
-    'library.paged.exportSkippedCueTracks': `Exported without ${params.count || 0} CUE tracks because M3U8 and XSPF cannot preserve their positions within an album file.`,
+    'library.paged.exportSkippedTracks': `Exported without ${params.count || 0} tracks because M3U8 and XSPF cannot reference individual tracks inside an album file or archive.`,
     'library.paged.cueScanWarningSummary': `The scan finished, but ${params.count || 0} CUE sheets could not be used.`,
     'library.paged.cueScanWarningInvalid': `${params.count || 0} were invalid or referred to missing or conflicting audio files.`,
     'library.paged.cueScanWarningUnsupported': `${params.count || 0} had no supported audio tracks or used audio files that could not be analyzed.`,

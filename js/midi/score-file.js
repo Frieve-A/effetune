@@ -1,4 +1,4 @@
-import { isMidiFile, parseSmf, parseSmfAsync, SMF_MAX_BYTES } from './smf-parser.js';
+import { scoreFileExtension, parseSmf, parseSmfAsync, SMF_MAX_BYTES } from './smf-parser.js';
 import { parseMusicXmlFile } from './musicxml-parser.js';
 import { parseWrd } from './wrd-parser.js';
 
@@ -6,12 +6,10 @@ export const SCORE_MAX_BYTES = SMF_MAX_BYTES;
 export const SCORE_EXTENSIONS = Object.freeze(['mid', 'midi', 'kar', 'musicxml', 'xml', 'mxl']);
 
 export function isMusicXmlFile(value) {
-    const name = typeof value === 'string' ? value : value?.name ?? value?.fileName ?? value?.path ?? '';
-    const path = /^[a-z][a-z\d+.-]*:\/\//i.test(name) ? name.split(/[?#]/, 1)[0] : name;
-    return /\.(?:musicxml|xml|mxl)$/i.test(path) || /\.(?:musicxml|xml|mxl)$/i.test(path.split(/[?#]/, 1)[0]);
+    return ['musicxml', 'xml', 'mxl'].includes(scoreFileExtension(value));
 }
 
-export function isScoreFile(value) { return isMidiFile(value) || isMusicXmlFile(value); }
+export function isScoreFile(value) { return SCORE_EXTENSIONS.includes(scoreFileExtension(value)); }
 
 export async function parseScoreData(input, options = {}) {
     const { wrdBytes, ...scoreOptions } = options;

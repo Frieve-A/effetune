@@ -5,6 +5,7 @@
 #include "host/io_pipeline.h"
 #include "host/pipeline.h"
 #include "instrument_control.h"
+#include "measurement_control.h"
 #include "midi_control.h"
 #include "network_reports.h"
 #include "output_control.h"
@@ -242,6 +243,32 @@ private:
   std::atomic<Phase> phase_{Phase::New};
 };
 
+void submitPluginAsset(DeviceHost &device, Pipeline &pipeline,
+                       const std::shared_ptr<Pipeline::AssetChange> &change, Object reply) {
+  auto done = [&pipeline, change, reply = std::move(reply)](bool ok) mutable {
+    if (!ok && change->awaitsPages()) {
+      change->retain(change);
+      reply.emplace("type", "assetState");
+      reply.emplace("state", double(ET_ASSET_STATE_PREPARING));
+      send(std::move(reply));
+      return;
+    }
+    if (!ok) {
+      pipeline.releaseBank(change.get());
+      std::cerr << "Plugin asset update rejected during " << change->failureStage() << '\n';
+    }
+    if (ok && change->deferred())
+      return;
+    reply.emplace("type", ok ? "assetState" : "assetLoadRejected");
+    if (ok)
+      reply.emplace("state", double(change->state()));
+    else
+      reply.emplace("reason", "capacity");
+    send(std::move(reply));
+  };
+  submitBank(device, change, std::move(done));
+}
+
 void changeAsset(DeviceHost &device, Session &session, Frame &frame, bool clear) {
   const auto &message = frame.message;
   const auto id = readNumber(message, "pluginId", 0), slot = readNumber(message, "slot", 0);
@@ -273,46 +300,7 @@ void changeAsset(DeviceHost &device, Session &session, Frame &frame, bool clear)
     if (const auto value = message.GetUInt32(key))
       reply.emplace(key, double(*value));
   auto change = pipeline->assetChange(id, slot, std::move(candidate));
-  auto done = [change, &device, reply = std::move(reply)](bool ok) mutable {
-    device.endAsset();
-    if (!ok && change->awaitsPages()) {
-      change->retain(change);
-      reply.emplace("type", "assetState");
-      reply.emplace("state", double(ET_ASSET_STATE_PREPARING));
-      send(std::move(reply));
-      return;
-    }
-    if (!ok)
-      std::cerr << "Instrument asset update rejected during " << change->failureStage() << '\n';
-    if (ok && change->deferred())
-      return;
-    reply.emplace("type", ok ? "assetState" : "assetLoadRejected");
-    if (ok)
-      reply.emplace("state", double(change->state()));
-    else
-      reply.emplace("reason", "capacity");
-    send(std::move(reply));
-  };
-  using Progress = Pipeline::AssetChange::Progress;
-  auto progress = std::make_shared<Progress>(Progress::Failed);
-  device.beginAsset();
-  if (!device.submit([change, progress](Session &) { *progress = change->capture(); },
-                     [change, progress, done = std::move(done), &device]() mutable {
-                       if (*progress != Progress::Prepare) {
-                         done(*progress == Progress::Direct);
-                         return;
-                       }
-                       if (!change->prepare()) {
-                         done(false);
-                         return;
-                       }
-                       if (change->awaitsPages()) {
-                         done(false);
-                         return;
-                       }
-                       publishPreparedBank(device, change, std::move(done));
-                     }))
-    throw std::runtime_error("audio command queue full");
+  submitPluginAsset(device, *pipeline, change, std::move(reply));
 }
 
 std::uint64_t frameIndex(const JsonValue &message, std::string_view field) {
@@ -322,7 +310,7 @@ std::uint64_t frameIndex(const JsonValue &message, std::string_view field) {
   return static_cast<std::uint64_t>(*n);
 }
 
-void writePcm(ClockedFifo &fifo, const Frame &frame) {
+void writePcm(ClockedFifo &fifo, const Frame &frame, FileFifo *file = nullptr) {
   const auto channels = readNumber(frame.message, "channelCount", 0);
   const auto frames = readNumber(frame.message, "frames", 0);
   const auto count = std::size_t(channels) * frames;
@@ -330,8 +318,95 @@ void writePcm(ClockedFifo &fifo, const Frame &frame) {
     throw std::runtime_error("invalid planar PCM size");
   std::vector<float> samples(count);
   std::memcpy(samples.data(), frame.attachment.data(), frame.attachment.size());
-  fifo.write(samples.data(), channels, frames, frameIndex(frame.message, "generation"),
-             frameIndex(frame.message, "sourceFrame"));
+  const auto generation = frameIndex(frame.message, "generation");
+  const auto source = frameIndex(frame.message, "sourceFrame");
+  if (file && frame.message.GetString("stream") == "file") {
+    if (channels > FileFifo::maxChannels || frames > 8192)
+      throw std::runtime_error("invalid file PCM size");
+    file->write({generation, frameIndex(frame.message, "track"), source,
+                 readNumber(frame.message, "sampleRate", 0), channels, 0.f},
+                samples.data(), frames);
+  } else {
+    fifo.write(samples.data(), channels, frames, generation, source);
+  }
+}
+
+void sendFileNextResult(std::uint64_t generation, std::uint64_t track, bool accepted) {
+  send({{"type", "fileNextResult"},
+        {"generation", double(generation)},
+        {"track", double(track)},
+        {"accepted", accepted}});
+}
+
+bool acceptFileControl(FileFifo &fifo, const JsonValue &message) {
+  if (!isFileControl(message))
+    return false;
+  const auto type = message.GetString("type");
+  const auto generation = frameIndex(message, "generation");
+  if (type == "fileFlush") {
+    if (!fifo.flush(generation))
+      throw std::runtime_error("file command queue full");
+    return true;
+  }
+  const auto track = frameIndex(message, "track");
+  bool accepted;
+  if (type == "fileStart" || type == "fileNext") {
+    const bool next = type == "fileNext";
+    accepted =
+        fifo.start({generation, track, next ? 0 : frameIndex(message, "startFrame"),
+                    readNumber(message, "sampleRate", 0), readNumber(message, "channelCount", 0),
+                    static_cast<float>(message.GetNumber("gain").value_or(1.)),
+                    message.GetBool("fadeIn").value_or(false)},
+                   next);
+    if (next && !accepted) {
+      sendFileNextResult(generation, track, false);
+      return true;
+    }
+  } else if (type == "fileCancelNext") {
+    accepted = fifo.cancelNext(generation, track);
+  } else if (type == "fileEnd") {
+    accepted = fifo.end(generation, track, frameIndex(message, "totalFrames"));
+  } else {
+    accepted =
+        fifo.gain(generation, track, static_cast<float>(message.GetNumber("gain").value_or(1.)));
+  }
+  if (!accepted)
+    throw std::runtime_error("file command rejected");
+  return true;
+}
+
+void sendFileEvents(FileFifo &fifo) {
+  FileFifo::Event event{};
+  while (fifo.popEvent(event)) {
+    using Type = FileFifo::Event::Type;
+    if (event.type == Type::Ended) {
+      send({{"type", "fileEnded"},
+            {"generation", double(event.generation)},
+            {"track", double(event.track)},
+            {"pipelineFrame", double(event.pipelineFrame)}});
+    } else if (event.type == Type::NextAccepted || event.type == Type::NextRejected) {
+      sendFileNextResult(event.generation, event.track, event.type == Type::NextAccepted);
+    } else {
+      send({{"type", "fileCancelNextResult"},
+            {"generation", double(event.generation)},
+            {"track", double(event.track)},
+            {"result", event.type == Type::Cancelled ? "cancelled" : "already-playing"}});
+    }
+  }
+}
+
+void setFileClock(Object &message, const FileFifo::Snapshot &file) {
+  message.emplace("fileGeneration", double(file.generation));
+  message.emplace("fileTrack", double(file.track));
+  message.emplace("fileReadFrame", double(file.readFrame));
+  message.emplace("fileConverterDelayFrames", file.converterDelay);
+  message.emplace("fileWrittenFrames", double(file.writtenFrames));
+  message.emplace("fileQueuedFrames", double(file.queuedFrames));
+  message.emplace("fileUnderruns", double(file.underruns));
+  message.emplace("fileGaps", double(file.gaps));
+  message.emplace("fileOverflows", double(file.overflows));
+  message.emplace("fileRunning", file.running);
+  message.emplace("filePipelineFrame", double(file.pipelineFrame));
 }
 
 void sendNetworkPackets(Session &session) {
@@ -355,7 +430,7 @@ void sendNetworkPackets(Session &session) {
   }
 }
 
-void sendAssetNotices(Session &session, unsigned branch) {
+void sendAssetNotices(DeviceHost &device, Session &session, unsigned branch) {
   if (!session.pipeline())
     return;
   Pipeline::AssetNotice notice;
@@ -369,18 +444,28 @@ void sendAssetNotices(Session &session, unsigned branch) {
             {"branch", double(branch)}});
       continue;
     }
-    Object m{{"type", notice.rejected ? "assetLoadRejected" : "assetState"},
-             {"pluginId", double(notice.id)},
-             {"slot", double(notice.slot)},
-             {"branch", double(branch)}};
-    if (notice.rejected)
-      m.emplace("reason", "capacity");
-    else
-      m.emplace("state", double(notice.state));
+    Object m{
+        {"pluginId", double(notice.id)}, {"slot", double(notice.slot)}, {"branch", double(branch)}};
     if (notice.revision)
       m.emplace("operationRevision", double(*notice.revision));
     if (notice.epoch)
       m.emplace("replayEpoch", double(*notice.epoch));
+    if (notice.completed) {
+      auto bank = session.pipeline()->releaseBank(notice.completed);
+      if (!bank)
+        throw std::runtime_error("unowned completed bank");
+      if (bank->stale()) {
+        submitPluginAsset(device, *session.pipeline(), bank, std::move(m));
+        continue;
+      }
+      if (!notice.rejected)
+        bank->finish();
+    }
+    m.emplace("type", notice.rejected ? "assetLoadRejected" : "assetState");
+    if (notice.rejected)
+      m.emplace("reason", "capacity");
+    else
+      m.emplace("state", double(notice.state));
     send(std::move(m));
   }
 }
@@ -460,16 +545,23 @@ bool handleAudioIo(DeviceHost &device, Session &session, Frame &frame, std::stri
       io->markTapChanged();
     }
   } else if (type == "setVisualSync") {
-    const bool enabled = m.GetBool("enabled").value_or(false);
-    if (io->visualSync != enabled)
-      ++io->routeRevision;
-    io->visualSync = enabled;
+    if (!device.submit([io, enabled = m.GetBool("enabled").value_or(false)](Session &) {
+          if (io->visualSync != enabled)
+            ++io->routeRevision;
+          io->visualSync = enabled;
+        }))
+      return false;
   } else if (type == "setNetworkOutputLocalDelay") {
     const auto ms = std::clamp(m.GetNumber("delayMs").value_or(0), 0., 8000.);
     const auto samples =
         static_cast<unsigned>(std::round(ms * session.format().sampleRate / 1000.));
-    io->requestLocalDelay(readNumber(m, "requestId", 0), m.GetBool("active").value_or(false),
-                          samples, m.GetBool("localEnabled").value_or(true));
+    const auto request = static_cast<unsigned>(readNumber(m, "requestId", 0));
+    io->pendingDelayRequest = request;
+    if (!device.submit([io, request, samples, active = m.GetBool("active").value_or(false),
+                        local = m.GetBool("localEnabled").value_or(true)](Session &) {
+          io->requestLocalDelay(request, active, samples, local);
+        }))
+      return false;
   } else if (type == "pcm-ack") {
     return device.submit([epoch = frameIndex(m, "sourceEpoch"), pos = frameIndex(m, "sourceFrame")](
                              Session &s) { s.io()->sender.acknowledge(epoch, pos); });
@@ -502,21 +594,6 @@ bool handleAudioIo(DeviceHost &device, Session &session, Frame &frame, std::stri
     reportNetworkPaths(device, readNumber(m, "branch", 0));
   }
   return true;
-}
-
-std::string_view deviceErrorName(DeviceError value) {
-  switch (value) {
-  case DeviceError::Unavailable:
-    return "unavailable";
-  case DeviceError::Permission:
-    return "permission";
-  case DeviceError::Busy:
-    return "busy";
-  case DeviceError::UnsupportedFormat:
-    return "unsupportedFormat";
-  default:
-    return "internal";
-  }
 }
 
 DeviceLatency deviceLatency(const JsonValue &message) {
@@ -568,6 +645,21 @@ void sendOpenState(DeviceHost &device, bool reportInput = false) {
   }
 }
 
+// An input change can reopen the output to widen the session. If that reopen
+// fails the session is closed, so report a failed output reset and let the
+// renderer run its normal output recovery.
+void sendInputChange(DeviceHost &device, bool wasOpen, DeviceError result, unsigned requestId = 0) {
+  if (wasOpen && !device.session.isOpen()) {
+    send({{"type", "deviceReset"}, {"direction", "output"}, {"reasons", 0.}});
+    send({{"type", "sessionState"},
+          {"state", "failed"},
+          {"reason", std::string(deviceErrorName(result))}});
+  } else if (device.rebuilt() && device.session.isOpen()) {
+    sendOpenState(device);
+  }
+  sendInputState(device, requestId);
+}
+
 bool acceptsEndpoint(DeviceHost &device, const JsonValue &message) {
   if (!message.Find("endpointEpoch"))
     return true;
@@ -602,6 +694,8 @@ bool serviceLatencyReservations(DeviceHost &device) {
 }
 
 void handleControl(DeviceHost &device, Frame &frame) {
+  if (handleMeasurement(device, frame))
+    return;
   const auto type = frame.message.GetString("type");
   const auto branchId = readNumber(frame.message, "branch", 0);
   Session *branch = device.session.branch(branchId);
@@ -621,7 +715,8 @@ void handleControl(DeviceHost &device, Frame &frame) {
     const auto error = device.open(
         format, std::string(frame.message.GetString("outputDeviceId").value_or("default")),
         std::string(frame.message.GetString("inputDeviceId").value_or("")),
-        deviceLatency(frame.message));
+        deviceLatency(frame.message),
+        std::string(frame.message.GetString("loopbackEndpointId").value_or("")));
     if (error != DeviceError::None) {
       send({{"type", "sessionState"},
             {"state", "failed"},
@@ -653,11 +748,12 @@ void handleControl(DeviceHost &device, Frame &frame) {
                                 frame.message.GetBool("loseInput").value_or(false)))
       send({{"type", "commandRejected"}, {"command", "testDeviceReset"}});
   } else if (type == "replaceInput") {
-    device.replaceInput(std::string(frame.message.GetString("inputDeviceId").value_or("")),
-                        deviceLatency(frame.message));
-    sendInputState(device, readNumber(frame.message, "requestId", 0));
-    if (device.rebuilt() && device.session.isOpen())
-      sendOpenState(device);
+    const bool wasOpen = device.session.isOpen();
+    const auto result = device.replaceInput(
+        std::string(frame.message.GetString("inputDeviceId").value_or("")),
+        deviceLatency(frame.message),
+        std::string(frame.message.GetString("loopbackEndpointId").value_or("")));
+    sendInputChange(device, wasOpen, result, readNumber(frame.message, "requestId", 0));
   } else if (type == "startStream" || type == "stopStream") {
     if (type == "stopStream")
       device.stop();
@@ -725,7 +821,9 @@ void handleControl(DeviceHost &device, Frame &frame) {
     handlePowerControl(device, *branch, frame);
   } else if (type == "dspSetTelemetryRate") {
     const auto hz = static_cast<float>(frame.message.GetNumber("hz").value_or(0));
-    if (!device.submit([branch, hz](Session &) { branch->setTelemetryRate(hz); }))
+    const bool midiMetering = frame.message.GetBool("midiMetering").value_or(false);
+    if (!device.submit(
+            [branch, hz, midiMetering](Session &) { branch->setTelemetryRate(hz, midiMetering); }))
       throw std::runtime_error("audio command queue full");
   } else if (type == "frequencyPreview") {
     if (!device.submit([branch, f = frame.message.GetNumber("frequency").value_or(0.),
@@ -776,7 +874,7 @@ void handleControl(DeviceHost &device, Frame &frame) {
   }
   for (unsigned i = 0; i < 2; ++i)
     if (auto *s = device.session.branch(i)) {
-      sendAssetNotices(*s, i);
+      sendAssetNotices(device, *s, i);
       sendTelemetry(device, *s, i);
       sendSpectrum(device, *s, i);
     }
@@ -829,7 +927,9 @@ int run(int argc, char **argv) {
     throw std::runtime_error("unsupported protocol version");
   const auto acceptFeed = [&](const Frame &incoming) {
     if (incoming.kind == FrameKind::Feed) {
-      writePcm(device.session.feed(), incoming);
+      writePcm(device.session.feed(), incoming, &device.file);
+    } else if (acceptFileControl(device.file, incoming.message)) {
+      return;
     } else {
       const auto &m = incoming.message;
       device.session.feed().silence(
@@ -841,12 +941,23 @@ int run(int argc, char **argv) {
     AssetTransfers transfers;
     while (readFrame(std::cin, frame, acceptFeed)) {
       if (frame.kind == FrameKind::Feed)
-        writePcm(device.session.feed(), frame);
+        acceptFeed(frame);
       else if (frame.kind == FrameKind::Control) {
-        if (transfers.assemble(frame) && acceptsEndpoint(device, frame.message))
+        if (transfers.assemble(frame) && !acceptFileControl(device.file, frame.message) &&
+            acceptsEndpoint(device, frame.message)) {
           handleControl(device, frame);
+          if (frame.message.GetString("type") == "renderNullDevice") {
+            const auto file = device.file.snapshot();
+            if (file.generation) {
+              Object clock{{"type", "clock"}, {"pipelineFrame", double(device.session.position())}};
+              setFileClock(clock, file);
+              send(std::move(clock));
+            }
+          }
+        }
       } else
         throw std::runtime_error("unexpected frame kind");
+      sendFileEvents(device.file);
     }
     return 0;
   }
@@ -871,6 +982,8 @@ int run(int argc, char **argv) {
         if (!transfers.assemble(incoming))
           continue;
         const auto type = incoming.message.GetString("type");
+        if (acceptFileControl(device.file, incoming.message))
+          continue;
         if (type == "flushFeed" || type == "feedSilence") {
           const auto gen = frameIndex(incoming.message, "generation");
           if (type == "flushFeed")
@@ -924,7 +1037,7 @@ int run(int argc, char **argv) {
       for (unsigned i = 0; i < 2; ++i)
         if (auto *s = device.session.branch(i)) {
           notifySampleStreams(*s, i);
-          sendAssetNotices(*s, i);
+          sendAssetNotices(device, *s, i);
           notifyMidi(*s, i);
           sendTelemetry(device, *s, i);
           notifyPower(device, *s, i);
@@ -938,11 +1051,9 @@ int run(int argc, char **argv) {
           send({{"type", "deviceReset"},
                 {"direction", inputOnly ? "input" : "output"},
                 {"reasons", double(resetReasons)}});
-          const auto result = device.recover(inputOnly);
+          const auto result = device.recoverReset(resetReasons);
           if (inputOnly) {
-            sendInputState(device);
-            if (device.rebuilt() && device.session.isOpen())
-              sendOpenState(device);
+            sendInputChange(device, true, result);
           } else if (result == DeviceError::None) {
             sendOpenState(device, true);
           } else {
@@ -953,31 +1064,35 @@ int run(int argc, char **argv) {
           resetReasons = 0;
         }
       }
+      sendFileEvents(device.file);
       if (device.running() && std::chrono::steady_clock::now() >= nextClock) {
         DeviceHost::ClockSnapshot clock{};
-        if (device.clock(clock))
-          send({{"type", "clock"},
-                {"pipelineFrame", double(clock.pipelineFrame)},
-                {"timeNs", double(clock.timeNs)},
-                {"outputConverterDelayFrames", clock.converterDelay},
-                {"feedDelayFrames", double(clock.feedDelay)},
-                {"feedTargetFrames", double(clock.feedTarget)},
-                {"captureTargetFrames", double(clock.captureTarget)},
-                {"feedUnderruns", double(clock.feedUnderruns)},
-                {"feedGaps", double(device.session.feed().gaps())},
-                {"feedBackwardGaps", double(device.session.feed().backwardGaps())},
-                {"lastFeedGapExpected", double(device.session.feed().lastGapExpected())},
-                {"lastFeedGapReceived", double(device.session.feed().lastGapReceived())},
-                {"feedOverflows", double(device.session.feed().overflows())},
-                {"captureUnderruns", double(clock.captureUnderruns)},
-                {"captureFifoState", clock.captureState == 2   ? "running"
-                                     : clock.captureState == 1 ? "priming"
-                                                               : "idle"},
-                {"captureRatio", clock.captureRatio},
-                {"deviceDiscontinuities", double(device.discontinuities())},
-                {"callbackOverruns", double(device.callbackOverruns())},
-                {"outputLatencyFrames", double(device.outputFormat().latencyFrames)},
-                {"inputLatencyFrames", double(device.inputFormat().latencyFrames)}});
+        if (device.clock(clock)) {
+          Object message{{"type", "clock"},
+                         {"pipelineFrame", double(clock.pipelineFrame)},
+                         {"timeNs", double(clock.timeNs)},
+                         {"outputConverterDelayFrames", clock.converterDelay},
+                         {"feedDelayFrames", double(clock.feedDelay)},
+                         {"feedTargetFrames", double(clock.feedTarget)},
+                         {"captureTargetFrames", double(clock.captureTarget)},
+                         {"feedUnderruns", double(clock.feedUnderruns)},
+                         {"feedGaps", double(device.session.feed().gaps())},
+                         {"feedBackwardGaps", double(device.session.feed().backwardGaps())},
+                         {"lastFeedGapExpected", double(device.session.feed().lastGapExpected())},
+                         {"lastFeedGapReceived", double(device.session.feed().lastGapReceived())},
+                         {"feedOverflows", double(device.session.feed().overflows())},
+                         {"captureUnderruns", double(clock.captureUnderruns)},
+                         {"captureFifoState", clock.captureState == 2   ? "running"
+                                              : clock.captureState == 1 ? "priming"
+                                                                        : "idle"},
+                         {"captureRatio", clock.captureRatio},
+                         {"deviceDiscontinuities", double(device.discontinuities())},
+                         {"callbackOverruns", double(device.callbackOverruns())},
+                         {"outputLatencyFrames", double(device.outputFormat().latencyFrames)},
+                         {"inputLatencyFrames", double(device.inputFormat().latencyFrames)}};
+          setFileClock(message, device.file.snapshot());
+          send(std::move(message));
+        }
         nextClock = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
       }
       if (!topology && !device.assetBusy() && !serviceLatencyReservations(device))
@@ -989,6 +1104,11 @@ int run(int argc, char **argv) {
         continue;
       }
       const auto type = pending->message.GetString("type");
+      if (device.measuring() || (type && isMeasurementCommand(*type))) {
+        handleMeasurement(device, *pending);
+        pending.reset();
+        continue;
+      }
       if (type == "stopParallel" && !device.commandsSettled())
         continue;
       if (type == "renderNull" || type == "renderNullDevice" || type == "captureNull")
@@ -1007,13 +1127,7 @@ int run(int argc, char **argv) {
           continue;
         }
       }
-      auto *mixerSession = type == "soundFontMixerAction"
-                               ? device.session.branch(readNumber(pending->message, "branch", 0))
-                               : nullptr;
-      if (mixerSession && !pausedMixerNeedsOwner(*mixerSession, *pending))
-        mixerSession = nullptr;
       const bool needsOwnership =
-          mixerSession ||
           (type != "closeSession" && type != "stopStream" && type != "startStream" &&
            type != "startParallel" && type != "stopParallel" && type != "setBlindSelection" &&
            type != "updateParameters" && type != "setInputMix" && type != "pcm-ack" &&
@@ -1022,15 +1136,13 @@ int run(int argc, char **argv) {
            type != "dspTelemetryReturn" && type != "replaceInput" && type != "frequencyPreview" &&
            type != "testDeviceReset" && type != "testReadOutput" && type != "testSetInput" &&
            type != "releaseRecovery" && type != "setPluginAsset" && type != "clearPluginAsset" &&
-           (!type || (!isOutputControl(*type) && !isPowerControl(*type) &&
-                      (!isMidiControl(*type) || midiNeedsOwner(*type)))));
+           type != "resetPluginState" && type != "setVisualSync" &&
+           type != "setNetworkOutputLocalDelay" &&
+           (!type || (!isOutputControl(*type) && !isPowerControl(*type) && !isMidiControl(*type))));
       if (needsOwnership && !device.acquire())
         continue;
       topology.reset();
-      if (mixerSession)
-        handlePausedMixer(*mixerSession, *pending);
-      else
-        handleControl(device, *pending);
+      handleControl(device, *pending);
       if (needsOwnership)
         device.release();
       pending.reset();

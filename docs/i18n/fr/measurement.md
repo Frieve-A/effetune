@@ -13,6 +13,8 @@ Mesurez la réponse en fréquence, la réponse impulsionnelle, la distorsion et 
 4. Générez une correction EQ paramétrique qui peut être importée directement dans EffeTune.
 5. Appliquez la correction pour obtenir une reproduction sonore plus précise et plus neutre.
 
+Si l’application de bureau utilise un pilote audio natif et que votre périphérique d’entrée possède au moins trois canaux, choisissez **Ch 3** ou un canal supérieur dans **Canal d'entrée** selon le branchement de votre microphone.
+
 ## Canaux de sortie
 
 Réglez **Nombre de canaux du périphérique de sortie** selon la configuration de votre périphérique : **6** pour 5.1 ou **8** pour 7.1. Les choix de canal de sortie et de bande passante par canal restent dans cette plage. Les signaux de test et les mesures utilisent toujours ce nombre de canaux : gardez donc **6** même pour mesurer uniquement Ch 3 (centre) et Ch 4 (caisson de basses) sur un périphérique 5.1.

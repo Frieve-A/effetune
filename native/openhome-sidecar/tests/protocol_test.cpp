@@ -33,7 +33,7 @@ void Check(bool condition, const char *message) {
 void TestAudioCapabilities() {
   const auto protocols = effetune::openhome::kAudioProtocolInfo;
   for (const auto mime :
-       {"audio/mpeg", "audio/mp3", "audio/x-mp3", "audio/flac", "audio/x-flac",
+       {"audio/mpeg", "audio/mp3", "audio/x-mp3", "audio/flac", "audio/x-flac", "audio/midi",
         "audio/wav", "audio/x-wav", "audio/ogg", "application/ogg",
         "audio/webm", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/matroska",
         "audio/x-matroska"}) {

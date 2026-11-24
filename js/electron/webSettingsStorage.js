@@ -14,7 +14,6 @@ export const WEB_APP_CONFIG_KEY = 'effetune_app_config';
 export const WEB_AUDIO_PREFERENCES_KEY = 'effetune_audio_preferences';
 export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   audioDriver: 'standard',
-  audioDriverDeviceMemory: '',
   inputDeviceId: 'default',
   midiInputDeviceKey: '',
   midiOutputDeviceKey: '',
@@ -26,8 +25,11 @@ export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   useWasmDsp: true,
   gaplessPlayback: true,
   replayGainMode: 'off',
+  replayGainTarget: 'manual',
   replayGainPreampDb: 0,
+  replayGainAutoCoverage: 95,
   replayGainPreventClipping: true,
+  replayGainPeakCeilingDb: 0,
   outputChannels: 2,
   latencyHint: 'interactive'
 });
@@ -538,6 +540,13 @@ export function normalizeWebAudioPreferences(preferences) {
 
 // Mirrors normalizeReplayGainPreferences in electron/audio-preferences-policy.cjs.
 function normalizeReplayGainPreferences(preferences) {
+  preferences.replayGainTarget = preferences.replayGainTarget === 'auto' ? 'auto' : 'manual';
+  const coverage = Math.round(Number(preferences.replayGainAutoCoverage));
+  preferences.replayGainAutoCoverage = Number.isFinite(coverage)
+    ? Math.max(1, Math.min(100, coverage)) : WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainAutoCoverage;
+  const ceiling = Math.round(Number(preferences.replayGainPeakCeilingDb) * 2) / 2;
+  preferences.replayGainPeakCeilingDb = Number.isFinite(ceiling)
+    ? Math.max(-15, Math.min(0, ceiling)) + 0 : WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainPeakCeilingDb;
   if (!REPLAY_GAIN_MODES.includes(preferences.replayGainMode)) {
     preferences.replayGainMode = WEB_AUDIO_PREFERENCE_DEFAULTS.replayGainMode;
   }

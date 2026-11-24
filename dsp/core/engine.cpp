@@ -789,7 +789,8 @@ et_status Engine::captureInstanceAssetSnapshot(et_instance instance, std::uint32
   snapshot.capacity_ = slot->kernel->assetCapacity(asset_slot);
   snapshot.max_channels_ = max_channels_;
   snapshot.preparer_ = preparer;
-  snapshot.prepare_info_ = {sample_rate_, max_channels_, max_frames_, minimum};
+  snapshot.prepare_info_ = {sample_rate_, max_channels_, max_frames_, minimum,
+                            slot->kernel->assetSliceOffset()};
   return ET_OK;
 }
 
@@ -818,12 +819,16 @@ et_status Engine::prepareInstanceAssetClear(const InstanceAssetSnapshot &snapsho
   update.reclaim();
   if (!snapshot.owner_ || !snapshot.preparer_)
     return ET_ERR_STATE;
+  const auto status = snapshot.preparer_(snapshot.prepare_info_, {}, nullptr, 0, update.asset_);
+  if (status != ET_OK)
+    return status;
   update.snapshot_ = snapshot;
   update.ready_ = true;
   return ET_OK;
 }
 
-et_status Engine::applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept {
+et_status Engine::applyInstanceAssetUpdate(InstanceAssetUpdate &update,
+                                           bool preserveResidentOnError) noexcept {
   allocation_guard::Scope allocation_scope;
   const auto &snapshot = update.snapshot_;
   auto *slot = findInstance(snapshot.instance_);
@@ -831,6 +836,11 @@ et_status Engine::applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept
       slot->graphOwned || snapshot.revision_ != slot->assetRevision ||
       snapshot.preparer_ != slot->kernel->assetPreparer(snapshot.slot_))
     return ET_ERR_STATE;
+  if (update.asset_) {
+    if (preserveResidentOnError && update.asset_->hasPreparationError())
+      return ET_ERR_ARGS;
+    update.asset_->preserveResidentOnError = preserveResidentOnError;
+  }
   const auto status = slot->kernel->exchangePreparedAsset(snapshot.slot_, update.asset_);
   if (status == ET_OK) {
     slot->assetRevision = ++asset_revision_;

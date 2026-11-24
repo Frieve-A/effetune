@@ -178,8 +178,9 @@
                     blendLower: lower, blendUpper: upper,
                     slotWork: Math.ceil(operations / Math.floor(hop / 16)) + 1 };
             }
-            // Retain capture history throughout pack, including rate-limited small windows.
-            this.shortRing = new Float32Array(MAX_N * 2 + Math.ceil(sampleRate / 30) + FIR_LENGTH + 32);
+            // Retain capture history throughout pack, including rate-limited small windows and the
+            // short window's 1.5-size offset from the capture end.
+            this.shortRing = new Float32Array(MAX_N * 3 + Math.ceil(sampleRate / 30) + FIR_LENGTH + 32);
             this.longRing = new Float32Array(MAX_N * 2 + Math.ceil(sampleRate / 120) + 32);
             this.fir = new Float64Array(FIR_LENGTH);
             this.real = [new Float64Array(MAX_N), new Float64Array(MAX_N)];
@@ -337,7 +338,8 @@
                 if (this.stage < 2) {
                     const which = this.stage;
                     const ring = which === 0 ? this.shortRing : this.longRing;
-                    const end = which === 0 ? this.captureEnd : this.captureLongEnd;
+                    // Both windows share the long window's centre, so every cell describes the same instant.
+                    const end = which === 0 ? this.captureEnd - n * 1.5 : this.captureLongEnd;
                     const source = end - n + position;
                     this.real[which][plan.reverse[position]] = Math.fround(ring[source % ring.length] * plan.window[position]);
                     this.imag[which][plan.reverse[position]] = 0;

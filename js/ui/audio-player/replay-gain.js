@@ -1,7 +1,7 @@
 import { getReplayGain } from '../../library/metadata/metadata-mapper.js';
 import { isLocalFilePath } from './audio-context-manager-metadata.js';
 
-const replayGainCache = new WeakMap();
+let replayGainCache = new WeakMap();
 // Library playback creates a new track object per start, so Electron reads are also shared by path.
 const replayGainPathCache = new Map();
 const MAX_CACHED_REPLAY_GAIN_PATHS = 64;
@@ -18,7 +18,9 @@ export function getReplayGainTrackKey(track) {
  * Linear playback gain for the stored ReplayGain values and player settings.
  * Returns 1 when ReplayGain is off or the file carries no usable gain.
  */
-export function computeReplayGainFactor(replayGain, { mode, preampDb, preventClipping } = {}) {
+export function computeReplayGainFactor(replayGain, {
+  mode, preampDb = 0, preventClipping, target, autoTarget = -18, peakCeilingDb = 0
+} = {}) {
   if (!replayGain || (mode !== 'track' && mode !== 'album')) return 1;
   const preferAlbum = mode === 'album';
   const primaryGain = preferAlbum ? replayGain.albumGainDb : replayGain.trackGainDb;
@@ -26,34 +28,77 @@ export function computeReplayGainFactor(replayGain, { mode, preampDb, preventCli
   const gainDb = useAlbum ? replayGain.albumGainDb : replayGain.trackGainDb;
   if (!Number.isFinite(gainDb)) return 1;
 
-  const factor = 10 ** ((gainDb + (Number.isFinite(preampDb) ? preampDb : 0)) / 20);
+  const adjustment = target === 'auto' ? autoTarget + 18 : (Number.isFinite(preampDb) ? preampDb : 0);
+  const factor = 10 ** ((gainDb + adjustment) / 20);
   if (!preventClipping) return factor;
   const primaryPeak = useAlbum ? replayGain.albumPeak : replayGain.trackPeak;
   const peak = Number.isFinite(primaryPeak) ? primaryPeak : (useAlbum ? replayGain.trackPeak : replayGain.albumPeak);
   if (!(peak > 0)) return factor;
-  const limit = 1 / peak;
+  const limit = 10 ** (peakCeilingDb / 20) / peak;
   return factor > limit ? limit : factor;
 }
 
-/**
- * Read the embedded ReplayGain values of a local track, cached per track object.
- * Resolves to null for tracks without a readable local file or without tags.
- */
+export function computeAutoTarget({ mode, peakCeilingDb = 0 }, stats) {
+  const plr = mode === 'album' ? stats?.albumPlr : stats?.trackPlr;
+  return Number.isFinite(plr) ? peakCeilingDb - plr : -18;
+}
+
+export function replayGainSettings(preferences) {
+  return {
+    mode: preferences.replayGainMode,
+    target: preferences.replayGainTarget,
+    preampDb: preferences.replayGainPreampDb,
+    autoCoverage: preferences.replayGainAutoCoverage,
+    preventClipping: preferences.replayGainPreventClipping,
+    peakCeilingDb: preferences.replayGainPeakCeilingDb
+  };
+}
+
+export async function getLoudnessClient() {
+  const ui = globalThis.window?.uiManager;
+  const manager = ui?.libraryManager ?? await ui?.ensureLibraryManager?.();
+  if (manager?.initPromise) await manager.initPromise;
+  return manager?.client;
+}
+
+export function invalidateReplayGain(contextManager) {
+  replayGainCache = new WeakMap();
+  replayGainPathCache.clear();
+  return contextManager?.applyReplayGainPreference?.();
+}
+
+/** Prefer a library measurement over the original file's tags. */
 export function readReplayGain(track) {
   const sourceTrack = getReplayGainTrackKey(track);
   if (!sourceTrack) return Promise.resolve(null);
   let pending = replayGainCache.get(sourceTrack);
   if (!pending) {
+    const cache = replayGainCache;
     pending = readUncachedReplayGain(sourceTrack).catch(error => {
       console.debug('ReplayGain tags could not be read:', error);
       return null;
-    });
+    }).then(value => cache === replayGainCache ? value : readReplayGain(sourceTrack));
     replayGainCache.set(sourceTrack, pending);
   }
   return pending;
 }
 
-function readUncachedReplayGain(track) {
+async function readUncachedReplayGain(track) {
+  if (track.libraryTrackId) {
+    try {
+      const client = await getLoudnessClient();
+      const row = await client?.getTrackLoudness?.({ trackUid: track.libraryTrackId });
+      if (Number.isFinite(row?.integrated)) {
+        return {
+          trackGainDb: -18 - row.integrated, trackPeak: 10 ** (row.truePeak / 20),
+          albumGainDb: Number.isFinite(row.albumIntegrated) ? -18 - row.albumIntegrated : null,
+          albumPeak: Number.isFinite(row.albumTruePeak) ? 10 ** (row.albumTruePeak / 20) : null
+        };
+      }
+    } catch (error) {
+      console.debug('Library loudness could not be read:', error);
+    }
+  }
   if (typeof Blob !== 'undefined' && track.file instanceof Blob) return readBlobReplayGain(track.file);
   const readByPath = typeof window !== 'undefined' ? window.electronAPI?.readReplayGain : null;
   if (typeof readByPath !== 'function' || !isLocalFilePath(track.path)) return Promise.resolve(null);

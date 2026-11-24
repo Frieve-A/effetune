@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getDiagnosticLog, startDiagnosticRecording } from '../../js/diagnostics/diagnostic-log.js';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
@@ -30,7 +31,9 @@ test('desktop audio activity uses current worklet signal or transport while cont
   controller.workletObservations.set(node, { workletGraphGeneration: 2, topologyRevision: 3,
     receivedAtEpochMs: now, inputActive: false, outputActive: true });
   controller._reportDesktopAudioActivity({ transportDemand: false });
+  assert.equal(controller.getDiagnosticObservations()[0].outputActive, true);
   now = 4000;
+  assert.equal(controller.getDiagnosticObservations()[0].outputActive, 'unknown');
   controller._reportDesktopAudioActivity({ transportDemand: false });
   controller._reportDesktopAudioActivity({ transportDemand: true });
   context.state = 'suspended';
@@ -1106,7 +1109,8 @@ test('silent MIDI with no instrument keeps ordinary transport context demand wit
   } finally { harness.controller.dispose(); }
 });
 
-test('native Electron visibility remains hidden when the DOM visibility API stays visible', async () => {
+test('native Electron visibility remains hidden when the DOM visibility API stays visible', async t => {
+  t.after(startDiagnosticRecording({}));
   const harness = createHarness({ hostVisibility: { hidden: true } });
   await harness.controller.start();
 
@@ -1125,6 +1129,49 @@ test('native Electron visibility remains hidden when the DOM visibility API stay
   facts = harness.controller._collectFacts(0);
   assert.equal(facts.visibility, 'visible');
   assert.equal(facts.hiddenSinceEpochMs, null);
+  assert.deepEqual(getDiagnosticLog().events.filter(event => event.kind === 'hostVisibility')
+    .map(({hostHidden, effectivelyHidden}) => [hostHidden, effectivelyHidden]), [[true, true], [false, false]]);
+});
+
+test('diagnostics retain the last input observation across a running-context input recovery', async t => {
+  t.after(startDiagnosticRecording({}));
+  const h = createHarness({ settings: { mode: 'continuous' }, input: {
+    state: 'released', inputAvailability: 'unknown', inputAvailabilityRevision: 0,
+    inputGeneration: 0, inputConfigured: true, inputSourcePresent: false, trackState: 'ended'
+  } });
+  const c = h.controller;
+  const observe = sequence => c.handleWorkletPowerEvent({
+    type: 'powerHeartbeat', state: 'active', processingDirective: 'full-process',
+    inputActive: false, outputActive: false, renderSequence: sequence, ...c._getTokensAndGuards().tokens
+  });
+  h.setNow(100);
+  observe(1);
+  h.setNow(200);
+  observe(2);
+  assert.equal(c.getDiagnosticObservations()[0].receivedAtEpochMs, 200);
+  h.setNow(2300);
+  observe(3);
+  assert.equal(await c.ensureActive('dedicated-input', 'focus'), true);
+  h.setNow(2400);
+  observe(4);
+  const events = getDiagnosticLog().events;
+  const before = events.find(e => e.kind === 'workletObservation' && e.previousReceivedAtEpochMs === 200);
+  const invalidated = events.find(e => e.kind === 'workletObservationInvalidated');
+  assert.ok(before);
+  assert.equal(invalidated.role, 'primary');
+  assert.equal(invalidated.workletGraphGeneration, before.workletGraphGeneration);
+  assert.equal(invalidated.receivedAtEpochMs, 2300);
+  assert.ok(events.slice(events.indexOf(invalidated) + 1).some(e => e.kind === 'workletObservation'));
+  const resume = events.find(e => e.kind === 'resume');
+  assert.deepEqual([resume.trigger, resume.contextState, resume.reason, resume.result],
+    ['focus', 'running', 'inputResumeRequired', true]);
+  await h.flush();
+  await c.ensureActive('dedicated-input', 'focus');
+  assert.equal(getDiagnosticLog().events.filter(e => e.kind === 'resume').length, 1);
+  h.inputState.state = 'released';
+  c.beginUserGestureResume = () => Promise.resolve(false);
+  assert.equal(await c.ensureActive('dedicated-input', 'key'), false);
+  assert.equal(getDiagnosticLog().events.at(-1).result, false);
 });
 
 test('host and page visibility share one UI and telemetry power gate', async () => {
@@ -3089,6 +3136,30 @@ test('automatic input release stops the local input and records its resume latch
   assert.equal(snapshot.manualResumeRequired, true);
   assert.equal(snapshot.transitionError.code, null);
   assert.equal(snapshot.resourceStatus.persistence.journalPhase, 'committed');
+});
+
+test('a superseded first render cannot reuse an accepted power command epoch', () => {
+  const {controller,audioManager} = createHarness();
+  const ack = {type:'powerStateAck',commandId:41,commandAccepted:true,skipEpoch:7,
+    workletGraphGeneration:0,topologyRevision:0};
+  controller.handleWorkletPowerEvent(ack,audioManager.workletNode);
+  controller.handleWorkletPowerEvent({...ack,commandId:42,commandAccepted:undefined,
+    configured:true,skipEpoch:null},audioManager.workletNode);
+  assert.equal(controller.skipEpoch,7);
+  controller.handleWorkletPowerEvent({...ack,commandId:43,commandAccepted:false,skipEpoch:8},audioManager.workletNode);
+  assert.equal(controller.skipEpoch,7);
+});
+
+test('worklet configuration during MIDI preparation retains eligibility for later silence', () => {
+  const {controller} = createHarness();
+  let preparing = true;
+  controller.player = {contextManager:{getMidiPresentation:() => ({preparing})}};
+  assert.equal(controller._analyzeTemporalCapabilities().temporalSkipEligible,false);
+  const configuration = controller._configureWorklets();
+  assert.equal(configuration.monitoringFastWakeEligible,true);
+  assert.equal(configuration.temporalSkipEligible,true);
+  preparing = false;
+  assert.equal(controller._analyzeTemporalCapabilities().monitoringFastWakeEligible,true);
 });
 
 test('automatic monitoring arm is public only after every active worklet agrees', () => {

@@ -2,6 +2,7 @@
  * PresetManager - Handles preset loading, saving, and deletion
  * Manages preset UI and storage (localStorage for web, file system for Electron)
  */
+import { rememberDiagnosticNames } from '../../diagnostics/diagnostic-log.js';
 import { getSerializablePluginStateShort, applySerializedState } from '../../utils/serialization-utils.js';
 
 function setOwn(target, key, value) {
@@ -211,6 +212,7 @@ export class PresetManager {
      * @param {string} name - The name of the preset
      */
     async savePreset(name, { showSuccessMessage = true } = {}) {
+        rememberDiagnosticNames('preset', [name]);
         if (typeof name !== 'string' || !name.trim()) return false;
         name = name.trim();
         if (this.externalHost) {
@@ -276,6 +278,7 @@ export class PresetManager {
      * @param {string|Object} nameOrPreset - The name of the preset to load from file/localStorage, or a preset object
      */
     async loadPreset(nameOrPreset, options = {}) {
+        rememberDiagnosticNames('preset', [typeof nameOrPreset === 'string' ? nameOrPreset : nameOrPreset?.name]);
         if (this.externalHost) {
             try {
                 await this.externalHost.loadPreset(nameOrPreset);
@@ -452,6 +455,7 @@ export class PresetManager {
     }
 
     async renamePreset(oldName, newName) {
+        rememberDiagnosticNames('preset', [oldName, newName]);
         if (this.externalHost) {
             window.uiManager?.showTransientMessage('error.presetRenameUnavailable', true, {}, 3000);
             return false;

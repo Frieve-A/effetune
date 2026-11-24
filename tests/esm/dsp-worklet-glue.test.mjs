@@ -8430,6 +8430,7 @@ test('finite Rhythm endpoints split real worklet audio exactly before EOF and th
           finiteStreamEndFrame: null,
           getCurrentState: () => ({ isPlaying: true, isStopped: false, isTransitioning: false, playbackMode: 'bufferSource' }),
           captureVideoNaturalEnd() {}, createPreparedAutomaticMove: () => null,
+          advancePastTrackEnd: AudioContextManager.prototype.advancePastTrackEnd,
           notifyStreamBoundary: AudioContextManager.prototype.notifyStreamBoundary,
           announceFiniteStreamEnd: AudioContextManager.prototype.announceFiniteStreamEnd
         };

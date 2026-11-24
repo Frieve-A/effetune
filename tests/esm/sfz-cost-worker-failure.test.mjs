@@ -29,7 +29,8 @@ const until = async predicate => {
 
 test('worker faults reject preparation visibly and the same module recreates a closed worker', { timeout: 3000 }, async () => {
   const previous = globalThis.Worker; globalThis.Worker = CostWorker; CostWorker.instances.length = 0;
-  const manager = { dspModuleInfo: { module: {} }, estimateSfzEffectPreparation: audioManagerSfzRuntimeMethods.estimateSfzEffectPreparation };
+  const info = { module: {} };
+  const manager = { getOfflineDspModuleInfo: () => info, estimateSfzEffectPreparation: audioManagerSfzRuntimeMethods.estimateSfzEffectPreparation };
   try {
     const first = manager.estimateSfzEffectPreparation(payload(), context);
     const rejected = assert.rejects(first, { code: 'prepare' });
