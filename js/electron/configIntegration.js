@@ -1,5 +1,6 @@
 import { getSettingsStorage } from '../settings-storage.js';
 import { updateNetworkOutputTargetText } from './networkOutputPicker.js';
+import { getNetworkOutputBridge } from '../android/network-output.js';
 ﻿import {
   AUTO_LANGUAGE_PREFERENCE,
   LANGUAGE_OPTIONS,
@@ -33,6 +34,7 @@ import { closeStandardSelect, enableStandardSelects } from '../ui/standard-selec
 import { getRemoteControlSettings } from '../remote/remote-control-settings.js';
 import { NetworkMusicSettings } from '../network-music/settings-view.js';
 import { isAndroidHost } from '../android/bridge.js';
+import { isLocalNetworkPermissionError } from '../android/network.js';
 
 import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
 
@@ -101,12 +103,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
   const t = window.uiManager?.t
     ? window.uiManager.t.bind(window.uiManager)
     : key => key;
-  const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
+  const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1
+    : (isAndroidHost() ? window.effetuneAndroidOpenHome : null);
   const airPlayAPI = isElectron ? window.electronAPI?.airPlayV1 : null;
-  const networkOutputAPI = isElectron ? window.electronAPI?.networkOutputV1 : null;
-  const networkMusicAPI = isElectron ? window.electronAPI : null;
-  const remoteControlSettings = networkMusicAPI?.remoteV1?.settings
-    ? getRemoteControlSettings(networkMusicAPI.remoteV1.settings) : null;
+  const networkOutputAPI = getNetworkOutputBridge();
+  const networkMusicAPI = isElectron ? window.electronAPI
+    : (isAndroidHost() ? window.uiManager?.networkMusic?.api ?? null : null);
+  const remoteSettingsApi = networkMusicAPI?.remoteV1?.settings ?? window.remoteControlController?.api?.settings;
+  const remoteControlSettings = remoteSettingsApi ? getRemoteControlSettings(remoteSettingsApi) : null;
   const isMsix = isElectron && window.electronAPI?.isMsix === true;
 
   // Fix for single preset case: auto-set startupPreset if pipelineStartup is 'preset' but startupPreset is empty
@@ -162,7 +166,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="power-mode-help" id="hardware-acceleration-help"></div>
       </div>` : '';
 
-  const networkNameSection = isElectron ? `
+  const networkNameSection = (isElectron || isAndroidHost()) ? `
       <div class="device-section" id="network-device-name-section">
         <div class="network-name-row">
           <label for="network-device-name" id="network-device-name-label"></label>
@@ -170,7 +174,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
       </div>` : '';
 
-  const remoteControlSection = isElectron ? `
+  const remoteControlSection = remoteControlSettings ? `
       <div class="device-section" id="network-remote-control-section">
         <label class="section-label" id="network-remote-control-title"></label>
         <div class="checkbox-container">
@@ -180,7 +184,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="network-remote-control-status" id="network-remote-control-status" role="status" aria-live="polite"></div>
       </div>` : '';
 
-  const openHomeSection = isElectron ? `
+  const openHomeSection = (isElectron || isAndroidHost()) ? `
       <div class="device-section" id="openhome-section">
         <label class="section-label" id="openhome-title"></label>
         <div class="checkbox-container">
@@ -191,7 +195,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="openhome-help" id="openhome-risk"></div>
       </div>` : '';
 
-  const networkReceptionSections = isElectron ? `
+  const networkReceptionSections = (isElectron || isAndroidHost()) ? `
       <div class="device-section" id="upnp-av-section">
         <label class="section-label" id="upnp-av-title"></label>
         <div class="checkbox-container">
@@ -200,7 +204,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
         <div class="openhome-status" id="upnp-av-status" role="status" aria-live="polite"></div>
         <div class="openhome-help" id="upnp-av-risk"></div>
-      </div>
+      </div>${isElectron ? `
       <div class="device-section" id="airplay-section">
         <label class="section-label" id="airplay-title"></label>
         <div class="checkbox-container">
@@ -209,9 +213,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
         <div class="openhome-status" id="airplay-status" role="status" aria-live="polite"></div>
         <div class="openhome-help" id="airplay-help"></div>
-      </div>` : '';
+      </div>` : ''}` : '';
 
-  const networkOutputSection = isElectron ? `
+  const networkOutputSection = networkOutputAPI ? `
       <div class="device-section" id="network-output-section">
         <label class="section-label" id="network-output-title"></label>
         <div class="checkbox-container">
@@ -237,7 +241,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
       </div>` : '';
 
-  const librarySharingSection = isElectron ? `
+  const librarySharingSection = (isElectron || networkMusicAPI) ? `
       <div class="device-section" id="library-sharing-section">
         <label class="section-label" id="library-sharing-title"></label>
         <div class="checkbox-container">
@@ -352,7 +356,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
             </div>
             <div class="power-mode-help" id="library-include-video-help"></div>
           </div>
-          ${!isAndroidHost() ? `<div class="device-section">
+          <div class="device-section">
             <div class="checkbox-container">
               <input type="checkbox" id="library-include-midi" aria-describedby="library-include-midi-help" ${config.libraryIncludeMidi ? 'checked' : ''}>
               <label for="library-include-midi" id="library-include-midi-label"></label>
@@ -365,7 +369,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
               </div>
               <div class="power-mode-help" id="library-include-midi-archives-help"></div>
             </div>
-          </div>` : ''}
+          </div>
           ${electronGeneralSections}`,
     startup: `
           ${electronStartupSections}
@@ -487,6 +491,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <button type="button" class="library-button" id="browser-rules-cancel"></button>
             </div>
           </fieldset>`,
+    } : {}),
+    ...(isElectron || networkMusicAPI || networkOutputAPI || openHomeAPI || remoteControlSettings ? {
       network: networkNameSection + remoteControlSection + openHomeSection + networkReceptionSections + networkOutputSection +
         librarySharingSection
     } : {})
@@ -517,8 +523,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = dialogHTML;
   document.body.appendChild(overlay);
-  const networkSettings = isElectron ? new NetworkMusicSettings({
-    root: document.getElementById('config-panel-network'), api: networkMusicAPI, remoteSettings: remoteControlSettings, translate: t
+  const networkSettings = (networkMusicAPI || remoteControlSettings) ? new NetworkMusicSettings({
+    root: document.getElementById('config-panel-network'), api: networkMusicAPI ?? {}, remoteSettings: remoteControlSettings, translate: t
   }) : null;
   await networkSettings?.mount();
   enableStandardSelects(overlay);
@@ -979,8 +985,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       border-bottom: 1px solid var(--et-surface-20);
       overflow-x: auto;
       overflow-y: hidden;
+      scrollbar-width: none;
     }
+    body.layout-mobile .config-category-list::-webkit-scrollbar { display: none; }
     body.layout-mobile .config-category-button {
+      flex: 0 0 auto;
       white-space: nowrap;
     }
     body.layout-mobile .config-category-panels {
@@ -1101,7 +1110,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   }
 
   function renderPresetOptions() {
-    replaceOptions(document.getElementById('preset-select'), presetNames, config.startupPreset || '');
+    replaceOptions(document.getElementById('preset-select'), presetNames.length ? presetNames : [''],
+      config.startupPreset || '', name => name || t('error.noPresetSelected'));
   }
 
   function renderLibraryStartupViewOptions() {
@@ -1214,9 +1224,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
   let openHomeStatus = null;
   let openHomeStatusLoaded = false;
   let openHomeStatusReadFailed = false;
-  let openHomeOperationFailed = false;
+  let openHomeErrorKey = null;
   let openHomeChangeInFlight = false;
-  let upnpAvOperationFailed = false;
+  let upnpAvErrorKey = null;
   let upnpAvChangeInFlight = false;
   let upnpAvRequestedEnabled = false;
   let airPlayStatus = null;
@@ -1228,13 +1238,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
   let removeAirPlayStatusListener = null;
   let networkOutputStatus = null;
   let networkOutputBusy = false;
+  let networkOutputPermissionDenied = false;
   let removeNetworkOutputStatusListener = null;
   const networkOutputRows = new Map();
   let networkNameChangeInFlight = false;
   let openHomeRequestedEnabled = false;
   let removeOpenHomeStatusListener = null;
   let removeRemoteControlSettingsListener = null;
-  const librarySharingControls = isElectron ? {
+  const librarySharingControls = (isElectron || networkMusicAPI) ? {
     enabled: document.getElementById('library-sharing-enabled'),
     folders: document.getElementById('library-sharing-folders'),
     empty: document.getElementById('library-sharing-empty'),
@@ -1254,7 +1265,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     input.checked = status?.enabled === true;
     input.disabled = !status || remoteControlSettings.busy;
     const errorKey = remoteControlSettings?.errorKey || (status?.error ? 'startFailed' : null);
-    statusElement.textContent = errorKey ? t(`dialog.remoteControl.${errorKey}`)
+    statusElement.textContent = errorKey
+      ? (errorKey === 'localNetworkPermission' ? localNetworkPermissionText() : t(`dialog.remoteControl.${errorKey}`))
       : remoteControlSettings && !status ? t('dialog.remoteControl.loading') : '';
     statusElement.setAttribute('data-state', errorKey ? 'error' : '');
   }
@@ -1262,19 +1274,19 @@ export async function showConfigDialog(isElectron, currentConfig) {
   function markLibrarySharingUnsaved() {
     librarySharingStatusKey = 'unsaved';
     renderLibrarySharing();
-    networkSettings?.updateLanguage();
   }
 
   function renderLibrarySharing() {
     if (!librarySharingControls) return;
     const { enabled, save, empty, status } = librarySharingControls;
     const disabled = !librarySharing || librarySharingSaving;
-    enabled.disabled = disabled;
-    save.disabled = disabled;
+    const foldersUnavailable = librarySharing?.foldersUnavailable === true;
+    enabled.disabled = disabled || (foldersUnavailable && !librarySharing.enabled);
+    save.disabled = enabled.disabled || (foldersUnavailable && enabled.checked);
     for (const input of librarySharingFolderInputs) input.disabled = disabled;
-    empty.hidden = !librarySharing || librarySharing.folders.length > 0;
-    status.textContent = librarySharingStatusKey
-      ? t(`dialog.config.librarySharing.${librarySharingStatusKey}`) : '';
+    empty.hidden = !librarySharing || foldersUnavailable || librarySharing.folders.length > 0;
+    if (librarySharingStatusKey === 'localNetworkPermission') status.textContent = localNetworkPermissionText();
+    else status.textContent = librarySharingStatusKey ? t(`dialog.config.librarySharing.${librarySharingStatusKey}`) : '';
   }
 
   function acceptLibrarySharing(state) {
@@ -1305,10 +1317,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
   }
 
   async function refreshLibrarySharing() {
-    if (!isElectron) return;
+    if (!librarySharingControls) return;
     try {
       acceptLibrarySharing(await networkMusicAPI.networkMusicGetState({ loadSharingFolders: true }));
-      librarySharingStatusKey = '';
+      librarySharingStatusKey = librarySharing.foldersUnavailable ? 'loadFailed' : '';
     } catch (error) {
       console.error('Failed to read library sharing settings:', error);
       librarySharing = null;
@@ -1321,18 +1333,19 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (!librarySharing || librarySharingSaving) return;
     const request = {
       enabled: librarySharingControls.enabled.checked,
-      folderIds: librarySharingFolderInputs.filter(input => input.checked).map(input => input.value)
+      folderIds: librarySharing.foldersUnavailable ? librarySharing.folderIds : librarySharingFolderInputs.filter(input => input.checked).map(input => input.value)
     };
     librarySharingSaving = true;
     librarySharingStatusKey = 'saving';
     renderLibrarySharing();
     try {
       acceptLibrarySharing(await networkMusicAPI.networkMusicSetSharing(request));
-      librarySharingStatusKey = 'saved';
+      librarySharingStatusKey = librarySharing.foldersUnavailable ? 'loadFailed' : 'saved';
     } catch (error) {
       console.error('Failed to save library sharing settings:', error);
       await refreshLibrarySharing();
-      if (librarySharing) librarySharingStatusKey = 'saveFailed';
+      if (isLocalNetworkPermissionError(error)) librarySharingStatusKey = 'localNetworkPermission';
+      else if (librarySharing) librarySharingStatusKey = 'saveFailed';
     } finally {
       librarySharingSaving = false;
       renderLibrarySharing();
@@ -1384,15 +1397,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const enabled = upnpAv ? openHomeStatus?.upnpAvEnabled : openHomeStatus?.enabled;
     const changing = upnpAv ? upnpAvChangeInFlight : openHomeChangeInFlight;
     const requested = upnpAv ? upnpAvRequestedEnabled : openHomeRequestedEnabled;
-    const operationFailed = upnpAv ? upnpAvOperationFailed : openHomeOperationFailed;
+    const errorKey = upnpAv ? upnpAvErrorKey : openHomeErrorKey;
     if (!openHomeAPI) {
       return { key: 'unavailable', state: 'unavailable' };
     }
     if (!openHomeStatusLoaded) {
       return { key: 'loading', state: 'pending' };
     }
-    if (operationFailed) {
-      return { key: 'updateFailed', state: 'error' };
+    if (errorKey) {
+      return { key: errorKey, state: 'error' };
     }
     if (openHomeStatusReadFailed || enabled && openHomeStatus?.state === 'failed') {
       return { key: 'error', state: 'error' };
@@ -1437,7 +1450,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     nameInput.disabled = typeof openHomeAPI?.setFriendlyName !== 'function' ||
       networkNameChangeInFlight || !openHomeStatusLoaded;
     const presentation = getNetworkPlayerStatusPresentation();
-    statusElement.textContent = t(`dialog.config.openHome.status.${presentation.key}`);
+    statusElement.textContent = networkPlayerStatusText('openHome', presentation.key);
     statusElement.setAttribute('data-state', presentation.state);
     const upnpAvInput = document.getElementById('upnp-av-enabled');
     const upnpAvStatus = document.getElementById('upnp-av-status');
@@ -1447,7 +1460,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
         (openHomeStatus?.available === false && openHomeStatus?.upnpAvEnabled !== true);
       const upnpPresentation = getNetworkPlayerStatusPresentation(true);
       const namespace = ['published', 'error'].includes(upnpPresentation.key) ? 'upnpAv' : 'openHome';
-      upnpAvStatus.textContent = t(`dialog.config.${namespace}.status.${upnpPresentation.key}`);
+      upnpAvStatus.textContent = networkPlayerStatusText(namespace, upnpPresentation.key);
       upnpAvStatus.setAttribute('data-state', upnpPresentation.state);
     }
   }
@@ -1609,7 +1622,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const resync = document.getElementById('network-output-resync');
     if (resync) resync.disabled = controlsDisabled || status.resyncing === true;
     const syncStatus = document.getElementById('network-output-sync-status');
-    if (syncStatus) syncStatus.textContent = enabled && status.syncing ? t('dialog.config.networkOutput.syncing') : '';
+    if (syncStatus) {
+      syncStatus.textContent = networkOutputPermissionDenied ? localNetworkPermissionText()
+        : enabled && status.syncing ? t('dialog.config.networkOutput.syncing') : '';
+    }
   }
 
   function parseNetworkOutputTrim(value, minimum) {
@@ -1634,11 +1650,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
   async function runNetworkOutputRequest(request, failureMessage) {
     if (!networkOutputAPI || networkOutputBusy) return;
     networkOutputBusy = true;
+    networkOutputPermissionDenied = false;
     renderNetworkOutput();
     try {
       if (!acceptNetworkOutputStatus(await request())) throw new Error('Invalid Network Output status response');
     } catch (error) {
       console.warn(failureMessage, error);
+      networkOutputPermissionDenied = isLocalNetworkPermissionError(error);
     } finally {
       networkOutputBusy = false;
       renderNetworkOutput();
@@ -1691,11 +1709,23 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
   }
 
+  function localNetworkPermissionText() {
+    const translationKey = 'dialog.config.localNetworkPermission';
+    const text = t(translationKey);
+    return text === translationKey
+      ? 'Local network access is required. Allow it in Android settings for EffeTune, then try again.'
+      : text;
+  }
+
+  function networkPlayerStatusText(namespace, key) {
+    return key === 'localNetworkPermission' ? localNetworkPermissionText() : t(`dialog.config.${namespace}.status.${key}`);
+  }
+
   async function applyOpenHomeEnabled(enabled) {
     if (openHomeChangeInFlight || typeof openHomeAPI?.setEnabled !== 'function') return;
     openHomeChangeInFlight = true;
     openHomeRequestedEnabled = enabled;
-    openHomeOperationFailed = false;
+    openHomeErrorKey = null;
     renderNetworkStatus();
     try {
       const status = await openHomeAPI.setEnabled(enabled);
@@ -1703,7 +1733,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     } catch (error) {
       console.error('Failed to update OpenHome remote control:', error);
       await refreshOpenHomeStatus();
-      openHomeOperationFailed = true;
+      openHomeErrorKey = isLocalNetworkPermissionError(error) ? 'localNetworkPermission' : 'updateFailed';
     } finally {
       openHomeChangeInFlight = false;
       renderNetworkStatus();
@@ -1714,14 +1744,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (upnpAvChangeInFlight || typeof openHomeAPI?.setUpnpAvEnabled !== 'function') return;
     upnpAvChangeInFlight = true;
     upnpAvRequestedEnabled = enabled;
-    upnpAvOperationFailed = false;
+    upnpAvErrorKey = null;
     renderNetworkStatus();
     try {
       if (!acceptOpenHomeStatus(await openHomeAPI.setUpnpAvEnabled(enabled))) throw new Error('Invalid network player status response');
     } catch (error) {
       console.error('Failed to update UPnP AV reception:', error);
       await refreshOpenHomeStatus();
-      upnpAvOperationFailed = true;
+      upnpAvErrorKey = isLocalNetworkPermissionError(error) ? 'localNetworkPermission' : 'updateFailed';
     } finally {
       upnpAvChangeInFlight = false;
       renderNetworkStatus();
@@ -1945,6 +1975,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderNetworkOutput();
     renderRemoteControlSettings();
     renderLibrarySharing();
+    networkSettings?.updateLanguage();
   }
 
   function publishElectronConfig(nextConfig) {
@@ -2014,7 +2045,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     const presetSelect = document.getElementById('preset-select');
     if (presetSelect) {
-      presetSelect.value = config.startupPreset || '';
+      presetSelect.value = presetNames.includes(config.startupPreset) ? config.startupPreset : (presetNames[0] || '');
       presetSelect.disabled = pipelineStartup !== 'preset';
     }
     renderLanguageOptions();
@@ -2480,7 +2511,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       await manager?.openDialog?.();
     } catch (error) {
       console.error('Failed to open controller mapping settings:', error);
-      window.uiManager?.setError?.('Controller mapping settings could not be opened. Please try again.', true);
+      window.uiManager?.setError?.(t('midi.settingsUnavailable'), true);
     }
   });
   function closeDialog() {
@@ -2517,8 +2548,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
         console.warn('Ignored an invalid OpenHome remote control status update');
         return;
       }
-      if (!openHomeChangeInFlight) openHomeOperationFailed = false;
-      if (!upnpAvChangeInFlight) upnpAvOperationFailed = false;
+      if (!openHomeChangeInFlight) openHomeErrorKey = null;
+      if (!upnpAvChangeInFlight) upnpAvErrorKey = null;
       renderNetworkStatus();
     });
   }

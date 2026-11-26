@@ -2040,6 +2040,24 @@ test('Web startup recovery finishes an eligible sweep before an immediate newer 
   close();
 });
 
+test('pausing a Web scan or removing its folder clears pending traversal without a scan sweep', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-traversal-');
+  seedWebTestFolder();
+  const identity = beginWebTestScan('web-traversal');
+  dispatchWebSqliteCommand('scanTraversalQueue', { ...identity, action: 'append', directories: ['Album'] });
+  assert.equal(database.prepare('SELECT count(*) AS count FROM scan_traversal_queue').get().count, 1);
+
+  dispatchWebSqliteCommand('pauseScanFolder', { ...identity, stopReason: 'user' });
+
+  assert.equal(database.prepare('SELECT count(*) AS count FROM scan_traversal_queue').get().count, 0);
+  assert.throws(() => dispatchWebSqliteCommand('enqueueScanSweep', identity), { code: 'scanSweepIneligible' });
+
+  const next = beginWebTestScan('web-traversal-remove');
+  dispatchWebSqliteCommand('scanTraversalQueue', { ...next, action: 'append', directories: ['Album'] });
+  dispatchWebSqliteCommand('removeScanFolder', { folderId: next.folderId, expectedLifecycleVersion: next.lifecycleVersion });
+  assert.equal(database.prepare('SELECT count(*) AS count FROM scan_traversal_queue').get().count, 0);
+});
+
 async function openWebTestCatalog(t, prefix) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const database = new DatabaseSync(path.join(directory, 'catalog.sqlite'));

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadParamSpecs } from './gen-dsp-params.mjs';
 import * as parameterPackers from '../js/audio/dsp-params.generated.js';
+import { MAX_QUEUE } from '../js/network-music/upnp/host-core.js';
 import { buildAndroidTemporalContract } from './android-temporal-contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -12,9 +13,10 @@ const { collectPrecacheUrls } = require('./generate-sw-precache.js');
 const destination = path.join(root, 'out', 'android', 'assets', 'web');
 await rm(destination, { recursive: true, force: true });
 const inputs = new Set(collectPrecacheUrls(root).filter(file => !['sw.js', 'manifest.json'].includes(file)));
+inputs.add('features/effetune_bench.html');
 
-// Measurement pages and help are bundled in addition to the established PWA
-// runtime inventory. Restrict discovery to these public asset directories.
+// Measurement pages are bundled in addition to the established PWA runtime
+// inventory. Help opens the online documentation, so docs are not bundled.
 async function includeDirectory(relative) {
     for (const entry of await readdir(path.join(root, relative), { withFileTypes: true })) {
         const name = `${relative}/${entry.name}`;
@@ -23,7 +25,6 @@ async function includeDirectory(relative) {
     }
 }
 await includeDirectory('features/measurement');
-await includeDirectory('docs');
 for (const file of [...inputs].sort()) {
     const output = path.join(destination, file);
     await mkdir(path.dirname(output), { recursive: true });
@@ -42,12 +43,18 @@ let musicProtocol = await readFile(path.join(root, 'electron/remote-music-dispat
 if (musicProtocol.split(musicImport).length !== 2 || musicProtocol.split(musicExport).length !== 2) {
     throw new Error('The shared music dispatcher module boundaries changed. Update the Android asset adapter.');
 }
-musicProtocol = musicProtocol.replace(musicImport, `const MAX_QUEUE = ${require('../electron/network-music-host.cjs').MAX_QUEUE};`)
+musicProtocol = musicProtocol.replace(musicImport, `const MAX_QUEUE = ${MAX_QUEUE};`)
     .replace(musicExport, 'export { MUSIC_OPS, dispatchMusic, projectPlayback, projectBrowse, projectDevices };');
 await mkdir(path.join(destination, 'js/android'), { recursive: true });
 await writeFile(path.join(destination, 'js/android/remote-music-protocol.js'), musicProtocol);
+await cp(path.join(path.dirname(require.resolve('qrcode-generator')), 'qrcode.mjs'), path.join(destination, 'js/android/qrcode.mjs'));
 await mkdir(path.join(root, 'out/android/assets/licenses'), { recursive: true });
+const notices = await readFile(path.join(root, 'electron/THIRD_PARTY_NOTICES.txt'), 'utf8');
+const qrNotice = notices.split(/\r?\n(?=[^\r\n]+\r?\n-+\r?\n)/).find(section => section.startsWith('qrcode-generator '));
+if (!qrNotice) throw new Error('Missing qrcode-generator distribution notice');
+await writeFile(path.join(root, 'out/android/assets/licenses/qrcode-generator-NOTICE.txt'), qrNotice);
 await cp(path.join(root, 'dsp/vendor/pffft/LICENSE.txt'), path.join(root, 'out/android/assets/licenses/pffft-LICENSE.txt'));
+await cp(path.join(root, 'native/openhome-sidecar/THIRD_PARTY_NOTICES.txt'), path.join(root, 'out/android/assets/licenses/openhome-NOTICE.txt'));
 const temporal = await buildAndroidTemporalContract(root, specs);
 await writeFile(path.join(destination, 'android-dsp-contract.json'), JSON.stringify({ specs, names, temporal: temporal.policies }) + '\n');
 await writeFile(path.join(destination, 'android-temporal-fixtures.json'), JSON.stringify(temporal.fixtures) + '\n');

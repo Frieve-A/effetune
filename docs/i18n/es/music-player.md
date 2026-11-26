@@ -22,13 +22,11 @@ Abre archivos `.dsf` (DSF) o `.dff` (DSDIFF) como cualquier otro archivo de mús
 
 El audio DSD multicanal llega a los efectos en el orden de los canales del archivo. Si no coincide con el orden de las salidas de tus altavoces, coloca [**Matrix**](plugins/basics.md#matrix) al principio de la cadena de efectos. Por ejemplo, para reproducir un DSF de cinco canales en una salida 5.1 estándar, conecta las entradas 1 a 3 a las salidas del mismo número, la entrada 4 solo a la salida 5 y la entrada 5 solo a la salida 6. Así, la salida 4 (LFE) queda en silencio.
 
-No se admiten algunas variantes de codificación DST (tramas segmentadas), archivos de más de seis canales, DSD512 ni DSD basado en 48 kHz. Si un archivo no se reproduce, utiliza un DFF sin comprimir o una copia PCM compatible, como FLAC o WAV. Los archivos DSD se pueden reproducir en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación nativa de Android.
+No se admiten algunas variantes de codificación DST (tramas segmentadas), archivos de más de seis canales, DSD512 ni DSD basado en 48 kHz. Si un archivo no se reproduce, utiliza un DFF sin comprimir o una copia PCM compatible, como FLAC o WAV.
 
 Los archivos DSD de alta frecuencia requieren más capacidad de procesamiento, sobre todo al aumentar la velocidad de reproducción. Si el audio se entrecorta o se detiene, reduce la velocidad.
 
 ## Archivos MIDI
-
-La reproducción de MIDI y MusicXML y su incorporación a la biblioteca están disponibles en la aplicación de escritorio y en el reproductor web/PWA. No se admiten en la aplicación de Android.
 
 Abre archivos `.mid`, `.midi` o `.kar` con el selector de música habitual o arrastrándolos a la ventana. MIDI contiene notas y tiempos, no sonido grabado. Añade [**SoundFont Player**](plugins/others.md#soundfont-player) desde **Others** a Effect Pipeline y elige un instrumento con **SoundFont Library…**. Abrir el archivo no añade un instrumento automáticamente. También puedes incluirlo en Music Library.
 Para ver la letra en **Lyrics** de Visualizer, usa la letra integrada en el MIDI o coloca un archivo `.wrd` con el mismo nombre a su lado. En la web, selecciona o arrastra ambos archivos juntos, salvo si la carpeta está accesible desde Music Library. `.wrd` acompaña a la canción, no aparece como otra pista; si no se puede leer, el MIDI sigue sonando.
@@ -66,15 +64,15 @@ Se reproducen notas, silencios, acordes, voces, ligaduras, cambios de tempo y re
 - Haz clic en el botón de velocidad situado junto a **Aleatorio** para elegir uno de los nueve ajustes predefinidos o fijar cualquier velocidad entre `0.25x` y `4x` en pasos de `0.01x`. **Mantener el tono** está activado de forma predeterminada, así que el tono no cambia al variar la velocidad; desactívalo para que el tono suba y baje con la velocidad, como en una cinta o un disco.
 - En la aplicación de escritorio, elige **Ver > Reproductor mini** (`Ctrl/Cmd+Shift+M`) o haz clic en el botón de reproductor mini del reproductor para cambiar a una ventana compacta. Haz clic en el botón de chincheta para mantenerla siempre visible por encima de las demás ventanas.
 
-El reproductor de escritorio también muestra [música en red y AirPlay](openhome.md). Durante AirPlay, los detalles de la pista, la carátula y el tiempo aparecen cuando los envía el emisor; pasa el puntero por el título para ver más información. Controla la reproducción y el volumen en el dispositivo emisor. Cerrar el reproductor con **×**, o usar **Detener**, finaliza esa sesión, pero el receptor sigue habilitado y disponible para otra conexión.
+El reproductor también muestra [música en red](openhome.md) y, en la aplicación de escritorio, AirPlay. Durante AirPlay, los detalles de la pista, la carátula y el tiempo aparecen cuando los envía el emisor; pasa el puntero por el título para ver más información. Controla la reproducción y el volumen en el dispositivo emisor. Cerrar el reproductor con **×**, o usar **Detener**, finaliza esa sesión, pero el receptor sigue habilitado y disponible para otra conexión.
 
 El deslizador de volumen y el botón de silencio permiten ajustar el sonido del reproductor antes de que pase por los efectos. Los cambios realizados a distancia también se reflejan aquí, de modo que puedes comprobar el volumen y desactivar el silencio desde el dispositivo que reproduce la música.
 
 ## Continuar donde lo dejaste
 
-Al volver a abrir la aplicación de escritorio o web, el reproductor recupera la cola y queda en pausa en la última posición guardada de la pista actual. La velocidad inicial es de 1x. La posición se guarda aproximadamente cada 10 segundos durante la reproducción, por lo que pueden perderse los últimos cambios antes de salir.
+Al volver a abrir EffeTune, el reproductor recupera la cola y queda en pausa en la última posición guardada de la pista actual. En las aplicaciones de escritorio y web, la velocidad inicial es de 1x. La posición se guarda aproximadamente cada 10 segundos durante la reproducción, por lo que pueden perderse los últimos cambios antes de salir.
 
-Ambas versiones recuperan las pistas de la biblioteca. La de escritorio también recupera los archivos locales que abriste directamente. En la web, es posible que el navegador te pida volver a seleccionar la carpeta de música al pulsar Reproducir. Vuelve a añadir los archivos que abriste directamente en la web y las pistas de red.
+Todas las versiones recuperan las pistas de la biblioteca. La de escritorio también recupera los archivos locales que abriste directamente, y la de Android, los archivos abiertos directamente que aún pueda leer; omite las pistas de Subsonic y los archivos que ya no se pueden abrir, e indica cuántas se han omitido. En la web, es posible que el navegador te pida volver a seleccionar la carpeta de música al pulsar Reproducir. Vuelve a añadir los archivos que abriste directamente en la web y las pistas de red.
 
 Para recuperar las pistas de un archivo comprimido, reprodúcelas desde la biblioteca. Si abriste el archivo comprimido directamente, vuelve a abrirlo.
 
@@ -82,9 +80,9 @@ Para borrar la cola guardada, cierra el reproductor con **×**. Si una función 
 
 ## Reproducción sin pausas
 
-**Reproducción sin pausas**, en **Configuración de audio**, está activada de forma predeterminada y reproduce sin pausa las pistas locales compatibles; su compatibilidad está limitada por el formato del archivo y por el entorno del navegador o de la aplicación. Los formatos no compatibles y algunos entornos móviles usan un modo alternativo seguro que ahorra memoria, por lo que puede quedar una pausa breve. Al desactivarla se da prioridad a un menor uso de memoria y a la estabilidad, a costa de una posible pausa breve; el cambio no interrumpe la pista actual. La reproducción sin pausas solo funciona a velocidad 1x; si cambias la velocidad durante la reproducción sin pausas, la pista se reanuda desde la misma posición tras una breve interrupción.
+**Reproducción sin pausas**, en **Configuración de audio**, está activada de forma predeterminada y reproduce sin pausa las pistas locales compatibles; su compatibilidad está limitada por el formato del archivo y por el entorno del navegador o de la aplicación. Los formatos no compatibles y algunos entornos móviles usan un modo alternativo seguro que ahorra memoria, por lo que puede quedar una pausa breve. Al desactivarla se da prioridad a un menor uso de memoria y a la estabilidad, a costa de una posible pausa breve; el cambio no interrumpe la pista actual. En las aplicaciones de escritorio y web, la reproducción sin pausas solo funciona a velocidad 1x; si cambias la velocidad durante la reproducción sin pausas, la pista se reanuda desde la misma posición tras una breve interrupción.
 
-En la aplicación de escritorio, si el **Controlador** de **Configuración de audio** es cualquiera distinto de **Estándar**, los archivos WAV y FLAC multicanal de hasta seis canales también se reproducen sin pausas. Sus canales llegan a los efectos en el orden del archivo. Si no coincide con el orden de las salidas de tus altavoces, coloca [**Matrix**](plugins/basics.md#matrix) al principio de la cadena de efectos, igual que con el [DSD multicanal](#dsd-files).
+En la aplicación de escritorio, si el **Controlador** de **Configuración de audio** es cualquiera distinto de **Estándar**, y en la aplicación de Android, los archivos WAV y FLAC multicanal de hasta seis canales también se reproducen sin pausas. Sus canales llegan a los efectos en el orden del archivo. Si no coincide con el orden de las salidas de tus altavoces, coloca [**Matrix**](plugins/basics.md#matrix) al principio de la cadena de efectos, igual que con el [DSD multicanal](#dsd-files).
 
 ## ReplayGain
 
@@ -100,8 +98,7 @@ Con **Nivel objetivo** en **Manual** (opción predeterminada), el objetivo es �
 
 **Evitar la saturación digital** está activado de forma predeterminada. Reduce la ganancia si el pico verdadero medido o el pico de la etiqueta superaría el límite. Baja el límite desde 0 dB para dejar margen a los efectos que amplifican la señal. El modo automático usa el límite para calcular el objetivo incluso con la protección desactivada. Los cambios se aplican durante la reproducción.
 
-El ajuste se aplica al sonido del reproductor antes de entrar en la cadena de efectos; la posición del control de volumen no cambia. ReplayGain no se aplica a la reproducción de MIDI o MusicXML, la música en red, la recepción por AirPlay, la reproducción en reproductores OpenHome o UPnP AV / DLNA ni el procesamiento de archivos sin conexión. ReplayGain está disponible en la aplicación de escritorio y en el reproductor web/PWA, pero no en la aplicación de Android.
-
+El ajuste se aplica al sonido del reproductor antes de entrar en la cadena de efectos; la posición del control de volumen no cambia. ReplayGain no se aplica a la reproducción de MIDI o MusicXML, la música en red, la recepción por AirPlay, la reproducción en reproductores OpenHome o UPnP AV / DLNA ni el procesamiento de archivos sin conexión.
 ## Vídeo {#video}
 
 El vídeo aparece en la zona de la carátula del reproductor. En el diseño de escritorio, al iniciar un vídeo se expande automáticamente el panel del reproductor. Puedes volver a contraerlo durante la reproducción actual. Mueve el puntero sobre el vídeo o tócalo para mostrar el botón de ampliación; se oculta tras un breve período de inactividad. Selecciona **⛶** para que ocupe toda el área de visualización de la aplicación; mueve el puntero sobre el vídeo o tócalo para mostrar los controles de reproducción en la parte inferior. También puedes añadir un elemento **Video** en Visualizer. Para incluir archivos de vídeo en la Biblioteca musical, consulta la [guía de la Biblioteca musical](music-library.md#availability).
@@ -119,7 +116,7 @@ Los botones y deslizadores mantienen su funcionamiento habitual.
 
 Usa el selector de dispositivos de la parte superior para elegir **This device**, un reproductor OpenHome o uno UPnP AV / DLNA. La biblioteca y el destino se eligen por separado. Cambiar de reproductor no detiene el anterior ni mueve su cola. Se muestran la pista, la cola, la posición y los controles compatibles, incluidos **Volumen** y **Silenciar** cuando estén disponibles. También se reflejan los cambios de otros controladores.
 
-Se transmite el audio original, sin los efectos del ordenador de origen. Un destino EffeTune aplica sus propios efectos. El servidor y el reproductor deben poder comunicarse. La cola propia de OpenHome puede continuar al desconectar el controlador; una secuencia gestionada por EffeTune o una conexión a través de un ordenador EffeTune requiere que ese ordenador siga encendido.
+Se transmite el audio original, sin los efectos del dispositivo de origen. Un destino EffeTune aplica sus propios efectos. El servidor y el reproductor deben poder comunicarse. La cola propia de OpenHome puede continuar al desconectar el controlador; una secuencia gestionada por EffeTune o una conexión a través de un dispositivo EffeTune requiere que ese dispositivo siga encendido.
 
 [música en red y control remoto](openhome.md)
 

@@ -1,6 +1,9 @@
 const SOUNDFONT_MIDI_CHANNEL_COLORS = Object.freeze(Array.from({ length: 16 }, (_, channel) =>
     `hsl(${channel * 360 / 16}, 60%, 45%)`)); // theme-allow: Stable MIDI channel identity colors.
 const SOUNDFONT_METER_FLOOR_DB = -48;
+const SOUNDFONT_TUNING_KEYS = Object.freeze(['major', 'minor'].flatMap((mode, minor) =>
+    ['C', 'C#/D♭', 'D', 'D#/E♭', 'E', 'F', 'F#/G♭', 'G', 'G#/A♭', 'A', 'A#/B♭', 'B']
+        .map((name, tonic) => ({ value: minor * 12 + tonic, label: `${name} ${mode}` }))));
 
 class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     constructor() {
@@ -11,6 +14,8 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this.description = 'Plays MIDI songs through SoundFont and SFZ instruments';
         this.mco = 0; // Bit n is set when MIDI channel n + 1 is turned off, so 0 plays all 16.
         this.tr = 0;
+        this.tu = 0;
+        this.tk = 0;
         this.pl = 256;
         this.sq = 1;
         this.sc = 0;
@@ -33,7 +38,7 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
     getParameters() {
         return { ...PluginBase.prototype.getParameters.call(this), sf: this.sf,
             mco: this.mco, pl: this.pl, og: this.og, sq: this.sq, sc: this.sc, af: this.af,
-            rg: this.rg, rs: this.rs, rx: this.rx, tr: this.tr };
+            rg: this.rg, rs: this.rs, rx: this.rx, tr: this.tr, tu: this.tu, tk: this.tk };
     }
 
     // Whether this player sounds the standard the current song selected. Unknown counts as yes.
@@ -90,11 +95,11 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
             if (mco !== this.mco) this._stopPreview();
             this.mco = mco;
         }
-        for (const [key, min, max] of [['pl', 1, 1024], ['og', -60, 12], ['tr', -12, 12]]) {
+        for (const [key, min, max] of [['pl', 1, 1024], ['og', -60, 12], ['tr', -12, 12],
+            ['tu', 0, 2], ['tk', 0, 23]]) {
             if (params[key] !== undefined) this[key] = this.parseFiniteNumber(params[key], min, max, this[key]);
         }
-        this.pl = Math.round(this.pl);
-        this.tr = Math.round(this.tr);
+        for (const key of ['pl', 'tr', 'tu', 'tk']) this[key] = Math.round(this[key]);
         if ([0, 1, 2].includes(params.sq)) this.sq = params.sq;
         if ([0, 1].includes(params.sc)) this.sc = params.sc;
         for (const key of ['af', 'rg', 'rs', 'rx']) {
@@ -205,12 +210,18 @@ class SoundFontPlayerPlugin extends SFZInstrumentPlugin {
         this._createMixer(mixer);
         settings.appendChild(this._bankSummary);
         settings.append(this._createChannelControl(), this._createRespondControl());
-        for (const [key, label, min, max, step, unit, logarithmic] of [
-            ['tr', 'Transpose', -12, 12, 1, 'semitones', false],
-            ['og', 'Instrument Level', -60, 12, 0.1, 'dB', false],
-            ['pl', 'Max Voices', 1, 1024, 1, '', true]
-        ]) settings.append(this.createParameterControl(label, min, max, step, this[key],
-            value => this.setParameters({ [key]: value }), unit, key, null, logarithmic));
+        const slider = (key, label, min, max, step, unit, logarithmic = false) =>
+            this.createParameterControl(label, min, max, step, this[key],
+                value => this.setParameters({ [key]: value }), unit, key, null, logarithmic);
+        settings.append(slider('tr', 'Transpose', -12, 12, 1, 'semitones'),
+            this.createRadioGroup('Tuning', [
+                { value: 0, label: 'Equal' }, { value: 1, label: 'Just' },
+                { value: 2, label: 'Meantone' }
+            ], this.tu, value => this.setParameters({ tu: Number(value) }), 'tu'),
+            this.createSelectControl('Tuning Key', SOUNDFONT_TUNING_KEYS, this.tk,
+                value => this.setParameters({ tk: Number(value) }), 'tk'),
+            slider('og', 'Instrument Level', -60, 12, 0.1, 'dB'),
+            slider('pl', 'Max Voices', 1, 1024, 1, '', true));
         settings.append(this.createCheckboxControl('Automatic Fallback', this.af,
             value => this.setParameters({ af: value }), 'af'));
         settings.append(this.createRadioGroup('Interpolation', [

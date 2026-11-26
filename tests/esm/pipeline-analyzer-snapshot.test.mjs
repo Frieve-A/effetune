@@ -15,6 +15,8 @@ import { buildAnalysisResult } from '../../js/pipeline-analyzer/analysis-core.js
 import { packSfzAsset, packStreamedSfzAsset } from '../../js/sfz/asset.js';
 import { parseSfz } from '../../js/sfz/parser.js';
 import { createSf2RuntimeFixture } from '../helpers/sf2-runtime-fixture.mjs';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { AndroidAudioManager } from '../../js/android/audio-manager.js';
 
 function plugin(type, id, options = {}) {
     const entry = {
@@ -92,6 +94,37 @@ test('analyzer reports DSP width when the context destination is narrower', () =
     const audioManager = harness([], { channelCount: 2 }).audioManager;
     audioManager.getOutputChannelCount = () => 4;
     assert.deepEqual(getAnalyzerAudioFormat(audioManager), { sampleRate: 48000, channelCount: 4 });
+});
+
+test('analyzer format stays unknown until the host reports its real audio format', async () => {
+    // Electron native audio returns a default native rate before its session and context exist.
+    const electronBeforeInit = { getNativeSampleRate: () => 48000, getOutputChannelCount: () => 2 };
+    assert.equal(getAnalyzerAudioFormat(electronBeforeInit), null);
+
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const android = new AndroidAudioManager(null, { bridge: { on() {}, async request() { return {}; } } });
+        assert.equal(getAnalyzerAudioFormat(android), null, 'Android waits for the Service snapshot');
+        android.acceptSnapshot({ revision: 1, sampleRate: 96000, channelCount: 4 });
+        assert.deepEqual(getAnalyzerAudioFormat(android), { sampleRate: 96000, channelCount: 4 });
+    });
+});
+
+test('Android analysis reads Service-committed assets as detachable copies', async () => {
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const manager = new AndroidAudioManager(null, { bridge: { on() {}, async request() { return {}; } } });
+        const payload = new Uint8Array([1, 2, 3]).buffer;
+        const effect = { id: 1, getWasmAssets: () => new Map([[0, { payload, operationRevision: 5 }]]) };
+        manager.pipeline = [effect];
+        manager.nativeAssets.resident.set('1:0', effect.getWasmAssets().get(0));
+        const effective = await manager.waitForEffectiveActiveWasmAssets(effect, [0, 1]);
+        assert.equal(effective.ready, false);
+        assert.deepEqual(effective.missingSlots, [1]);
+        const copy = effective.assets.get(0).payload;
+        assert.notEqual(copy, payload, 'the analyzer transfers its payload to the Worker');
+        assert.deepEqual([...new Uint8Array(copy)], [1, 2, 3]);
+        assert.deepEqual(effective.revisions.get(0), { operationRevision: 5, replayEpoch: null });
+        assert.equal((await manager.waitForEffectiveActiveWasmAssets(effect)).ready, true);
+    });
 });
 
 test('requirements metadata accepts every type and derives required WASM from prepared data', () => {
@@ -500,6 +533,48 @@ test('only untriggered SoundFont analysis can omit its sample asset, preserving 
     const header = new DataView(fixture.descriptor.payload, 32);
     header.setUint32(4, 8, true);
     await assert.rejects(buildPipelineAnalyzerSnapshot(options), { code: 'asset-unavailable' });
+});
+
+test('snapshot waits for Room EQ staging before deciding whether correction is required', async t => {
+    for (const outcome of ['ready', 'missing', 'older asset', 'failed']) {
+        await t.test(outcome, async () => {
+            let required = true;
+            let finishStaging;
+            const staging = new Promise(resolve => { finishStaging = resolve; });
+            let entered;
+            const enteredStaging = new Promise(resolve => { entered = resolve; });
+            const type = 'RoomEqPlugin';
+            const entry = plugin(type, 41, { isOfflineDspAssetRequired: () => required });
+            entry.externalAssetInfo = { assetSignature: 'new measurement' };
+            entry.waitForOfflineDspAssetStaging = () => { entered(); return staging; };
+            let requested = false;
+            const { audioManager, workletSync } = harness([entry], {
+                enabledDspTypes: [type],
+                dspModuleInfo: { bytes: new ArrayBuffer(8) },
+                waitForAssets: async () => {
+                    requested = true;
+                    return {
+                        ready: true,
+                        assets: new Map([[0, { payload: new ArrayBuffer(8),
+                            externalAssetSignature: outcome === 'ready' ? 'new measurement' : 'old measurement' }]]),
+                        revisions: new Map([[0, { operationRevision: 5 }]]),
+                        rejectedCandidates: new Map()
+                    };
+                }
+            });
+            const snapshot = buildPipelineProcessingSnapshot({ audioManager, workletSync });
+            await enteredStaging;
+            assert.equal(requested, false);
+            required = outcome !== 'missing';
+            finishStaging(outcome !== 'failed');
+            if (outcome === 'older asset' || outcome === 'failed') {
+                await assert.rejects(snapshot, { code: 'asset-unavailable' });
+            } else {
+                assert.equal((await snapshot).snapshot.assets.length, required ? 1 : 0);
+            }
+            assert.equal(requested, required && outcome !== 'failed');
+        });
+    }
 });
 
 test('missing required offline asset and unavailable required WASM remain hard failures', async () => {

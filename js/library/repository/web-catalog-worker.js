@@ -43,6 +43,8 @@ const ALLOWED_METHODS = Object.freeze(new Set([
   'readContextPageAtOrdinal',
   'resolveEntityAnchor',
   'getTrack',
+  'getTrackStorageIdentity',
+  'querySharedLibrary',
   'resolvePlaylistExportSource',
   'createPlaylist',
   'createPlaylistWithItems',
@@ -53,6 +55,9 @@ const ALLOWED_METHODS = Object.freeze(new Set([
   'finalizeLoudness',
   'getTrackLoudness',
   'getLoudnessStats',
+  'prepareLoudnessTagWrite',
+  'discardLoudnessTagSnapshot',
+  'writeLoudnessTags',
   'setTrackFavorite',
   'getFavoriteTrackUids',
   'getSystemPlaylists',
@@ -76,6 +81,9 @@ const CONTROL_METHODS = new Set([
   'removeFolder',
   'requestArtwork'
 ]);
+
+// Writing tags into SAF documents is only available in the Android host.
+const TAG_METHODS = new Set(['prepareLoudnessTagWrite', 'discardLoudnessTagSnapshot', 'writeLoudnessTags']);
 
 const SERVICE_METHODS = new Map([
   ['startOperation', 'start'],
@@ -144,6 +152,19 @@ export function installWebCatalogWorker(scope = globalThis, {
     const runtime = getScanRuntime();
     runtime.setPlaylistImportService?.(getLibraryService());
     return runtime;
+  };
+  let tagJob = null;
+  const getTagJob = async () => {
+    if (tagJob) return tagJob;
+    const { createAndroidLoudnessTagJob } = await import('../../android/loudness-tags.js');
+    tagJob ??= createAndroidLoudnessTagJob({
+      catalog: adapter,
+      handleStore: getScanRuntime().handleStore,
+      rescanFolder: async (folderId, options) => (await getControlRuntime().scanFolders({
+        ...options, folderIds: [folderId], scanReason: 'explicit-rescan'
+      })).results[0]?.status
+    });
+    return tagJob;
   };
   let unsubscribe = null;
   let maintenanceTimer = null;
@@ -224,9 +245,9 @@ export function installWebCatalogWorker(scope = globalThis, {
         return;
       }
       const serviceMethod = SERVICE_METHODS.get(request.method);
-      const target = serviceMethod
-        ? getLibraryService()
-        : CONTROL_METHODS.has(request.method) ? getControlRuntime() : adapter;
+      const target = TAG_METHODS.has(request.method) ? await getTagJob()
+        : serviceMethod ? getLibraryService()
+          : CONTROL_METHODS.has(request.method) ? getControlRuntime() : adapter;
       const result = await target[serviceMethod ?? request.method](...request.args);
       if (request.method === 'open' && !unsubscribe) {
         unsubscribe = adapter.subscribeInvalidations(invalidation => {
@@ -257,7 +278,7 @@ export function installWebCatalogWorker(scope = globalThis, {
         protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
         requestId: request.requestId,
         ok: true,
-        result
+        result: request.method === 'querySharedLibrary' ? fitSharedLibraryPage(request.requestId, result) : result
       });
     } catch (error) {
       postBoundedMessage(scope, {
@@ -306,6 +327,16 @@ export function measureWebCatalogMessageBytes(value) {
     return bytes;
   };
   return visit(value);
+}
+
+// A shared library page returns its leading rows that fit the message limit; the unchanged
+// total lets the caller continue from the number of rows it received.
+function fitSharedLibraryPage(requestId, result) {
+  let bytes = measureWebCatalogMessageBytes({
+    protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION, requestId, ok: true, result: { ...result, rows: [] }
+  });
+  const fitting = result.rows.findIndex(row => (bytes += measureWebCatalogMessageBytes(row)) > WEB_CATALOG_MAX_MESSAGE_BYTES);
+  return fitting < 0 ? result : { ...result, rows: result.rows.slice(0, fitting) };
 }
 
 function postBoundedMessage(scope, message) {

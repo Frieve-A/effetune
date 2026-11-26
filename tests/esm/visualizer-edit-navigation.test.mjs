@@ -118,6 +118,7 @@ function setupViewport(bodyZoom = 1) {
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
         view, open: true, zoom: 1, panX: 0, panY: 0, fitted: true,
         zoomOutput: {}, zoomOutButton: {}, zoomInButton: {}, viewportControls: {},
+        handButton: { setAttribute(name, value) { this[name] = value; } },
         navigation: {}, root: {}, gridDivisions: 0, selection: new Set(),
         marquee: { hidden: true, style: {} }, render() {}, updateSelection() {}
     });
@@ -135,6 +136,19 @@ const pointer = (editor, x, y, extra = {}) => {
 };
 const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1e-9, `${label}: ${actual} !== ${expected}`);
 const body = zoom => ({ style: { zoom: String(zoom) }, classList: classList('view-visualizer') });
+
+test('hand tool updates its pressed state and enables panning', async () => {
+    await withGlobals({ document: { body: body(1) } }, () => {
+        const { editor } = setupViewport();
+        editor.setHandTool(true);
+        assert.equal(editor.handButton['aria-pressed'], 'true');
+        editor.startDrag(pointer(editor, 0.5, 0.5));
+        assert.ok(editor.panning);
+        editor.endDrag();
+        editor.setHandTool(false);
+        assert.equal(editor.handButton['aria-pressed'], 'false');
+    });
+});
 
 test('Zoom remains anchored to the cursor through body zoom and Fit recenters without editing the layout', async () => {
     for (const bodyZoom of [1, 1.5]) await withGlobals({ document: { body: body(bodyZoom) } }, () => {

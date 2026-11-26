@@ -66,7 +66,7 @@
         async previewFinished() {
             const state = await snapshot(), before = window.__previewBefore;
             check(window.__previewPlugin._previewMidi === -1, 'SFZ preview did not release');
-            check(state.revision === before.revision && JSON.stringify(state.pipeline) === JSON.stringify(before.pipeline) &&
+            check(state.revision === before.revision && JSON.stringify(state.pipelines) === JSON.stringify(before.pipelines) &&
                 JSON.stringify(state.assetRefs) === JSON.stringify(before.assetRefs), 'Preview changed canonical history/assets');
             check(!Object.hasOwn(window.__previewPlugin.getParameters(), 'pm'), 'Preview leaked into serialized state');
             window.__previewPlugin.canvas.remove(); window.__previewUi.remove();
@@ -79,7 +79,7 @@
             check(gain, 'Rendered Output Gain control is missing');
             gain.value = '-1'; gain.dispatchEvent(new Event('input', { bubbles: true }));
             await manager.pendingMutation;
-            const edited = await snapshot(), record = edited.pipeline.find(item => item.id === plugin.id);
+            const edited = await snapshot(), record = edited.pipelines.A.find(item => item.id === plugin.id);
             check(record.parameters.og === -1 && !Object.hasOwn(record.parameters, 'pm') &&
                 !Object.hasOwn(record.parameters, 'pv'), 'Held preview control state mismatch: ' + JSON.stringify({
                     parameters: record.parameters, localGain: plugin.og, worklet: Boolean(window.workletNode),
@@ -88,9 +88,9 @@
             gain.value = String(original); gain.dispatchEvent(new Event('input', { bubbles: true }));
             await manager.pendingMutation;
             const restored = await snapshot();
-            check(JSON.stringify(restored.pipeline) === JSON.stringify(before.pipeline) &&
+            check(JSON.stringify(restored.pipelines) === JSON.stringify(before.pipelines) &&
                 JSON.stringify(restored.assetRefs) === JSON.stringify(before.assetRefs), 'Control restoration changed assets or parameters: ' +
-                JSON.stringify({ before: before.pipeline, after: restored.pipeline, beforeRefs: before.assetRefs, afterRefs: restored.assetRefs }));
+                JSON.stringify({ before: before.pipelines, after: restored.pipelines, beforeRefs: before.assetRefs, afterRefs: restored.assetRefs }));
             window.__previewBefore = restored;
             const fixture = JSON.parse(localStorage.getItem('android-asset-fixture'));
             fixture.revision = restored.revision;
@@ -148,7 +148,7 @@
             await manager.pendingMutation;
             check(ir._prepared.frames < beforeFrames && ir.getWasmAssets().get(0).externalAssetParameters.dt === 50, 'Decay/Trim did not prepare a new host asset');
             const edited = await snapshot();
-            check(edited.pipeline.find(record => record.id === ir.id).parameters.dt === 50, 'Native controls did not commit with the asset');
+            check(edited.pipelines.A.find(record => record.id === ir.id).parameters.dt === 50, 'Native controls did not commit with the asset');
             for (let i = 0; i < 20; i++) {
                 const state = await snapshot();
                 if (state.assetRefs[`IRReverbPlugin:${ir.id}:0`]?.id === fixture.firstRefs[`IRReverbPlugin:${ir.id}:0`]?.id &&

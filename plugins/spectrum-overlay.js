@@ -203,7 +203,7 @@
 
         _ensureNode() {
             if (this.disposed) return;
-            const node = window.workletNode || null;
+            const node = window.workletNode || window.audioManager?.spectrumOverlayEndpoint || null;
             if (node === this.node) return;
             this.node?.port.removeEventListener('message', this.onMessage);
             if (this.active) this._post('setSpectrumTap', false);

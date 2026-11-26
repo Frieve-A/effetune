@@ -80,6 +80,7 @@ class MeasurementDisplay {
         
         // Get fresh data from storage
         const measurements = dataStorage.getAllMeasurements();
+        const dateLabels = new Map();
         
         // No duplication logic - directly display what's in the database
         measurements.forEach(measurement => {
@@ -106,11 +107,8 @@ class MeasurementDisplay {
             dateSpan.className = 'measurement-item-date';
             const date = new Date(measurement.timestamp);
             
-            // Calculate measurement size
-            const sizeKB = this.calculateMeasurementSize(measurement);
-            
-            // Display date and size
-            dateSpan.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${sizeKB} KB)`;
+            dateSpan.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            dateLabels.set(measurement.id, dateSpan);
             
             const controls = document.createElement('div');
             controls.className = 'measurement-item-controls';
@@ -173,6 +171,7 @@ class MeasurementDisplay {
         
         // After updating the list, make sure the selected item has the selected class
         this.updateSelectedMeasurementHighlight();
+        return this.updateMeasurementSizes(measurements, dateLabels);
     }
     
     /**
@@ -194,26 +193,28 @@ class MeasurementDisplay {
         });
     }
 
-    /**
-     * Calculate approximate size of a measurement
-     * @param {Object} measurement - Measurement object
-     * @returns {number} Size in kilobytes
-     */
-    calculateMeasurementSize(measurement) {
+    async updateMeasurementSizes(measurements, dateLabels) {
+        this.measurementSizeRequest = dateLabels;
+        const usage = document.getElementById('measurementStorageUsage');
+        const storageNotice = document.getElementById('impulseResponseStorageNotice');
+        if (storageNotice) storageNotice.hidden = dataStorage.irPersistenceAvailable !== false;
+        if (usage) usage.textContent = '';
         try {
-            // Size as JSON text, except that binary sample data counts as its bytes.
-            let binaryBytes = 0;
-            const jsonString = JSON.stringify(measurement, (key, value) => {
-                if (!ArrayBuffer.isView(value)) return value;
-                binaryBytes += value.byteLength;
-                return undefined;
+            const sizes = await dataStorage.getMeasurementStorageSizes(measurements);
+            if (this.measurementSizeRequest !== dateLabels) return;
+            let totalBytes = 0;
+            for (const [id, bytes] of sizes) {
+                totalBytes += bytes;
+                dateLabels.get(id).textContent += bytes < 1024 * 1024
+                    ? ` (${(bytes / 1024).toFixed(1)} KB)`
+                    : ` (${(bytes / (1024 * 1024)).toFixed(1)} MB)`;
+            }
+            const megabytes = totalBytes / (1024 * 1024);
+            if (usage) usage.textContent = i18n.t('message:measurementStorageUsage', {
+                megabytes: megabytes.toFixed(megabytes >= 10 ? 0 : 1)
             });
-            const bytes = new Blob([jsonString]).size + binaryBytes;
-            // Convert to KB and round to 1 decimal place
-            return Math.round(bytes / 1024 * 10) / 10;
         } catch (error) {
-            console.error("Error calculating measurement size:", error);
-            return 0;
+            console.error('Could not estimate measurement storage sizes:', error);
         }
     }
 

@@ -3,23 +3,19 @@
 const crypto = require('node:crypto');
 const { serveRemoteResource } = require('./network-music-resource.cjs');
 const { isAllowedHost } = require('./remote-static-server.cjs');
-const { VIEWS, SORT_CAPS, parseSort } = require('./network-music-content.cjs');
+const { parseSort } = require('./network-music-content.cjs');
+const { MAX_BODY, fail, requestObject, browseParameters, validateResolve, validateCatalogItem, validatePlayerTrack, parsePlayerGrant,
+  hostInfo, playbackResult, errorStatus, unknownOutcome } = require('../js/network-music/pwa-host-protocol.js');
 const { didl, didlItem, networkUrl } = require('./network-music-upnp.cjs');
 const { MAX_QUEUE } = require('./network-music-host.cjs');
 const { projectPlayback } = require('./remote-music-dispatcher.cjs');
 
 const PWA_ORIGIN = 'https://effetune.frieve.com';
 const PREFIX = '/pwa/v1/';
-const MAX_BODY = 16 * 1024 * 1024;
 const MAX_GRANT_LENGTH = 8192;
-const fail = code => Object.assign(new Error(code), { code });
 const mediaKeys = track => [...new Set([track.uri, ...(track.resources || []).map(resource => resource.uri)]
   .filter(uri => typeof uri === 'string' && uri.length > 0)
   .map(uri => crypto.createHash('sha256').update(uri).digest('hex')))];
-const uint = (value, maximum = 0xffffffff) => {
-  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) throw fail('invalidRequest');
-  return value;
-};
 
 // Adapts the existing host-local action owner to the native playlist controller.
 // No discovery or advertisement is needed to address this player.
@@ -201,29 +197,18 @@ class PwaNetworkHost {
       this.sourceAllowed(grant.serverId) && this.music.gatewayPermissions === grant.permissions && this.music.sourceGeneration === grant.sourceGeneration;
   }
   async validatePlayerTrack(track, playerId) {
-    const source = networkUrl(track.uri);
-    if (source.search || !/^\/(?:media\/[A-Za-z0-9_-]{32}|pwa\/v1\/media\/[A-Za-z0-9_-]{32,8192})$/.test(source.pathname) || !Array.isArray(track.resources) || !track.resources.length || track.resources.some(resource => resource.uri !== track.uri)) throw fail('invalidRequest');
-    if (source.pathname.startsWith('/pwa/')) {
-      const token = source.pathname.split('/').at(-1);
-      let grant = this.readGatewayGrant(token);
-      if (grant) { if (!this.grantCurrent(grant)) throw fail('forbidden'); }
-      else {
-        const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000); timer.unref?.();
-        try {
-          const response = await fetch(`${source.origin}${PREFIX}grant/${token}`, { redirect: 'error', credentials: 'omit', signal: controller.signal });
-          const text = await response.text();
-          if (!response.ok || text.length > 4096) throw fail('forbidden');
-          grant = JSON.parse(text);
-        } catch (error) { throw fail(error.code === 'forbidden' ? 'forbidden' : 'unavailable'); }
-        finally { clearTimeout(timer); }
+    const { artwork } = await validatePlayerTrack(track, this.music.id, playerId || this.player.id, async (url, token) => {
+      const grant = this.readGatewayGrant(token);
+      if (grant) {
+        if (!this.grantCurrent(grant)) throw fail('forbidden');
+        return grant;
       }
-      if (grant?.audience !== 'player' || grant.target?.hostId !== this.music.id || grant.target?.playerId !== (playerId || this.player.id)) throw fail('forbidden');
-    }
-    let artwork = '';
-    try {
-      const art = networkUrl(track.artwork);
-      if (!art.search && art.origin === source.origin && art.pathname === source.pathname.replace('/media/', '/artwork/')) artwork = art.href;
-    } catch { /* Artwork is optional and cannot introduce a separate destination. */ }
+      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000); timer.unref?.();
+      try {
+        const response = await fetch(url, { redirect: 'error', credentials: 'omit', signal: controller.signal });
+        return parsePlayerGrant(response.ok, await response.text());
+      } finally { clearTimeout(timer); }
+    });
     // The peer's metadata is descriptive text, never an independent media route.
     return { ...track, artwork, metadata: didl([didlItem({ ...track, artwork })]) };
   }
@@ -265,21 +250,14 @@ class PwaNetworkHost {
   async info() {
     const sharing = this.music.sharing.enabled && this.music.server.enabled;
     const state = await this.music.getState();
-    return {
-      hostId: this.music.id, name: this.player.name, playerId: this.player.id, libraryId: this.music.id,
-      queueTracksMax: MAX_QUEUE,
-      libraries: this.music.gatewayPermissions?.libraries ? state.libraries.map(({ id, name, available, searchSupported, catalogSearch, sortCaps, browseViews }) => ({ id, name, available, searchSupported, catalogSearch, sortCaps, browseViews })) : [],
-      players: this.music.gatewayPermissions?.players ? state.players.map(player => ({ ...player, isEffeTune: false })) : [],
-      capabilities: { playback: this.player.available, catalogPlayback: true, effects: this.remote.rendererReady, sharing,
-        browseViews: sharing ? VIEWS.map(view => ({ id: view.id, objectId: `view:${view.id}` })) : [],
-        searchSupported: sharing, catalogSearch: sharing, sortCaps: sharing ? SORT_CAPS : [] }
-    };
+    return hostInfo({ hostId: this.music.id, name: this.player.name, playerId: this.player.id, permissions: this.music.gatewayPermissions,
+      state, playback: this.player.available, effects: this.remote.rendererReady, sharing });
   }
   handle(req, res) {
     if (!req.url?.startsWith(PREFIX)) return false;
     void this.serve(req, res).catch(error => {
       this.remote.log('[remote] PWA request failed:', error?.code || 'request-failed', error);
-      if (!res.headersSent) this.json(res, error?.code === 'forbidden' ? 403 : error?.code === 'unauthorized' ? 401 : 400, { error: { code: error?.code || 'requestFailed' } });
+      if (!res.headersSent) this.json(res, errorStatus(error), { error: { code: error?.code || 'requestFailed' } });
       else res.destroy();
     });
     return true;
@@ -309,8 +287,7 @@ class PwaNetworkHost {
         ...(state.playerId === this.player.controlId && track.libraryTrackId
           ? mediaKeys({ uri: `${this.music.id}:catalog:${track.libraryTrackId}` }) : [])] };
     });
-    return { ...projected, playerId: state.playerId === this.player.controlId ? this.player.id : state.playerId,
-      protocolInfo: state.protocolInfo || '', queueOwner: state.queueOwner, tracksMax: MAX_QUEUE };
+    return playbackResult(projected, state, state.playerId === this.player.controlId ? this.player.id : state.playerId);
   }
   async body(req) {
     if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw fail('invalidRequest');
@@ -321,8 +298,7 @@ class PwaNetworkHost {
       chunks.push(chunk);
     }
     const result = JSON.parse(Buffer.concat(chunks).toString());
-    if (!result || typeof result !== 'object' || Array.isArray(result)) throw fail('invalidRequest');
-    return result;
+    return requestObject(result);
   }
   async serve(req, res) {
     const route = req.url.split('?')[0].slice(PREFIX.length);
@@ -373,18 +349,16 @@ class PwaNetworkHost {
       if (route === 'browse') {
         const serverId = input.serverId || this.music.id;
         if (!this.sourceAllowed(serverId)) throw fail('forbidden');
-        const objectId = input.objectId ?? '0';
-        if (typeof objectId !== 'string' || objectId.length > 256 || typeof (input.query ?? '') !== 'string') throw fail('invalidRequest');
-        const start = uint(input.start ?? 0); const count = uint(input.count ?? 100, 500);
+        const { objectId, start, count } = browseParameters(input);
         if (serverId !== this.music.id) {
-          const page = await this.music.browse({ ...input, serverId, objectId, start, count: Math.max(1, count) });
+          const page = await this.music.browse({ ...input, serverId, objectId, start, count });
           result = { ...page, items: page.items.map(item => this.browserGatewayTrack(serverId, item, req)) };
         } else {
-        const page = await this.music.browseShared({ objectId, start, count: Math.max(1, count), sort: parseSort(input.sortCriteria ?? ''), catalogQuery: input.query || null, address: req.socket.localAddress.replace(/^::ffff:/, '') });
+        const page = await this.music.browseShared({ objectId, start, count, sort: parseSort(input.sortCriteria ?? ''), catalogQuery: input.query || null, address: req.socket.localAddress.replace(/^::ffff:/, '') });
         result = { ...page, start, numberReturned: page.items.length, updateId: this.music.server.updateId, items: page.items.map(item => this.browserTrack(item, req)) };
         }
       } else if (route === 'resolve') {
-        if (typeof input.trackId !== 'string' || !['browser', 'player'].includes(input.audience)) throw fail('invalidRequest');
+        validateResolve(input);
         if (input.serverId && input.serverId !== this.music.id) result = await this.gatewayTrack(input, req);
         else {
         const page = await this.music.browseShared({ objectId: input.trackId, metadata: true, address: req.socket.localAddress.replace(/^::ffff:/, '') });
@@ -400,7 +374,7 @@ class PwaNetworkHost {
               !Array.isArray(input.items) || !input.items.length || input.items.length > MAX_QUEUE) throw fail('invalidSelection');
           items = [];
           for (const item of input.items) {
-            if (typeof item?.trackId !== 'string' || item.trackId.length > 256 || !item.trackId.startsWith('track:')) throw fail('invalidRequest');
+            validateCatalogItem(item);
             const uid = this.music.server.tokens.get(item.trackId.split(':')[1]);
             if (!uid) throw fail('trackUnavailable');
             await this.music.sharedSource(uid);
@@ -413,7 +387,6 @@ class PwaNetworkHost {
           this.targetId(input.playerId);
           tracks = [];
           for (const track of input.tracks) {
-            if (typeof track.metadata !== 'string' || track.metadata.length > 65536 || !Array.isArray(track.resources)) throw fail('invalidRequest');
             tracks.push(await this.validatePlayerTrack(track, input.playerId));
           }
         }
@@ -427,7 +400,7 @@ class PwaNetworkHost {
           let playback;
           try { playback = this.playerState(await this.music.getPlayerState({ playerId: command.playerId }), req); }
           catch (stateError) { this.music.onDiagnostic(stateError); }
-          this.json(res, 409, { error: { code: error.code || 'requestFailed' }, outcome: 'unknown', ...(playback ? { playback } : {}) }); return;
+          this.json(res, 409, unknownOutcome(error, playback)); return;
         }
       } else { this.json(res, 404, { error: { code: 'unsupported' } }); return; }
     } else { this.json(res, 404, { error: { code: 'unsupported' } }); return; }

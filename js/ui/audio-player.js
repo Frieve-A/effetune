@@ -122,7 +122,7 @@ export class AudioPlayer {
 
   refreshReplayGainTarget(client = null) {
     const settings = this.replayGain;
-    if (settings.target !== 'auto' || settings.mode === 'off' || this.audioManager.isAndroid) {
+    if (settings.target !== 'auto' || settings.mode === 'off') {
       this.replayGainReady = null;
       return null;
     }
@@ -340,6 +340,11 @@ export class AudioPlayer {
    * Note: Most UI updates are now handled automatically by AudioPlayerUI's state monitoring
    */
   setupStateManagerListeners() {
+    // Release live notes before preparing a track can take over the MIDI transport.
+    this.stateManager.addListener('isPlaybackPending', () => {
+      this.audioManager.dispatchEvent?.('playerPlaybackPendingChanged');
+    });
+
     // Listen for UI state changes that require special handling
     this.stateManager.addListener('seekBarEnabled', (enabled) => {
       if (this.ui?.audioPlayer === this && this.ui.seekBar) {

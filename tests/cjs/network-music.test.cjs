@@ -6,6 +6,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
+const dgram = require('node:dgram');
 const { EventEmitter } = require('node:events');
 const { Readable, Writable } = require('node:stream');
 const { Discovery, CONTENT, PLAYLIST, parseXml, parseDidl, didl, didlItem, xml, service, requestXml } = require('../../electron/network-music-upnp.cjs');
@@ -616,6 +617,47 @@ test('mixed-source inserts use player-owned stable queue IDs and direct source U
   assert.equal(state.protocolInfo, 'http-get:*:audio/flac:*');
 });
 
+test('local library handoff uses the player-facing interface and preserves the queue when no route exists', async t => {
+  const { host, calls } = playerFixture({ getRouteAddress: undefined });
+  t.after(() => host.dispose());
+  const destinations = [];
+  let socketsClosed = 0;
+  let routeError;
+  let stalledRoute;
+  t.mock.method(dgram, 'createSocket', type => {
+    assert.equal(type, 'udp4');
+    return Object.assign(new EventEmitter(), {
+      address: () => ({ address: '192.168.1.21' }),
+      close: () => { socketsClosed++; },
+      connect(port, address, connected) {
+        destinations.push({ port, address });
+        if (stalledRoute) stalledRoute.resolve();
+        else queueMicrotask(() => routeError ? this.emit('error', routeError) : connected());
+      }
+    });
+  });
+  const items = [{ serverId: 'local', trackId: 'file' }];
+  await host.playerCommand({ playerId: 'player', action: 'insert', items });
+  const inserted = calls.find(call => call.action === 'Insert');
+  assert.equal(new URL(inserted.args.Uri).hostname, '192.168.1.21');
+  assert.deepEqual(destinations, [{ port: 1900, address: '192.168.1.5' }]);
+
+  const before = (await host.getPlayerState({ playerId: 'player' })).queue;
+  routeError = Object.assign(new Error('No route to the player'), { code: 'EHOSTUNREACH' });
+  await assert.rejects(host.playerCommand({ playerId: 'player', action: 'replace', items }), { code: 'EHOSTUNREACH' });
+
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  stalledRoute = Promise.withResolvers();
+  const timedOut = assert.rejects(host.playerCommand({ playerId: 'player', action: 'replace', items }), { code: 'unavailable' });
+  await stalledRoute.promise;
+  t.mock.timers.tick(3000);
+  await timedOut;
+
+  assert.deepEqual((await host.getPlayerState({ playerId: 'player' })).queue, before);
+  assert.equal(calls.some(call => call.action === 'DeleteAll'), false);
+  assert.equal(socketsClosed, 3);
+});
+
 test('native replacement starts at the requested occurrence and rejects bounds or destination limits before mutation', async () => {
   const { host, calls } = playerFixture();
   const items = ['first', 'middle', 'first'].map(trackId => ({ serverId: 'server', trackId }));
@@ -753,6 +795,52 @@ test('external devices remain available when the local catalog is unavailable', 
   assert.equal(state.players.length, 1); assert.deepEqual(state.sharing.folders, []);
 });
 
+test('removing a configured Subsonic server revokes its issued playback URL', async t => {
+  const { host, getConfig } = fixture();
+  t.after(() => host.dispose());
+  t.mock.method(host.fileServer, 'start', async () => {
+    host.fileServer.enabled = true;
+    host.fileServer.port = 4568;
+  });
+  t.mock.method(globalThis, 'fetch', async uri => {
+    const url = new URL(uri);
+    assert.equal(url.origin, 'https://music.example');
+    const song = { id: 'song', title: 'Sample song', contentType: 'audio/flac' };
+    const result = { status: 'ok' };
+    if (url.pathname === '/rest/getSong.view') {
+      assert.equal(url.searchParams.get('id'), 'song');
+      result.song = song;
+    } else if (url.pathname === '/rest/search3.view') {
+      assert.equal(url.searchParams.get('query'), 'Sample');
+      result.searchResult3 = { song: [song] };
+    } else assert.equal(url.pathname, '/rest/ping.view');
+    return Response.json({ 'subsonic-response': result });
+  });
+
+  const added = await host.configure({ subsonic: { action: 'add', url: 'https://music.example', user: 'listener', password: 'fixture-password' } });
+  const [{ id }] = added.sources;
+  assert.deepEqual(added.libraries.map(library => library.id), [id]);
+  assert.equal(getConfig().networkMusicSources[0].id, id);
+  const browse = await host.browse({ serverId: id, objectId: 'tracks', query: 'Sample' });
+  assert.equal(browse.total, 1);
+  const [result] = browse.items;
+  assert.equal(result.trackId, 'song');
+  const browseUrl = new URL(result.uri);
+  assert.equal(browseUrl.origin, 'http://127.0.0.1:4568');
+  const track = await host.resolveTrack({ serverId: id, trackId: 'song', address: '192.168.1.9' });
+  assert.equal(parseDidl(track.metadata)[0].resources[0].uri, track.uri);
+  const playbackUrl = new URL(track.uri);
+  assert.equal(playbackUrl.origin, 'http://192.168.1.9:4568');
+  assert.equal(track.resources[0].uri, track.uri);
+
+  const removed = await host.configure({ subsonic: { action: 'remove', id } });
+  assert.deepEqual(removed.sources, []);
+  assert.deepEqual(removed.libraries, []);
+  assert.deepEqual(getConfig().networkMusicSources, []);
+  assert.equal((await responseFor(host.fileServer, browseUrl.pathname, { remote: '127.0.0.1' })).status, 404);
+  assert.equal((await responseFor(host.fileServer, playbackUrl.pathname)).status, 404);
+});
+
 test('player lists exclude only the local UDN on initial state, refresh and discovery changes', async t => {
   const localPlayer = { id: 'uuid:self' };
   const { host, discovery } = fixture({ localPlayer });
@@ -802,6 +890,21 @@ test('catalog selections retain playlist identities and original queue order whi
   assert.deepEqual(released, ['snapshot']);
   await assert.rejects(host.playSelection({ playerId: 'player', operationKind: 'queue', selectionDescriptor: { contextToken: 'snapshot', mode: 'explicit', trackUids: ['missing'] } }), { code: 'selectionChanged' });
   assert.deepEqual(released, ['snapshot', 'snapshot']);
+});
+
+test('Electron sends the chosen playlist occurrence first when shuffling a remote queue', async () => {
+  const { host, calls, repository } = playerFixture();
+  const rows = ['one', 'two', 'one', 'three'].map((trackUid, index) => ({ trackUid, playlistItemKey: String(index) }));
+  repository.retainContext = repository.releaseRetainedContext = async () => {};
+  repository.readContextPage = async () => ({ rows, nextCursor: null });
+  await host.playSelection({ playerId: 'player', operationKind: 'play',
+    selectionDescriptor: { mode: 'all', contextToken: 'snapshot', exclusions: [] },
+    options: { seed: 0, currentOrdinal: 3 } });
+  const inserts = calls.filter(call => call.action === 'Insert');
+  const titles = inserts.map(call => parseDidl(call.args.Metadata)[0].title);
+  assert.equal(titles[0], 'three');
+  assert.deepEqual(titles.toSorted(), ['one', 'one', 'three', 'two']);
+  assert.equal(calls.find(call => call.action === 'SeekId').args.Value, 8);
 });
 
 test('actual SQLite selection reaches remote queue creation with the library double-click request', async t => {

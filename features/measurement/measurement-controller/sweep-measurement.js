@@ -20,6 +20,7 @@ import {
 } from '../measurement-model.js';
 import { NativeMeasurementInterruptedError, SweepCancelledError } from './audio-processing.js';
 import { MAX_REPLAYS } from '../../../js/utils/measurement-dsp/recording-gaps.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
 
 function setDisplay(id, display) {
     const element = globalThis.document?.getElementById(id);
@@ -55,7 +56,8 @@ const SweepMeasurement = {
         const sampleRate = audioUtils.audioContext.sampleRate;
         const length = Number(this.measurementConfig.sweepLength);
         const config = this.currentMeasurement;
-        const nativeWidth = this.measurementConfig.effectPipeline ? undefined : audioUtils.nativeMeasurement?.session?.outputChannels;
+        const nativeWidth = this.measurementConfig.effectPipeline ? undefined : isAndroidHost()
+            ? this.measurementConfig.outputChannelCount : audioUtils.nativeMeasurement?.session?.outputChannels;
         const band = resolveSweepBand(config, channel, sampleRate, length, nativeWidth);
         const outputBands = channel === 'all' && config.sweepBand?.mode === 'perChannel'
             ? resolveOutputSweepBands(config, sampleRate, length, nativeWidth) : undefined;
@@ -76,6 +78,7 @@ const SweepMeasurement = {
 
     /** Record one channel's sweep, playing it again while too many repetitions are disturbed. */
     async recordChannelSweep(channel, routeWidth) {
+        const run = this.sweepRun;
         if (audioUtils.nativeMeasurement && !this.sweepCancelRequested) {
             try {
                 await audioUtils.nativeMeasurement.ensureOpen();
@@ -84,11 +87,12 @@ const SweepMeasurement = {
                 throw error;
             }
         }
-        if (this.sweepCancelRequested) throw new SweepCancelledError();
+        if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
         for (let play = 0; ; play += 1) {
             // Sweep generation and deconvolution share mutable inverse-filter state,
             // so each play generates its sweep after the previous analysis completed.
             const result = await this.playAndRecordSweep(this.generateChannelSweep(channel), channel, routeWidth);
+            if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
             if (result.recordingGaps !== 'interrupted' || play === MAX_REPLAYS) return result;
             console.info(`Sweep measurement: the recording of ${channel} was disturbed too often, playing the sweep again`);
         }
@@ -109,6 +113,7 @@ const SweepMeasurement = {
         this.sweepMeasurements = [];
         this.isRunningMeasurement = true;
         this.sweepCancelRequested = false;
+        const run = this.sweepRun = {};
         
         // Show sweep measurement screen
         uiManager.showScreen('sweepMeasurementScreen');
@@ -131,13 +136,13 @@ const SweepMeasurement = {
         // A cancelled test-signal route may still be settling. Wait for it before
         // the sweep claims the shared output device and channel layout.
         await audioUtils.waitForWhiteNoiseRouteIdle?.();
-        return this.performSweepMeasurement();
+        if (!this.sweepCancelRequested && this.sweepRun === run) return this.performSweepMeasurement(run);
     },
 
     /**
      * Perform a single sweep measurement
      */
-    async performSweepMeasurement() {
+    async performSweepMeasurement(run = this.sweepRun = {}) {
         try {
             // Setup canvas for level display
             const canvas = document.getElementById('levelGraph');
@@ -153,6 +158,7 @@ const SweepMeasurement = {
             if (!audioUtils.audioContext || audioUtils.audioContext.state !== 'running') {
                 console.log('Audio context not running, attempting to resume...');
                 await audioUtils.ensureAudioContextRunning();
+                if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
             }
             
             // Check if the actual sample rate matches the requested rate
@@ -183,6 +189,7 @@ const SweepMeasurement = {
                     console.error('Failed to restart microphone input:', error);
                     throw new Error('Failed to initialize microphone input. Please ensure microphone access is granted.');
                 }
+                if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
             }
             
             const selection = selectionFromConfig(this.measurementConfig);
@@ -209,6 +216,7 @@ const SweepMeasurement = {
                         : '';
                 }
                 const measurementResult = await this.recordChannelSweep(outputChannel, routeWidth);
+                if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
                 results.push({ channel: outputChannel, ...measurementResult });
                 this.updateFrequencyResponseGraph(
                     multiChannel ? results : measurementResult.frequencyResponse,
@@ -231,6 +239,7 @@ const SweepMeasurement = {
             setRedoChannelControlsVisible(multiChannel);
             
         } catch (error) {
+            if (this.sweepRun !== run) return;
             console.error('Error performing sweep measurement:', error);
             this.isRunningMeasurement = false;
             if (this.levelGraphInterval) {
@@ -464,6 +473,7 @@ const SweepMeasurement = {
         const selection = selectionFromConfig(this.measurementConfig);
         const routeWidth = this.measurementConfig.outputChannelCount ?? maxRequiredChannelCount(selection);
         this.sweepCancelRequested = false;
+        const run = this.sweepRun = {};
         for (const id of ['measurementActionsExplanation', 'redoBtn',
             'saveAndContinueBtn', 'saveAndFinishBtn']) setDisplay(id, 'none');
         setRedoChannelControlsVisible(false);
@@ -473,6 +483,7 @@ const SweepMeasurement = {
                     this.interfaceCalibrationImpulseResponsesByChannel.get(channelToken) || null;
             }
             const result = await this.recordChannelSweep(channelToken, routeWidth);
+            if (this.sweepCancelRequested || this.sweepRun !== run) throw new SweepCancelledError();
             let nextPointId = this.currentMeasurement.nextPointId;
             const merged = mergeChannelRedoResult(
                 this.currentPoint,
@@ -498,18 +509,20 @@ const SweepMeasurement = {
             this.currentImpulseResponses = records;
             return true;
         } catch (error) {
-            if (!(error instanceof SweepCancelledError)) {
+            if (this.sweepRun === run && !(error instanceof SweepCancelledError)) {
                 console.error('Error redoing measurement channel:', error);
                 uiManager.showNotification(error instanceof NativeMeasurementInterruptedError
                     ? error.message : measurementErrorMessage(this), 'error');
             }
             return false;
         } finally {
-            clearInterval(this.levelGraphInterval);
-            this.levelGraphInterval = null;
-            for (const id of ['measurementActionsExplanation', 'redoBtn', 'saveAndContinueBtn',
-                'saveAndFinishBtn']) setDisplay(id, 'inline-block');
-            setRedoChannelControlsVisible(true);
+            if (this.sweepRun === run) {
+                clearInterval(this.levelGraphInterval);
+                this.levelGraphInterval = null;
+                for (const id of ['measurementActionsExplanation', 'redoBtn', 'saveAndContinueBtn',
+                    'saveAndFinishBtn']) setDisplay(id, 'inline-block');
+                setRedoChannelControlsVisible(true);
+            }
         }
     },
     

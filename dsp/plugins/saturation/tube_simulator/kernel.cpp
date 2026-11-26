@@ -3446,9 +3446,82 @@ private:
   // currents, so its terminal voltage and the plate voltage are solved together. Keeping those two
   // KVL equations in one Newton step avoids a high-transconductance screen fixed point outside the
   // Jacobian. A fixed screen remains the original scalar plate solve.
-  [[nodiscard]] PowerPlateResult solvePowerPlate(bool push, PowerState &state,
-                                                 double opposite_drive,
-                                                 PowerLutScratch &scratch) noexcept {
+  //
+  // The push and pull solves are independent within a sample, because each takes the opposite half
+  // primary's drive from the previous sample. A fixed screen therefore runs the two scalar Newton
+  // solves in lockstep so their dependency chains overlap; each side's arithmetic is unchanged.
+  [[nodiscard]] std::array<PowerPlateResult, 2>
+  solvePowerPlates(PowerState &state, const std::array<double, 2> &opposite_drive,
+                   std::array<PowerLutScratch, 2> &scratch) noexcept {
+    if (power_opt_coeff_.distributedScreenTap) {
+      return {solveDistributedPowerPlate(true, state, opposite_drive[0], scratch[0]),
+              solveDistributedPowerPlate(false, state, opposite_drive[1], scratch[1])};
+    }
+    const PowerOptCoefficients &opt = power_opt_coeff_;
+    const double inverse_resistance = opt.inverseWindingResistanceOhm;
+    const double b_plus = state.bPlusRamp.applied;
+    const double screen = state.screenRamp.applied;
+    const double history = state.optCapacitorV - opt.seriesHistoryCoefficient * state.optCurrentA;
+    const double cathode[2] = {state.cathodePushRamp.applied, state.cathodePullRamp.applied};
+    const double grid[2] = {state.gridPushV, state.gridPullV};
+    const double signed_drive_ohm[2] = {opt.primaryDriveOhm, -opt.primaryDriveOhm};
+    const double signed_reflected_ohm[2] = {opt.halfPrimaryReflectedOhm,
+                                            -opt.halfPrimaryReflectedOhm};
+    double plate[2] = {state.platePushV, state.platePullV};
+    double ia[2] = {state.iaPushA, state.iaPullA};
+    double ig2[2] = {state.ig2PushA, state.ig2PullA};
+    double drive[2];
+    FixedScreenLutWeights screen_weights[2];
+    bool active[2] = {true, true};
+    for (std::size_t side = 0u; side < 2u; ++side) {
+      drive[side] = ia[side] + opt.screenTapTurnsRatio * ig2[side];
+      screen_weights[side] = fixedScreenLutWeights(screen - cathode[side], scratch[side]);
+    }
+    const auto induced_at = [&](std::size_t side) noexcept {
+      const double series_current =
+          (signed_drive_ohm[side] * (drive[side] - opposite_drive[side]) - history) *
+          opt.inverseSeriesCoefficient;
+      return signed_reflected_ohm[side] * series_current;
+    };
+    for (int iteration = 0; iteration < 3; ++iteration) {
+      for (std::size_t side = 0u; side < 2u; ++side) {
+        if (!active[side]) {
+          continue;
+        }
+        const double induced = induced_at(side);
+        interpolatePowerTubeFixedScreen(grid[side] - cathode[side], plate[side] - cathode[side],
+                                        screen_weights[side], scratch[side], ia[side], ig2[side]);
+        const double residual = (b_plus - induced - plate[side]) * inverse_resistance - ia[side] -
+                                ig2[side] * opt.centerToTapResistanceShare;
+        const double derivative =
+            -inverse_resistance - opt.plateLoadFactor * scratch[side].iaPlateDerivative;
+        if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
+          ++safety_limits_;
+          step_safety_hit_ = true;
+          active[side] = false;
+          continue;
+        }
+        plate[side] -= residual / derivative;
+        drive[side] = ia[side] + opt.screenTapTurnsRatio * ig2[side];
+      }
+    }
+    std::array<PowerPlateResult, 2> results;
+    for (std::size_t side = 0u; side < 2u; ++side) {
+      const double induced = induced_at(side);
+      interpolatePowerTubeFixedScreen(grid[side] - cathode[side], plate[side] - cathode[side],
+                                      screen_weights[side], scratch[side], ia[side], ig2[side]);
+      drive[side] = ia[side] + opt.screenTapTurnsRatio * ig2[side];
+      const double screen_tap = screenTapVoltage(induced, ia[side], ig2[side], b_plus);
+      const double residual = (b_plus - induced - plate[side]) * inverse_resistance - ia[side] -
+                              ig2[side] * opt.centerToTapResistanceShare;
+      results[side] = {plate[side], screen, screen_tap, ia[side], ig2[side], drive[side], residual};
+    }
+    return results;
+  }
+
+  [[nodiscard]] PowerPlateResult solveDistributedPowerPlate(bool push, PowerState &state,
+                                                            double opposite_drive,
+                                                            PowerLutScratch &scratch) noexcept {
     const PowerOptCoefficients &opt = power_opt_coeff_;
     const double direction = push ? 1.0 : -1.0;
     const double cathode = push ? state.cathodePushRamp.applied : state.cathodePullRamp.applied;
@@ -3464,39 +3537,7 @@ private:
     double drive = ia + opt.screenTapTurnsRatio * ig2;
     double series_current = 0.0;
     double induced = 0.0;
-    double screen = state.screenRamp.applied;
-    if (!opt.distributedScreenTap) {
-      const FixedScreenLutWeights screen_weights = fixedScreenLutWeights(screen - cathode, scratch);
-      for (int iteration = 0; iteration < 3; ++iteration) {
-        series_current =
-            (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
-        induced = signed_reflected_ohm * series_current;
-        interpolatePowerTubeFixedScreen(grid - cathode, plate - cathode, screen_weights, scratch,
-                                        ia, ig2);
-        residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
-                   ig2 * opt.centerToTapResistanceShare;
-        const double derivative =
-            -inverse_resistance - opt.plateLoadFactor * scratch.iaPlateDerivative;
-        if (!std::isfinite(derivative) || absolute(derivative) < 1e-12) {
-          ++safety_limits_;
-          step_safety_hit_ = true;
-          break;
-        }
-        plate -= residual / derivative;
-        drive = ia + opt.screenTapTurnsRatio * ig2;
-      }
-      series_current =
-          (signed_drive_ohm * (drive - opposite_drive) - history) * opt.inverseSeriesCoefficient;
-      induced = signed_reflected_ohm * series_current;
-      interpolatePowerTubeFixedScreen(grid - cathode, plate - cathode, screen_weights, scratch, ia,
-                                      ig2);
-      drive = ia + opt.screenTapTurnsRatio * ig2;
-      const double screen_tap = screenTapVoltage(induced, ia, ig2, state.bPlusRamp.applied);
-      residual = (state.bPlusRamp.applied - induced - plate) * inverse_resistance - ia -
-                 ig2 * opt.centerToTapResistanceShare;
-      return {plate, screen, screen_tap, ia, ig2, drive, residual};
-    }
-    screen = push ? state.screenPushV : state.screenPullV;
+    double screen = push ? state.screenPushV : state.screenPullV;
     const double emf_drive_gain =
         opt.primaryDriveOhm * opt.halfPrimaryReflectedOhm * opt.inverseSeriesCoefficient;
     for (int iteration = 0; iteration < 3; ++iteration) {
@@ -3877,10 +3918,11 @@ private:
     // subtracts it - which keeps signed_drive_ohm*(drive - opposite) equal to the corrected
     // differential drive for either solve.
     const double excess_previous = state.excessCurrentA;
-    PowerPlateResult push = solvePowerPlate(true, state, previous_pull_drive + excess_previous,
-                                            power_lut_scratch_[channel][0]);
-    PowerPlateResult pull = solvePowerPlate(false, state, previous_push_drive - excess_previous,
-                                            power_lut_scratch_[channel][1]);
+    const std::array<PowerPlateResult, 2> plates = solvePowerPlates(
+        state, {previous_pull_drive + excess_previous, previous_push_drive - excess_previous},
+        power_lut_scratch_[channel]);
+    const PowerPlateResult &push = plates[0];
+    const PowerPlateResult &pull = plates[1];
     state.platePushV = push.plateV;
     state.platePullV = pull.plateV;
     state.iaPushA = push.ia;

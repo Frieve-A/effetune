@@ -95,7 +95,8 @@ test('IR library modal executes filename filtering, sorting, actions, previews, 
   const previousWindow = globalThis.window;
   const body = new Element('body');
   globalThis.document = { body, createElement: tagName => new Element(tagName) };
-  globalThis.window = {};
+  const confirmationMessages = [];
+  globalThis.window = { confirm(message) { confirmationMessages.push(message); return true; } };
 
   const entries = [
     {
@@ -196,22 +197,23 @@ test('IR library modal executes filename filtering, sorting, actions, previews, 
 
     const bravo = byClass(modal.element, 'ir-library-entry').find(row => rowName(row) === 'Bravo.wav');
     await button(bravo, 'Delete').click();
-    assert.equal(calls.some(call => call[0] === 'delete' && call[1] === 'bbbbbbbbbbbbbbbbbbbbbbbb'), true);
+    assert.equal(calls.some(call => call[0] === 'delete'), false);
+    assert.deepEqual(confirmationMessages, []);
     assert.match(byClass(modal.element, 'ir-library-status')[0].textContent, /in use/);
 
     let alpha = byClass(modal.element, 'ir-library-entry').find(row => rowName(row) === 'Alpha.wav');
     await button(alpha, 'Delete').click();
-    let alphaDelete = calls.filter(call => call[0] === 'delete' &&
-      call[1] === 'aaaaaaaaaaaaaaaaaaaaaaaa').at(-1);
-    assert.equal(alphaDelete[2], true);
+    assert.equal(calls.some(call => call[0] === 'delete'), false);
+    assert.deepEqual(confirmationMessages, []);
     assert.match(byClass(modal.element, 'ir-library-status')[0].textContent, /in use/);
 
     pendingPlugin.externalAssetInfo.protectedIds = [];
     alpha = byClass(modal.element, 'ir-library-entry').find(row => rowName(row) === 'Alpha.wav');
     await button(alpha, 'Delete').click();
-    alphaDelete = calls.filter(call => call[0] === 'delete' &&
+    const alphaDelete = calls.filter(call => call[0] === 'delete' &&
       call[1] === 'aaaaaaaaaaaaaaaaaaaaaaaa').at(-1);
     assert.equal(alphaDelete[2], false);
+    assert.equal(confirmationMessages.length, 1);
 
     modal.close();
     assert.equal(body.children.includes(modal.element), false);
@@ -369,12 +371,11 @@ test('IR library modal selects multiple entries and deletes them in one confirme
 
     await deleteSelected.click();
     assert.deepEqual(deleteCalls, [
-      ['bbbbbbbbbbbbbbbbbbbbbbbb', true],
       ['cccccccccccccccccccccccc', false],
       ['aaaaaaaaaaaaaaaaaaaaaaaa', false]
     ]);
-    assert.deepEqual(deleteSelectionStates, [[true, true], [true, true], [true, true]]);
-    assert.match(confirmationMessages[0], /3 selected impulse responses/);
+    assert.deepEqual(deleteSelectionStates, [[true, true], [true, true]]);
+    assert.match(confirmationMessages[0], /2 selected impulse responses/);
     assert.equal(byClass(modal.element, 'ir-library-status')[0].textContent,
       '1 deleted, 1 in use, 1 failed.');
     assert.doesNotMatch(byClass(modal.element, 'ir-library-status')[0].textContent,

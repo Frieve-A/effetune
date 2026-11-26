@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { createEssSignal, createEssCapturePlan, analyzeEssRecording } from '../../js/utils/measurement-dsp/ess.js';
 import { analyzeImpulseResponse, analyzeDistortion, analyzeWaterfall, validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
+import { resampleByRatio } from '../../js/utils/measurement-dsp/resample.js';
 import AudioProcessing, { SweepCancelledError } from '../../features/measurement/measurement-controller/audio-processing.js';
 import audioUtils from '../../features/measurement/audio-utils/index.js';
 
@@ -197,18 +198,24 @@ test('fixed-clock LR4 low-pass group delay is not mistaken for inconsistent capt
     }
 });
 
-test('clock mismatch across repeated ESS captures remains detectable', () => {
-    const capture = recordingFor(sweep, { repetitions: 2 });
-    const ratio = 1.001;
-    const stretched = Float32Array.from(capture.data, (_, i) => {
-        const source = i / ratio;
-        const index = Math.floor(source);
-        const fraction = source - index;
-        return capture.data[index] * (1 - fraction) + (capture.data[index + 1] || 0) * fraction;
-    });
-    const result = analyzeEssRecording(stretched, sweep, { playbackOffsetSamples: capture.offset, repetitions: 2 });
-    assert.equal(result.harmonicAnalysis.quality.valid, false);
-    assert.ok(result.harmonicAnalysis.quality.reasons.includes('clock-drift'));
+test('a clock mismatch between playback and recording devices is measured from repeated sweeps and corrected', () => {
+    const options = { levelDb: 20 * Math.log10(0.5), repetitions: 3 };
+    const capture = recordingFor(sweep, { repetitions: 3, nonlinear: true });
+    const reference = analyzeEssRecording(capture.data, sweep, { ...options, playbackOffsetSamples: capture.offset });
+    for (const ratio of [1.001, 1.00002, 0.9999]) {
+        // The recording clock runs `ratio` times as fast as the playback clock from the playback start.
+        const drifted = resampleByRatio(capture.data, 1 / ratio, capture.offset);
+        const result = analyzeEssRecording(drifted, sweep, { ...options, playbackOffsetSamples: capture.offset });
+        assert.deepEqual(result.harmonicAnalysis.quality.reasons, [], `${ratio}`);
+        assert.equal(result.recordingGaps, undefined);
+        result.frequencyResponse.forEach(([f, db], i) => {
+            if (f > 50 && f < 6000) assert.ok(Math.abs(db - reference.frequencyResponse[i][1]) < 0.01, `${ratio} ${f} Hz`);
+        });
+        const thd = analyzeDistortion(result.harmonicAnalysis).thd;
+        analyzeDistortion(reference.harmonicAnalysis).thd.forEach((value, i) => {
+            if (Number.isFinite(value)) assert.ok(Math.abs(thd[i] - value) < 0.01 * value + 1e-4, `${ratio} THD ${i}`);
+        });
+    }
 });
 
 test('linear interface calibration does not change complete-path harmonic ratios or their uncorrected provenance', () => {
@@ -245,12 +252,13 @@ test('invalid and incomplete acquisition is rejected while clipped data retains 
     assert.ok(zeros.every(value => value === 0));
     assert.equal(validateHarmonicAnalysis({ ...clipped.harmonicAnalysis, orders: [null, null, null] }), false);
     assert.throws(() => analyzeDistortion(null), /unavailable/);
-    const drift = recordingFor(sweep, { repetitions: 2 });
-    const interval = createEssCapturePlan(sweep, 2).intervalSamples;
-    const second = drift.data.slice(drift.offset + interval);
-    drift.data.fill(0, drift.offset + interval);
-    drift.data.set(second.subarray(0, second.length - 10), drift.offset + interval + 10);
-    const drifting = analyzeEssRecording(drift.data, sweep, { playbackOffsetSamples: drift.offset, repetitions: 2 });
+    // Inserted samples before the last of three sweeps are a slip, not a steady clock drift.
+    const drift = recordingFor(sweep, { repetitions: 3 });
+    const last = drift.offset + 2 * createEssCapturePlan(sweep, 3).intervalSamples;
+    const third = drift.data.slice(last);
+    drift.data.fill(0, last);
+    drift.data.set(third.subarray(0, third.length - 10), last + 10);
+    const drifting = analyzeEssRecording(drift.data, sweep, { playbackOffsetSamples: drift.offset, repetitions: 3 });
     assert.equal(drifting.harmonicAnalysis.quality.valid, false);
     assert.ok(drifting.harmonicAnalysis.quality.reasons.includes('clock-drift'));
 });
@@ -404,7 +412,7 @@ test('cancelling analysis terminates its worker and rejects the pending acquisit
     const { data, offset } = recordingFor();
     const pending = controller.processRecordedBuffer(data, sweep, 1, 16000, {
         outputRoute: { mode: 'direct' }, captureStartFrame: 0, scheduledPlaybackFrame: offset
-    });
+    }, controller.activeSweepElements);
     controller.cancelActiveSweep();
     await assert.rejects(pending, SweepCancelledError);
     assert.equal(terminated, true);

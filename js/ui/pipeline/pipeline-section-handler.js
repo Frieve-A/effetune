@@ -329,7 +329,7 @@ export class PipelineSectionHandler {
         
         // Update tooltips
         this.updateAllTooltips();
-        this.pipelineManager?.historyManager?.saveState();
+        this.pipelineManager?.historyManager?.saveState({ uiOnly: true });
         this.pipelineCore.updateURL();
     }
 

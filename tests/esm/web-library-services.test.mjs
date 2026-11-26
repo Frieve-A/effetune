@@ -5,6 +5,42 @@ import { WebFolderHandleStore } from '../../js/library/scan/web-folder-handle-st
 import { createWebLibraryServices } from '../../js/library/scan/web-library-services.js';
 import { createFakeIndexedDb } from './web-folder-handle-store-fake-idb.mjs';
 
+test('Android folder selection silently cancels but propagates real failures', async () => {
+  const previousWindow = globalThis.window;
+  let code = 'cancelled';
+  const states = [];
+  const calls = [];
+  const transport = {
+    postMessage(text) {
+      const request = JSON.parse(text);
+      assert.equal(request.command, 'documents.pick');
+      assert.deepEqual(request.payload, { kind: 'tree' });
+      queueMicrotask(() => this.onmessage({ data: JSON.stringify({
+        version: 1, id: request.id, ok: false, error: { code }
+      }) }));
+    }
+  };
+  globalThis.window = { location: { origin: 'https://appassets.androidplatform.net' }, effetuneAndroid: transport };
+  try {
+    const services = createWebLibraryServices({
+      windowRef: globalThis.window,
+      client: {
+        addFolder: () => calls.push('addFolder'),
+        requestFolderAccess: () => calls.push('requestFolderAccess')
+      }
+    });
+    const options = { onUserInteractionChange: active => states.push(active) };
+    assert.equal(await services.folderService.addFolder(options), null);
+    assert.equal(await services.folderService.requestFolderAccess('folder-1', options), null);
+    code = 'permission-denied';
+    await assert.rejects(services.folderService.addFolder(options), error => error.code === code);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(states, [true, false, true, false, true, false]);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
 test('Web folder services select an FSA directory and reconnect its persisted permission grant', async () => {
   const indexedDB = createFakeIndexedDb();
   const pickerRequests = [];
@@ -98,6 +134,25 @@ test('Web folder access continues when the best-effort persistence request does 
 
   const result = await services.folderService.requestFolderAccess('folder-1', { handle });
 
+  assert.equal(result.folder.id, 'folder-1');
+  assert.deepEqual(calls, [{ folderId: 'folder-1', handle, displayName: 'Music' }]);
+});
+
+test('playback recovery picks a fresh folder without querying the unresponsive saved handle again', async () => {
+  const handle = { kind: 'directory', name: 'Music' };
+  const calls = [];
+  const services = createWebLibraryServices({
+    client: {
+      async requestFolderAccess(request) {
+        calls.push(request);
+        return { folder: { id: request.folderId } };
+      }
+    },
+    handleStore: { get: () => assert.fail('An unresponsive handle must not block the picker') },
+    windowRef: { showDirectoryPicker: async () => handle }
+  });
+
+  const result = await services.folderService.requestFolderAccess('folder-1', { reselectFolder: true });
   assert.equal(result.folder.id, 'folder-1');
   assert.deepEqual(calls, [{ folderId: 'folder-1', handle, displayName: 'Music' }]);
 });

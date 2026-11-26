@@ -232,6 +232,7 @@ export class PipelineAnalyzerController {
         this.disposed = false;
         this.activationEpoch = 0;
         this.runGeneration = 0;
+        this.pendingAssetSettings = null;
         this.activeWorker = null;
         this.debounceTimer = null;
         this.displayReadaptTimer = null;
@@ -367,6 +368,7 @@ export class PipelineAnalyzerController {
         this.active = false;
         this.activationEpoch += 1;
         this.runGeneration += 1;
+        this.pendingAssetSettings = null;
         this._clearDebounce();
         this._terminateActiveWorker();
         this._clearDisposers(this.pluginDisposers);
@@ -393,6 +395,17 @@ export class PipelineAnalyzerController {
         this._clearDisplayReadapt();
         const epoch = this.activationEpoch;
         const generation = ++this.runGeneration;
+        this.pendingAssetSettings = null;
+        if (!this.state.autoRefresh && !this.audioManager?.masterBypass) {
+            const settings = new Map();
+            for (const plugin of this._getCurrentPipeline()) {
+                if (plugin?.enabled !== false && plugin?.externalAssetInfo?.pending &&
+                    typeof plugin.waitForOfflineDspAssetStaging === 'function') {
+                    settings.set(plugin, JSON.stringify(plugin.getSerializableParameters?.()));
+                }
+            }
+            if (settings.size) this.pendingAssetSettings = settings;
+        }
         this._clearDebounce();
         this._terminateActiveWorker();
         this.ui?.setMeasuring?.(true);
@@ -601,28 +614,40 @@ export class PipelineAnalyzerController {
         });
     }
 
-    _handleAutomaticInvalidation(reason) {
+    _handleAutomaticInvalidation(reason, plugin) {
         if (this.state.autoRefresh) {
             this.invalidate(reason);
             return;
         }
+        // Keep the requested run through asset staging and execution notices
+        // while the snapshot is pending and the plugin settings stay the same.
+        if (this.pendingAssetSettings && (reason === 'dsp-execution' ||
+            (this.pendingAssetSettings.has(plugin) &&
+                this.pendingAssetSettings.get(plugin) === JSON.stringify(plugin.getSerializableParameters?.())))) {
+            return;
+        }
         this._clearDisplayReadapt();
         this.runGeneration += 1;
+        this.pendingAssetSettings = null;
         this._clearDebounce();
         this._terminateActiveWorker();
         this.lastAcceptedStale = false;
         this.ui?.setMeasuring?.(false);
     }
 
-    _subscribeCurrentPlugins() {
-        this._clearDisposers(this.pluginDisposers);
+    _getCurrentPipeline() {
         const pipeline = typeof this.audioManager?.getCurrentPipeline === 'function'
             ? this.audioManager.getCurrentPipeline()
             : this.audioManager?.pipeline;
-        for (const plugin of Array.isArray(pipeline) ? pipeline : []) {
+        return Array.isArray(pipeline) ? pipeline : [];
+    }
+
+    _subscribeCurrentPlugins() {
+        this._clearDisposers(this.pluginDisposers);
+        for (const plugin of this._getCurrentPipeline()) {
             const subscribe = plugin?.addWasmAssetSnapshotChangeListener;
             if (typeof subscribe !== 'function') continue;
-            const dispose = subscribe.call(plugin, () => this._handleAutomaticInvalidation('plugin-snapshot'));
+            const dispose = subscribe.call(plugin, () => this._handleAutomaticInvalidation('plugin-snapshot', plugin));
             if (typeof dispose === 'function') this.pluginDisposers.push(dispose);
         }
     }
@@ -678,9 +703,9 @@ export class PipelineAnalyzerController {
 
     async _run(token) {
         if (!this._isRunCurrent(token)) return;
-        const format = this.refreshAudioFormat();
-        if (!format) return;
         try {
+            const format = this.refreshAudioFormat();
+            if (!format) return;
             if (hasParticipatingIrReference(this.state, format.channelCount) &&
                 this.storeOpeningPromise) {
                 await this.storeOpeningPromise;
@@ -732,6 +757,8 @@ export class PipelineAnalyzerController {
             if (!this._isRunCurrent(token) || error instanceof StalePipelineAnalysisRunError ||
                 error?.code === 'stale-run') return;
             this._reportRunError(error);
+        } finally {
+            if (this._isRunCurrent(token)) this.pendingAssetSettings = null;
         }
     }
 
@@ -819,6 +846,7 @@ export class PipelineAnalyzerController {
         this.resultHiddenAfterFailure = true;
         this.ui?.setResult?.(null);
         this.ui?.setMeasuring?.(false);
+        this.ui?.setRunFailure?.(code === 'asset-unavailable' ? details.effectName : null);
     }
 
     _readaptLastAcceptedResult() {

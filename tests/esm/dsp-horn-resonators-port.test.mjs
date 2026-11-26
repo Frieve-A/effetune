@@ -150,12 +150,11 @@ test('horn kernels share waveguide precision and reset contracts without process
   assert.doesNotMatch(common, /mouth_b0_ \* mouth_forward \+ .*mouth_x1/);
   assert.match(common, /if constexpr \(BoundaryVariant == Variant::Base\)/);
   assert.match(common, /mouth_a2_ \* mouth_y2/);
-  assert.match(common, /throat_b0_ \* static_cast<double>\(reverse_temp_\[0u\]\)/);
+  assert.match(common, /throat_b0_ \* static_cast<double>\(next_reverse\[0u\]\)/);
   assert.doesNotMatch(common, /std::(?:fabs|max|min)\s*\(/);
 
   const processStart = common.search(/\bvoid\s+process\s*\(\s*float\s*\*\s*audio\b/);
-  const processEnd = common.search(
-    /\[\[nodiscard\]\]\s+std::uint32_t\s+maximumSegments\s*\(/);
+  const processEnd = common.search(/\[\[nodiscard\]\]\s+bool\s+configurationChanged\s*\(/);
   const processBody = common.slice(processStart, processEnd);
   assert.ok(processStart >= 0 && processEnd > processStart);
   assert.doesNotMatch(processBody, /\.resize\(|\bnew\b/);

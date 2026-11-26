@@ -18,6 +18,7 @@ public:
                     bool parallel) noexcept;
   void applyLocalGain(float *bus, unsigned channels, unsigned frames) noexcept;
   float *capturedMarker() noexcept { return markerCaptured_ ? marker_.data() : nullptr; }
+  void clearCapturedMarker() noexcept { markerCaptured_ = false; }
   void captureSendMarker(const float *planar, unsigned channels, unsigned frames,
                          unsigned latencySamples) noexcept;
   double outputDelayFrames() const noexcept {

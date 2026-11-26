@@ -5,9 +5,13 @@ import { ANDROID_ORIGIN, bytesToBase64, getAndroidBridge } from '../../js/androi
 import { AndroidDocumentFile, requestAndroidDocument, receiveAndroidDocumentReply,
     forwardAndroidDocumentRequest } from '../../js/android/library-io.js';
 import { AndroidLibraryFilesystem } from '../../js/android/library-filesystem.js';
+import { WebFileSystemScanAdapter } from '../../js/library/scan/web-file-system-adapter.js';
 import { AndroidDocuments } from '../../js/android/documents.js';
 import { selectAndroidFolderFiles } from '../../js/android/folder-import.js';
 import { installAndroidFileDownloads } from '../../js/android/file-downloads.js';
+import { UIManager } from '../../js/ui-manager.js';
+import { getArtworkFiles, getLyricsFiles } from '../../js/ui/audio-player/lyrics-file-links.js';
+import { gzip, tar, zip } from '../helpers/archive-fixtures.mjs';
 
 let respond;
 const transport = { postMessage(raw) {
@@ -15,7 +19,7 @@ const transport = { postMessage(raw) {
     Promise.resolve().then(() => respond(request)).then(
         result => transport.onmessage({ data: JSON.stringify({ version: 1, id: request.id, ok: true, result }) }),
         error => transport.onmessage({ data: JSON.stringify({ version: 1, id: request.id, ok: false,
-            error: { code: error.name === 'AbortError' ? 'cancelled' : 'failed' } }) })
+            error: { code: error.name === 'AbortError' ? 'cancelled' : error.code ?? 'failed' } }) })
     );
 } };
 const host = { location: { origin: ANDROID_ORIGIN, href: `${ANDROID_ORIGIN}/assets/effetune.html` },
@@ -44,23 +48,25 @@ test('SAF worker replies correlate concurrent reads and release rejected operati
         assert.deepEqual(await first, { size: 12 });
         await failure;
         assert.equal(receiveAndroidDocumentReply({ type: 'android-document-reply', id: requests[1].id, ok: true }), true);
-        await assert.rejects(requestAndroidDocument('documents.write', {}), /Unsupported/);
+        await assert.rejects(requestAndroidDocument('documents.pick', {}), /Unsupported/);
         assert.equal(requests.length, 2);
     });
     await withDocuments(request => {
         if (request.payload.uri === 'content://denied') throw new Error('private provider diagnostic');
+        if (request.payload.uri === 'content://missing') throw Object.assign(new Error('private document path'), { code: 'document-not-found' });
         return { size: 12 };
     }, async () => {
         const replies = [];
         const worker = { postMessage: message => replies.push(message) };
-        for (const [id, uri] of [['allowed', 'content://first'], ['denied', 'content://denied']]) {
+        for (const [id, uri] of [['allowed', 'content://first'], ['denied', 'content://denied'], ['missing', 'content://missing']]) {
             assert.equal(forwardAndroidDocumentRequest(worker,
                 { type: 'android-document-request', command: 'documents.stat', id, payload: { uri } }), true);
         }
         await new Promise(resolve => setImmediate(resolve));
         assert.deepEqual(replies, [
             { protocolVersion: 1, type: 'android-document-reply', id: 'allowed', ok: true, result: { size: 12 } },
-            { protocolVersion: 1, type: 'android-document-reply', id: 'denied', ok: false }
+            { protocolVersion: 1, type: 'android-document-reply', id: 'denied', ok: false },
+            { protocolVersion: 1, type: 'android-document-reply', id: 'missing', ok: false, code: 'document-not-found' }
         ]);
     });
 });
@@ -80,6 +86,42 @@ test('SAF files stream bounded ranges and detect a provider truncation', async (
         assert.equal(reads.at(-1).offset, 256 * 1024);
         await assert.rejects(new AndroidDocumentFile({ uri: 'content://truncated', size: 10 }).arrayBuffer(), /changed while reading/);
     });
+});
+
+test('Android music selection expands archives from the picker, shared documents and file drops', async () => {
+    const entries = [['set/song.mid', 'midi'], ['set/song.wrd', 'lyrics'], ['set/cover.jpg', 'cover']];
+    const archives = new Map([
+        ['content://picked/collection.tar.gz', gzip(tar(entries))],
+        ['content://shared/collection.zip', zip(entries)]
+    ]);
+    const selections = [];
+    const manager = Object.assign(Object.create(UIManager.prototype), {
+        audioManager: { isAndroid: true },
+        audioPlayer: { async loadFiles(files) { selections.push(files); } },
+        playbackSelectionGeneration: 0,
+        setError(key) { assert.fail(key); }
+    });
+    await withDocuments(({ command, payload: { uri, offset, length } }) => {
+        assert.equal(command, 'documents.read');
+        return { data: bytesToBase64(archives.get(uri).subarray(offset, offset + length)) };
+    }, async () => {
+        const [pickedUri, sharedUri] = archives.keys();
+        const picked = new AndroidDocumentFile({
+            uri: pickedUri, name: 'collection.tar.gz', size: archives.get(pickedUri).length
+        });
+        assert.equal(await manager.openWebPlaybackSelection([picked], true), true);
+        await manager.createAudioPlayer([{
+            uri: sharedUri, name: 'collection.zip', type: 'application/zip', size: archives.get(sharedUri).length
+        }]);
+        await manager.createAudioPlayer([new File([zip(entries)], 'dropped.zip')]);
+    });
+    assert.deepEqual(selections.map(files => files.map(file => file.name)), [['song.mid'], ['song.mid'], ['song.mid']]);
+    for (const [file] of selections) {
+        assert.ok(file instanceof File);
+        assert.equal(await file.text(), 'midi');
+        assert.equal(await getLyricsFiles(file)[0].text(), 'lyrics');
+        assert.equal(await getArtworkFiles(file)[0].text(), 'cover');
+    }
 });
 
 test('SAF folder imports retain nested SFZ paths and stop a cancelled or stalled listing', async () => {
@@ -150,42 +192,58 @@ test('SAF library sidecar reads enforce size limits before fetching content', as
     });
 });
 
-test('Android native library omits DSD files from its playable catalog', async () => {
-    await withDocuments(({ command }) => {
-        if (command === 'documents.list') return {
-            entries: [
-                { name: 'song.dsf', isDirectory: false },
-                { name: 'other.DFF', isDirectory: false },
-                { name: 'normal.flac', isDirectory: false }
-            ],
-            nextOffset: null
-        };
-        assert.fail(command);
-    }, async () => {
-        const filesystem = new AndroidLibraryFilesystem({ rootHandle: { androidUri: 'content://root' } });
-        const entries = [];
-        for await (const entry of filesystem.enumerateDirectory()) entries.push(entry.relativePath);
-        assert.deepEqual(entries, ['normal.flac']);
-    });
-});
-
-test('Android library omits scores even with a saved MIDI preference while video discovery remains available', async () => {
+test('Android library scan lists DSD files and follows the video, score and score-archive preferences', async () => {
     const scores = ['song.mid', 'song.MIDI', 'song.kar', 'score.musicxml', 'score.xml', 'score.mxl'];
     await withDocuments(({ command }) => {
         assert.equal(command, 'documents.list');
-        return { entries: ['normal.flac', 'clip.mp4', ...scores].map(name => ({ name, isDirectory: false })), nextOffset: null };
+        return {
+            entries: ['normal.flac', 'song.dsf', 'other.DFF', 'clip.mp4', ...scores, 'scores.zip']
+                .map(name => ({ name, isDirectory: false })),
+            nextOffset: null
+        };
     }, async () => {
         for (const includeMidi of [false, true]) {
             for (const includeVideo of [false, true]) {
-                const filesystem = new AndroidLibraryFilesystem({
-                    rootHandle: { androidUri: 'content://root' }, includeMidi, includeVideo
+                const filesystem = new WebFileSystemScanAdapter({
+                    rootHandle: { kind: 'directory', androidUri: 'content://root' },
+                    includeMidi, includeVideo, includeMidiArchives: true
                 });
                 const entries = [];
                 for await (const entry of filesystem.enumerateDirectory()) entries.push(entry.relativePath);
-                assert.deepEqual(entries, ['normal.flac', ...(includeVideo ? ['clip.mp4'] : [])]);
+                assert.deepEqual(entries, [
+                    'normal.flac', 'song.dsf', 'other.DFF',
+                    ...(includeVideo ? ['clip.mp4'] : []),
+                    ...(includeMidi ? [...scores, 'scores.zip'] : [])
+                ]);
             }
         }
     });
+});
+
+test('Android pipeline Share opens the file sharing chooser with the public URL as text', async () => {
+    const requests = [], copies = [], messages = [];
+    let click, fail = false;
+    const manager = {
+        shareButton: { addEventListener(type, listener) { assert.equal(type, 'click'); click = listener; } },
+        shareAttemptRevision: 0, audioManager: { pipeline: [] }, getPipelineState: () => 'a+b',
+        t: key => key, showTransientMessage: key => messages.push(key), setError: assert.fail
+    };
+    await withDocuments(request => {
+        requests.push([request.command, request.payload]);
+        if (fail) throw new Error('Chooser unavailable');
+        return {};
+    }, () => withGlobals({ navigator: { clipboard: { writeText: text => copies.push(text) } } }, async () => {
+        UIManager.prototype.initShareButton.call(manager);
+        await click();
+        const url = 'https://effetune.frieve.com/effetune.html?p=a%2Bb';
+        assert.deepEqual(requests, [['documents.share', { text: url, title: 'ui.title.sharePipeline' }]]);
+        assert.deepEqual(copies, []);
+        assert.deepEqual(messages, []);
+        fail = true;
+        await click();
+        assert.deepEqual(copies, [url]);
+        assert.deepEqual(messages, ['success.urlCopied']);
+    }));
 });
 
 test('Android downloads retain revoked Blob data and distinguish cancel from export failure', async () => {
@@ -202,7 +260,7 @@ test('Android downloads retain revoked Blob data and distinguish cancel from exp
         return {};
     }, async () => {
         const windowRef = { ...host, document: { addEventListener(type, listener) { assert.equal(type, 'click'); click = listener; } },
-            uiManager: { setError(...args) { notices.push(args); complete(); } } };
+            uiManager: { t: key => `t:${key}`, setError(...args) { notices.push(args); complete(); } } };
         installAndroidFileDownloads(windowRef);
         const download = () => {
             const href = URL.createObjectURL(new Blob(['exported'], { type: 'text/plain' }));
@@ -218,6 +276,9 @@ test('Android downloads retain revoked Blob data and distinguish cancel from exp
         });
         assert.deepEqual(requests.map(request => request.command), ['documents.pick', 'documents.write', 'documents.share']);
         assert.equal(atob(requests[1].payload.data), 'exported');
+        // The native Save/Share chooser is labelled in the app's language.
+        assert.equal(requests[0].payload.saveLabel, 't:fileExport.android.save');
+        assert.equal(requests[2].payload.title, 't:fileExport.android.share');
         mode = 'cancel';
         await new Promise((resolve, reject) => {
             const guard = setTimeout(() => reject(new Error('Export picker did not open')), 2000);

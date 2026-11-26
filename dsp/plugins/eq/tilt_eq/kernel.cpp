@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -100,18 +101,23 @@ public:
       configure(channel_count, raw_pivot, raw_slope, channel_changed);
     }
 
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      advanceTransition();
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        TiltState &state = states_[channel];
-        const std::uint32_t index = channel * frame_count + frame;
-        const double low_output = dsp::processBiquadDf1Sample(static_cast<double>(audio[index]),
-                                                              low_shelf_, state.lowShelf);
-        const double high_output =
-            dsp::processBiquadDf1Sample(low_output, high_shelf_, state.highShelf);
-        audio[index] = static_cast<float>(high_output);
-      }
+    // Channel pairs run in one frame loop so their independent recursions overlap; filter state
+    // and the coefficient ramp stay in registers. Every pair replays the same ramp, so results
+    // match one shared per-frame ramp exactly.
+    const std::uint32_t ramp_frames =
+        transition_remaining_ < frame_count ? transition_remaining_ : frame_count;
+    Coefficients low = low_shelf_;
+    Coefficients high = high_shelf_;
+    for (std::uint32_t channel = 0u; channel < channel_count; channel += 2u) {
+      float *const data = audio + static_cast<std::size_t>(channel) * frame_count;
+      if (channel + 1u < channel_count)
+        processLanes<2u>(data, frame_count, ramp_frames, &states_[channel], low, high);
+      else
+        processLanes<1u>(data, frame_count, ramp_frames, &states_[channel], low, high);
     }
+    low_shelf_ = low;
+    high_shelf_ = high;
+    transition_remaining_ -= ramp_frames;
   }
 
 private:
@@ -162,21 +168,44 @@ private:
     step.a2 = (target.a2 - current.a2) / divisor;
   }
 
-  void advanceTransition() noexcept {
-    if (transition_remaining_ == 0u) {
-      return;
+  template <std::uint32_t Lanes>
+  void processLanes(float *data, std::uint32_t frame_count, std::uint32_t ramp_frames,
+                    TiltState *states, Coefficients &low_out,
+                    Coefficients &high_out) const noexcept {
+    Coefficients low = low_shelf_;
+    Coefficients high = high_shelf_;
+    TiltState local[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane)
+      local[lane] = states[lane];
+    const auto filter = [&](std::uint32_t frame) noexcept {
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        float &sample = data[static_cast<std::size_t>(lane) * frame_count + frame];
+        const double low_output =
+            dsp::processBiquadDf1Sample(static_cast<double>(sample), low, local[lane].lowShelf);
+        sample = static_cast<float>(
+            dsp::processBiquadDf1Sample(low_output, high, local[lane].highShelf));
+      }
+    };
+    std::uint32_t frame = 0u;
+    for (; frame < ramp_frames; ++frame) {
+      stepCoefficients(low, low_step_);
+      stepCoefficients(high, high_step_);
+      filter(frame);
     }
-    low_shelf_.b0 += low_step_.b0;
-    low_shelf_.b1 += low_step_.b1;
-    low_shelf_.b2 += low_step_.b2;
-    low_shelf_.a1 += low_step_.a1;
-    low_shelf_.a2 += low_step_.a2;
-    high_shelf_.b0 += high_step_.b0;
-    high_shelf_.b1 += high_step_.b1;
-    high_shelf_.b2 += high_step_.b2;
-    high_shelf_.a1 += high_step_.a1;
-    high_shelf_.a2 += high_step_.a2;
-    --transition_remaining_;
+    for (; frame < frame_count; ++frame)
+      filter(frame);
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane)
+      states[lane] = local[lane];
+    low_out = low;
+    high_out = high;
+  }
+
+  static void stepCoefficients(Coefficients &coefficients, const Coefficients &step) noexcept {
+    coefficients.b0 += step.b0;
+    coefficients.b1 += step.b1;
+    coefficients.b2 += step.b2;
+    coefficients.a1 += step.a1;
+    coefficients.a2 += step.a2;
   }
 
   double sample_rate_ = 0.0;

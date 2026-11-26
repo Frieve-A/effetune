@@ -47,10 +47,19 @@ const nativePackageBuildContracts = [
   }))
 ];
 
-const assetCopyContracts = [{
+const assetBuildContracts = [{
   producer: 'scripts/build-android-assets.mjs',
   output: path.posix.join('out/android/assets/licenses', 'pffft-LICENSE.txt'),
   input: 'dsp/vendor/pffft/LICENSE.txt'
+}, {
+  producer: 'scripts/build-android-assets.mjs',
+  output: path.posix.join('out/android/assets/licenses', 'openhome-NOTICE.txt'),
+  input: 'native/openhome-sidecar/THIRD_PARTY_NOTICES.txt'
+}, {
+  producer: 'scripts/build-android-assets.mjs',
+  output: path.posix.join('out/android/assets/licenses', 'qrcode-generator-NOTICE.txt'),
+  input: 'electron/THIRD_PARTY_NOTICES.txt',
+  noticeSection: 'qrcode-generator'
 }];
 
 // A shipped file must never depend on a path that happens to exist on the
@@ -194,7 +203,7 @@ function existingRepositoryFile(relativePath) {
 function isGeneratedBuildOutputReference(file, candidate) {
   return nativePackageBuildContracts.some(contract => candidate === contract.output &&
     (file === 'package.json' || file === contract.producer)) ||
-    assetCopyContracts.some(contract => file === contract.producer && candidate === contract.output);
+    assetBuildContracts.some(contract => file === contract.producer && candidate === contract.output);
 }
 
 test('review-visible scripts, tools, and tests reference no hidden repository file', () => {
@@ -228,15 +237,21 @@ test('review-visible scripts, tools, and tests reference no hidden repository fi
   }
 });
 
-test('generated asset copies use review-visible inputs and their declared producer', () => {
+test('generated assets use review-visible inputs and their declared producer', () => {
   const reviewable = gitReviewableFiles();
-  for (const contract of assetCopyContracts) {
+  for (const contract of assetBuildContracts) {
     assert.ok(reviewable.has(contract.producer));
     assert.ok(reviewable.has(contract.input));
     assert.equal(reviewable.has(contract.output), false);
     const producer = fs.readFileSync(path.join(repoRoot, contract.producer), 'utf8');
-    assert.ok(producer.includes(`await cp(path.join(root, '${contract.input}'), path.join(root, '${contract.output}'));`),
-      `${contract.producer} must copy its declared input to its declared output`);
+    if (contract.noticeSection) {
+      assert.ok(producer.includes(`const notices = await readFile(path.join(root, '${contract.input}'), 'utf8');`));
+      assert.ok(producer.includes(String.raw`const qrNotice = notices.split(/\r?\n(?=[^\r\n]+\r?\n-+\r?\n)/).find(section => section.startsWith('${contract.noticeSection} '));`));
+      assert.ok(producer.includes(`await writeFile(path.join(root, '${contract.output}'), qrNotice);`));
+    } else {
+      assert.ok(producer.includes(`await cp(path.join(root, '${contract.input}'), path.join(root, '${contract.output}'));`),
+        `${contract.producer} must copy its declared input to its declared output`);
+    }
   }
 });
 
@@ -282,13 +297,14 @@ test('the generated-output exemption is limited to its package and producer', ()
   const generated = openHomeSidecarBuildContract.output;
   const airPlayGeneratedFile = `${nativePackageBuildContracts[1].output}/runtime-manifest.json`;
   const unrelatedOutput = 'out/native/unrelated/hidden.json';
-  const assetCopy = assetCopyContracts[0];
-  const present = new Set([generated, airPlayGeneratedFile, unrelatedOutput, assetCopy.output]);
+  const assets = assetBuildContracts.map(contract => contract.output);
+  const unexpectedInputs = [generated, airPlayGeneratedFile, unrelatedOutput, ...assets];
+  const present = new Set(unexpectedInputs);
   const sources = new Map([
     ['package.json', `{"from":"${generated}"}`],
     [openHomeSidecarBuildContract.producer, `const output = '${generated}';`],
-    [assetCopy.producer, `const output = '${assetCopy.output}';`],
-    ['tools/unrelated.mjs', `const hiddenInput = '${generated}'; const airPlay = '${airPlayGeneratedFile}'; const unrelated = '${unrelatedOutput}'; const asset = '${assetCopy.output}';`]
+    [assetBuildContracts[0].producer, assets.map(output => `'${output}'`).join('\n')],
+    ['tools/unrelated.mjs', unexpectedInputs.map(input => `'${input}'`).join('\n')]
   ]);
 
   const violations = findUntrackedReferences({
@@ -299,7 +315,7 @@ test('the generated-output exemption is limited to its package and producer', ()
     isGeneratedOutput: isGeneratedBuildOutputReference
   });
 
-  assert.deepEqual(violations, [generated, airPlayGeneratedFile, unrelatedOutput, assetCopy.output]
+  assert.deepEqual(violations, unexpectedInputs
     .map(candidate => `tools/unrelated.mjs -> ${candidate}`).sort());
 });
 

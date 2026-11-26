@@ -107,6 +107,22 @@ test('commits through the existing input, change, and blur event flow', () => {
   assert.equal(events.length, 3);
 });
 
+test('keypad button activation waits for click and consumes the event', () => {
+  const documentRef = new FakeDocument();
+  documentRef.createElement = () => new EventTarget();
+  const keypad = new MobileNumberKeypad({ documentRef });
+  let activations = 0;
+  const button = keypad.createButton('OK', () => activations++);
+  button.dispatchEvent(new Event('pointerdown', { cancelable: true }));
+  button.dispatchEvent(new Event('pointerup', { cancelable: true }));
+  assert.equal(activations, 0);
+  const click = Object.assign(new Event('click', { bubbles: true }), { detail: 1 });
+  button.dispatchEvent(click);
+  assert.equal(activations, 1);
+  assert.equal(click.cancelBubble, true);
+  keypad.dispose();
+});
+
 test('suppresses the native keyboard while open and restores the input on commit', () => {
   const documentRef = new FakeDocument();
   const keypad = new MobileNumberKeypad({ documentRef });
@@ -222,7 +238,7 @@ test('keeps Tab focus cycling through enabled keypad buttons', () => {
   keypad.dispose();
 });
 
-test('opens eligible number inputs on release instead of initial contact', () => {
+test('keeps the number input under the finger until the tap click opens the keypad', () => {
   const documentRef = new FakeDocument();
   let enabled = true;
   const keypad = new MobileNumberKeypad({ documentRef, isEnabled: () => enabled });
@@ -252,6 +268,8 @@ test('opens eligible number inputs on release instead of initial contact', () =>
   assert.equal(opened, null);
   assert.equal(pointer.prevented, 1);
   documentRef.dispatch('pointerup', { ...pointer, clientY: 103 });
+  assert.equal(opened, null);
+  documentRef.dispatch('click', { ...pointer, detail: 1 });
   assert.equal(opened, input);
 
   const navigationInput = {
@@ -264,6 +282,8 @@ test('opens eligible number inputs on release instead of initial contact', () =>
   documentRef.dispatch('pointerdown', pointer);
   assert.equal(opened, null);
   documentRef.dispatch('pointerup', pointer);
+  assert.equal(opened, null);
+  documentRef.dispatch('click', { ...pointer, detail: 1 });
   assert.equal(opened, navigationInput);
   const prevented = pointer.prevented;
 
@@ -323,6 +343,7 @@ test('does not open the keypad after movement, scrolling, or pointer cancellatio
   documentRef.dispatch('pointerup', { ...pointer, pointerId: 2 });
   assert.deepEqual(opened, []);
   documentRef.dispatch('pointerup', pointer);
+  documentRef.dispatch('click', { ...pointer, detail: 1 });
   assert.deepEqual(opened, [input]);
   keypad.dispose();
 });

@@ -25,7 +25,6 @@ export class StateManager {
         this.diagnosticsSettingsButton = document.getElementById('diagnosticsSettingsButton');
         this.webUpdateSettingsButton = document.getElementById('webUpdateSettingsButton');
         this.shareButton = document.getElementById('shareButton');
-        this.sampleRate = document.getElementById('sampleRate');
         this.installCompleted = this.isInstalledDisplayMode();
         this.nativeInstallUnavailable = false;
         
@@ -323,12 +322,5 @@ export class StateManager {
     clearError() {
         this.errorDisplay.textContent = '';
         this.errorDisplay.classList.remove('error-message');
-    }
-
-    // Call this method after audio context is initialized
-    initAudio() {
-        if (this.audioManager.audioContext) {
-            this.sampleRate.textContent = `${this.audioManager.audioContext.sampleRate} Hz`;
-        }
     }
 }

@@ -2,8 +2,12 @@ import { getFileExtension, isSupportedMidiPath } from '../constants.js';
 import { loadDspModule } from '../../audio/dsp-wasm-loader.js';
 import { createDsdRangeChannel } from '../../ui/audio-player/dsd-range-channel.js';
 import { normalizeMtimeMs } from '../scan/file-signature.js';
+import { isAndroidHost } from '../../android/bridge.js';
 
 export async function prepareLoudnessSource(track, source, signal, api = globalThis.window?.electronAPI) {
+  if (isAndroidHost() && source?.uri?.startsWith('content:')) {
+    return (await import('../../android/loudness-source.js')).prepareAndroidLoudnessSource(track, source.uri, signal);
+  }
   const matches = (size, mtimeMs) => track.size === size && track.mtimeMs === normalizeMtimeMs(mtimeMs);
   if (source?.file) return matches(source.file.size, source.file.lastModified) ? { file: source.file } : { status: 'unavailable' };
   if (!source?.path) return { status: 'unavailable' };

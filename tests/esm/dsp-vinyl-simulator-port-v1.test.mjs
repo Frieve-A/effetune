@@ -135,7 +135,12 @@ test('Vinyl Simulator kernel preserves fixed-capacity physical topology', async 
   assert.match(kernel, /absolute_distance <= support \+ scan_half_/);
   assert.match(kernel, /dust_gaussian_has_spare_/);
   assert.match(kernel, /std::sqrt\(-2\.0 \* std::log\(radius_squared\) \/ radius_squared\)/);
-  assert.match(kernel, /rough_random_\.nextFloatSigned\(\)/);
+  assert.match(kernel, /kRoughDraws = 6u/);
+  assert.match(kernel, /state = rough_random_\.state\(\);/);
+  assert.match(kernel, /draw6 = jumpRoughState\(state\);\s*state = draw6;/);
+  assert.deepEqual([...kernel.matchAll(/dsp::XorShiftRng::toFloatSigned\(draw(\d)\)/g)].map(match => match[1]),
+    ['1', '2', '3', '4', '5', '6']);
+  assert.match(kernel, /rough_random_\.seed\(state\);/);
   assert.match(kernel, /dsp::XorShiftRng master\(seed\)/);
   assert.match(kernel, /master\.nextU64\(\) >> 32u/);
   assert.match(kernel, /kStaticReferenceGain = 0\.251188643150958/);

@@ -117,18 +117,19 @@ test('selected musical input shares MIDI access and preserves pressure/program m
   assert.equal(received[0].timeStamp, 12.5);
   assert.equal(mapped.length, 1);
   input.onmidimessage({ data: [0x90, 60, 100], timeStamp: 13, nativeConsumed: true });
-  assert.equal(received.length, 4);
+  assert.equal(received.length, 5);
+  assert.equal(mapped.length, 1);
 
   const other = { id: 'other', name: 'Input', state: 'connected' };
   access.inputs.set('other', other);
   manager.handleStateChange();
   other.onmidimessage({ data: [0x90, 60, 100], timeStamp: 14 });
-  assert.equal(received.length, 4);
+  assert.equal(received.length, 5);
   input.state = 'disconnected';
   manager.handleStateChange();
   assert.equal(manager.findInput('Input'), null);
   input.onmidimessage({ data: [0x90, 60, 100], timeStamp: 15 });
-  assert.equal(received.length, 4);
+  assert.equal(received.length, 5);
   await manager.setPerformanceInput('', null);
   assert.equal(input.onmidimessage, null);
   assert.equal(other.onmidimessage, null);

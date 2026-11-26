@@ -10,6 +10,7 @@ import GraphRenderer from './graph-renderer.js';
 import CorrectionHandler from './correction-handler.js';
 import DialogController from './dialog-controller.js';
 import i18n from '../i18n.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
 import { copyTextToClipboard } from '../../../js/utils/clipboard-utils.js';
 import { copyPerChannelPEQClipboardPayload } from './peq-clipboard.js';
 import { importImpulseResponseWav } from '../impulse-response-import.js';
@@ -17,7 +18,6 @@ import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
 import { collectCalibrationIrCandidates } from '../measurement-model.js';
 import AnalysisController from './analysis-controller.js';
 import { bindNumberInput, updateRangeFill } from '../../../js/ui/range-fill.js';
-import { isAndroidHost } from '../../../js/android/bridge.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from '../audio-utils/output-routing.js';
 import { confirmSpeakerDistortionLeave, initializeSpeakerDistortionScreens, restoreBorrowedControls,
     saveUnsavedResult, showNewMeasurementScreen } from './speaker-distortion-setup.js';
@@ -84,9 +84,6 @@ export class UIManager {
         
         this.showScreen('resultsDisplayScreen');
         this.updateMeasurementList();
-        await this.updateStorageUsage();
-        const storageNotice = document.getElementById('impulseResponseStorageNotice');
-        if (storageNotice) storageNotice.hidden = dataStorage.irPersistenceAvailable !== false;
         
         // Select latest measurement if available
         const latestMeasurement = dataStorage.getLatestMeasurement();
@@ -171,6 +168,7 @@ export class UIManager {
             if (!this.confirmDiscardBeforeNewMeasurement(showNewMeasurementScreen)) showNewMeasurementScreen();
         });
         initializeSpeakerDistortionScreens(this);
+        document.getElementById('backFromConfigBtn')?.addEventListener('click', () => this.showScreen('newMeasurementScreen'));
         this.initializeResultNameInput();
         this.initializeSpeakerDistortionResultBar();
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
@@ -180,15 +178,12 @@ export class UIManager {
         // Setup data storage event listeners
         document.addEventListener(dataStorage.EVENTS.MEASUREMENT_ADDED, () => {
             this.updateMeasurementList();
-            this.updateStorageUsage();
         });
         document.addEventListener(dataStorage.EVENTS.MEASUREMENT_UPDATED, () => {
             this.updateMeasurementList();
-            this.updateStorageUsage();
         });
         document.addEventListener(dataStorage.EVENTS.MEASUREMENT_DELETED, () => {
             this.updateMeasurementList();
-            this.updateStorageUsage();
         });
         document.addEventListener(dataStorage.EVENTS.MEASUREMENTS_LOADED, () => this.updateMeasurementList());
 
@@ -287,6 +282,20 @@ export class UIManager {
 
         // Notification dialog
         document.getElementById('notificationOkBtn').addEventListener('click', () => this.dialogController.closeNotification());
+    }
+
+    handleMeasurementBack() {
+        const dialog = Array.from(document.querySelectorAll('.dialog-overlay'))
+            .filter(element => element.style.display !== 'none').at(-1);
+        if (dialog) {
+            dialog.querySelector('#cancelBtn, #notificationOkBtn, [data-dialog-dismiss]')?.click();
+            return true;
+        }
+        const screen = document.getElementById(this.currentScreen);
+        const back = screen?.querySelector('.back-btn, button[data-i18n="button:backSimple"], #speakerDistortionRunCancel');
+        if (!back) return false;
+        back.click();
+        return true;
     }
 
     /**
@@ -503,12 +512,16 @@ export class UIManager {
             window.app.selectSavedAudioDevices();
         } catch (error) {
             console.error('Could not start new measurement due to audio initialization failure:', error);
-            this.showNotification(
-                i18n.t('error:audioInitFailed') ||
-                    'The audio devices could not be prepared. Check browser permissions and try again.',
-                'error'
-            );
+            this.showAudioInitError(error);
         }
+    }
+
+    showAudioInitError(error) {
+        const microphonePermission = isAndroidHost() && (error?.code === 'permission-denied' || error?.code === 'permission-required');
+        const message = microphonePermission
+            ? i18n.t('error:androidMicrophonePermission') || 'This measurement needs microphone access. Allow EffeTune to use the microphone in Android settings, then try again.'
+            : i18n.t('error:audioInitFailed') || 'The audio devices could not be prepared. Check browser permissions and try again.';
+        this.showNotification(message, 'error');
     }
 
     async copyChannelPEQToClipboard() {
@@ -633,8 +646,7 @@ export class UIManager {
         const select = document.getElementById('effectPipeline');
         if (!select) return;
         const snapshot = measurementController.pipelineHandoff?.snapshot;
-        const android = isAndroidHost();
-        const available = Boolean(snapshot) && !android;
+        const available = Boolean(snapshot);
         const currentOption = select.querySelector('option[value="current"]');
         currentOption.hidden = !available;
         currentOption.disabled = !available;
@@ -642,7 +654,7 @@ export class UIManager {
         select.disabled = !available;
         const active = select.value === 'current';
         setTranslatedText(document.getElementById('effectPipelineHelp'), available ? 'help:effectPipeline'
-            : android ? 'help:effectPipelineAndroid' : 'help:effectPipelineUnavailable');
+            : 'help:effectPipelineUnavailable');
         setTranslatedText(document.getElementById('outputChannelLabel'),
             active ? 'label:pipelineInputChannel' : 'label:outputChannel');
         setTranslatedText(document.getElementById('outputChannelHelp'),
@@ -813,22 +825,6 @@ export class UIManager {
      */
     showNotification(message, type = 'info') {
         this.dialogController.showNotification(message);
-    }
-
-    async updateStorageUsage() {
-        const element = document.getElementById('measurementStorageUsage');
-        const storageNotice = document.getElementById('impulseResponseStorageNotice');
-        if (storageNotice) storageNotice.hidden = dataStorage.irPersistenceAvailable !== false;
-        if (!element) return;
-        const estimate = await dataStorage.getStorageEstimate();
-        if (!estimate || !Number.isFinite(estimate.usage)) {
-            element.textContent = '';
-            return;
-        }
-        const megabytes = estimate.usage / (1024 * 1024);
-        element.textContent = i18n.t('message:measurementStorageUsage', {
-            megabytes: megabytes.toFixed(megabytes >= 10 ? 0 : 1)
-        }) || `Measurements: ${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
     }
 
     /**

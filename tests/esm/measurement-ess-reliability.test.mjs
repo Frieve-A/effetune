@@ -36,7 +36,7 @@ test('Android sweep preserves overload status when analysis transfers the record
         terminate() {}
     };
     try {
-        const controller = { ...AudioProcessing, measurementConfig: { averaging: 1 }, activeSweepElements: {} };
+        const controller = { ...AudioProcessing, startChannelLevelGraph() {}, measurementConfig: { averaging: 1 }, activeSweepElements: {} };
         const sweep = { sampleRate: 8, length: 2, tailSamples: 0,
             channels: [new Float32Array([0.5, -0.5]), new Float32Array([0.5, -0.5])] };
         for (peak of [0.25, 1]) {
@@ -244,6 +244,80 @@ test('ESS preserves peak timing and flat gain with ordinary low-level recording 
     assert.equal(result.trimStartSamples + result.onsetIndex, delay);
     for (const [frequency, db] of result.frequencyResponse) {
         assert.ok(Math.abs(db) < 0.006, `${frequency} Hz: ${db} dB`);
+    }
+});
+
+function analyzeClockCapture(sweep, { ratio = 1, delay = 120, inserted = 0, repetitions = 2, reflection = 0 } = {}) {
+    const plan = createEssCapturePlan(sweep, repetitions);
+    const offset = Math.round(0.55 * sweep.sampleRate);
+    const recording = new Float32Array(offset + plan.playbackSamples + sweep.sampleRate / 2);
+    for (let repeat = 0; repeat < repetitions; repeat++) {
+        const start = repeat * plan.intervalSamples + delay;
+        for (let i = Math.ceil(start * ratio); i < (start + sweep.length - 1) * ratio; i++) {
+            // Sample the analytic sweep directly on the recording clock to preserve the fixture's upper band.
+            const t = i / ratio - start;
+            const phase = 2 * Math.PI * sweep.startFrequency * sweep.sweepConstant *
+                Math.expm1(t / (sweep.sampleRate * sweep.sweepConstant));
+            const fade = Math.min(t, sweep.length - 1 - t, sweep.fadeSamples);
+            const index = offset + i + repeat * inserted;
+            const sample = 0.25 * (1 - Math.cos(Math.PI * fade / sweep.fadeSamples)) * Math.sin(phase);
+            recording[index] += sample;
+            recording[index + 1] += reflection * sample;
+        }
+    }
+    return analyzeEssRecording(recording, sweep, {
+        repetitions, playbackOffsetSamples: offset, outputTimeReference: 'audio-context', levelDb: 20 * Math.log10(0.5)
+    });
+}
+
+test('ESS clock correction preserves the measured band near Nyquist', () => {
+    const sweep = createEssSignal({ endFrequency: 23520 });
+    const result = analyzeClockCapture(sweep, { ratio: 1.0001 });
+    assert.deepEqual(result.harmonicAnalysis.quality, { valid: true, reasons: [] });
+    assert.equal(result.trimStartSamples + result.onsetIndex, 120);
+    const upperBand = result.frequencyResponse.filter(([frequency]) => frequency > 22800);
+    assert.ok(upperBand.length >= 2);
+    for (const [frequency, db] of upperBand) assert.ok(Math.abs(db) < 0.02, `${frequency} Hz: ${db} dB`);
+});
+
+test('ESS keeps early repetitions when the recording clock runs slow', () => {
+    const result = analyzeClockCapture(createEssSignal(), { ratio: 0.9998, delay: 60, repetitions: 4 });
+    assert.deepEqual(result.harmonicAnalysis.quality, { valid: true, reasons: [] });
+    assert.equal(result.recordingGaps, undefined);
+    assert.equal(result.trimStartSamples + result.onsetIndex, 60);
+    for (const [frequency, db] of result.frequencyResponse) assert.ok(Math.abs(db) < 0.02, `${frequency} Hz: ${db} dB`);
+});
+
+test('ESS keeps the original time scale when a silence insertion shifts the second sweep', () => {
+    const sweep = createEssSignal();
+    for (const [delay, inserted] of [[120, 240], [120.5, 3]]) {
+        const result = analyzeClockCapture(sweep, { delay, inserted });
+        assert.ok(Math.abs(result.trimStartSamples + result.onsetIndex - delay) <= 0.5);
+        assert.equal(result.recordingGaps, undefined);
+        assert.deepEqual(result.harmonicAnalysis.quality.reasons, ['clock-drift']);
+        for (const [frequency, db] of result.frequencyResponse) assert.ok(Math.abs(db) < 0.01, `${frequency} Hz: ${db} dB`);
+    }
+});
+
+test('ESS keeps a reflected response on the original clock after an integer shift between sweeps', () => {
+    const sweep = createEssSignal();
+    const path = { delay: 115.1, reflection: -5 / 11 };
+    const reference = analyzeClockCapture(sweep, { ...path, repetitions: 1 });
+    for (const inserted of [3, 5, 8]) {
+        const result = analyzeClockCapture(sweep, { ...path, inserted });
+        assert.equal(result.trimStartSamples + result.onsetIndex, reference.trimStartSamples + reference.onsetIndex);
+        assert.deepEqual(result.harmonicAnalysis.quality, { valid: false, reasons: ['clock-drift'] });
+        assert.equal(result.recordingGaps, undefined);
+    }
+});
+
+test('ESS corrects a measurable small clock difference from two sweeps', () => {
+    const sweep = createEssSignal();
+    for (const ratio of [0.99999, 1.00001]) {
+        const result = analyzeClockCapture(sweep, { ratio });
+        assert.deepEqual(result.harmonicAnalysis.quality, { valid: true, reasons: [] });
+        assert.equal(result.trimStartSamples + result.onsetIndex, 120);
+        for (const [frequency, db] of result.frequencyResponse) assert.ok(Math.abs(db) < 0.02, `${frequency} Hz: ${db} dB`);
     }
 });
 

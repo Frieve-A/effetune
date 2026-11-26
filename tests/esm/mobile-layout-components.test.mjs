@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { MobileMenu } from '../../js/ui/mobile-menu.js';
 import { MobileNav } from '../../js/ui/mobile-nav.js';
+import { StateManager } from '../../js/ui/state-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeClassList {
@@ -161,10 +162,13 @@ function createDocument() {
   const openMusicButton = new FakeElement('button');
   openMusicButton.id = 'openMusicButton';
   const settingsMenu = new FakeElement('div');
+  const webUpdateSettingsButton = new FakeElement('button');
+  webUpdateSettingsButton.id = 'webUpdateSettingsButton';
   const installAppElement = new FakeElement('install');
   installAppElement.id = 'installAppElement';
   const installAppButton = new FakeElement('button');
   installAppButton.id = 'installAppButton';
+  settingsMenu.appendChild(webUpdateSettingsButton);
   settingsMenu.appendChild(installAppElement);
   settingsMenu.appendChild(installAppButton);
   body.appendChild(titleContainer);
@@ -188,6 +192,7 @@ function createDocument() {
     getElementById(id) {
       if (id === 'pluginList') return pluginList;
       if (id === 'openMusicButton') return openMusicButton;
+      if (id === 'webUpdateSettingsButton') return webUpdateSettingsButton;
       if (id === 'installAppElement') return installAppElement;
       if (id === 'installAppButton') return installAppButton;
       return null;
@@ -487,6 +492,87 @@ test('MobileMenu removes overflow controls when leaving mobile mode', async () =
   });
 });
 
+test('MobileMenu offers both bulk expansion actions in a populated Effects view', async () => {
+  const calls = [];
+  let view = 'effects';
+  const audioManager = { pipeline: [{}] };
+  const uiManager = {
+    layoutMode: createLayoutMode('mobile'),
+    mobileNav: { getCurrentView: () => view },
+    pipelineManager: {
+      audioManager,
+      core: { itemBuilder: { setAllPluginsExpanded: expand => calls.push(expand) } }
+    }
+  };
+  await withGlobals({
+    document: createDocument(),
+    window: { location: { search: '' } }
+  }, async () => {
+    const menu = new MobileMenu(uiManager);
+    menu.open();
+    const collapse = menu.panel.children.find(item => item.textContent === 'Collapse all');
+    const expand = menu.panel.children.find(item => item.textContent === 'Expand all');
+    assert.equal(collapse.hidden, false);
+    assert.equal(expand.hidden, false);
+    collapse.click();
+    assert.equal(menu.panel.inert, true);
+    menu.open();
+    expand.click();
+    assert.deepEqual(calls, [false, true]);
+
+    view = 'player';
+    menu.open();
+    assert.equal(collapse.hidden, true);
+    assert.equal(expand.hidden, true);
+    view = 'effects';
+    audioManager.pipeline.length = 0;
+    menu.open();
+    assert.equal(collapse.hidden, true);
+    assert.equal(expand.hidden, true);
+  });
+});
+
+test('MobileMenu shares the web update action with the desktop settings menu', async () => {
+  const documentRef = createDocument();
+  const layoutMode = createLayoutMode('mobile');
+  const calls = [];
+  const updates = {
+    registration: null,
+    check(manual) { calls.push(['check', manual]); },
+    apply() { calls.push(['apply']); }
+  };
+  await withGlobals({
+    document: documentRef,
+    window: { app: { initialized: true }, webUpdateManager: updates }
+  }, async () => {
+    const stateManager = new StateManager({});
+    const menu = new MobileMenu({ layoutMode, stateManager });
+    const button = stateManager.webUpdateSettingsButton;
+    assert.equal(button.parentNode, menu.panel);
+    assert.equal(button.hidden, true);
+
+    updates.registration = {};
+    stateManager.updateWebUpdateAvailability();
+    menu.open();
+    assert.equal(button.hidden, false);
+    assert.equal(button.textContent, 'Check for updates');
+    button.click();
+    assert.equal(menu.panel.inert, true);
+
+    menu.open();
+    updates.waitingBuild = 'new';
+    stateManager.updateWebUpdateAvailability();
+    assert.equal(button.textContent, 'Update now');
+    button.click();
+    assert.equal(menu.panel.inert, true);
+
+    layoutMode.setMode('desktop');
+    assert.equal(documentRef.settingsMenu.children[0], button);
+    assert.equal(button.listeners.get('click').length, 1);
+    assert.deepEqual(calls, [['check', true], ['apply']]);
+  });
+});
+
 test('MobileMenu uses web file selection when Electron bridge is present but inactive', async () => {
   const documentRef = createDocument();
   const layoutMode = createLayoutMode('mobile');
@@ -497,6 +583,7 @@ test('MobileMenu uses web file selection when Electron bridge is present but ina
   dropArea.appendChild(selectFiles);
   const uiManager = {
     layoutMode,
+    mobileNav: { setView: view => calls.push(view) },
     pipelineManager: {
       fileProcessor: { dropArea }
     }
@@ -519,8 +606,16 @@ test('MobileMenu uses web file selection when Electron bridge is present but ina
     const processItem = menu.panel.children.find(item => item.textContent === 'Process Audio Files with Effects...');
     processItem.click();
 
-    assert.deepEqual(calls, []);
+    assert.deepEqual(calls, ['effects']);
     assert.equal(selectFiles.clicked, true);
+
+    window.location.origin = 'https://appassets.androidplatform.net';
+    window.effetuneAndroid = { postMessage() {} };
+    dropArea.scrollIntoView = () => calls.push('scroll');
+    selectFiles.closest = () => dropArea;
+    selectFiles.addEventListener('click', () => calls.push('choose'));
+    processItem.click();
+    assert.deepEqual(calls, ['effects', 'effects', 'choose']);
   });
 });
 

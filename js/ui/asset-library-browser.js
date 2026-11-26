@@ -142,6 +142,8 @@ export function openAssetLibraryBrowser({
     return collectExternalAssetInfo(plugins).some(info =>
       (!kind || info.kind === kind) && (info.ids.includes(id) || info.protectedIds.includes(id)));
   };
+  const inUseMessage = () => translate('status.inUse',
+    'This impulse response is in use by an effect pipeline and cannot be deleted.');
 
   const updateSelectionUi = () => {
     selectionCount.textContent = translate('selection.count', '{count} selected', {
@@ -231,6 +233,10 @@ export function openAssetLibraryBrowser({
       });
       remove.addEventListener('click', async () => {
         if (activeImport || deleteInProgress) return;
+        if (isAssetInUse(entry.id)) {
+          status.textContent = inUseMessage();
+          return;
+        }
         const confirmed = window.confirm?.(translate('confirm.delete',
           'Delete “{name}” from the library? This cannot be undone.', { name: entry.name })) ?? true;
         if (!confirmed) return;
@@ -242,8 +248,7 @@ export function openAssetLibraryBrowser({
           });
           if (result.removed) selectedIds.delete(entry.id);
           status.textContent = result.reason === 'in-use'
-            ? translate('status.inUse',
-              'This impulse response is in use by an effect pipeline and cannot be deleted.')
+            ? inUseMessage()
             : result.removed
               ? translate('status.deleted', 'Impulse response deleted.')
               : translate('status.deleteFailed', 'The impulse response could not be deleted.');
@@ -426,14 +431,20 @@ export function openAssetLibraryBrowser({
 
   deleteSelected.addEventListener('click', async () => {
     if (!selectedIds.size || activeImport || deleteInProgress) return;
-    const ids = [...selectedIds];
+    const ids = [...selectedIds].filter(id => !isAssetInUse(id));
+    const result = { deleted: 0, inUse: selectedIds.size - ids.length, failed: 0 };
+    const summarize = () => translate('status.bulkDeleteResult',
+      '{deleted} deleted, {inUse} in use, {failed} failed.', result);
+    if (!ids.length) {
+      status.textContent = summarize();
+      return;
+    }
     const confirmed = window.confirm?.(translate('confirm.deleteSelected',
       'Delete {count} selected impulse responses from the library? This cannot be undone.', {
         count: ids.length
       })) ?? true;
     if (!confirmed) return;
 
-    const result = { deleted: 0, inUse: 0, failed: 0 };
     setDeleteUiActive(true);
     status.textContent = translate('status.deletingSelected',
       'Deleting {count} selected impulse responses…', { count: ids.length });
@@ -453,8 +464,7 @@ export function openAssetLibraryBrowser({
     } finally {
       selectedIds.clear();
       setDeleteUiActive(false);
-      status.textContent = translate('status.bulkDeleteResult',
-        '{deleted} deleted, {inUse} in use, {failed} failed.', result);
+      status.textContent = summarize();
       await render();
     }
   });

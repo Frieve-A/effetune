@@ -214,8 +214,14 @@ test('Phase 3b group B kernels keep allocation and topology contracts explicit',
   for (const type of ['FiveBandPEQPlugin', 'FifteenBandPEQPlugin', 'FifteenBandGEQPlugin']) {
     const kernel = loaded.get(type).kernel;
     assert.match(kernel, /BiquadDf1State/);
-    assert.match(kernel, /processBiquadDf1Sample/);
+    assert.match(kernel, /detail::processBandChain\(/);
   }
+  const bandChain = await fs.readFile(
+    path.join(repoRoot, 'dsp', 'plugins', 'eq', 'biquad_band_chain.h'), 'utf8'
+  );
+  assert.match(bandChain, /dsp::processBiquadDf1Sample\(input, target, state\)/);
+  assert.match(bandChain, /dsp::processBiquadDf1Sample\(input, ramp\.value\(frame\), state\)/);
+  assert.doesNotMatch(bandChain, /\b(?:malloc|calloc|realloc|free)\s*\(/);
 
   const earphone = loaded.get('EarphoneCableSimPlugin').kernel;
   assert.match(earphone, /findRoots/);

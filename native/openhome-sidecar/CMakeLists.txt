@@ -31,6 +31,7 @@ set(GENERATED_PROVIDER_SOURCES
 
 add_executable(effetune-openhome-sidecar
     src/main.cpp
+    src/runtime.cpp
     src/protocol.cpp
     src/providers.cpp
     src/av-providers.cpp

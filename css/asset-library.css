@@ -55,7 +55,7 @@
     display: grid;
     grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
-    padding: 16px;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     background: rgba(0, 0, 0, 0.62);
 }
 
@@ -286,7 +286,7 @@
 @media (max-width: 600px) {
     .ir-library-overlay {
         align-items: start;
-        padding: 8px;
+        padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     }
 
     .ir-library-dialog {

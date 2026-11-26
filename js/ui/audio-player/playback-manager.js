@@ -709,7 +709,9 @@ export class PlaybackManager {
     preservePlaybackGeneration = false,
     resolutionScope = null,
     resolvedEntries = null,
-    saveSession = true
+    saveSession = true,
+    signal,
+    bulkPlayId
   } = {}) {
     this.pendingTransport.invalidate();
     this.trackCommandGeneration += 1;
@@ -717,8 +719,10 @@ export class PlaybackManager {
     const sequence = descriptor instanceof CatalogSequence || descriptor instanceof CompositeCatalogSequence
       ? descriptor
       : new CatalogSequence(descriptor);
-    if (preservePlayback && this.audioPlayer.contextManager?.nativeQueueOwned) {
-      return this.audioPlayer.contextManager.replaceNativeQueue({ sequence, index: currentOrdinal, preservePlayback: true });
+    if ((preservePlayback || bulkPlayId) && this.audioPlayer.contextManager?.nativeQueueOwned) {
+      return this.audioPlayer.contextManager.replaceNativeQueue({
+        sequence, index: currentOrdinal, preservePlayback, play: autoPlay, signal, bulkPlayId
+      });
     }
     const currentTrack = preservePlayback
       ? this.audioPlayer.stateManager?.getStateSnapshot?.().currentTrack ?? null
@@ -1289,6 +1293,7 @@ export class PlaybackManager {
     resolveSource,
     signal,
     onStage,
+    provisionalUnavailable = false,
     resolutionScope = createPlaybackSourceResolutionScope()
   } = {}) {
     if (signal?.aborted) throw signal.reason;
@@ -1300,7 +1305,7 @@ export class PlaybackManager {
     if (typeof resolveSource !== 'function') {
       throw operationError('sourceUnavailable', 'Bulk Play source resolver is unavailable');
     }
-    const previousSessionState = this.#captureSessionPlaybackState();
+    const previousSessionState = this.#captureSessionPlaybackState(receipt.operationId);
     const playbackGeneration = ++this.playbackGeneration;
     const operation = {
       operationId: receipt.operationId,
@@ -1308,12 +1313,14 @@ export class PlaybackManager {
       service,
       playbackGeneration,
       provisionalEntryInstanceId: entry.entryInstanceId,
+      provisionalUnavailable,
       provisionalInstalled: false,
       provisionalLoaded: false,
       resolutionScope,
       previousSessionState
     };
     this.activeBulkPlay = operation;
+    if (provisionalUnavailable) return { accepted: true, operationId: receipt.operationId, playbackGeneration };
     let resolution;
     try {
       onStage?.('sourceResolve');
@@ -1360,7 +1367,8 @@ export class PlaybackManager {
       return this.audioPlayer.contextManager?.seamlessTransition?.(loadedTrack, 0, true, {
         signal,
         onStage,
-        throwOnError: true
+        throwOnError: true,
+        ...(previousSessionState.kind === 'native' && { bulkPlayId: receipt.operationId })
       });
     };
     const mediaPromise = this.transportMediaChain.then(mediaOperation, mediaOperation);
@@ -1385,7 +1393,8 @@ export class PlaybackManager {
     operationId,
     sequence,
     currentOrdinal = 0,
-    firstEntry = null
+    firstEntry = null,
+    signal
   } = {}) {
     const operation = this.activeBulkPlay;
     if (!operation || operation.operationId !== operationId ||
@@ -1402,19 +1411,24 @@ export class PlaybackManager {
     if (publishedCurrentEntry.entryInstanceId !== operation.provisionalEntryInstanceId) {
       throw operationError('stalePlaybackEntry', 'Published sequence no longer matches the provisional track');
     }
-    if (!operation.provisionalLoaded) return { accepted: false, reason: 'playbackStartFailed' };
+    const { provisionalUnavailable } = operation;
+    if (!operation.provisionalLoaded && !provisionalUnavailable) return { accepted: false, reason: 'playbackStartFailed' };
+    if (provisionalUnavailable) operation.provisionalInstalled = true;
     await this.loadCatalogSequence(publishedSequence, {
       currentOrdinal,
-      preservePlayback: true,
+      preservePlayback: !provisionalUnavailable,
+      autoPlay: provisionalUnavailable,
       preservePlaybackGeneration: true,
-      saveSession: false
+      saveSession: false,
+      signal,
+      ...(operation.previousSessionState?.kind === 'native' && { bulkPlayId: operationId })
     });
     if (operation !== this.activeBulkPlay || operation.playbackGeneration !== this.playbackGeneration) {
       return { accepted: false, reason: 'stale' };
     }
+    // The native commit publishes the current track, name and position together.
     this.audioPlayer.stateManager?.updateState?.({
-      currentTrack,
-      currentTrackPosition: position,
+      ...(!this.audioPlayer.contextManager?.nativeQueueOwned && { currentTrack, currentTrackPosition: position }),
       playbackGeneration: this.playbackGeneration
     }, 'PlaybackManager bulk Play publish');
     operation.phase = 'published';
@@ -1429,7 +1443,8 @@ export class PlaybackManager {
     operationKind,
     sequence,
     currentOrdinal: requestedOrdinal = 0,
-    firstEntry = null
+    firstEntry = null,
+    signal
   } = {}) {
     if (!(sequence instanceof CatalogSequence) && !(sequence instanceof CompositeCatalogSequence)) {
       throw operationError('invalidOperationResult', 'Catalog operation sequence is invalid');
@@ -1439,7 +1454,8 @@ export class PlaybackManager {
         operationId,
         sequence,
         currentOrdinal: requestedOrdinal,
-        firstEntry
+        firstEntry,
+        signal
       });
     }
     if (operationKind !== 'playNext' && operationKind !== 'queue') {
@@ -1612,7 +1628,8 @@ export class PlaybackManager {
     return { kind: 'published' };
   }
 
-  #captureSessionPlaybackState() {
+  #captureSessionPlaybackState(operationId) {
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return { kind: 'native', operationId };
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.() ?? {};
     const common = {
       currentOrdinal: state.currentTrackIndex ?? 0,
@@ -1653,6 +1670,11 @@ export class PlaybackManager {
 
   async #restoreSessionPlaybackState(snapshot, { restoreMedia = true } = {}) {
     const contextManager = this.audioPlayer.contextManager;
+    if (snapshot.kind === 'native') {
+      this.pendingTransport.invalidate();
+      this.trackCommandGeneration += 1;
+      return contextManager.restoreNativeQueue(snapshot.operationId);
+    }
     if (snapshot.unloaded && restoreMedia) {
       const transportGeneration = this.trackCommandGeneration;
       await contextManager?.stop?.();
@@ -2802,18 +2824,19 @@ export class PlaybackManager {
    * Initialize keyboard shortcuts
    */
   runPlaybackCommand(command) {
-    try {
-      return Promise.resolve(command()).catch(error => {
-        console.error('[PlaybackManager] Playback command failed:', error);
+    const fail = error => {
+      console.error('[PlaybackManager] Playback command failed:', error);
+      // The host has already told the user about a reported error.
+      if (!error?.reported) {
         globalThis.window?.uiManager?.setError?.(error?.code === 'alacRequiresMacDesktop'
           ? 'error.alacRequiresMacDesktop' : 'error.playbackCommandFailed', true);
-        return false;
-      });
+      }
+      return false;
+    };
+    try {
+      return Promise.resolve(command()).catch(fail);
     } catch (error) {
-      console.error('[PlaybackManager] Playback command failed:', error);
-      globalThis.window?.uiManager?.setError?.(error?.code === 'alacRequiresMacDesktop'
-        ? 'error.alacRequiresMacDesktop' : 'error.playbackCommandFailed', true);
-      return Promise.resolve(false);
+      return Promise.resolve(fail(error));
     }
   }
 

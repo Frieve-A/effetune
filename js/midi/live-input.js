@@ -1,11 +1,12 @@
 import { recognizeMidiSystemReset, recognizeMidiDrumMode } from './system-reset.js';
 
-// The controller manager owns Web MIDI access and port identity. A Music Player
-// shown to the user owns MIDI even while paused. The network renderer retains a
-// hidden player without UI while it waits for remote content; it creates the UI
-// before playing, so the hidden idle player must not block live input.
+// A visible Music Player keeps priority while paused. A queue restored at startup
+// leaves live MIDI available until the player starts opening a track.
 export function musicPlayerOwnsMidi(powerController) {
-  return !!powerController?.player?.ui?.container;
+  const player = powerController?.player;
+  if (!player?.ui?.container) return false;
+  const state = player.stateManager?.getStateSnapshot?.();
+  return state?.isPlaybackPending === true || !player.playbackManager?.isUnloadedPlaybackSession?.(state);
 }
 
 export class MidiLiveInput {
@@ -20,8 +21,10 @@ export class MidiLiveInput {
     this.activeSource = null;
     this.disposed = false;
     this.receive = event => this.onMessage(event);
-    this.unsubscribeDevices = manager.onChange(() => this.syncSource());
-    this.unsubscribePower = powerController?.subscribe(() => this.syncSource());
+    this.syncOwnership = () => this.syncSource();
+    this.unsubscribeDevices = manager.onChange(this.syncOwnership);
+    this.unsubscribePower = powerController?.subscribe(this.syncOwnership);
+    audioManager.addEventListener?.('playerPlaybackPendingChanged', this.syncOwnership);
   }
 
   async select(key) {
@@ -75,6 +78,7 @@ export class MidiLiveInput {
     this.disposed = true;
     this.unsubscribeDevices?.();
     this.unsubscribePower?.();
+    this.audioManager.removeEventListener?.('playerPlaybackPendingChanged', this.syncOwnership);
     if (this.activeSource !== null) this.audioManager.setLiveMidiInputSource(null);
     this.activeSource = null;
     this.activePort = null;

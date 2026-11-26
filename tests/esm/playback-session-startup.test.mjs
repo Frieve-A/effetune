@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { UIManager } from '../../js/ui-manager.js';
+import { reportAndroidPlaybackRestore } from '../../js/android/playback-queue.js';
 import {
   readPlaybackSessionMarker, writePlaybackSessionMarker
 } from '../../js/ui/audio-player/playback-session-marker.js';
@@ -89,4 +90,25 @@ test('startup reuses the empty receiver and rechecks invalidation after its play
       assert.deepEqual(calls, superseded ? [] : ['install', 'show', 'status.playbackSessionPartiallyRestored', 1]);
     }
   });
+});
+
+test('Android startup reports only omitted tracks from the Service restore result', async () => {
+  const messages = [], requests = [];
+  const outcomes = [
+    [{ restoredCount: 3, omittedCount: 2 }, ['status.playbackSessionPartiallyRestored', false, { count: 2 }]],
+    [{ restoredCount: 0, omittedCount: 2 }, ['status.playbackSessionNotRestored']],
+    [{ restoredCount: 3, omittedCount: 0 }, null],
+    [{}, null]
+  ];
+  const ui = { showTransientMessage: (...args) => messages.push(args) };
+  for (const [result, expected] of outcomes) {
+    await reportAndroidPlaybackRestore(ui, {
+      async request(command) {
+        requests.push(command);
+        return result;
+      }
+    });
+    assert.deepEqual(messages.splice(0), expected ? [expected] : []);
+  }
+  assert.deepEqual(requests, outcomes.map(() => 'playback.queue.takeRestoreResult'));
 });

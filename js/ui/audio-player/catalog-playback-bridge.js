@@ -86,7 +86,10 @@ export class CatalogPlaybackBridge {
       const operation = {
         operationId: receipt.operationId,
         operationKind: request.operationKind,
+        applyPhase: request.operationKind === 'play' ? 'STARTING_PLAYBACK' : 'PREPARING_PLAYER',
         shuffleEnabled,
+        startAtShuffleHead: shuffleEnabled && options.currentOrdinal == null,
+        receipt,
         player,
         controller: new AbortController(),
         listeners: new Set(),
@@ -99,12 +102,9 @@ export class CatalogPlaybackBridge {
       this.#trackOperation(operation);
       if (request.operationKind === 'play') {
         this.#setWaitingForUser(operation, false);
-        operation.provisionalPromise = racePlaybackAbort(this.#installPlayProvisional({
-          player,
-          receipt,
-          operation
-        }), operation.controller.signal).finally(() => {
-          finishPlaybackPending?.();
+        const provisional = this.#preparePlay(operation);
+        operation.provisionalPromise = racePlaybackAbort(provisional, operation.controller.signal).finally(() => {
+          if (!operation.startAtShuffleHead) finishPlaybackPending?.();
           if (!operation.finishPromise) this.#setWaitingForUser(operation, true);
         });
         void operation.provisionalPromise.catch(error => this.#failOperation(operation, error));
@@ -118,7 +118,8 @@ export class CatalogPlaybackBridge {
     }
   }
 
-  async #installPlayProvisional({ player, receipt, operation }) {
+  async #preparePlay(operation) {
+    const { receipt } = operation;
     const signal = operation.controller.signal;
     const provisionalEntry = receipt.provisionalEntry ??
       await this.service.getProvisionalEntry?.(receipt.operationId);
@@ -133,21 +134,42 @@ export class CatalogPlaybackBridge {
       }
       throw playbackBridgeError('invalidOperationResult', 'Play operation did not resolve a provisional entry');
     }
+    // Queue construction can continue outside the source-start deadline once a playable entry exists.
+    if (operation.startAtShuffleHead) return { accepted: true };
+    return this.#installPlayProvisional(operation, provisionalEntry);
+  }
+
+  async #installPlayProvisional(operation, provisionalEntry) {
+    const { player, receipt } = operation;
+    const signal = operation.controller.signal;
+    throwIfPlaybackSourceResolutionAborted(signal);
     if (!player.ui?.container) player.ui?.createPlayerUI?.();
     const resolutionScope = createPlaybackSourceResolutionScope();
+    const resolveSource = (entry, activeResolutionScope, signal) => this.#resolveSequenceEntrySource({
+      entryInstanceId: entry.entryInstanceId,
+      trackUid: entry.trackUid,
+      resolutionScope: activeResolutionScope,
+      signal: signal ?? operation.controller.signal,
+      operation
+    });
+    let androidSource, provisionalUnavailable = false;
+    if (player.contextManager?.nativeQueueOwned) {
+      try {
+        androidSource = await resolveSource(provisionalEntry, resolutionScope, signal);
+      } catch (error) {
+        if (error?.code !== 'document-not-found') throw error;
+        // The committed sequence can still start with another track.
+        provisionalUnavailable = true;
+      }
+    }
     const provisionalResult = await player.playbackManager.installBulkPlayProvisional({
       receipt: { ...receipt, provisionalEntry },
       service: this.service,
       resolutionScope,
       signal,
+      ...(provisionalUnavailable && { provisionalUnavailable }),
       onStage: stage => { operation.stage = stage; },
-      resolveSource: (entry, activeResolutionScope, signal) => this.#resolveSequenceEntrySource({
-        entryInstanceId: entry.entryInstanceId,
-        trackUid: entry.trackUid,
-        resolutionScope: activeResolutionScope,
-        signal: signal ?? operation.controller.signal,
-        operation
-      })
+      resolveSource: androidSource === undefined ? resolveSource : () => androidSource
     });
     if (!provisionalResult.accepted) {
       throw playbackBridgeError(
@@ -163,8 +185,8 @@ export class CatalogPlaybackBridge {
     if (!operation) return this.service.status(operationId);
     if (operation.terminal) return { operationId, terminalKind: operation.terminal.state, result: operation.terminal };
     return operation.workerTerminal
-      ? { operationId, phase: 'STARTING_PLAYBACK' }
-      : operation.status ?? { operationId, phase: 'STARTING_PLAYBACK' };
+      ? { operationId, phase: operation.applyPhase }
+      : operation.status ?? { operationId, phase: operation.applyPhase };
   }
 
   cancel(operationId) {
@@ -334,7 +356,7 @@ export class CatalogPlaybackBridge {
     }
     this.#emit(operation, {
       kind: 'progress',
-      progress: { operationId: operation.operationId, phase: 'STARTING_PLAYBACK' }
+      progress: { operationId: operation.operationId, phase: operation.applyPhase }
     });
     operation.finishPromise = this.#finishOperationOnce(operation, terminal);
     return operation.finishPromise;
@@ -354,12 +376,11 @@ export class CatalogPlaybackBridge {
       const provisional = await operation.provisionalPromise;
       throwIfPlaybackSourceResolutionAborted(operation.controller.signal);
       if (provisional?.accepted === false) throw playbackBridgeError(provisional.reason, 'Playback did not start');
-      const applied = await racePlaybackAbort(this.#applyTerminal({ ...operation, terminal }), operation.controller.signal);
-      if (applied?.accepted === false) throw playbackBridgeError(applied.reason, 'Playback queue was not published');
+      const result = await racePlaybackAbort(this.#applyTerminal(operation, terminal), operation.controller.signal);
       await racePlaybackAbort(operation.player.playbackManager.finishBulkPlayTerminal?.(
         operation.operationId, { succeeded: true }
       ), operation.controller.signal);
-      this.#publishTerminal(operation, terminal.state ? terminal : { state: 'succeeded', result: terminal });
+      this.#publishTerminal(operation, { ...(terminal.state ? terminal : {}), state: 'succeeded', result });
     } catch (error) {
       this.#failOperation(operation, error);
     }
@@ -384,7 +405,7 @@ export class CatalogPlaybackBridge {
     if (operation.terminal || operation.controller.signal.aborted) return;
     if (error?.name === 'AbortError') {
       error = playbackBridgeError('playbackCancelled', 'Playback was cancelled');
-    } else {
+    } else if (error?.code !== 'library-files-missing') {
       this.#reportError(error);
     }
     this.#abortOperation(operation, error);
@@ -426,7 +447,8 @@ export class CatalogPlaybackBridge {
     operation.deadlineTimer.unref?.();
   }
 
-  async #applyTerminal({ operationId, operationKind, shuffleEnabled = false, terminal, player, controller }) {
+  async #applyTerminal(operation, terminal) {
+    const { operationId, operationKind, shuffleEnabled, player, controller } = operation;
     const result = terminalResult(terminal);
     if (
       !result || result.operationKind !== operationKind ||
@@ -445,15 +467,25 @@ export class CatalogPlaybackBridge {
       shuffleSeed: result.shuffleSeed ?? 0,
       shuffleEnabled
     });
-    const currentOrdinal = sequence.toTransportOrdinal(result.firstOrdinal);
+    let firstEntry = result.firstEntry;
+    if (operation.startAtShuffleHead) {
+      // The permutation depends on the final number of playable entries.
+      firstEntry = await sequence.getEntry(0);
+      await this.#installPlayProvisional(operation, firstEntry);
+    } else if (shuffleEnabled) {
+      sequence.shuffleTransportOffset = sequence.toTransportOrdinal(result.firstOrdinal);
+    }
     throwIfPlaybackSourceResolutionAborted(controller.signal);
-    return player.playbackManager.commitCatalogDestination({
+    const applied = await player.playbackManager.commitCatalogDestination({
       operationId,
       operationKind,
       sequence,
-      currentOrdinal,
-      firstEntry: result.firstEntry
+      currentOrdinal: shuffleEnabled ? 0 : result.firstOrdinal,
+      firstEntry,
+      ...(player.contextManager?.nativeQueueOwned && { signal: controller.signal })
     });
+    if (applied?.accepted === false) throw playbackBridgeError(applied.reason, 'Playback queue was not published');
+    return operation.startAtShuffleHead ? { ...result, firstOrdinal: firstEntry.canonicalOrdinal, firstEntry } : result;
   }
 
   createPlaybackCatalogSequence(descriptor) {
@@ -514,6 +546,7 @@ export class CatalogPlaybackBridge {
         if (operation) operation.stage = 'folderAccess';
         restored = await this.requestFolderAccess(folderId, {
           signal,
+          ...(error.details.reselectFolder === true && { reselectFolder: true }),
           onUserInteractionChange: waiting => {
             if (operation) {
               operation.waitingForUser = waiting;

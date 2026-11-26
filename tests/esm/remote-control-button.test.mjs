@@ -51,6 +51,33 @@ test('remote button reflects status updates, opens the panel, and releases event
   assert.equal(disposed, 1);
 });
 
+test('remote button refreshes both labels for the current connection when the language changes', async () => {
+  const { button, badge, document } = controls();
+  let language = 'en';
+  document.defaultView = { uiManager: {
+    t(key, { count, port } = {}) {
+      if (language === 'ja' && key === 'ui.remoteControlButton.connectedManyWithPort') {
+        return `リモートコントロール：${count} 台接続中（ポート ${port}）`;
+      }
+      return key;
+    }
+  } };
+  const dispose = initRemoteControlButton({
+    getStatus: async () => ({ enabled: true, clients: 2, port: 47300 }),
+    async openPanel() {}
+  }, document);
+  try {
+    await flushMicrotasks();
+    assert.equal(button.title, 'Remote Control: 2 devices connected (port 47300)');
+    language = 'ja';
+    button.dispatchEvent(new Event('remote-control-update-texts'));
+    assert.equal(button.title, 'リモートコントロール：2 台接続中（ポート 47300）');
+    assert.equal(button.attributes['aria-label'], button.title);
+    assert.equal(button.dataset.state, 'connected');
+    assert.equal(badge.textContent, '2');
+  } finally { dispose(); }
+});
+
 test('remote button bridge failures settle without leaving unhandled requests', async () => {
   const { button, document } = controls();
   let opened = 0;

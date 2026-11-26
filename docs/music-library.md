@@ -22,7 +22,7 @@ Music Library also indexes `.dsf` and `.dff` files. Rescan an existing folder to
 
 To include MP4, WebM, M4V, MOV, MKV, and 3GP files, enable **Include video file formats in Music Library** under **Settings > Config... > General**, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. Actual playback support, including the audio codec inside a video file, depends on the browser or OS decoder. See the [Music Player guide](music-player.md#video) for video display.
 
-To include MIDI/KAR (`.mid`, `.midi`, `.kar`) and MusicXML (`.musicxml`, `.xml`, `.mxl`) files, enable **Include MIDI files in Music Library** in the same settings, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. To hear these files, add SoundFont Player and load an instrument, or select an external **MIDI Output Device**; see [MIDI files](music-player.md#midi-files) and [MusicXML files](music-player.md#musicxml-files). MIDI and MusicXML playback and library registration are available in the desktop app and web/PWA player. They are not supported in the Android app.
+To include MIDI/KAR (`.mid`, `.midi`, `.kar`) and MusicXML (`.musicxml`, `.xml`, `.mxl`) files, enable **Include MIDI files in Music Library** in the same settings, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. To hear these files, add SoundFont Player and load an instrument, or select an external **MIDI Output Device**; see [MIDI files](music-player.md#midi-files) and [MusicXML files](music-player.md#musicxml-files).
 
 With **Include MIDI files in Music Library** enabled, turn on **Include MIDI files inside archives (ZIP, LZH, etc.)** to include MIDI, KAR, and MusicXML files in ZIP, LZH/LHA, tar, gzip, and gzip-compressed tar archives. This option is off by default and takes effect when you add or rescan a folder. Music Library adds up to 500 tracks per archive and skips password-protected files and RAR or 7z archives. For cover artwork, Music Library first looks in the track’s folder inside the archive, then beside the archive itself.
 
@@ -112,9 +112,9 @@ Choosing **Remove** only removes the folder from EffeTune's catalog; your files 
 
 Choose **Analyze Loudness** at the top of Music Library to measure new and changed tracks. You can cancel and run it again to continue. To use the results, choose **Track** or **Album** under **ReplayGain** in **Audio Configuration**. A track’s **Properties** show its average loudness (LUFS), highest true peak (dBTP), and loudness range (LU). A wider range means a greater difference between quiet and loud passages.
 
-The desktop and web apps can measure MP3, AAC, FLAC, WAV, Vorbis and Opus, including supported video soundtracks and individual CUE tracks. Support depends on the decoder. The macOS app also measures ALAC. Analysis supports mono, stereo and 5.1 audio. DSD, MIDI, MusicXML and network tracks are excluded. If files are unavailable, reconnect their folder and run the analysis again.
+EffeTune can measure MP3, AAC, FLAC, WAV, Vorbis and Opus, including supported video soundtracks and individual CUE tracks. Support depends on the decoder. The macOS app also measures ALAC. Analysis supports mono, stereo and 5.1 audio. DSD, MIDI, MusicXML and network tracks are excluded. If files are unavailable, reconnect their folder and run the analysis again.
 
-In the desktop app, **Write ReplayGain Tags** saves the measurements to eligible FLAC, MP3 and M4A files for use in other players. Confirming changes the original files and replaces existing ReplayGain tags. The tags use the standard −18 LUFS reference regardless of the playback target. CUE tracks are skipped. Measurements stay in the library until you choose to write tags.
+In the desktop and Android apps, **Write ReplayGain Tags** saves the measurements to eligible FLAC, MP3 and M4A files for use in other players. In the Android app, the files must be in a folder where EffeTune can rename and delete files. Confirming changes the original files and replaces existing ReplayGain tags. The tags use the standard −18 LUFS reference regardless of the playback target. CUE tracks are skipped. Measurements stay in the library until you choose to write tags.
 
 ## Playlists
 
@@ -145,11 +145,11 @@ When exporting a playlist, enable **Relative paths** if you want the exported M3
 - Clearing browser site data removes the web app's catalog and playlists; export important playlists to keep them.
 - Large collections load progressively as you scroll. Use Music Library in one EffeTune window at a time.
 
-## Music on your network (desktop app)
+## Music on your network (desktop and Android apps)
 
 Use **Library** to browse this device or a discovered music server, and the device selector at the top of the window to choose where selected music plays. Switching the library changes browsing and search only. Adding folders, rescanning and other local library management are available with **This device** selected.
 
-When browsing another EffeTune library, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added**, and **Playlists** as you do locally. Search the selected library, sort its lists, and open albums, artists or genres to find their tracks. In **Folders**, use **Tree** to browse the folder hierarchy or **Flat** to list all tracks in the selected folder. Only shared music appears. Remote playlists can be browsed and played; edit them on the source computer.
+When browsing another EffeTune library, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added**, and **Playlists** as you do locally. Search the selected library, sort its lists, and open albums, artists or genres to find their tracks. In **Folders**, use **Tree** to browse the folder hierarchy or **Flat** to list all tracks in the selected folder. Only shared music appears. Remote playlists can be browsed and played; edit them on the source device.
 
 Tap a remote track on mobile, or double-click it on PC, to start playback. Large lists queue a range around the chosen track, up to the player's limit (at most 4,096 tracks). The current track uses the same highlight and ♪ mark as local music when it can be identified from the player's information. Selecting all tracks includes the other pages of the current list.
 
@@ -161,9 +161,9 @@ Other music servers show the categories and folder hierarchy they publish; searc
 
 ### Subsonic / OpenSubsonic servers
 
-In the desktop app, open **Settings > Config... > Network > Subsonic / OpenSubsonic**. Enter **Name**, **Server URL**, **Username**, and **Password**, then choose **Add**. Select the server under **Library** to browse albums, tracks, and server playlists, search, and play or queue music on the selected playback device. Playlist order and repeated tracks are preserved; edit server playlists on the server itself. **Test connection** checks a saved connection, and **Remove** disconnects it.
+In the desktop or Android app, open **Settings > Config... > Network > Subsonic / OpenSubsonic**. Enter **Name**, **Server URL**, **Username**, and **Password**, then choose **Add**. Select the server under **Library** to browse albums, tracks, and server playlists, search, and play or queue music on the selected playback device. Playlist order and repeated tracks are preserved; edit server playlists on the server itself. **Test connection** checks a saved connection, and **Remove** disconnects it.
 
-In the PWA, choose **Library > Add music server…** for a direct HTTPS connection. The server must allow browser access (CORS); the connection and sign-in last for the current session. For playback on another device, or when direct browser access fails, add the server on a registered EffeTune computer and allow browsing other music servers there. Select the library offered through that computer; see [PWA setup](openhome.md#pwa).
+In the PWA, choose **Library > Add music server…** for a direct HTTPS connection. The server must allow browser access (CORS); the connection and sign-in last for the current session. For playback on another device, or when direct browser access fails, add the server on a registered EffeTune desktop or Android app and allow browsing other music servers there. Select the library offered through that device; see [PWA setup](openhome.md#pwa).
 
 The original audio is preferred. A server-provided converted stream may be used when the destination needs it; its format and quality can differ from the stored file. EffeTune does not add codecs or convert the audio itself. Available formats and seeking depend on the server and player.
 
@@ -173,6 +173,6 @@ To play individual local files without enabling library sharing, choose another 
 
 ## Shared music in the PWA
 
-The PWA can browse a registered EffeTune computer’s shared library and other music servers it permits, and play through this device’s effects or a permitted network player. Local PWA files cannot be sent to another player. See [PWA setup and playback](openhome.md#pwa) for adding a device, browser permissions, and connection requirements.
+The PWA can browse a registered EffeTune desktop or Android app’s shared library and other music servers it permits, and play through this device’s effects or a permitted network player. Local PWA files cannot be sent to another player. See [PWA setup and playback](openhome.md#pwa) for adding a device, browser permissions, and connection requirements.
 
 [← Back to README](../README.md)

@@ -6,6 +6,7 @@
  * Clipboard API because permission-denied async writes can consume the user
  * activation that the synchronous copy path needs.
  */
+import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 
 function copyTextWithSelection(text) {
     if (typeof document === 'undefined') {
@@ -111,11 +112,21 @@ export async function copyTextToClipboard(text) {
  * Read text from the clipboard.
  *
  * In Electron, navigator.clipboard.readText is denied on file:// pages, so we
- * prefer Electron's native clipboard exposed via the preload bridge. The web
- * Clipboard API is used as a fallback for the browser build.
+ * prefer Electron's native clipboard exposed via the preload bridge. Android
+ * WebView always denies clipboard read permission, so Android reads through
+ * its host bridge. The web Clipboard API is used for the browser build.
  * @returns {Promise<string>} The clipboard text, or '' if it could not be read
  */
 export async function readTextFromClipboard() {
+    if (isAndroidHost()) {
+        try {
+            const { text } = await getAndroidBridge().request('clipboard.readText');
+            return typeof text === 'string' ? text : '';
+        } catch (err) {
+            console.error('[clipboard] read failed:', err);
+            return '';
+        }
+    }
     try {
         const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
         if (electronAPI && typeof electronAPI.readClipboardText === 'function') {

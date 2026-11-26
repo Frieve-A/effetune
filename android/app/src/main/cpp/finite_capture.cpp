@@ -9,14 +9,19 @@
 
 namespace effetune::android {
 FiniteCapture::FiniteCapture(int excitationFd, int resultFd, std::uint32_t excitationFrames,
-                             std::uint32_t captureFrames)
-    : excitationFrames_(excitationFrames), captureFrames_(captureFrames) {
+                             std::uint32_t captureFrames, float overloadPeak,
+                             std::uint32_t overloadTailFrames, int inputChannel, unsigned outputChannels)
+    : excitationFrames_(excitationFrames), captureFrames_(captureFrames),
+      overloadPeak_(overloadPeak), overloadTail_(std::max(1u, overloadTailFrames)),
+      inputChannel_(inputChannel), outputChannels_(outputChannels), end_(captureFrames) {
   struct stat excitationInfo{}, resultInfo{};
-  if (excitationFrames == 0 || captureFrames < excitationFrames ||
+  if (outputChannels < 2 || outputChannels > 16 || excitationFrames == 0 || captureFrames < excitationFrames ||
+      !(overloadPeak >= 0 && overloadPeak <= 1) || inputChannel < 0 || inputChannel > 2 ||
       fstat(excitationFd, &excitationInfo) || fstat(resultFd, &resultInfo) ||
       !S_ISREG(excitationInfo.st_mode) || !S_ISREG(resultInfo.st_mode) ||
-      excitationInfo.st_size != static_cast<std::int64_t>(excitationFrames) * 8)
+      excitationInfo.st_size != static_cast<std::int64_t>(excitationFrames) * outputChannels * static_cast<int>(sizeof(float)))
     throw std::invalid_argument("Invalid finite capture files");
+  excitation_.resize(std::size_t(capacity) * outputChannels);
   excitationFd_ = dup(excitationFd);
   resultFd_ = dup(resultFd);
   if (excitationFd_ < 0 || resultFd_ < 0 ||
@@ -45,48 +50,70 @@ FiniteCapture::~FiniteCapture() {
 
 void FiniteCapture::process(const float *microphone, std::uint32_t microphoneFrames, float *output,
                             std::uint32_t frames) noexcept {
-  std::fill_n(output, frames * 2, 0.0F);
+  std::fill_n(output, frames * outputChannels_, 0.0F);
   if (status_.load() != 1)
     return;
   const auto captured = captured_.load(std::memory_order_relaxed);
-  if (captured == captureFrames_)
+  const auto end = end_.load(std::memory_order_relaxed);
+  if (captured >= end)
     return;
-  const auto count = std::min(frames, captureFrames_ - captured);
+  auto count = std::min(frames, end - captured);
   const auto excitationCount =
       captured < excitationFrames_ ? std::min(count, excitationFrames_ - captured) : 0;
-  if (microphoneFrames < count || excitation_.queued() < excitationCount) {
+  if (microphoneFrames < count || (excitationCount && loaded_.load(std::memory_order_acquire) < captured + excitationCount)) {
     if (captured != 0)
       status_.store(3);
     return;
+  }
+  if (overloadPeak_ > 0 && end == captureFrames_) {
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const float *frame = microphone + static_cast<std::size_t>(i) * 2;
+      const float sample =
+          inputChannel_ == 2 ? 0.5F * (frame[0] + frame[1]) : frame[inputChannel_];
+      if (sample >= overloadPeak_ || -sample >= overloadPeak_) {
+        // Keep a short tail after the overload, then finish early like the desktop engine.
+        const auto stop = static_cast<std::uint64_t>(captured) + i + overloadTail_;
+        if (stop < end) {
+          end_.store(static_cast<std::uint32_t>(stop), std::memory_order_relaxed);
+          count = std::min(count, static_cast<std::uint32_t>(stop) - captured);
+        }
+        break;
+      }
+    }
   }
   if (recording_.write(microphone, count, 1) != count) {
     status_.store(3);
     return;
   }
-  // read() uses the requested planar stride. The trailing output is already zero.
-  excitation_.read(output, frames, true);
+  for (unsigned i = 0; i < std::min(count, excitationCount); ++i) {
+    const float *source = excitation_.data() + ((captured + i) % capacity) * outputChannels_;
+    for (unsigned ch = 0; ch < outputChannels_; ++ch) output[ch * frames + i] = source[ch];
+  }
   captured_.store(captured + count, std::memory_order_release);
 }
 
 void FiniteCapture::transfer() noexcept {
-  std::array<float, 8192> excitation{}, planar{}, interleaved{};
+  std::array<float, 8192> planar{}, interleaved{};
   std::uint32_t readFrames = 0, writtenFrames = 0;
   while (!stopping_.load() && status_.load() == 1) {
-    if (readFrames < excitationFrames_ && excitation_.queued() <= 65536 - 4096) {
-      const auto count = std::min(4096u, excitationFrames_ - readFrames);
-      const auto size = static_cast<std::size_t>(count) * 8;
-      if (pread(excitationFd_, excitation.data(), size, static_cast<off_t>(readFrames) * 8) !=
+    if (readFrames < excitationFrames_ && readFrames - captured_.load(std::memory_order_acquire) <= capacity - 4096) {
+      const unsigned index = readFrames % capacity;
+      const auto count = std::min({4096u, excitationFrames_ - readFrames, capacity - index});
+      const auto size = std::size_t(count) * outputChannels_ * sizeof(float);
+      auto *samples = excitation_.data() + std::size_t(index) * outputChannels_;
+      if (pread(excitationFd_, samples, size, static_cast<off_t>(readFrames) * outputChannels_ * sizeof(float)) !=
           static_cast<ssize_t>(size)) {
         status_.store(3);
         break;
       }
-      for (std::uint32_t i = 0; i < count * 2; ++i) {
-        if (!std::isfinite(excitation[i]) || excitation[i] < -1 || excitation[i] > 1) {
+      for (std::uint32_t i = 0; i < count * outputChannels_; ++i) {
+        if (!std::isfinite(samples[i]) || samples[i] < -1 || samples[i] > 1) {
           status_.store(3);
           return;
         }
       }
-      readFrames += excitation_.write(excitation.data(), count, 1);
+      readFrames += count;
+      loaded_.store(readFrames, std::memory_order_release);
     }
     std::fill(planar.begin(), planar.end(), 0.0F);
     const auto count = recording_.read(planar.data(), 4096, true);
@@ -102,7 +129,8 @@ void FiniteCapture::transfer() noexcept {
         break;
       }
       writtenFrames += count;
-      if (writtenFrames == captureFrames_) {
+      // end_ is stored before the ring write that publishes the final frames.
+      if (writtenFrames == end_.load(std::memory_order_relaxed)) {
         const auto finished = fsync(resultFd_) == 0 ? 2 : 3;
         int running = 1;
         status_.compare_exchange_strong(running, finished);

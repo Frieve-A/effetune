@@ -1,3 +1,5 @@
+import { isLocalNetworkPermissionError } from '../android/network.js';
+
 const settingsByApi = new WeakMap();
 
 export function getRemoteControlSettings(api) {
@@ -55,7 +57,7 @@ class RemoteControlSettings {
             if (generation === this.generation) this.status = status;
         } catch (error) {
             console.error('[remote] settings update failed:', error);
-            if (generation === this.generation) this.errorKey = 'updateFailed';
+            if (generation === this.generation) this.errorKey = isLocalNetworkPermissionError(error) ? 'localNetworkPermission' : 'updateFailed';
         } finally {
             if (generation === this.generation) {
                 this.busy = false;

@@ -36,10 +36,10 @@ test('desktop view switch buttons match neighboring header icon button size', ()
 test('mobile header shows Visualizer beside the overflow menu and reserves space for both', () => {
   const css = readCss('../../css/effetune-mobile.css');
 
-  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-right:\s*calc\(2 \* var\(--et-mobile-control-height\) \+ 16px\);/);
+  assert.match(getRule(css, 'body.layout-mobile h1'), /padding-inline-end:\s*calc\(2 \* var\(--et-mobile-control-height\) \+ 16px\);/);
   const headerButtonsRule = getRule(css, 'body.layout-mobile .header-buttons');
   assert.match(headerButtonsRule, /display:\s*flex;/);
-  assert.match(headerButtonsRule, /right:\s*calc\(var\(--et-mobile-control-height\) \+ 8px\);/);
+  assert.match(headerButtonsRule, /inset-inline-end:\s*calc\(var\(--et-mobile-control-height\) \+ 8px\);/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .effect-pipeline-button'), /display:\s*none !important;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .open-library-button'), /display:\s*none !important;/);
   assert.match(getRule(css, 'body.layout-mobile .header-buttons .settings-menu-container'), /display:\s*none !important;/);
@@ -135,8 +135,9 @@ test('paged track rows reveal selection controls only after mobile selection mod
   );
   const hiddenMetadataRule = getRule(
     css,
-    'body.layout-mobile .library-paged-tracks .library-paged-row > .library-artist-cell,'
+    'body.layout-mobile .library-paged-tracks .library-paged-row > .library-track-number-cell,'
   );
+  const artistRule = getRule(css, 'body.layout-mobile .library-paged-tracks .library-paged-row > .library-artist-cell {');
   const selectedRowRule = getRule(
     css,
     'body.layout-mobile .library-view.mobile-selection-mode .library-paged-row.selected'
@@ -160,6 +161,8 @@ test('paged track rows reveal selection controls only after mobile selection mod
   assert.doesNotMatch(css, /\n\.library-paged-row\.selected\s*\{/);
   assert.match(hiddenMetadataRule, /display:\s*none;/);
   assert.doesNotMatch(hiddenMetadataRule, /library-paged-playlist-row-actions/);
+  assert.match(artistRule, /grid-row:\s*2;/);
+  assert.doesNotMatch(artistRule, /display:\s*none;/);
   assert.doesNotMatch(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.library-paged-row/);
 });
 

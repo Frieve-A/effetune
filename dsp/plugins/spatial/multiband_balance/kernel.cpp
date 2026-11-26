@@ -24,8 +24,8 @@ public:
     lowpass_states_.resize(4u * max_channels_);
     highpass_states_.resize(4u * max_channels_);
     band_signals_.resize(static_cast<std::size_t>(max_channels_) * 5u * max_frames_);
-    temporary_.resize(static_cast<std::size_t>(3u) * max_frames_);
-    output_.resize(static_cast<std::size_t>(max_channels_) * max_frames_);
+    // Two channel lanes each own two intermediate high-pass buffers.
+    temporary_.resize(static_cast<std::size_t>(4u) * max_frames_);
     reset();
   }
 
@@ -67,28 +67,13 @@ public:
       fade_length_ = sample_rate_ * 0.005;
     }
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      const std::size_t audio_offset = static_cast<std::size_t>(channel) * frame_count;
-      float *input = temporary_.data();
-      float *high1 = temporary_.data() + max_frames_;
-      float *high2 = temporary_.data() + 2u * max_frames_;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        input[frame] = audio[audio_offset + frame];
-      }
-
-      float *band0 = bandBuffer(channel, 0u);
-      float *band1 = bandBuffer(channel, 1u);
-      float *band2 = bandBuffer(channel, 2u);
-      float *band3 = bandBuffer(channel, 3u);
-      float *band4 = bandBuffer(channel, 4u);
-      filterBlock(input, band0, coefficients_[0].lowpass, lowpassState(0u, channel), frame_count);
-      filterBlock(input, high1, coefficients_[0].highpass, highpassState(0u, channel), frame_count);
-      filterBlock(high1, band1, coefficients_[1].lowpass, lowpassState(1u, channel), frame_count);
-      filterBlock(high1, high2, coefficients_[1].highpass, highpassState(1u, channel), frame_count);
-      filterBlock(high2, band2, coefficients_[2].lowpass, lowpassState(2u, channel), frame_count);
-      filterBlock(high2, high1, coefficients_[2].highpass, highpassState(2u, channel), frame_count);
-      filterBlock(high1, band3, coefficients_[3].lowpass, lowpassState(3u, channel), frame_count);
-      filterBlock(high1, band4, coefficients_[3].highpass, highpassState(3u, channel), frame_count);
+    // Channel pairs and each crossover's low/high outputs share one loop so the
+    // independent recursions overlap without changing any filter's arithmetic.
+    for (std::uint32_t channel = 0u; channel < channel_count; channel += 2u) {
+      if (channel + 1u < channel_count)
+        splitBands<2u>(audio, channel, frame_count);
+      else
+        splitBands<1u>(audio, channel, frame_count);
     }
 
     std::array<double, 5u> next_balances{};
@@ -108,24 +93,24 @@ public:
       balance_ramp_remaining_ = balance_ramp_frames_;
     }
 
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      if (balance_ramp_remaining_ != 0u) {
-        for (std::size_t band = 0u; band < current_balances_.size(); ++band) {
-          current_balances_[band] += balance_steps_[band];
-        }
-        if (--balance_ramp_remaining_ == 0u)
-          current_balances_ = target_balances_;
+    const std::uint32_t ramp_count =
+        balance_ramp_remaining_ < frame_count ? balance_ramp_remaining_ : frame_count;
+    for (std::uint32_t frame = 0u; frame < ramp_count; ++frame) {
+      for (std::size_t band = 0u; band < current_balances_.size(); ++band) {
+        current_balances_[band] += balance_steps_[band];
       }
+      if (--balance_ramp_remaining_ == 0u)
+        current_balances_ = target_balances_;
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        double sum = 0.0;
-        for (std::uint32_t band = 0u; band < 5u; ++band) {
-          const double balance = current_balances_[band];
-          const double candidate = (channel & 1u) == 0u ? 1.0 - balance : 1.0 + balance;
-          const double gain = candidate > 0.0 ? candidate : 0.0;
-          sum += static_cast<double>(bandBuffer(channel, band)[frame]) * gain;
-        }
-        output_[static_cast<std::size_t>(channel) * frame_count + frame] = static_cast<float>(sum);
+        audio[static_cast<std::size_t>(channel) * frame_count + frame] =
+            mixBands(channel, frame, bandGains(channel));
       }
+    }
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      const std::array<double, 5u> gains = bandGains(channel);
+      float *const channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
+      for (std::uint32_t frame = ramp_count; frame < frame_count; ++frame)
+        channel_audio[frame] = mixBands(channel, frame, gains);
     }
 
     if (fade_length_ > 0.0 && static_cast<double>(fade_counter_) < fade_length_) {
@@ -137,20 +122,13 @@ public:
                                 : 1.0;
         for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
           const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
-          audio[index] = static_cast<float>(static_cast<double>(output_[index]) * fade);
+          audio[index] = static_cast<float>(static_cast<double>(audio[index]) * fade);
         }
       }
       fade_counter_ += frame_count;
       if (static_cast<double>(fade_counter_) >= fade_length_) {
         fade_counter_ = static_cast<std::uint32_t>(fade_length_);
         fade_length_ = 0.0;
-      }
-    } else {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        const std::size_t offset = static_cast<std::size_t>(channel) * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          audio[offset + frame] = output_[offset + frame];
-        }
       }
     }
   }
@@ -170,14 +148,89 @@ private:
     return highpass_states_[static_cast<std::size_t>(crossover) * max_channels_ + channel];
   }
 
-  static void filterBlock(const float *input, float *output,
-                          const dsp::BiquadCoefficients &coefficients,
-                          dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24Sample(
-          static_cast<double>(input[frame]), coefficients, state));
+  [[nodiscard]] std::array<double, 5u> bandGains(std::uint32_t channel) const noexcept {
+    std::array<double, 5u> gains{};
+    for (std::uint32_t band = 0u; band < 5u; ++band) {
+      const double balance = current_balances_[band];
+      const double candidate = (channel & 1u) == 0u ? 1.0 - balance : 1.0 + balance;
+      gains[band] = candidate > 0.0 ? candidate : 0.0;
     }
-    dsp::quantizeLinkwitzRiley24StateToFloat(state);
+    return gains;
+  }
+
+  [[nodiscard]] float mixBands(std::uint32_t channel, std::uint32_t frame,
+                               const std::array<double, 5u> &gains) noexcept {
+    double sum = 0.0;
+    for (std::uint32_t band = 0u; band < 5u; ++band)
+      sum += static_cast<double>(bandBuffer(channel, band)[frame]) * gains[band];
+    return static_cast<float>(sum);
+  }
+
+  // Splits Lanes adjacent channels into five bands with the crossover tree.
+  template <std::uint32_t Lanes>
+  void splitBands(const float *audio, std::uint32_t channel, std::uint32_t frame_count) noexcept {
+    const float *source[Lanes];
+    float *low[Lanes];
+    float *high[Lanes];
+    float *high1[Lanes];
+    float *high2[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      high1[lane] = temporary_.data() + static_cast<std::size_t>(2u * lane) * max_frames_;
+      high2[lane] = high1[lane] + max_frames_;
+    }
+    // Crossover k reads `input`, writes band k to `low` and the remainder to `high`.
+    const auto split = [&](std::uint32_t crossover, auto input, auto remainder) noexcept {
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        source[lane] = input(lane);
+        low[lane] = bandBuffer(channel + lane, crossover);
+        high[lane] = remainder(lane);
+      }
+      splitLanes<Lanes>(source, low, high, crossover, channel, frame_count);
+    };
+    split(
+        0u,
+        [&](std::uint32_t lane) {
+          return audio + static_cast<std::size_t>(channel + lane) * frame_count;
+        },
+        [&](std::uint32_t lane) { return high1[lane]; });
+    split(
+        1u, [&](std::uint32_t lane) { return high1[lane]; },
+        [&](std::uint32_t lane) { return high2[lane]; });
+    split(
+        2u, [&](std::uint32_t lane) { return high2[lane]; },
+        [&](std::uint32_t lane) { return high1[lane]; });
+    split(
+        3u, [&](std::uint32_t lane) { return high1[lane]; },
+        [&](std::uint32_t lane) { return bandBuffer(channel + lane, 4u); });
+  }
+
+  // Applies one crossover's low-pass and high-pass to Lanes channels in a single frame loop.
+  template <std::uint32_t Lanes>
+  void splitLanes(const float *const *input, float *const *low, float *const *high,
+                  std::uint32_t crossover, std::uint32_t channel,
+                  std::uint32_t frame_count) noexcept {
+    const dsp::LinkwitzRiley24Coefficients coefficients = coefficients_[crossover];
+    dsp::LinkwitzRiley24State low_state[Lanes];
+    dsp::LinkwitzRiley24State high_state[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      low_state[lane] = lowpassState(crossover, channel + lane);
+      high_state[lane] = highpassState(crossover, channel + lane);
+    }
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        const double sample = static_cast<double>(input[lane][frame]);
+        low[lane][frame] = static_cast<float>(
+            dsp::processLinkwitzRiley24Sample(sample, coefficients.lowpass, low_state[lane]));
+        high[lane][frame] = static_cast<float>(
+            dsp::processLinkwitzRiley24Sample(sample, coefficients.highpass, high_state[lane]));
+      }
+    }
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      dsp::quantizeLinkwitzRiley24StateToFloat(low_state[lane]);
+      dsp::quantizeLinkwitzRiley24StateToFloat(high_state[lane]);
+      lowpassState(crossover, channel + lane) = low_state[lane];
+      highpassState(crossover, channel + lane) = high_state[lane];
+    }
   }
 
   void resetFilterStates() noexcept {
@@ -193,7 +246,6 @@ private:
   std::vector<dsp::LinkwitzRiley24State> highpass_states_;
   std::vector<float> band_signals_;
   std::vector<float> temporary_;
-  std::vector<float> output_;
   std::array<dsp::LinkwitzRiley24Coefficients, 4u> coefficients_{};
   std::array<float, 4u> last_frequencies_{};
   std::array<double, 5u> current_balances_{};

@@ -52,7 +52,7 @@ Clearing the checkbox closes all clients (1001) and releases the port.
 both dialogs use the same setting.
 
 In the main window, the Effect Pipeline header has a Remote Control icon (broadcast symbol,
-tooltip "Remote Control", Electron app only). It is dimmed while the server is off, drawn in the
+tooltip "Remote Control", desktop and Android apps only). It is dimmed while the server is off, drawn in the
 accent color while it listens, and shows a small badge with the number of connected devices.
 Clicking it opens the same Remote Control dialog. Close it with **Close** or Escape; remote control stays enabled.
 
@@ -126,7 +126,7 @@ requests that also return data, the ack comes first and the data message carries
 
 | Request | Effect |
 |---|---|
-| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","irSelection","sync1","describe1"]`, `"appName"` and, once the effect renderer is ready, `"effects"`. `"music1"` is also advertised when network music is available. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client (control characters removed, cut to 48 characters). The Remote Control dialog shows `app` and `version`. Other extra fields are ignored. |
+| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","irSelection","sync1","describe1"]`, `"appName"` and, once the effect renderer is ready, `"effects"`. `"music1"` is also advertised when network music is available. Hosts that do not support `edit` advertise `"history1"` in place of `"sync1"` (see [Sync extension](#sync-extension-sync1)). Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client (control characters removed, cut to 48 characters). The Remote Control dialog shows `app` and `version`. Other extra fields are ignored. |
 | `{"op":"get"}` | Replies with `state`. |
 | `{"op":"chain","pipeline":[...]}` | Replaces the whole pipeline (at most 256 items). If any `nm` is unknown, the request fails and nothing changes. Master bypass keeps its state. |
 | `{"op":"params","index":i,"params":{...}}` | Applies the keys to stage `i` (0-based) of the current pipeline. Keys that are not given stay as they are. |
@@ -283,6 +283,8 @@ Advertised as `"sync1"` in `features`. It lets every participant (the app itself
 native clients) edit the same pipeline and see each other's edits live. Everything is additive: a client
 that ignores it keeps working with `chain`, `params` and `bypass` exactly as before.
 
+Hosts that do not support `edit` (such as the Android app after its window has been closed) advertise `"history1"` instead of `"sync1"`. `history1` covers only the `history`, `slot` and `copySlot` operations and the `slot` field in `state`. Clients enable undo/redo, A/B and copy when either feature is present.
+
 ### State fields
 
 Every `state` message (replies and pushes) also carries:
@@ -354,7 +356,9 @@ values before requesting undo or redo.
 `rev` on acks: every ack of `edit`, `history`, `slot`, `copySlot`, `loadPreset` and also of the older
 `chain`, `params` and `bypass`, plus `selectIR`, carries `rev`, the app's revision after the command took effect. A
 `state` with `rev >= ack.rev` contains the command. `skipped` lists the indexes of ops that did not
-apply.
+apply. Hosts that advertise `"history1"` instead of `"sync1"` send acks without `rev`. Use the ack
+for the operation result and `state` for the current values; a `state` update can arrive before the
+ack.
 
 ### Other ops
 

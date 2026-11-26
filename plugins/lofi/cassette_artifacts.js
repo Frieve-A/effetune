@@ -2911,10 +2911,11 @@ const CASSETTE_ARTIFACTS_STATUS_STATE = { processor: null, cache: new Map() };
 // The rate the status simulation runs at: whatever the audio engine is
 // running at right now, resolved through the same candidate chain the other
 // rate-aware plugin UIs use (fir_crossover, room_eq, ir_reverb,
-// bluetooth_sbc_simulator). Offline and headless callers have no context and
-// get the reference-rate fallback above.
+// bluetooth_sbc_simulator), or the native engine rate on Android. Offline and
+// headless callers have no context and get the reference-rate fallback above.
 function cassetteArtifactsStatusSimRate() {
     const candidates = [
+        window.audioManager?.isAndroid ? window.audioManager.getNativeSampleRate() : undefined,
         window.workletNode?.context?.sampleRate,
         window.audioContext?.sampleRate,
         window.uiManager?.audioManager?.audioContext?.sampleRate

@@ -3,7 +3,8 @@ import { getSettingsStorage } from './settings-storage.js';
 import { readPlaybackSessionMarker, writePlaybackSessionMarker } from './ui/audio-player/playback-session-marker.js';
 import { initNetworkOutputPicker } from './electron/networkOutputPicker.js';
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
-import { getAndroidBridge } from './android/bridge.js';
+import { getAndroidBridge, isAndroidHost } from './android/bridge.js';
+import { shareAndroidContent } from './android/file-downloads.js';
 import { getDsdPlaybackErrorKey } from './ui/audio-player/dsd-source.js';
 import { ARCHIVE_EXTENSIONS } from './library/archive/archive-reader.js';
 import { SCORE_EXTENSIONS } from './midi/score-file.js';
@@ -56,6 +57,13 @@ function usesIOSFilePicker(windowRef = window) {
 }
 
 const MESSAGE_DISPLAY_DURATION_MS = 5000;
+const ANDROID_NOTIFICATION_TEXT_KEYS = {
+    playback: 'ui.android.notification.playback',
+    processing: 'ui.android.notification.processing',
+    play: 'visualizer.playback.play',
+    pause: 'visualizer.playback.pause',
+    stop: 'ui.title.stop'
+};
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const SLEEP_MODE_LABEL = 'Sleep Mode';
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
@@ -963,63 +971,69 @@ export class UIManager {
         }
     }
 
-    // Call this method after audio context is initialized
+    // Call this method after the audio runtime is initialized. Native hosts such
+    // as Android own live audio without an AudioContext, so nothing here may
+    // depend on one.
     initAudio() {
-        if (this.audioManager.audioContext) {
-            this.pipelineAnalyzerController?.refreshAudioFormat?.();
-            this.updateSampleRateDisplay();
+        this.initRangeFillStyling();
+        if (!this.getAudioSampleRate()) return;
 
-            // Set up a MutationObserver to watch for changes to the sampleRate element
-            // This ensures the sample rate is always displayed correctly, even after sleep mode changes
-            if (!this._sampleRateObserver && this.sampleRate) { // Added check for this.sampleRate
-                this._sampleRateObserver = new MutationObserver((mutations) => {
-                    for (const mutation of mutations) {
-                        if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                            // If the content doesn't end with Hz, update it
-                            const content = this.sampleRate.textContent;
-                            if (!content.includes('Hz')) {
-                                this.updateSampleRateDisplay();
-                            }
+        this.pipelineAnalyzerController?.refreshAudioFormat?.();
+        this.updateSampleRateDisplay();
+
+        // Set up a MutationObserver to watch for changes to the sampleRate element
+        // This ensures the sample rate is always displayed correctly, even after sleep mode changes
+        if (!this._sampleRateObserver && this.sampleRate) { // Added check for this.sampleRate
+            this._sampleRateObserver = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                        // If the content doesn't end with Hz, update it
+                        const content = this.sampleRate.textContent;
+                        if (!content.includes('Hz')) {
+                            this.updateSampleRateDisplay();
                         }
                     }
-                });
-
-                this._sampleRateObserver.observe(this.sampleRate, {
-                    childList: true,
-                    characterData: true,
-                    subtree: true
-                });
-            }
-
-            // Listen for sleep mode changes from AudioManager
-            this.audioManager.addEventListener('sleepModeChanged', (data) => {
-                // Legacy sleep-mode indicator: kept as a fallback while the
-                // power policy controller is disabled. When the controller is
-                // enabled, PowerStateView owns the power-state presentation.
-                if (this.audioManager.powerPolicyController?.isControllerEnabled?.()) return;
-                this.updateSleepModeDisplay(data.isSleepMode, data.sampleRate);
-            });
-
-            this.audioManager.addEventListener('audioGraphRebuilt', () => {
-                this.updateSampleRateDisplay();
-            });
-
-            this.audioManager.addEventListener('audioProcessingOverload', (data) => {
-                if (data?.active === false) {
-                    if (this.sampleRate?.classList.contains('audio-glitch-warning')) {
-                        this.scheduleAudioGlitchWarningClear();
-                    }
-                    return;
                 }
+            });
+
+            this._sampleRateObserver.observe(this.sampleRate, {
+                childList: true,
+                characterData: true,
+                subtree: true
+            });
+        }
+
+        // Listen for sleep mode changes from AudioManager
+        this.audioManager.addEventListener('sleepModeChanged', (data) => {
+            // Legacy sleep-mode indicator: kept as a fallback while the
+            // power policy controller is disabled. When the controller is
+            // enabled, PowerStateView owns the power-state presentation.
+            if (this.audioManager.powerPolicyController?.isControllerEnabled?.()) return;
+            this.updateSleepModeDisplay(data.isSleepMode, data.sampleRate);
+        });
+
+        this.audioManager.addEventListener('audioGraphRebuilt', () => {
+            this.updateSampleRateDisplay();
+        });
+        // Android reports its output format and undo availability through native snapshots.
+        this.audioManager.addEventListener('nativeSnapshot', () => {
+            this.updateSampleRateDisplay();
+            this.updateEditButtons();
+        });
+
+        this.audioManager.addEventListener('audioProcessingOverload', (data) => {
+            if (data?.active === false) {
                 if (this.sampleRate?.classList.contains('audio-glitch-warning')) {
                     this.scheduleAudioGlitchWarningClear();
-                    return;
                 }
-                this.showAudioGlitchWarning();
-            });
-
-            this.initRangeFillStyling();
-        }
+                return;
+            }
+            if (this.sampleRate?.classList.contains('audio-glitch-warning')) {
+                this.scheduleAudioGlitchWarningClear();
+                return;
+            }
+            this.showAudioGlitchWarning();
+        });
     }
 
     // Console-only layout preview: uiManager.setDebugChannelCount(16).
@@ -1050,7 +1064,7 @@ export class UIManager {
         // Show the effective DSP output width, including MediaStream output.
         const channelCount = this.debugChannelCount ??
             this.audioManager.getOutputChannelCount?.() ??
-            (this.audioManager.audioContext.destination.channelCount || 2);
+            (this.audioManager.audioContext?.destination?.channelCount || 2);
         const showChannelCount = channelCount > 2;
 
         if (isSleepMode) {
@@ -1080,40 +1094,37 @@ export class UIManager {
         }
     }
 
-    // Update the sample rate display with the current audio context sample rate
-    updateSampleRateDisplay() {
-        if (this.audioManager.audioContext && this.sampleRate) {
-            // Get the current sample rate from the audio context
-            const currentSampleRate = this.audioManager.audioContext.sampleRate;
-            
-            // Show the effective DSP output width, including MediaStream output.
-            const channelCount = this.debugChannelCount ??
-                this.audioManager.getOutputChannelCount?.() ??
-                (this.audioManager.audioContext.destination.channelCount || 2);
-
-            // Preserve sleep mode indicator if present
-            const isSleepMode = this.sampleRate.textContent.includes(SLEEP_MODE_LABEL);
-            
-            // Set the basic sample rate text
-            if (this.sampleRate) { // Added check
-                // Display channel count only if it's not the default stereo (2ch)
-                if (channelCount > 2) {
-                    this.sampleRate.textContent = `${currentSampleRate} Hz ${channelCount}ch`;
-                } else {
-                    this.sampleRate.textContent = `${currentSampleRate} Hz`;
-                }
-                
-                // Add sleep mode text if needed
-                if (isSleepMode) {
-                    this.sampleRate.textContent += ` - ${SLEEP_MODE_LABEL}`;
-                }
-            }
-
-            this.updateSampleRateStatus(currentSampleRate);
-        }
+    // Live processing rate: the AudioContext on Web and desktop, the native
+    // engine on hosts without one (Android).
+    getAudioSampleRate() {
+        return this.audioManager?.audioContext?.sampleRate ??
+            this.audioManager?.getReportedSampleRate?.();
     }
 
-    updateSampleRateStatus(sampleRate = this.audioManager?.audioContext?.sampleRate) {
+    // Update the sample rate display with the current live processing rate
+    updateSampleRateDisplay() {
+        const currentSampleRate = this.getAudioSampleRate();
+        if (!currentSampleRate || !this.sampleRate) return;
+
+        // Show the effective DSP output width, including MediaStream output.
+        const channelCount = this.debugChannelCount ??
+            this.audioManager.getOutputChannelCount?.() ??
+            (this.audioManager.audioContext?.destination?.channelCount || 2);
+
+        // Display channel count only if it's not the default stereo (2ch),
+        // and preserve the sleep mode indicator if present.
+        let text = channelCount > 2
+            ? `${currentSampleRate} Hz ${channelCount}ch`
+            : `${currentSampleRate} Hz`;
+        if (this.sampleRate.textContent.includes(SLEEP_MODE_LABEL)) {
+            text += ` - ${SLEEP_MODE_LABEL}`;
+        }
+        if (this.sampleRate.textContent !== text) this.sampleRate.textContent = text;
+
+        this.updateSampleRateStatus(currentSampleRate);
+    }
+
+    updateSampleRateStatus(sampleRate = this.getAudioSampleRate()) {
         if (!this.sampleRate) return;
 
         this.sampleRate.classList.toggle('low-sample-rate', sampleRate < 88200);
@@ -1166,6 +1177,11 @@ export class UIManager {
         return resolveLanguagePreference(languagePreference, navigator.language);
     }
 
+    applyDocumentLanguage(locale) {
+        document.documentElement.lang = locale;
+        document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+    }
+
     async syncLanguageWithConfig(config = window.appConfig) {
         const nextPreference = normalizeLanguagePreference(config?.language);
         const nextUserLanguage = this.determineUserLanguage(nextPreference);
@@ -1209,6 +1225,9 @@ export class UIManager {
             // If user language is not English, load that language's translations
             if (this.userLanguage !== 'en') {
                 await this.loadTranslations(this.userLanguage);
+            } else {
+                this.applyDocumentLanguage('en');
+                this.syncAndroidNotificationText();
             }
 
             // Update Electron menu if in Electron environment
@@ -1264,10 +1283,12 @@ export class UIManager {
     async loadTranslations(locale, requestGeneration = ++this.translationRequestGeneration) {
         // Default to English if locale is not specified
         const targetLocale = locale || 'en';
-        const publishTranslations = translations => {
+        const publishTranslations = (translations, appliedLocale) => {
             if (requestGeneration !== this.translationRequestGeneration ||
                 targetLocale !== this.userLanguage) return;
             this.translations = translations;
+            this.applyDocumentLanguage(appliedLocale);
+            this.syncAndroidNotificationText();
             this.updateUITexts();
             if (window.electronIntegration && window.electronIntegration.isElectronEnvironment()) {
                 window.electronIntegration.updateApplicationMenu();
@@ -1276,7 +1297,7 @@ export class UIManager {
 
         // If loading English, use the already loaded English translations
         if (targetLocale === 'en') {
-            publishTranslations(this.englishTranslations);
+            publishTranslations(this.englishTranslations, 'en');
             return;
         }
 
@@ -1287,19 +1308,31 @@ export class UIManager {
             // If the locale file doesn't exist, fall back to English
             if (!response.ok) {
                 console.warn(`Translation file for ${targetLocale} not found, falling back to English`);
-                publishTranslations(this.englishTranslations);
+                publishTranslations(this.englishTranslations, 'en');
                 return;
             }
 
             // Get the JSON5 content as text
             const json5Content = await response.text();
 
-            publishTranslations(parseCommentedJSON(json5Content));
+            publishTranslations(parseCommentedJSON(json5Content), targetLocale);
         } catch (error) {
             console.error(`Error loading translations for ${targetLocale}:`, error);
             // Fall back to English translations
-            publishTranslations(this.englishTranslations);
+            publishTranslations(this.englishTranslations, 'en');
         }
+    }
+
+    syncAndroidNotificationText() {
+        if (!isAndroidHost()) return;
+        const text = {};
+        for (const [name, key] of Object.entries(ANDROID_NOTIFICATION_TEXT_KEYS)) {
+            const label = this.t(key);
+            if (label === key) return;
+            text[name] = label;
+        }
+        void getAndroidBridge().request('audio.notificationText', { text })
+            .catch(error => console.warn('Could not send playback notification text:', error));
     }
 
     /**
@@ -1340,6 +1373,7 @@ export class UIManager {
      * Update UI elements with translated text
      */
     updateUITexts() {
+        document.getElementById('remoteControlButton')?.dispatchEvent(new Event('remote-control-update-texts'));
         this.networkOutputPicker?.updateTexts();
         this.browserView?.updateUITexts();
         this.updateLoadingProgress(this.loadingProgressPercent);
@@ -1491,11 +1525,13 @@ export class UIManager {
 
         const systemPresetsTab = document.getElementById('systemPresetsTab');
         if (systemPresetsTab) {
+            systemPresetsTab.textContent = this.t('ui.tab.systemPresets');
             systemPresetsTab.title = this.t('ui.title.systemPresets');
         }
 
         const userPresetsTab = document.getElementById('userPresetsTab');
         if (userPresetsTab) {
+            userPresetsTab.textContent = this.t('ui.tab.userPresets');
             userPresetsTab.title = this.t('ui.title.userPresets');
         }
     }
@@ -1628,7 +1664,17 @@ export class UIManager {
                 const attemptRevision = ++this.shareAttemptRevision;
                 const pipeline = [...this.audioManager.pipeline];
                 const state = this.getPipelineState(pipeline);
-                const copied = await copyTextToClipboard(createShareUrl('p', state));
+                const url = createShareUrl('p', state);
+                if (isAndroidHost()) {
+                    try {
+                        await shareAndroidContent({ text: url, title: this.t('ui.title.sharePipeline') });
+                        return;
+                    } catch (error) {
+                        console.warn('Unable to open the Android sharing screen:', error);
+                        if (attemptRevision !== this.shareAttemptRevision) return;
+                    }
+                }
+                const copied = await copyTextToClipboard(url);
                 if (attemptRevision !== this.shareAttemptRevision) return;
                 if (copied) {
                     this.showTransientMessage('success.urlCopied', false, {}, 3000);
@@ -1817,7 +1863,7 @@ export class UIManager {
         const generation = ++this.playbackSelectionGeneration;
         const isCurrent = () => !controller.signal.aborted && targetGeneration === (this.networkMusic?.playerGeneration ?? 0);
         try {
-            if (!this.audioManager?.isAndroid && files.some(isArchivePlaybackInput)) {
+            if (files.some(isArchivePlaybackInput)) {
                 files = await this.expandArchivePlaybackFiles(files, controller.signal, rememberArchiveNames);
                 if (!files.length || !isCurrent()) return false;
             }
@@ -1876,7 +1922,6 @@ export class UIManager {
                 }))
             }));
             const errorKey = getDsdPlaybackErrorKey(error) || {
-                MIDI_NATIVE_UNSUPPORTED: 'midi.error.nativeUnsupported',
                 cueSelectionTooLarge: 'error.cueSelectionTooLarge',
                 cueSelectionMixed: 'error.cueSelectionMixed',
                 cueSelectionInvalid: 'error.cueSelectionInvalid',
@@ -1896,7 +1941,14 @@ export class UIManager {
         return controller;
     }
 
-    expandArchivePlaybackFiles(files, signal, rememberArchiveNames) {
+    async expandArchivePlaybackFiles(files, signal, rememberArchiveNames) {
+        if (this.audioManager?.isAndroid) {
+            const { AndroidDocumentFile } = await import('./android/library-io.js');
+            files = Array.from(files, file => file?.uri?.startsWith('content://') &&
+                typeof file.slice !== 'function' && isArchivePlaybackInput(file)
+                ? new AndroidDocumentFile({ ...file, mimeType: file.type })
+                : file);
+        }
         return expandArchivePlaybackSelection(files, {
             chooseEntries: async (choices, options) => {
                 const { chooseArchivePlaybackEntries } = await import('./ui/audio-player/archive-playback-dialog.js');
@@ -2233,6 +2285,7 @@ export class UIManager {
                 import('./network-music/controller.js'), import('./network-music/view.js')
             ]);
             const api = window.electronAPI?.networkMusicGetState ? window.electronAPI
+                : isAndroidHost() ? new (await import('./android/network-music-transport.js')).AndroidNetworkMusicTransport()
                 : new (await import('./network-music/pwa-transport.js')).PwaNetworkMusicTransport();
             this.networkMusic = new NetworkMusicController({ api, uiManager: this });
             this.networkMusicView = new NetworkMusicView({ controller: this.networkMusic, uiManager: this });
@@ -2626,7 +2679,8 @@ export class UIManager {
 
     async updateOpenHomeRendererPlayer() {
         if (this.isNetworkPlayerRequired()) {
-            if (!this.openHomeRemoteRuntimeReady || (!window.electronAPI?.openHomeV1 && !window.electronAPI?.airPlayV1)) {
+            const bridge = window.electronAPI?.openHomeV1 ?? window.effetuneAndroidOpenHome;
+            if (!this.openHomeRemoteRuntimeReady || (!bridge && !window.electronAPI?.airPlayV1)) {
                 return this.audioPlayer;
             }
             const player = await this.createAudioPlayer([], false);
@@ -2649,7 +2703,8 @@ export class UIManager {
     async setOpenHomeRemoteRuntimeReady() {
         this.openHomeRemoteRuntimeReady = true;
         const observers = [
-            { bridge: window.electronAPI?.openHomeV1, key: 'openHomeStatusUnsubscribe', apply: status => {
+            { bridge: window.electronAPI?.openHomeV1 ?? window.effetuneAndroidOpenHome, key: 'openHomeStatusUnsubscribe', apply: status => {
+                if (isAndroidHost()) this.openHomeRemoteControlEnabled = status?.enabled === true;
                 this.openHomeLocalControlEnabled = status?.localControlEnabled === true;
                 this.upnpAvRemoteControlEnabled = status?.upnpAvEnabled === true;
             } },
@@ -2732,7 +2787,7 @@ export class UIManager {
         if (count > 0) this.showTransientMessage('status.playbackSessionPartiallyRestored', false, { count });
     }
 
-    async createAudioPlayer(filePaths, replaceExisting = false, { beforeLoad } = {}) {
+    async createAudioPlayer(filePaths, replaceExisting = false, { beforeLoad, waitForLoad = false } = {}) {
         if (!filePaths?.length) return this._createAudioPlayer(filePaths, replaceExisting);
         const { finish, rememberArchiveNames } = beginPlaybackSelectionDiagnostics(filePaths);
         let loading;
@@ -2741,10 +2796,12 @@ export class UIManager {
             loading = player.loadFiles(selection, false);
         };
         try {
-            return await this._createAudioPlayer(filePaths, replaceExisting, loadFiles, rememberArchiveNames);
+            const player = await this._createAudioPlayer(filePaths, replaceExisting, loadFiles, rememberArchiveNames);
+            if (waitForLoad && loading) await loading;
+            return player;
         } finally {
             // The caller can use the player immediately while its file selection is still being prepared.
-            if (loading) void Promise.resolve(loading).finally(finish);
+            if (loading && !waitForLoad) void Promise.resolve(loading).finally(finish);
             else finish();
         }
     }
@@ -2758,7 +2815,7 @@ export class UIManager {
         const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
         if (controller) {
             this.invalidatePlaybackSessionRestore();
-            if (!this.audioManager?.isAndroid && Array.from(filePaths).some(isArchivePlaybackInput)) {
+            if (Array.from(filePaths).some(isArchivePlaybackInput)) {
                 filePaths = await this.expandArchivePlaybackFiles(filePaths, controller.signal, rememberArchiveNames);
                 if (!filePaths.length || controller.signal.aborted || targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) {
                     return this.audioPlayer ?? null;

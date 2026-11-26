@@ -66,7 +66,10 @@
         <div class="main-content">
             <!-- This area will dynamically change based on the current screen -->
             <div id="measurementConfigScreen" class="screen" style="display: none;">
-                <h2 data-i18n="title:measurementConfig">Measurement Configuration</h2>
+                <div class="screen-header">
+                    <button id="backFromConfigBtn" type="button" form="configForm" class="back-btn"><span class="back-arrow">&larr;</span> <span data-i18n="button:backSimple">Back</span></button>
+                    <h2 data-i18n="title:measurementConfig">Measurement Configuration</h2>
+                </div>
                 <form id="configForm" class="plugin-parameter-ui">
                     <div class="form-group parameter-row">
                         <label for="measurementName"><span class="parameter-label-text" data-i18n="label:measurementName">Measurement Name:</span></label>
@@ -693,6 +696,7 @@
     <script src="app.js" type="module"></script>
     <script type="module">
         import { confirmSpeakerDistortionLeave } from './ui/speaker-distortion-setup.js';
+        import { returnToEffeTune } from './return-to-effetune.js';
 
         const backButton = document.getElementById('back-button');
         backButton.addEventListener('click', async () => {
@@ -700,20 +704,7 @@
             backButton.disabled = true;
             try {
                 if (!await confirmSpeakerDistortionLeave()) return;
-                if (window.electronAPI) {
-                    const result = await window.electronAPI.navigateToMain();
-                    if (!result?.success) {
-                        console.error('Failed to navigate to main page:', result?.error);
-                    }
-                } else {
-                    let restorePipeline = false;
-                    try {
-                        restorePipeline = Boolean(sessionStorage.getItem('effetune_transient_pipeline_state'));
-                    } catch (error) {
-                        console.warn('Could not check the saved effect pipeline:', error);
-                    }
-                    window.location.href = `../../effetune.html${restorePipeline ? '?restorePipeline=transient' : ''}`;
-                }
+                await returnToEffeTune('../../effetune.html');
             } catch (error) {
                 console.error('Error navigating to main page:', error);
             } finally {

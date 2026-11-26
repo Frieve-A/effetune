@@ -86,6 +86,18 @@ void mixedInputTests() {
     check(output[sample] == 0.375F && output[sample + 1] == -0.125F,
           "Synchronous microphone and player mix reaches the host output");
 }
+void wideOutputTests() {
+  constexpr int channels = 6, frames = 131;
+  NativeEngine engine(48000, 64, channels);
+  std::array<float, frames * channels> input{}, output{};
+  for (int i = 0; i < frames * channels; ++i)
+    input[i] = static_cast<float>(i + 1) / 1024;
+  engine.setPlaying(true);
+  check(engine.writePcm(input.data(), frames, engine.beginSource()) == frames, "Queue six-channel PCM");
+  engine.onAudioReady(nullptr, output.data(), frames);
+  check(input == output, "Each output channel retains its samples across short callback slices");
+}
+
 void outputErrorTests() {
   NativeEngine engine(48000, 256);
   const auto generation = engine.beginSource();
@@ -212,10 +224,11 @@ void matrixParameterTests() {
     native.onAudioReady(nullptr, output.data(), 64);
   }
   check(output[0] == 0.0F && output[1] == 0.25F, "Empty float automation keeps newer Matrix routes");
-  const auto telemetry = native.telemetry();
+  const auto telemetry = native.telemetryPackets();
+  constexpr std::size_t packetHeaderBytes = 40;
   std::uint32_t tap = 0;
-  if (telemetry.size() >= 16)
-    std::memcpy(&tap, telemetry.data() + 4, sizeof(tap));
+  if (telemetry.size() >= packetHeaderBytes + 16)
+    std::memcpy(&tap, telemetry.data() + packetHeaderBytes + 4, sizeof(tap));
   check(tap == id, "Telemetry carries the stable plugin ID");
 }
 void ringTests() {
@@ -420,6 +433,27 @@ void captureTests() {
       check(value == 0, "Noise stop restores ordinary processing");
   }
   {
+    NativeEngine engine(8000, 64);
+    engine.configure({"TimeAlignmentPlugin"}, {{8}}, {registry::find("TimeAlignmentPlugin")->paramsHash},
+                     {1}, descriptor());
+    engine.setPlaying(true);
+    engine.writePcm(excitation.data(), 64, engine.beginSource());
+    engine.onAudioReady(nullptr, output.data(), 64);
+    engine.setPlaying(false);
+    engine.setMeasurementMeter(0);
+    engine.setMeasurementPipeline(true);
+    for (int signal = 0; signal < 2; ++signal) {
+      engine.setMeasurementNoiseFile(fileno(excitationFile), 64);
+      engine.onAudioReady(nullptr, output.data(), 64);
+      for (float value : output)
+        check(value == 0, "A new measurement starts with an empty delay");
+      engine.onAudioReady(nullptr, output.data(), 64);
+      for (float value : output)
+        check(value == 0.125F, "Measurement retains the configured delay");
+      engine.stopMeasurementNoise();
+    }
+  }
+  {
     auto capture = std::make_unique<FiniteCapture>(fileno(excitationFile),
                                                    fileno(resultFile), 64, 64);
     const auto deadline =
@@ -528,7 +562,7 @@ void samplePlayerAssetTests() {
   const std::vector<std::pair<std::string, std::vector<float>>> players{
       {"SFZNotePlayerPlugin", {.5F, -30, 3, 28, 91, 32, 0,  100, 0, 0, 1,
                                1,   1,   0, 18, 0,  0,  -1, 100, 0, -1}},
-      {"SoundFontPlayerPlugin", {0, 64, 0, 0, 1, -1, 0, 0, 1, 1, 1, 0, 0}}};
+      {"SoundFontPlayerPlugin", {0, 64, 0, 0, 1, -1, 0, 0, 1, 1, 1, 0, 0, 0, 0}}};
   for (const auto maxFrames : {64, 4096}) {
     NativeEngine native(48000, maxFrames);
     for (const auto &[type, parameters] : players) {
@@ -558,13 +592,8 @@ void samplePlayerAssetTests() {
                           static_cast<std::uint32_t>(payload.size())};
       check(
           native.setAsset(ids[0], 0, info, payload, ET_ASSET_F32_MULTICH) ==
-              ET_ERR_OOM,
-          "Sample player native preparation respects the caller memory budget");
-      info.footprintBytes = required;
-      check(
-          native.setAsset(ids[0], 0, info, payload, ET_ASSET_F32_MULTICH) ==
               ET_OK,
-          "Sample player admits exactly the complete target-native footprint");
+          "Sample player accepts a bank whose caller footprint underestimates native preparation");
       check(native.setAsset(ids[0], 0, {}, {}, 0) == ET_OK,
             "Clear prepared sample player asset");
     }
@@ -855,6 +884,7 @@ int main() {
     resamplerTests();
     captureTests();
     mixedInputTests();
+    wideOutputTests();
     assetTests();
     samplePlayerAssetTests();
     speakerCorrectionReplacementTests();

@@ -1,150 +1,11 @@
-#include "av-providers.h"
 #include "protocol.h"
-#include "providers.h"
-
-#include <OpenHome/Functor.h>
-#include <OpenHome/FunctorMsg.h>
-#include <OpenHome/Net/Cpp/DvDevice.h>
-#include <OpenHome/Net/Cpp/OhNet.h>
-#include <OpenHome/Private/Thread.h>
+#include "runtime.h"
 
 #include <iostream>
-#include <memory>
-#include <stdexcept>
-#include <string>
 #include <string_view>
 
 namespace effetune::openhome {
 namespace {
-
-class StderrLogger {
-public:
-  void Log(const char *message) {
-    if (message != nullptr)
-      std::cerr << message;
-  }
-};
-
-class SidecarRuntime {
-public:
-  SidecarRuntime(ProtocolBridge &bridge, bool useLoopback)
-      : bridge_(bridge), useLoopback_(useLoopback) {}
-
-  ~SidecarRuntime() { Stop(); }
-
-  bool Start(const ProtocolConfiguration &configuration) {
-    if (started_)
-      return false;
-    try {
-      auto *params = OpenHome::Net::InitialisationParams::Create();
-      params->SetDvUpnpServerPort(0);
-      params->SetSchedulingPolicy(OpenHome::Environment::EScheduleNone);
-      params->SetLogOutput(
-          OpenHome::MakeFunctorMsg(logger_, &StderrLogger::Log));
-      if (useLoopback_)
-        params->SetUseLoopbackNetworkAdapter();
-      OpenHome::Net::UpnpLibrary::Initialise(params);
-      libraryInitialised_ = true;
-      OpenHome::Net::UpnpLibrary::StartDv();
-
-      std::string udn = configuration.udn;
-      constexpr std::string_view prefix = "uuid:";
-      if (udn.compare(0, prefix.size(), prefix) == 0)
-        udn.erase(0, prefix.size());
-      if (udn.empty())
-        throw std::runtime_error("Invalid device identifier");
-
-      if (configuration.openHomeEnabled) {
-        device_ = std::make_unique<OpenHome::Net::DvDeviceStdStandard>(udn);
-        device_->SetAttribute("Upnp.Domain", "av.openhome.org");
-        device_->SetAttribute("Upnp.Type", "Source");
-        device_->SetAttribute("Upnp.Version", "1");
-        device_->SetAttribute("Upnp.FriendlyName",
-                              configuration.friendlyName.c_str());
-        device_->SetAttribute("Upnp.Manufacturer", "EffeTune");
-        device_->SetAttribute("Upnp.ModelName", "EffeTune");
-        device_->SetAttribute("Upnp.ModelDescription",
-                              "EffeTune OpenHome player");
-        providers_ = std::make_unique<OpenHomeProviders>(
-            *device_, bridge_, configuration.friendlyName);
-        device_->SetEnabled();
-      }
-      if (configuration.upnpAvEnabled) {
-        std::string avUdn = configuration.upnpAvUdn;
-        if (avUdn.compare(0, prefix.size(), prefix) == 0)
-          avUdn.erase(0, prefix.size());
-        avDevice_ = std::make_unique<OpenHome::Net::DvDeviceStdStandard>(avUdn);
-        avDevice_->SetAttribute("Upnp.Domain", "upnp.org");
-        avDevice_->SetAttribute("Upnp.Type", "MediaRenderer");
-        avDevice_->SetAttribute("Upnp.Version", "1");
-        avDevice_->SetAttribute(
-            "Upnp.FriendlyName",
-            (configuration.friendlyName + " (UPnP)").c_str());
-        avDevice_->SetAttribute("Upnp.Manufacturer", "EffeTune");
-        avDevice_->SetAttribute("Upnp.ModelName", "EffeTune");
-        avDevice_->SetAttribute("Upnp.ModelDescription",
-                                "EffeTune audio renderer");
-        avProviders_ = std::make_unique<AvProviders>(*avDevice_, bridge_);
-        avDevice_->SetEnabled();
-      }
-      started_ = true;
-      return true;
-    } catch (...) {
-      Stop();
-      return false;
-    }
-  }
-
-  void ApplySnapshot(const JsonValue &snapshot) {
-    if (providers_ && !providers_->ApplySnapshot(snapshot)) {
-      bridge_.SendDiagnostic("invalid-state");
-    }
-    if (avProviders_ && !avProviders_->ApplySnapshot(snapshot))
-      bridge_.SendDiagnostic("invalid-av-state");
-  }
-
-  void Stop() noexcept {
-    bridge_.Stop();
-    if (avDevice_ && started_) {
-      try {
-        OpenHome::Semaphore disabled("AVDS", 0);
-        avDevice_->SetDisabled(
-            OpenHome::MakeFunctor(disabled, &OpenHome::Semaphore::Signal));
-        disabled.Wait();
-      } catch (...) {
-      }
-    }
-    avProviders_.reset();
-    avDevice_.reset();
-    if (device_ && started_) {
-      try {
-        OpenHome::Semaphore disabled("OHDS", 0);
-        device_->SetDisabled(
-            OpenHome::MakeFunctor(disabled, &OpenHome::Semaphore::Signal));
-        disabled.Wait();
-      } catch (...) {
-      }
-    }
-    started_ = false;
-    providers_.reset();
-    device_.reset();
-    if (libraryInitialised_) {
-      OpenHome::Net::UpnpLibrary::Close();
-      libraryInitialised_ = false;
-    }
-  }
-
-private:
-  ProtocolBridge &bridge_;
-  bool useLoopback_ = false;
-  bool libraryInitialised_ = false;
-  bool started_ = false;
-  StderrLogger logger_;
-  std::unique_ptr<OpenHome::Net::DvDeviceStdStandard> device_;
-  std::unique_ptr<OpenHomeProviders> providers_;
-  std::unique_ptr<OpenHome::Net::DvDeviceStdStandard> avDevice_;
-  std::unique_ptr<AvProviders> avProviders_;
-};
 
 bool ParseArguments(int argc, char *argv[], bool &useLoopback) {
   if (argc < 2 || std::string_view(argv[1]) != "--stdio")
@@ -171,17 +32,7 @@ int main(int argc, char *argv[]) {
 
   std::ios::sync_with_stdio(false);
   ProtocolBridge bridge(std::cout);
-  SidecarRuntime runtime(bridge, useLoopback);
-  const RunResult result = bridge.Run(
-      std::cin,
-      [&](const ProtocolConfiguration &configuration) {
-        const bool started = runtime.Start(configuration);
-        if (!started)
-          bridge.SendDiagnostic("initialisation-failed");
-        return started;
-      },
-      [&](const JsonValue &snapshot) { runtime.ApplySnapshot(snapshot); });
-  runtime.Stop();
+  const RunResult result = RunSidecar(bridge, std::cin, useLoopback);
   return result == RunResult::kShutdown || result == RunResult::kEndOfFile ? 0
                                                                            : 2;
 }

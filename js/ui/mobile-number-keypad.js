@@ -163,10 +163,12 @@ export class MobileNumberKeypad {
             const pointer = this.pendingPointer;
             if (!pointer || event.pointerId !== pointer.pointerId) return;
             this.onPointerMove(event);
-            this.pendingPointer = null;
-            if (pointer.moved || event.target !== pointer.input || !this.isEligibleInput(pointer.input)) return;
+            if (pointer.moved || event.target !== pointer.input || !this.isEligibleInput(pointer.input)) {
+                this.pendingPointer = null;
+                return;
+            }
             event.preventDefault();
-            this.open(pointer.input);
+            pointer.released = true;
         };
         this.onPointerCancel = event => {
             if (event.pointerId === this.pendingPointer?.pointerId) this.pendingPointer = null;
@@ -175,10 +177,14 @@ export class MobileNumberKeypad {
             if (this.pendingPointer) this.pendingPointer.moved = true;
         };
         this.onClick = event => {
+            const pointer = this.pendingPointer;
+            this.pendingPointer = null;
             if (!this.isEligibleInput(event.target)) return;
             event.preventDefault();
-            // Pointer clicks are handled on release; keep keyboard/assistive activation.
-            if (event.detail === 0) this.open(event.target);
+            // Keep the input under the finger until the browser has targeted the click.
+            if (event.detail === 0 || (pointer?.released && !pointer.moved && pointer.input === event.target)) {
+                this.open(event.target);
+            }
         };
         this.onFocusIn = event => {
             if (!this.isEligibleInput(event.target)) return;
@@ -318,8 +324,14 @@ export class MobileNumberKeypad {
         dialog.appendChild(keys);
         dialog.appendChild(actions);
         root.appendChild(dialog);
+        // Dragging out of the dialog onto the backdrop must not dismiss it.
+        let backdropPressed = false;
         root.addEventListener('pointerdown', event => {
-            if (event.target !== root) return;
+            backdropPressed = event.target === root;
+        });
+        root.addEventListener('click', event => {
+            if (event.target !== root || !backdropPressed) return;
+            backdropPressed = false;
             event.preventDefault();
             this.cancel();
         });
@@ -338,16 +350,8 @@ export class MobileNumberKeypad {
         button.type = 'button';
         button.className = 'mobile-number-keypad-button';
         button.textContent = text;
-        button.addEventListener('pointerdown', event => {
-            if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
-            event.preventDefault();
-            activate();
-        });
         button.addEventListener('click', event => {
-            if (event.detail !== 0) {
-                event.preventDefault();
-                return;
-            }
+            event.stopPropagation();
             activate();
         });
         return button;

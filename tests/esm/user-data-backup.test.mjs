@@ -6,7 +6,7 @@ import { runInThisContext } from 'node:vm';
 import { UserDataBackupService } from '../../js/user-data-backup/service.js';
 import { prepareItems, chooseName, references, replaceReferences, encodeFloat32, decodeFloat32,
     MAX_BACKUP_BYTES, MAX_JSON_BYTES } from '../../js/user-data-backup/portable.js';
-import { decodeSpeakerModel, encodeSpeakerModel } from '../../features/measurement/dataStorage.js';
+import { decodeSpeakerModel, encodeSpeakerModel, validateMeasurementBackup } from '../../features/measurement/dataStorage.js';
 import { createSpeakerModel } from '../helpers/speaker-model-fixture.mjs';
 import { inspectZip } from '../../js/user-data-backup/archive.js';
 import { sha256IrBytes } from '../../js/ir-library/ir-library-id.js';
@@ -86,7 +86,8 @@ test('mixed backup restores dependencies, preserves bytes and settings, and is i
     assert.equal(result.added.length, 4);
     assert.deepEqual(target.writes, ['ir', 'measurement', 'pipeline', 'plugin']);
     const restoredMeasurement = target.items.find(item => item.kind === 'measurement');
-    assert.notEqual(restoredMeasurement.id, 'room');
+    assert.equal(restoredMeasurement.id, 'room');
+    assert.equal(restoredMeasurement.data.impulseResponses[0].measurementId, 'room');
     assert.deepEqual(restoredMeasurement.data.impulseResponses[0].data, measurement().data.impulseResponses[0].data);
     const restoredPreset = target.items.find(item => item.kind === 'pipeline');
     assert.equal(restoredPreset.data.plugins[1].ms, `${restoredMeasurement.id}::ch=left`);
@@ -115,6 +116,44 @@ test('embedding switches are independent from selection and reference-only data 
     assert.equal(result.added.length, 1);
     assert.equal(result.reused.length, 2);
     assert.deepEqual(target.writes, ['pipeline']);
+});
+
+test('restore preserves an available measurement ID and remaps only a conflicting ID', async () => {
+    const backup = await makeBackup([pipeline(), ir(), measurement()]);
+    const existing = measurement('room', 'Other seat');
+    existing.data.impulseResponses[0].data[0] = 0.8;
+    const target = memoryAdapter([existing]);
+    const restore = service(target);
+    const opened = await restore.openBackup(backup.blob);
+    const keys = opened.items.map(item => item.key);
+    assert.equal((await restore.restore(await restore.planRestore(opened, keys))).added.length, 3);
+    const restored = target.items.find(item => item.kind === 'measurement' && item.id !== 'room');
+    assert.ok(restored);
+    assert.equal(restored.data.impulseResponses[0].measurementId, restored.id);
+    assert.equal(target.items.find(item => item.kind === 'pipeline').data.plugins[1].ms,
+        `${restored.id}::ch=left`);
+    assert.deepEqual(target.items[0], existing);
+    assert.equal((await restore.restore(await restore.planRestore(opened, keys))).reused.length, 3);
+});
+
+test('restoring an embedded measurement reconnects an existing Room EQ preset to its original ID', async () => {
+    const source = measurement();
+    const sameContent = measurement('other-id');
+    const [original, duplicate] = await prepareItems([source, sameContent]);
+    assert.equal(original.fingerprint, duplicate.fingerprint);
+
+    const backup = await makeBackup([source]);
+    const preset = pipeline();
+    const target = memoryAdapter([preset, sameContent]);
+    const restore = service(target);
+    const opened = await restore.openBackup(backup.blob);
+    const plan = await restore.planRestore(opened, [opened.items[0].key]);
+    assert.equal((await restore.restore(plan)).added.length, 1);
+    const recovered = target.items.find(item => item.key === source.key);
+    assert.ok(recovered);
+    assert.equal(recovered.data.impulseResponses[0].measurementId, 'room');
+    assert.equal(target.items[0].data.plugins[1].ms, `${recovered.id}::ch=left`);
+    assert.deepEqual(target.items[1], sameContent);
 });
 
 test('selection excludes unrelated data and shared dependency appears once', async () => {
@@ -219,6 +258,106 @@ async function writeArchiveJson(zip, manifest, path, value) {
     if (index < 0) manifest.payloads.push(payload);
     else manifest.payloads[index] = payload;
 }
+
+test('legacy measurement backups verify their released fingerprints and restore Room EQ', async t => {
+    for (const [appVersion, embedMeasurements, includeImpulse] of [
+        ['2.18.1', false, true],
+        ['2.19.0', true, true],
+        ['2.19.0', false, true],
+        ['unknown', true, false]
+    ]) {
+        await t.test(JSON.stringify({ appVersion, embedMeasurements, includeImpulse }), async () => {
+            const saved = measurement();
+            const hasSpeakerModel = appVersion !== '2.18.1';
+            if (hasSpeakerModel) saved.data.measurement.speakerModel = { version: 1, coefficients: [1, 0.5] };
+            if (!includeImpulse) saved.data.impulseResponses = [];
+            const harmonics = embedMeasurements && includeImpulse;
+            if (harmonics) {
+                const response = saved.data.impulseResponses[0];
+                response.harmonicAnalysis = {
+                    version: 2, method: 'ess', reference: 'unit-input', calibration: 'uncorrected-system',
+                    sampleRate: 48000, quality: { valid: true, reasons: [] },
+                    excitation: { startFrequency: 20, endFrequency: 20000, durationSeconds: 1, levelDb: -12, sweepSamples: 48000 },
+                    orders: [
+                        { order: 1, data: response.data, referenceData: new Float32Array([0.25, 0, 0]), onsetIndex: 0,
+                            validMinFrequency: 20, validMaxFrequency: 20000 },
+                        { order: 2, data: new Float32Array([0, 1]), referenceData: new Float32Array([2, 3]),
+                            harmonicReferenceData: new Float32Array([4, 5]), onsetIndex: 0,
+                            validMinFrequency: 20, validMaxFrequency: 10000 }
+                    ]
+                };
+            }
+            const preset = pipeline();
+            preset.data.plugins = [preset.data.plugins[1]];
+            // These fingerprints come from the released prepareItems for the fixtures above.
+            const [presetHash, measurementHash] = !hasSpeakerModel
+                ? ['dad3fdde167f0750a1cbb65dc50770916c6f1af2e69a6dbac99a07fec2cba6e3',
+                    '3d0be4ec4e5a04fb75ed5c237b36ce8ca33be5bef6e3c23da5946a81ad903ee8']
+                : harmonics ? ['a7d42583f711da8800a7db7b93b36ab0e478f0f90035d9a2000e1f470bb37b2d',
+                    'e74aeabd539eef1625d79f678010ead39df00583457eb08726067685827835f2']
+                : includeImpulse ? ['0c12fd6d96e6bdb753da19a73b3b46b4803fd4991f8b33ae232630a3f1abae4a',
+                    '025b53a1b90ca46d74a6bc646796239aae3cd7078a07c8bc67390a22514c7586']
+                : ['e429ccd0ecd3c843c91dd93a803936e13af17719f596e51abee5117fa1ee5e58',
+                    '08d46b789c7a3a9b4b0981ad58383d9dbdc0f7f58f0882d8f2c096d636edb8a1'];
+            const zip = new JSZip();
+            const manifest = { format: 'effetune-user-data-backup', schemaVersion: 1, appVersion, items: [], payloads: [] };
+            const storeBlob = async bytes => {
+                const sha256 = await sha256IrBytes(bytes);
+                const blob = `blobs/${sha256}.bin`;
+                zip.file(blob, bytes, { createFolders: false });
+                manifest.payloads.push({ path: blob, size: bytes.byteLength, sha256 });
+                return { blob, size: bytes.byteLength };
+            };
+            const data = structuredClone(saved.data);
+            if (embedMeasurements) {
+                if (hasSpeakerModel) {
+                    data.measurement.speakerModel = await storeBlob(encoder.encode(JSON.stringify(data.measurement.speakerModel)));
+                }
+                for (const response of data.impulseResponses) response.data = await storeBlob(encodeFloat32(response.data));
+            }
+            const presetPath = 'presets/pipeline/item1.json';
+            const measurementPath = 'measurements/item2.json';
+            await writeArchiveJson(zip, manifest, presetPath, { id: preset.id, data: preset.data });
+            await writeArchiveJson(zip, manifest, measurementPath, {
+                id: saved.id, ...(embedMeasurements ? { data } : {})
+            });
+            manifest.items.push(
+                { key: 'item1', kind: 'pipeline', name: preset.name, fingerprint: presetHash, embedded: true,
+                    metadata: presetPath, dependencies: [{ key: 'item2', required: true }] },
+                { key: 'item2', kind: 'measurement', name: saved.name, fingerprint: measurementHash,
+                    embedded: embedMeasurements, metadata: measurementPath, dependencies: [] }
+            );
+            zip.file('manifest.json', encoder.encode(JSON.stringify(manifest)), { createFolders: false });
+            const blob = new Blob([await zip.generateAsync({ type: 'uint8array', compression: 'STORE' })]);
+            const adapter = memoryAdapter(embedMeasurements ? [] : [saved]);
+            if (harmonics) {
+                adapter.validateItem = item => {
+                    if (item.kind === 'measurement' && item.data) {
+                        validateMeasurementBackup(item.data.measurement, item.data.impulseResponses);
+                    }
+                };
+            }
+            const restore = service(adapter);
+            if (embedMeasurements && includeImpulse) {
+                const tampered = await modifiedBackup(blob, zip => {
+                    manifest.items[1].fingerprint = '0'.repeat(64);
+                    zip.file('manifest.json', encoder.encode(JSON.stringify(manifest)), { createFolders: false });
+                });
+                const rejected = await restore.openBackup(tampered);
+                await assert.rejects(restore.restore(await restore.planRestore(rejected, ['item1'])), /does not match/);
+                assert.deepEqual(adapter.writes, []);
+            }
+            const opened = await restore.openBackup(blob);
+            const restoreSelection = async () => restore.restore(await restore.planRestore(opened, ['item1']));
+            const expectedWrites = embedMeasurements ? ['measurement', 'pipeline'] : ['pipeline'];
+            assert.equal((await restoreSelection()).added.length, expectedWrites.length);
+            assert.deepEqual(adapter.writes, expectedWrites);
+            assert.deepEqual(adapter.items.find(item => item.kind === 'measurement').data, saved.data);
+            assert.equal(adapter.items.find(item => item.kind === 'pipeline').data.plugins[0].ms, 'room::ch=left');
+            assert.equal((await restoreSelection()).reused.length, 2);
+        });
+    }
+});
 
 async function repeatedBinaryReferenceBackup(kind) {
     const source = kind === 'ir' ? ir() : measurement();
@@ -394,6 +533,46 @@ test('multi-point multi-channel measurements travel as one complete unit', async
     assert.deepEqual(adapter.items[0].data.measurement.points, item.data.measurement.points);
     assert.deepEqual(adapter.items[0].data.impulseResponses.map(({ measurementId, ...value }) => value),
         item.data.impulseResponses.map(({ measurementId, ...value }) => value));
+});
+
+test('measurement samples use binary payloads and count their stored size', async () => {
+    const item = measurement();
+    const response = item.data.impulseResponses[0];
+    response.harmonicAnalysis = { orders: [
+        { data: response.data, referenceData: new Float32Array([0.25, 0, -0]) },
+        { data: new Float32Array([0, 1]), referenceData: new Float32Array([2, 3]),
+            harmonicReferenceData: new Float32Array([4, 5]) }
+    ] };
+    item.data.measurement.extraSamples = new Float32Array([0, 0.5, 1]).subarray(1);
+    const source = service(memoryAdapter([item]));
+    const list = await source.listBackup();
+    const { blob } = await source.createBackup(list, [item.key]);
+    const entries = inspectZip(new Uint8Array(await blob.arrayBuffer()));
+    const payloadBytes = [...entries].reduce((total, [path, entry]) =>
+        total + (path === 'manifest.json' ? 0 : entry.size), 0);
+    assert.equal(list.items[0].bytes, payloadBytes);
+    assert.equal([...entries.keys()].filter(path => path.startsWith('blobs/')).length, 6);
+
+    const adapter = memoryAdapter();
+    const restore = service(adapter);
+    const opened = await restore.openBackup(blob);
+    assert.equal(opened.items[0].bytes, payloadBytes);
+    const plan = await restore.planRestore(opened, [opened.items[0].key]);
+    assert.equal((await restore.restore(plan)).added.length, 1);
+    const saved = adapter.items[0].data;
+    assert.deepEqual(saved.measurement.extraSamples, item.data.measurement.extraSamples);
+    assert.deepEqual(saved.impulseResponses[0].data, response.data);
+    assert.deepEqual(saved.impulseResponses[0].harmonicAnalysis, response.harmonicAnalysis);
+});
+
+test('oversized measurement metadata is rejected before ZIP creation', async () => {
+    const item = measurement();
+    item.data.measurement.notes = 'x'.repeat(MAX_JSON_BYTES);
+    const source = new UserDataBackupService({
+        adapter: memoryAdapter([item]), loadZip: () => assert.fail('ZIP creation began')
+    });
+    const list = await source.listBackup();
+    await assert.rejects(source.createBackup(list, [item.key]), /item is too large/);
 });
 
 test('a speaker model larger than one item description travels as its own payload, bit-exact', async () => {

@@ -22,10 +22,13 @@ function checkedNoiseOption(id) {
 }
 
 function testSignalErrorMessage(error) {
-    return error instanceof MeasurementOutputError
-        ? error.message
-        : i18n.t('error:testSignalFailed') ||
+    if (!(error instanceof MeasurementOutputError)) {
+        return i18n.t('error:testSignalFailed') ||
             'The test signal could not be played. Check the audio output and try again.';
+    }
+    return error.message === i18n.t('error:pipelineRenderFailed')
+        ? error.message
+        : i18n.t('error:measurementOutputFailed');
 }
 
 const LevelAdjustment = {
@@ -52,7 +55,8 @@ const LevelAdjustment = {
                 if (!notice) {
                     notice = document.createElement('p');
                     notice.id = 'androidInputProcessing';
-                    document.getElementById('levelWarning').after(notice);
+                    notice.className = 'explanation-text';
+                    document.getElementById('levelWarningContainer').before(notice);
                 }
                 notice.textContent = i18n.t('warning:androidInputProcessing');
                 notice.hidden = audioUtils.nativeInputUnprocessed === true;
@@ -195,6 +199,23 @@ const LevelAdjustment = {
             if (!active) uiManager.showNotification(testSignalErrorMessage(error), 'error');
             return active;
         }
+    },
+
+    // The Android host stopped the test signal or capture because audio conditions changed.
+    // A running capture reports the interruption through its own failure path.
+    handleNativeMeasurementInvalidated(reason) {
+        if (reason === 'devices-unavailable') {
+            if (uiManager.currentScreen === 'levelAdjustmentScreen' || uiManager.currentScreen === 'sweepMeasurementScreen')
+                uiManager.showScreen('measurementConfigScreen');
+            uiManager.showNotification(i18n.t('error:measurementDevicesUnavailable'), 'error');
+            return;
+        }
+        if (!audioUtils.isWhiteNoiseActive && !audioUtils.isWhiteNoisePending) return;
+        this.stopChannelRotation();
+        audioUtils.stopWhiteNoise();
+        this.syncWhiteNoiseUi();
+        document.getElementById('levelWarning')?.classList.remove('warning-visible');
+        uiManager.showNotification(i18n.t('error:measurementInterrupted'), 'error');
     },
 
     syncWhiteNoiseUi() {

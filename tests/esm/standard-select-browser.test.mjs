@@ -33,7 +33,11 @@ test('mobile dropdowns open on touch release and allow scrolling from the contro
     });
     await touch('touchStart');
     assert.equal(await list.isVisible(), false);
+    await select.evaluate(element => element.addEventListener('pointerup', () => {
+      element.dataset.expandedOnRelease = element.getAttribute('aria-expanded');
+    }, { once: true }));
     await touch('touchEnd');
+    assert.equal(await select.getAttribute('data-expanded-on-release'), 'false');
     assert.equal(await list.isVisible(), true);
     await page.keyboard.press('Escape');
     await touch('touchStart');
@@ -53,6 +57,50 @@ test('mobile dropdowns open on touch release and allow scrolling from the contro
     await select.focus();
     await page.keyboard.press('Enter');
     assert.equal(await list.isVisible(), true);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('mobile slope field and popup size to their labels within the available width', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 320, height: 640 } });
+    await page.setContent('<!doctype html><body class="layout-mobile"><div class="sub-synth-plugin-ui plugin-parameter-ui">' +
+      '<div class="parameter-row"><label for="slope">Slope</label>' +
+      '<select id="slope" class="slope-select" style="font-size:21px"><option>6dB/oct</option></select></div></div>');
+    await page.addStyleTag({ content: css.replace(/^@import .*\r?\n/gm, '') +
+      read('../../css/parameter-controls.css') + read('../../css/effetune-mobile.css') +
+      read('../../plugins/saturation/sub_synth.css') });
+    await page.evaluate(async url => (await import(url)).enableStandardSelects(document), selectUrl);
+    const select = page.locator('#slope');
+    const row = page.locator('.parameter-row');
+    const list = page.locator('.standard-select-list');
+    const initialWidth = (await select.boundingBox()).width;
+    await select.evaluate(field => field.add(new Option('24dB/oct')));
+    assert.ok((await select.boundingBox()).width > initialWidth);
+
+    await select.evaluate(field => { field.style.width = '80px'; });
+    await select.press('Enter');
+    assert.ok((await list.boundingBox()).width > (await select.boundingBox()).width);
+    assert.ok(await list.locator('[role="option"]').evaluateAll(options =>
+      options.every(option => option.scrollWidth <= option.clientWidth)));
+    await select.press('Escape');
+
+    await select.evaluate(field => {
+      field.style.removeProperty('width');
+      field.add(new Option('24dB/oct '.repeat(20)));
+    });
+    assert.ok((await select.boundingBox()).width <= (await row.boundingBox()).width);
+    await select.press('Enter');
+    const expanded = await list.boundingBox();
+    assert.ok(expanded.x >= 8 && expanded.x + expanded.width <= 312);
+    await select.press('Escape');
+
+    await page.locator('body').evaluate(body => body.classList.remove('layout-mobile'));
+    await select.evaluate(field => { field.style.width = '80px'; });
+    await select.press('Enter');
+    assert.equal((await list.boundingBox()).width, (await select.boundingBox()).width);
   } finally {
     await browser.close();
   }

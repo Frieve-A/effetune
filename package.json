@@ -58,7 +58,7 @@
     "test:library-sqlite:web": "node tools/library-scale/run-web-sqlite.mjs --contract",
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
-    "verify:npm-signatures": "npm exec --yes --ignore-scripts -- npm@12.2.2 audit signatures",
+    "verify:npm-signatures": "npm exec --yes --ignore-scripts -- npm@12.2.3 audit signatures",
     "clean": "rimraf dist node_modules/.cache",
     "build": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win --publish never",
     "build:portable": "npm run assets:web && npm run clean && npm run build:audio-engine && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && npm run build:renderer-power && electron-builder --win portable --publish never",
@@ -77,7 +77,7 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.3.1",
+    "electron": "^45.5.0",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
@@ -316,6 +316,7 @@
       "artifactName": "${productName}-${version}-Portable.${ext}"
     },
     "mac": {
+      "minimumSystemVersion": "15.0",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "EffeTune uses microphone access to process audio from your selected input device."
       },
@@ -406,11 +407,11 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.66.3",
+    "@mediabunny/flac-encoder": "1.66.5",
     "bonjour-service": "1.4.4",
     "electron-updater": "6.8.11",
-    "mediabunny": "1.66.3",
-    "music-metadata": "^12.4.0",
+    "mediabunny": "1.66.5",
+    "music-metadata": "^13.0.1",
     "qrcode-generator": "^2.0.4",
     "strtok3": "^10.7.0",
     "ws": "^8.22.1"

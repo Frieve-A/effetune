@@ -43,11 +43,11 @@ Sin mitos audiophiles, solo pura ciencia.
 
 ### Aplicación para Android
 
-Utiliza Android 10 o posterior y mantén Android System WebView actualizado. Abre archivos de música o elige una carpeta en la biblioteca musical; Android te permite seleccionar los archivos y carpetas a los que EffeTune puede acceder. Si una carpeta deja de estar disponible, selecciónala de nuevo en la biblioteca. La reproducción continúa con la pantalla apagada y puedes controlar el mismo reproductor desde las notificaciones y la pantalla de bloqueo.
+Utiliza Android 10 o posterior y mantén Android System WebView actualizado. Abre archivos de música o elige una carpeta en la biblioteca musical; Android te permite seleccionar los archivos y carpetas a los que EffeTune puede acceder. Si una carpeta deja de estar disponible, selecciónala de nuevo en la biblioteca. La reproducción continúa con la pantalla apagada y puedes controlar el mismo reproductor desde las notificaciones y la pantalla de bloqueo. Si deslizas EffeTune para quitarlo de la pantalla de aplicaciones recientes, la aplicación se cierra y se detienen la reproducción, el uso compartido de la biblioteca y el control remoto.
 
 Guarda o comparte los archivos exportados mediante las pantallas de archivos y de compartir de Android. Para exportar audio por lotes, elige una carpeta de destino y mantén la aplicación abierta. La aplicación Android y la web guardan sus datos por separado. Copia de seguridad / Restauración permite intercambiar presets, respuestas al impulso, mediciones y datos del visualizador (hasta 256 MB); no incluye archivos de música, el catálogo musical, credenciales de conexión ni ajustes. Los efectos procesan el audio reproducido o recibido por EffeTune, sin sustituir el sonido de otras aplicaciones Android.
 
-Las asignaciones MIDI de parámetros y los cambios programados siguen funcionando con la pantalla apagada. Para usar el teclado o un mando, mantén la aplicación abierta. Android admite entrada MIDI, pero no envía información de retorno a los faders motorizados ni a los LED. Toca el icono **Remote Control** de la barra de herramientas para permitir el control remoto y copiar un enlace de emparejamiento. No compartas públicamente ese enlace.
+Las asignaciones MIDI de parámetros y los cambios programados siguen funcionando con la pantalla apagada. Para usar el teclado o un mando, mantén la aplicación abierta. Android admite entrada y salida MIDI, pero no envía información de retorno a los faders motorizados ni a los LED. Toca el icono **Remote Control** de la barra de herramientas para permitir el control remoto y copiar un enlace de emparejamiento. No compartas públicamente ese enlace. Para controlar otro EffeTune, pega su enlace de emparejamiento en el campo **Conectar con otro EffeTune** y toca **Conectar**.
 
 Elige el método de configuración que corresponda a la fuente de audio que quieras escuchar.
 
@@ -166,6 +166,7 @@ Al abrir la aplicación por primera vez, un breve recorrido te muestra dónde re
    - Shift+clic en un efecto Section para colapsar/expandir todos los efectos dentro de esa sección
    - Shift+clic en otros efectos para colapsar/expandir todos los efectos excepto los de la categoría Analyzer
    - Ctrl+clic para colapsar/expandir todos los efectos
+   - En móvil, abre la pestaña **Efectos** y elige **Contraer todo** o **Expandir todo** con el botón de menú
 6. Utiliza el botón **ON** para omitir efectos individuales
 7. Haz clic en el botón **?** para abrir su documentación detallada en una nueva pestaña
 8. Elimina efectos utilizando el botón ×
@@ -315,7 +316,7 @@ Puedes aplicar la cadena de efectos a archivos de música y guardar el audio pro
 
 Puedes compartir la configuración de tu cadena de efectos con otros usuarios.
 1. Después de configurar la cadena de efectos deseada, haz clic en el botón "Compartir" en la esquina superior derecha del área de **Effect Pipeline**
-2. La URL de la aplicación web se copiará automáticamente en tu portapapeles
+2. La URL de la aplicación web se copiará automáticamente en tu portapapeles. En la aplicación Android, se abre en su lugar la pantalla de compartir de Android para que elijas a dónde enviarla
 3. Comparte la URL copiada con otros: podrán recrear exactamente tu cadena de efectos al abrirla
 4. Las URL compartidas guardan los ajustes de efectos necesarios para su reproducción; la aplicación web también conserva tu estado habitual de trabajo en el navegador
 5. En la versión de aplicación de escritorio, exporta la configuración a un archivo `.effetune_preset` desde el menú **Archivo**
@@ -361,9 +362,9 @@ Si experimentas problemas de audio (interrupciones, fallos):
 
 ### Música en red y control remoto
 
-**Aplicación de escritorio:** Explora servidores de música, incluidos Subsonic / OpenSubsonic, comparte carpetas elegidas y reproduce en este dispositivo o en un reproductor OpenHome o UPnP AV / DLNA. Tras emparejar un reproductor EffeTune, puedes editar sus efectos en la misma ventana. El uso compartido y el acceso por control remoto están desactivados inicialmente. Consulta [música en red y control remoto](openhome.md). También puedes activar la recepción UPnP AV / DLNA y AirPlay para escuchar música enviada desde otros dispositivos con los efectos de este equipo.
+**Aplicación de escritorio y de Android:** Explora servidores de música, incluidos Subsonic / OpenSubsonic, comparte carpetas elegidas y reproduce en este dispositivo o en un reproductor OpenHome o UPnP AV / DLNA. Tras emparejar un reproductor EffeTune, puedes editar sus efectos en la misma ventana. El uso compartido y el acceso por control remoto están desactivados inicialmente. Consulta [música en red y control remoto](openhome.md). También puedes activar la recepción UPnP AV / DLNA (y AirPlay en la aplicación de escritorio) para escuchar música enviada desde otros dispositivos con los efectos de este dispositivo.
 
-La PWA puede reproducir música compartida de un ordenador EffeTune registrado y bibliotecas de red autorizadas con los efectos de este dispositivo, o controlar un reproductor de red autorizado. También puedes conectar directamente a Subsonic. Consulta [configuración y reproducción desde la PWA](openhome.md#pwa) para conocer los requisitos del navegador y de conexión.
+La PWA puede reproducir la música compartida por una aplicación EffeTune de escritorio o de Android registrada y bibliotecas de red autorizadas con los efectos de este dispositivo, o controlar un reproductor de red autorizado. También puedes conectar directamente a Subsonic. Consulta [configuración y reproducción desde la PWA](openhome.md#pwa) para conocer los requisitos del navegador y de conexión.
 
 ### Controlar EffeTune con un asistente de IA (MCP)
 
@@ -380,7 +381,7 @@ Enlace de conexión: <pega aquí el enlace copiado>
 
 Tras la configuración, reinicia el cliente si se te indica y prueba a pedir: «Muéstrame mis efectos actuales». Mantén el enlace de conexión en privado; si pulsas **Nuevo token** o cambias el puerto, repite la configuración con el nuevo enlace.
 
-Añade canciones a Music Library en el EffeTune conectado y pide: «Reproduce [canción]». El asistente busca primero en la biblioteca de ese EffeTune y reproduce en su reproductor de forma predeterminada; no necesitas compartir su carpeta de música. Para usar otra biblioteca u otro reproductor, indícalo en la petición: «Busca [canción] en [biblioteca] y reprodúcela en [reproductor]». Si la música está en otro ordenador con EffeTune, comparte allí primero la carpeta.
+Añade canciones a Music Library en el EffeTune conectado y pide: «Reproduce [canción]». El asistente busca primero en la biblioteca de ese EffeTune y reproduce en su reproductor de forma predeterminada; no necesitas compartir su carpeta de música. Para usar otra biblioteca u otro reproductor, indícalo en la petición: «Busca [canción] en [biblioteca] y reprodúcela en [reproductor]». Si la música está en otro dispositivo con EffeTune, comparte allí primero la carpeta.
 
 ## Combinaciones Comunes de Efectos
 

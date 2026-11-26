@@ -111,6 +111,7 @@ test('unavailable analysis views hide the previous response graph and restore it
     });
     const graph = page.locator('.pipeline-analyzer-graph');
     const overlay = page.locator('.pipeline-analyzer-hover-overlay');
+    const analysisMessage = page.locator('.pipeline-analyzer-graph-shell ~ .pipeline-analyzer-analysis-message');
     assert.equal(await graph.isVisible(), true);
     assert.equal(await graph.locator('.pipeline-analyzer-curve').count(), 1);
     for (const view of ['distortion', 'waterfall']) {
@@ -121,14 +122,14 @@ test('unavailable analysis views hide the previous response graph and restore it
         })), { hiddenAttribute: true, display: 'none' });
         assert.equal(await svg.isVisible(), false);
       }
-      assert.equal(await page.locator('.pipeline-analyzer-analysis-message').isVisible(), true);
+      assert.equal(await analysisMessage.isVisible(), true);
       await page.locator('input[name="pipelineAnalyzerGraphView"][value="frequency"]').check();
       for (const svg of [graph, overlay]) {
         assert.equal(await svg.getAttribute('hidden'), null);
         assert.equal(await svg.isVisible(), true);
       }
       assert.equal(await graph.locator('.pipeline-analyzer-curve').count(), 1);
-      assert.equal(await page.locator('.pipeline-analyzer-analysis-message').isVisible(), false);
+      assert.equal(await analysisMessage.isVisible(), false);
     }
   } finally {
     await browser.close();

@@ -212,6 +212,8 @@ export class WebSqliteCatalogRepository {
   finalizeLoudness(request) { return this.#call('finalizeLoudness', request); }
   getTrackLoudness(request) { return this.#call('getTrackLoudness', request); }
   getLoudnessStats(request) { return this.#call('getLoudnessStats', request); }
+  listLoudnessTagCandidates() { return this.#call('listLoudnessTagCandidates', {}); }
+  updateLoudnessTagSignatures(request) { return this.#call('updateLoudnessTagSignatures', request); }
   setTrackFavorite(request) { return this.#call('setTrackFavorite', request); }
   getFavoriteTrackUids(request = {}) { return this.#call('getFavoriteTrackUids', request); }
   getSystemPlaylists() { return this.#call('getSystemPlaylists', {}); }
@@ -240,6 +242,7 @@ export class WebSqliteCatalogRepository {
     return this.#call('preflightScanBatch', request);
   }
   commitScanSeenBatch(request) { return this.#call('commitScanSeenBatch', request); }
+  scanTraversalQueue(request) { return this.#call('scanTraversalQueue', request); }
   cueDirectoryStage(request) { return this.#call('cueDirectoryStage', request); }
   listMetadataCandidates(request) { return this.#call('listMetadataCandidates', request); }
   advanceScanMetadataCursor(request) { return this.#call('advanceScanMetadataCursor', request); }
@@ -298,6 +301,7 @@ export class WebSqliteCatalogRepository {
   resolveEntityAnchor(request) { return this.#call('resolveEntityAnchor', request); }
   getTrack(trackUid) { return this.#call('getTrack', { trackUid }); }
   getTrackStorageIdentity(trackUid) { return this.#call('getTrackStorageIdentity', { trackUid }); }
+  querySharedLibrary(request) { return this.#call('querySharedLibrary', request); }
   resolvePlaylistExportSource(trackUid) { return this.#call('resolvePlaylistExportSource', { trackUid }); }
   checkIntegrity(options = {}) { return this.#call('checkIntegrity', options); }
 
@@ -354,7 +358,7 @@ const READ_COMMANDS = new Set([
   'queryPlaylistItems', 'getFavoriteTrackUids', 'getSystemPlaylists',
   'getCachedArtwork', 'getArtworkSource', 'queryTracks', 'browseFolderChildren',
   'queryEntities', 'getContextCount', 'readContextPage', 'readContextPageAtOrdinal',
-  'resolveEntityAnchor', 'getTrack', 'getTrackStorageIdentity',
+  'resolveEntityAnchor', 'getTrack', 'getTrackStorageIdentity', 'querySharedLibrary',
   'resolvePlaylistExportSource',
   'checkIntegrity'
 ]);

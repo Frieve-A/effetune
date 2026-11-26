@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:6e8417417653a5995a513d6d613f18ad78766c405b713bec5c0f8b28a71f1283",
+  "sourceDigest": "sha256:c667893520a2584b04fe1a2f14a7a9d5a9f26371c9dee94d27acedddc64e52bd",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:e24820a77bd9339465e3e7aa01f1b0e45654a774c5e70ac4116ba14397dd3279",
+    "digest": "sha256:de5bb227b79b161fff086406132f58acec2c488f7bf625b003abcc32819fe9c3",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,7 +35,7 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:06f90aeca16750ab71dc79ad5274e2990df72f60f4eaf79c24ee1246de506b4f"
+        "sha256": "sha256:9c5220dd3c8add48ac4300f92f63ec03a8331a214c1fb9a603d4d65c0ae8814b"
       },
       {
         "id": "dsp/core/engine.h",
@@ -90,7 +90,7 @@
       {
         "id": "dsp/include/effetune/dsp/xorshift_rng.h",
         "kind": "file",
-        "sha256": "sha256:b7f7c8100b501737041b0db649cb3c058a077b4d58f7fdaf5d86afc853faf67e"
+        "sha256": "sha256:0a36ddf924724675a9603487b9e35ea964b5acb02dbb260804cd475b7f3d57f3"
       },
       {
         "id": "dsp/include/effetune/kernel.h",
@@ -965,7 +965,7 @@
     },
     {
       "name": "SoundFontPlayerPlugin",
-      "hash": 625111408,
+      "hash": 2561701403,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1179,7 +1179,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4943952,
-    "simd": 5173979
+    "baseline": 4968383,
+    "simd": 5197343
   }
 }

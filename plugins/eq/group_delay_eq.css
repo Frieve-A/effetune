@@ -112,3 +112,9 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
 .group-delay-eq-plugin-ui .group-delay-eq-status[data-state='warning'] {
     color: var(--et-warning);
 }
+
+body.layout-mobile .group-delay-eq-plugin-ui :is(.group-delay-eq-status, .group-delay-eq-details) {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

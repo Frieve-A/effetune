@@ -20,6 +20,8 @@ export function createPwaPlaybackTrack(api, item) {
       if (track.playable === false) throw networkMusicError('unsupportedFormat');
       Object.assign(meta, { title: track.title || meta.title, artist: track.artist || '', album: track.album || '', artworkUrl: track.artwork || '' });
       return { mediaSource: track.uri, ...(track.headers ? { headers: track.headers } : {}),
+        // A known MIME lets the Android decoder skip its format probe.
+        ...(track.mimeType ? { type: track.mimeType } : {}),
         kind: 'pwa-network', sourceKey, physicalSourceKey: sourceKey, canonicalSourceKey: sourceKey };
     }
   };

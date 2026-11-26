@@ -302,3 +302,37 @@ for (const failureTiming of ['after reconnect', 'during reconnect']) {
         assert.deepEqual(disconnected, []);
     });
 }
+
+test('a client with reauthorization support goes back to Connect effects after 4401', async t => {
+    const requested = [];
+    const preparedFrames = [];
+    let emit;
+    const { controller, container } = fixture({
+        reauthorizeOnClose: true,
+        prepareEditorFrame: frame => preparedFrames.push(frame),
+        getConnection: async () => ({ registered: true }),
+        connect: async () => ({ ok: true, connectionId: 'socket' }),
+        onEvent: listener => { emit = listener; return () => {}; },
+        disconnect: async () => true,
+        requestConnection: async (id, _requestId, replace) => {
+            requested.push({ id, replace });
+            return { ok: true };
+        }
+    });
+    t.after(() => controller.dispose());
+    await controller.selectPlayer({ id: 'A', name: 'Living room' });
+    controller.acceptFrame({ source: {}, origin: 'https://effetune.test', data: { type: 'effetune-remote-ready' } });
+    assert.deepEqual(preparedFrames, []);
+    controller.acceptFrame({ source: controller.frame.contentWindow, origin: 'https://effetune.test',
+        data: { type: 'effetune-remote-ready' } });
+    assert.deepEqual(preparedFrames, [controller.frame]);
+    await controller.port.onmessage({ data: { type: 'connect' } });
+    emit({ connectionId: 'older', type: 'close', code: 4401 });
+    assert.ok(controller.frame);
+    emit({ connectionId: 'socket', type: 'close', code: 4401 });
+    assert.equal(controller.frame, null);
+    assert.equal(requested.length, 0);
+    await descendants(container).find(element => element.tagName === 'form').dispatch('submit');
+    assert.deepEqual(requested, [{ id: 'A', replace: true }]);
+    assert.ok(controller.frame);
+});

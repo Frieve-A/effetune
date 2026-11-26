@@ -110,9 +110,9 @@ function playerSection(player, state) {
 function nativeSection(native) {
     if (!native) return NOT_APPLICABLE;
     return {
-        ...pick(native, 'variant confirmedActivity'),
+        ...pick(native, 'variant confirmedActivity captureRatio'),
         session: pick(native.session, 'sampleRate deviceRate captureRate width inputChannels outputChannels inputFailed periodFrames inputLatencyFrames outputLatencyFrames'),
-        latency: pick(native.latency, 'outputLatencyFrames inputLatencyFrames outputConverterDelayFrames captureTargetFrames feedFrames'),
+        latency: pick(native.latency, 'outputLatencyFrames inputLatencyFrames outputConverterDelayFrames captureTargetFrames captureConverterDelayFrames feedFrames'),
         openSettings: pick(native.openSettings, 'sampleRate outputChannels latency'),
         lastNotification: pick(native.lastNotification, 'state epochMs'),
         lastFailure: pick(native.lastFailure, 'reason epochMs'),
@@ -177,6 +177,20 @@ function browserVersions(userAgent) {
     return versions;
 }
 
+// The Android engine reports the devices it actually uses; preferences hold only the last request.
+function androidAudio(preferences, snapshot, devices) {
+    const label = (list, id) => id > 0 ? list?.find(device => device.id === id)?.label : undefined;
+    const inputId = snapshot.inputDeviceId;
+    return {
+        selection: { ...preferences, latencyHint: snapshot.latencyHint ?? preferences.latencyHint,
+            useInputWithPlayer: snapshot.useInputWithPlayer === true,
+            inputDeviceId: inputId < 0 ? NO_AUDIO_INPUT_DEVICE_ID : inputId > 0 ? String(inputId) : 'default' },
+        inputLabel: label(devices?.inputs, inputId),
+        outputLabel: label(devices?.outputs, snapshot.actualOutputDeviceId),
+        engine: pick(snapshot, 'sampleRate deviceSampleRate outputHardwareSampleRate channelCount outputBurstFrames outputBufferFrames outputXRuns outputRenderFailures sourceUnderruns inputUnderruns latencyHint')
+    };
+}
+
 async function optional(read) {
     try { return await read(); } catch { return null; }
 }
@@ -192,23 +206,31 @@ export async function collectDiagnosticFile(win = window, translate = (_, fallba
     const preferences = win.electronIntegration?.audioPreferences || win.audioPreferences || {};
     const android = isAndroidHost(win) || manager?.isAndroid;
     const api = win.electronAPI;
-    const [main, background, hints, devices, presets] = await Promise.all([
+    const [main, background, hints, devices, presets, androidDevices, androidSnapshot] = await Promise.all([
         optional(() => api?.diagnostics?.collect()), optional(() => api?.getBackgroundProcessingStatus?.()),
         optional(() => !api && win.navigator?.userAgentData?.getHighEntropyValues(['platformVersion', 'architecture'])),
         optional(() => win.navigator?.mediaDevices?.enumerateDevices()),
-        optional(() => win.uiManager?.pipelineManager?.presetManager?.getPresets?.())
+        optional(() => win.uiManager?.pipelineManager?.presetManager?.getPresets?.()),
+        optional(() => android && manager?.bridge?.request('audio.devices')),
+        optional(() => android && manager?.bridge?.request('snapshot.get'))
     ]);
+    const engineSnapshot = android && (androidSnapshot || manager?.snapshot);
+    const androidState = engineSnapshot ? androidAudio(preferences, engineSnapshot, androidDevices) : null;
+    const selection = androidState?.selection ?? preferences;
     const state = player?.stateManager?.getStateSnapshot?.();
     const plugins = manager?.getCurrentPipeline?.();
     const log = getDiagnosticLog();
-    const noInput = preferences.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID;
-    const inputLabel = !noInput && preferences.inputDeviceLabel;
-    const outputLabel = request?.outputDeviceLabel ?? preferences.outputDeviceLabel;
+    const noInput = selection.inputDeviceId === NO_AUDIO_INPUT_DEVICE_ID;
+    const inputLabel = !noInput && (androidState ? androidState.inputLabel : preferences.inputDeviceLabel);
+    const outputLabel = androidState ? androidState.outputLabel : request?.outputDeviceLabel ?? preferences.outputDeviceLabel;
     const labels = new Set([inputLabel, outputLabel].filter(Boolean));
     const ids = [preferences.inputDeviceId, preferences.outputDeviceId, contextManager?.diagnosticRequestedOutputId,
         ...(devices || []).map(device => device.deviceId)];
     const events = [...log.events, ...main?.events || []].sort((a, b) => a.epochMs - b.epochMs);
-    const words = createDictionary(win, { state, plugins, presets, devices, labels, events, preferences });
+    // Android device ids are small integers, so only their labels may enter the redaction dictionary.
+    const androidLabels = ['inputs', 'outputs'].flatMap(key => androidDevices?.[key] || []).map(({ label }) => ({ label }));
+    const words = createDictionary(win, { state, plugins, presets, devices: [...devices || [], ...androidLabels], labels, events,
+        preferences: android ? {} : preferences });
     const origin = win.location?.href;
     const text = value => redactDiagnosticText(value, words, origin);
     const label = value => deviceLabel(value, labels, words, origin, ids);
@@ -232,9 +254,10 @@ export async function collectDiagnosticFile(win = window, translate = (_, fallba
             ...pick(hints, 'architecture platformVersion') },
         audio: {
             requested: request ? { ...pick(request, 'sampleRate outputChannels outputSelection creationOutputSelection'), outputDeviceLabel: label(outputLabel) } : UNAVAILABLE,
-            settings: { ...pick(preferences, 'audioDriver latencyHint useWasmDsp useInputWithPlayer'),
-                inputSelection: noInput ? 'none' : preferences.inputDeviceId && preferences.inputDeviceId !== 'default' ? 'explicit' : 'default',
+            settings: { ...pick(selection, 'audioDriver latencyHint useWasmDsp useInputWithPlayer'),
+                inputSelection: noInput ? 'none' : selection.inputDeviceId && selection.inputDeviceId !== 'default' ? 'explicit' : 'default',
                 ...(!noInput && { inputDeviceLabel: label(inputLabel) }) },
+            ...(androidState && { androidEngine: androidState.engine }),
             applied: context ? { ...pick(context, 'state sampleRate baseLatency outputLatency'),
                 destination: pick(context.destination, 'channelCount maxChannelCount') } : UNAVAILABLE,
             route: { ...pick(contextManager, 'useMediaStreamOutput'), ...pick(io, 'audioContextSinkMode directOutputMode'),
@@ -259,8 +282,9 @@ export async function collectDiagnosticFile(win = window, translate = (_, fallba
         }),
         console: log.console.map(entry => ({ ...pick(entry, 'origin epochMs level count lastEpochMs'), args: entry.args.map(text) }))
     };
-    const summary = diagnosticSummary({ win, environment: main?.environment, android, native, versions, preferences,
-        manager, context, outputLabel, inputLabel, trackRate: state?.currentTrack && playerState.format.sampleRate }, translate);
+    const summary = diagnosticSummary({ win, environment: main?.environment, android, native, versions, preferences: selection,
+        manager, context, outputLabel, inputLabel, trackRate: state?.currentTrack && playerState.format.sampleRate,
+        androidEngine: androidState?.engine }, translate);
     const timestamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
     return { name: `effetune-diagnostics-${timestamp}.txt`, text: JSON.stringify(bundle, null, 2), summary };
 }

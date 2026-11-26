@@ -52,7 +52,7 @@ IoPipeline::Capture IoPipeline::prepareInput(const SessionFormat &format, unsign
   if (channels) {
     const auto target = std::ceil(2. * format.periodFrames * sampleRate / format.deviceRate);
     next->open(channels, sampleRate, format.sampleRate,
-               static_cast<std::size_t>(std::clamp(target, 32., 131071.)));
+               static_cast<std::size_t>(std::clamp(target, 32., 131071.)), true);
   }
   return next;
 }
@@ -79,7 +79,7 @@ bool IoPipeline::renderDevice(Session &session, float *output, unsigned frames,
         fileActive = file->activeThisBlock();
       }
       if (captureChannels_ && !synchronousInput)
-        capture_->read(inputBuffer_.data(), block, block);
+        capture_->read(inputBuffer_.data(), block, block, ClockedFifo::nowNs());
       if (!discard && inputEnabled) {
         for (unsigned ch = 0; ch < captureChannels_; ++ch) {
           const auto *input = synchronousInput ? synchronousInput + ch * frames + produced

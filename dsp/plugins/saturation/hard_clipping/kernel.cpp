@@ -23,7 +23,8 @@ class HardClippingKernel final : public PluginKernel {
 public:
   void prepare(const PrepareInfo &info) override {
     shaper_.prepare(info.maxChannels * 1u);
-    oversampled_.resize(static_cast<std::size_t>(info.maxFrames) * kOversampleFactor);
+    // Two channel lanes each own one oversampled block.
+    oversampled_.resize(static_cast<std::size_t>(info.maxFrames) * kOversampleFactor * 2u);
     low_pass_previous_.resize(info.maxChannels);
     interpolation_previous_.resize(info.maxChannels);
   }
@@ -47,7 +48,7 @@ public:
                       channel_count * 1u);
     const std::size_t oversampled_count = static_cast<std::size_t>(frame_count) * kOversampleFactor;
     if (channel_count == 0u || frame_count == 0u || channel_count > low_pass_previous_.size() ||
-        oversampled_count > oversampled_.size()) {
+        oversampled_count > oversampled_.size() / 2u) {
       return;
     }
     if (paramsDirty()) {
@@ -83,60 +84,12 @@ public:
       }
       return;
     }
-    for (std::uint32_t channel = 0; channel < channel_count; ++channel) {
-      const std::size_t channel_offset = static_cast<std::size_t>(channel) * frame_count;
-      double interpolation_previous = interpolation_previous_[channel];
-
-      for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
-        const std::size_t input_index = channel_offset + frame;
-        const double first = interpolation_previous;
-        const double second = static_cast<double>(audio[input_index]);
-        const double delta = second - first;
-        const std::size_t output_index = static_cast<std::size_t>(frame) * kOversampleFactor;
-        oversampled_[output_index] = static_cast<float>(first);
-        oversampled_[output_index + 1u] = static_cast<float>(first + 0.25 * delta);
-        oversampled_[output_index + 2u] = static_cast<float>(first + 0.5 * delta);
-        oversampled_[output_index + 3u] = static_cast<float>(first + 0.75 * delta);
-        interpolation_previous = second;
-      }
-      interpolation_previous_[channel] = interpolation_previous;
-
-      if (mode == 0u) {
-        for (std::size_t index = 0; index < oversampled_count; ++index) {
-          const double sample = static_cast<double>(oversampled_[index]);
-          if (sample > threshold_) {
-            oversampled_[index] = static_cast<float>(threshold_);
-          } else if (sample < negative_threshold) {
-            oversampled_[index] = static_cast<float>(negative_threshold);
-          }
-        }
-      } else if (mode == 1u) {
-        for (std::size_t index = 0; index < oversampled_count; ++index) {
-          if (static_cast<double>(oversampled_[index]) > threshold_) {
-            oversampled_[index] = static_cast<float>(threshold_);
-          }
-        }
-      } else {
-        for (std::size_t index = 0; index < oversampled_count; ++index) {
-          if (static_cast<double>(oversampled_[index]) < negative_threshold) {
-            oversampled_[index] = static_cast<float>(negative_threshold);
-          }
-        }
-      }
-
-      double previous = low_pass_previous_[channel];
-      for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
-        const std::size_t index = static_cast<std::size_t>(frame) * kOversampleFactor;
-        const double fir_output = static_cast<double>(oversampled_[index]) * 0.125 +
-                                  static_cast<double>(oversampled_[index + 1u]) * 0.375 +
-                                  static_cast<double>(oversampled_[index + 2u]) * 0.375 +
-                                  static_cast<double>(oversampled_[index + 3u]) * 0.125;
-        const double filtered = kLowPassCoefficient * fir_output + kLowPassComplement * previous +
-                                denormal_noise_.sample(frame);
-        previous = filtered;
-        audio[channel_offset + frame] = static_cast<float>(filtered);
-      }
-      low_pass_previous_[channel] = previous;
+    // Channel pairs share one low-pass loop so their independent recursions overlap.
+    for (std::uint32_t channel = 0; channel < channel_count; channel += 2u) {
+      if (channel + 1u < channel_count)
+        processLanes<2u>(audio, channel, frame_count, mode, negative_threshold);
+      else
+        processLanes<1u>(audio, channel, frame_count, mode, negative_threshold);
     }
     denormal_noise_.advance(frame_count);
   }
@@ -153,13 +106,87 @@ public:
   }
 
 private:
-  dsp::OversampledShaper shaper_;
+  // Linearly upsamples one channel by four and clips it in place.
+  void upsampleAndClip(const float *input, float *oversampled, std::uint32_t channel,
+                       std::uint32_t frame_count, std::uint32_t mode,
+                       double negative_threshold) noexcept {
+    const std::size_t oversampled_count = static_cast<std::size_t>(frame_count) * kOversampleFactor;
+    double interpolation_previous = interpolation_previous_[channel];
+    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+      const double first = interpolation_previous;
+      const double second = static_cast<double>(input[frame]);
+      const double delta = second - first;
+      const std::size_t output_index = static_cast<std::size_t>(frame) * kOversampleFactor;
+      oversampled[output_index] = static_cast<float>(first);
+      oversampled[output_index + 1u] = static_cast<float>(first + 0.25 * delta);
+      oversampled[output_index + 2u] = static_cast<float>(first + 0.5 * delta);
+      oversampled[output_index + 3u] = static_cast<float>(first + 0.75 * delta);
+      interpolation_previous = second;
+    }
+    interpolation_previous_[channel] = interpolation_previous;
+
+    if (mode == 0u) {
+      for (std::size_t index = 0; index < oversampled_count; ++index) {
+        const double sample = static_cast<double>(oversampled[index]);
+        if (sample > threshold_) {
+          oversampled[index] = static_cast<float>(threshold_);
+        } else if (sample < negative_threshold) {
+          oversampled[index] = static_cast<float>(negative_threshold);
+        }
+      }
+    } else if (mode == 1u) {
+      for (std::size_t index = 0; index < oversampled_count; ++index) {
+        if (static_cast<double>(oversampled[index]) > threshold_) {
+          oversampled[index] = static_cast<float>(threshold_);
+        }
+      }
+    } else {
+      for (std::size_t index = 0; index < oversampled_count; ++index) {
+        if (static_cast<double>(oversampled[index]) < negative_threshold) {
+          oversampled[index] = static_cast<float>(negative_threshold);
+        }
+      }
+    }
+  }
+
+  template <std::uint32_t Lanes>
+  void processLanes(float *audio, std::uint32_t channel, std::uint32_t frame_count,
+                    std::uint32_t mode, double negative_threshold) noexcept {
+    const std::size_t stride = oversampled_.size() / 2u;
+    float *data[Lanes];
+    const float *oversampled[Lanes];
+    double previous[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      data[lane] = audio + static_cast<std::size_t>(channel + lane) * frame_count;
+      float *const buffer = oversampled_.data() + lane * stride;
+      upsampleAndClip(data[lane], buffer, channel + lane, frame_count, mode, negative_threshold);
+      oversampled[lane] = buffer;
+      previous[lane] = low_pass_previous_[channel + lane];
+    }
+    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+      const std::size_t index = static_cast<std::size_t>(frame) * kOversampleFactor;
+      const double noise = denormal_noise_.sample(frame);
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        const float *const block = oversampled[lane] + index;
+        const double fir_output =
+            static_cast<double>(block[0]) * 0.125 + static_cast<double>(block[1]) * 0.375 +
+            static_cast<double>(block[2]) * 0.375 + static_cast<double>(block[3]) * 0.125;
+        previous[lane] =
+            kLowPassCoefficient * fir_output + kLowPassComplement * previous[lane] + noise;
+        data[lane][frame] = static_cast<float>(previous[lane]);
+      }
+    }
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane)
+      low_pass_previous_[channel + lane] = previous[lane];
+  }
+
   void updateThreshold() noexcept {
     threshold_ = params_.threshold == 0.0F
                      ? 1.0
                      : std::pow(10.0, static_cast<double>(params_.threshold) / 20.0);
   }
 
+  dsp::OversampledShaper shaper_;
   std::vector<float> oversampled_;
   std::vector<double> low_pass_previous_;
   std::vector<double> interpolation_previous_;

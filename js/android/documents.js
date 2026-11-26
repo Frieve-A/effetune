@@ -33,12 +33,15 @@ export class AndroidDocuments {
         return bytes;
     }
 
-    async write(uri, blob, { signal } = {}) {
+    async write(uri, blob, { signal, onProgress } = {}) {
         const source = blob instanceof Blob ? blob : new Blob([blob]);
+        onProgress?.({ written: 0, total: source.size });
         for (let offset = 0; offset < source.size || offset === 0; offset += ANDROID_FILE_CHUNK_BYTES) {
             signal?.throwIfAborted();
             const bytes = new Uint8Array(await source.slice(offset, offset + ANDROID_FILE_CHUNK_BYTES).arrayBuffer());
+            signal?.throwIfAborted();
             await this.bridge.request('documents.write', { uri, data: bytesToBase64(bytes), append: offset !== 0 });
+            onProgress?.({ written: offset + bytes.byteLength, total: source.size });
         }
     }
 }

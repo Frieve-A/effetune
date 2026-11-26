@@ -62,11 +62,12 @@ export function createLibraryBreadcrumbs(crumbs, title, current, navigate) {
 }
 
 export function createLibraryEntityGridGeometry(itemCount, containerWidth, mediaCards) {
-  const width = Math.max(176, containerWidth || 176);
-  const columns = Math.max(1, Math.min(12, Math.floor((width + 16) / 192)));
+  const minimumCardWidth = isMobileLayout() && mediaCards ? 136 : 176;
+  const width = Math.max(minimumCardWidth, containerWidth || minimumCardWidth);
+  const columns = Math.max(1, Math.min(12, Math.floor((width + 16) / (minimumCardWidth + 16))));
   const cardWidth = (width - 16 * (columns - 1)) / columns;
   const baseRowHeight = isMobileLayout() ? 196 : 224;
-  return new SegmentedVirtualGridGeometry({ itemCount, containerWidth: width,
+  return new SegmentedVirtualGridGeometry({ itemCount, containerWidth: width, minimumCardWidth,
     rowHeight: mediaCards ? Math.max(baseRowHeight, Math.ceil(cardWidth + 48 + 16)) : baseRowHeight });
 }
 

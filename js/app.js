@@ -21,11 +21,11 @@ import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 import { installSpaceKeyGuard } from './utils/space-key-guard.js';
 import { loadStylesheet, waitForStylesheets } from './utils/classic-script-loader.js';
 import { shouldAutoStart } from './ui/onboarding-tour.js';
+import { featureReturnTab, saveFeatureReturnTab, TRANSIENT_PIPELINE_STATE_STORAGE_KEY } from '../features/measurement/return-to-effetune.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
 const RELOAD_PIPELINE_RESTORE_VALUE = 'reload';
-const TRANSIENT_PIPELINE_STATE_STORAGE_KEY = 'effetune_transient_pipeline_state';
 
 function isSuccessfulAudioGraphBuild(result) {
     return typeof result !== 'string' || result.length === 0;
@@ -212,7 +212,7 @@ function removeSharedVisualizerParam(windowRef) {
 function hasExplicitStartupViewRequest(windowRef = window) {
     try {
         const params = new URLSearchParams(captureInitialStartupSearch(windowRef));
-        return params.has('p') ||
+        return Boolean(featureReturnTab(windowRef)) || params.has('p') ||
             params.has('dbt') ||
             params.has('v') ||
             params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) === TRANSIENT_PIPELINE_RESTORE_VALUE;
@@ -267,10 +267,10 @@ function consumeTransientPipelineRestoreRequest(windowRef = window) {
     }
 }
 
-function loadTransientPipelineState(windowRef = window) {
+function takeTransientPipelineState(restore) {
     try {
-        const serializedState = windowRef.sessionStorage?.getItem?.(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
-        windowRef.sessionStorage?.removeItem?.(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+        const serializedState = restore && window.sessionStorage?.getItem(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
+        window.sessionStorage?.removeItem(TRANSIENT_PIPELINE_STATE_STORAGE_KEY);
         if (!serializedState) {
             return null;
         }
@@ -430,9 +430,14 @@ class App {
     }
 
     async openFeaturePage(path, { speakerDistortion } = {}) {
+        const tab = this.uiManager.layoutMode?.isMobile && this.uiManager.mobileNav?.getCurrentView();
+        const rememberTab = () => {
+            if (tab) saveFeatureReturnTab(tab === 'visualizer' ? 'effects' : tab);
+        };
         const isMeasurementPage = /(?:^|\/)measurement\/measurement\.html$/.test(path);
         if (!isMeasurementPage) {
             await this.audioManager.fadeOutOutputForTeardown?.();
+            rememberTab();
             window.location.href = path;
             return;
         }
@@ -451,6 +456,7 @@ class App {
             const fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
             let opened = false;
             try {
+                rememberTab();
                 const result = await window.electronAPI.openFrequencyResponseMeasurement(pipelineState);
                 opened = result?.success === true;
                 if (!opened) {
@@ -459,7 +465,10 @@ class App {
             } catch (error) {
                 console.error('Failed to open Frequency Response Measurement:', error);
             }
-            if (!opened) this.audioManager.fadeInOutputForToken?.(fadeToken);
+            if (!opened) {
+                saveFeatureReturnTab(null);
+                this.audioManager.fadeInOutputForToken?.(fadeToken);
+            }
             return;
         }
 
@@ -490,6 +499,7 @@ class App {
         }
         await this.handOffPipelineToMeasurement(speakerDistortion);
         await this.audioManager.fadeOutOutputForTeardown?.();
+        rememberTab();
         window.location.href = path;
     }
 
@@ -641,6 +651,7 @@ class App {
             }
 
             if (audioRuntimeReady && audioWorkletReady && audioGraphReady && powerRuntimeReady) {
+                if (isAndroidHost()) await import('./android/openhome.js');
                 await this.uiManager.setOpenHomeRemoteRuntimeReady?.();
             }
 
@@ -686,6 +697,9 @@ class App {
                     const player = await this.uiManager.createAudioPlayer([], false);
                     player.ui.createPlayerUI();
                 }
+                const { reportAndroidPlaybackRestore } = await import('./android/playback-queue.js');
+                void reportAndroidPlaybackRestore(this.uiManager, this.audioManager.bridge).catch(error =>
+                    console.warn('Could not report Android playback session restore:', error));
                 const { installAndroidSharedFiles } = await import('./android/shared-files.js');
                 installAndroidSharedFiles(this.uiManager);
             }
@@ -760,17 +774,19 @@ class App {
         const midiPreference = name => window.audioPreferences?.[name] ||
             window.electronIntegration?.audioPreferences?.[name] || '';
         const midiInputKey = midiPreference('midiInputDeviceKey');
-        if (midiInputKey && !isAndroidHost()) {
+        if (midiInputKey) {
             this.applyMidiInputPreference(midiInputKey).catch(error => {
                 console.warn('MIDI input startup failed:', error);
             });
         }
         const midiOutputKey = midiPreference('midiOutputDeviceKey');
-        if (midiOutputKey && !isAndroidHost()) {
-            this.applyMidiOutputPreference(midiOutputKey).catch(error => {
-                console.warn('MIDI output startup failed:', error);
-            });
-        }
+        const applyMidiOutput = key => key ? this.applyMidiOutputPreference(key) : undefined;
+        const midiOutput = isAndroidHost()
+            ? this.audioManager.bridge.request('midi.list').then(result => applyMidiOutput(result.selectedOutputKey))
+            : applyMidiOutput(midiOutputKey);
+        midiOutput?.catch(error => {
+            console.warn('MIDI output startup failed:', error);
+        });
 
         // Copy a legacy browser-storage IR library into application data in the
         // background so the first IR Reverb use does not have to wait for it.
@@ -813,7 +829,6 @@ class App {
     }
 
     async applyMidiInputPreference(key) {
-        if (isAndroidHost()) return;
         if (!key && !this.midiLiveInputPromise) return;
         if (!this.midiLiveInputPromise) {
             this.midiLiveInputPromise = Promise.all([
@@ -831,7 +846,6 @@ class App {
     }
 
     async applyMidiOutputPreference(key) {
-        if (isAndroidHost()) return;
         if (!key && !this.midiControllerManager && !this.midiControllerManagerPromise) return;
         const manager = await this.ensureMidiControllerManager();
         await manager.setOutputDevice(key);
@@ -866,7 +880,7 @@ class App {
             const dbtParam = new URLSearchParams(window.location.search).get('dbt');
             if (dbtParam && this.uiManager && this.uiManager.getDoubleBlindTest) {
                 const doubleBlindTest = await this.uiManager.getDoubleBlindTest();
-                doubleBlindTest.restoreFromShare(dbtParam);
+                await doubleBlindTest.restoreFromShare(dbtParam);
             }
         } catch (error) {
             console.warn('Failed to restore Double Blind Test from URL:', error);
@@ -888,6 +902,10 @@ class App {
     }
 
     async openConfiguredStartupView() {
+        if (featureReturnTab()) {
+            saveFeatureReturnTab(null);
+            if (this.uiManager.layoutMode?.isMobile) return;
+        }
         const startupParams = new URLSearchParams(captureInitialStartupSearch(window));
         // Reload restores pipeline data without requesting the effect view; feature returns request it.
         if (this.restoringTransientPipeline &&
@@ -950,19 +968,19 @@ class App {
      * @returns {Promise<boolean>} Whether the initial audio graph was built successfully
      */
     async initializeAndBuildPipeline() {
-        if (await this.audioManager.hydratePipeline?.(this.pluginManager)) {
+        const hydrated = await this.audioManager.hydratePipeline?.(this.pluginManager);
+        const restoreTransientPipeline = consumeTransientPipelineRestoreRequest();
+        this.restoringTransientPipeline = restoreTransientPipeline;
+        const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
+        const transientPipelineState = restoreTransientPipeline && !isElectron
+            ? takeTransientPipelineState(!hydrated)
+            : null;
+        if (hydrated) {
             this.uiManager.updatePipelineUI(true);
             this.uiManager.updateURL();
             this.uiManager.updatePipelineToggleButton();
             return true;
         }
-        // Check if running in Electron environment
-        const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
-        const restoreTransientPipeline = consumeTransientPipelineRestoreRequest();
-        this.restoringTransientPipeline = restoreTransientPipeline;
-        const transientPipelineState = restoreTransientPipeline && !isElectron
-            ? loadTransientPipelineState()
-            : null;
         
         // Try to load pipeline state from file if in Electron environment and no preset file was specified via command line
         // Check for the force skip flag first
@@ -1471,6 +1489,10 @@ class App {
         document.addEventListener('resume', event => handleDocumentLifecycle(event, 'resume'), true);
 
         const handleWindowLifecycle = (event, eventType = event?.type) => {
+            if (eventType === 'pageshow' && event.persisted) {
+                saveFeatureReturnTab(null);
+                if (consumeTransientPipelineRestoreRequest()) takeTransientPipelineState(false);
+            }
             if (eventType === 'pagehide') {
                 this.uiManager.flushPipelineStateToLocalStorage?.();
             }

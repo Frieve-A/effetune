@@ -1926,6 +1926,7 @@ export function generateOutputs(catalog = buildCatalog()) {
     [path.join(generatedRoot, 'graph-v1-capacity.h'), graphCapacityCppHeader()],
     [path.join(repoRoot, 'dsp', 'bindings', 'js', 'src',
       'generated-graph-contract.js'), graphCapacityJavaScript()],
+    [path.join(repoRoot, 'js', 'native', 'graph-capacity.generated.js'), graphCapacityJavaScript()],
     [path.join(repoRoot, 'dsp', 'bindings', 'python', 'src', 'effetune',
       '_generated_graph_contract.py'), graphCapacityPython()],
     [path.join(schemaRoot, 'chain-v1.schema.json'), jsonFile(chainSchema(catalog))],

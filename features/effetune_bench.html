@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EffeTune Benchmark</title>
     <script src="../js/theme-boot.js"></script>
     <link rel="stylesheet" href="../css/effetune.css">
@@ -51,6 +52,9 @@
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-size: cover;
+        }
+        .benchmark-table-scroll {
+            display: contents;
         }
         .benchmark-table {
             width: 100%;
@@ -152,7 +156,21 @@
             border-left: 3px solid #f44336; /* theme-allow: Benchmark identification palette. */
             border-radius: 0;
         }
+        .benchmark-controls {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .benchmark-run-controls, .benchmark-choice {
+            display: flex;
+            align-items: center;
+        }
+        .benchmark-run-controls {
+            margin-right: 15px;
+        }
         .benchmark-button {
+            height: 35px;
             padding: 8px 16px;
             background: linear-gradient(180deg, #ba4dcb, #8f269f); /* theme-allow: Benchmark identification palette. */
             border: 1px solid #c56ad3; /* theme-allow: Benchmark identification palette. */
@@ -325,6 +343,48 @@
             font-weight: bold;
             unicode-bidi: isolate;
         }
+        @media (max-width: 760px) {
+            .benchmark-controls, .benchmark-run-controls, .benchmark-choice {
+                flex-wrap: wrap;
+                gap: 8px;
+                max-width: 100%;
+            }
+            .benchmark-run-controls, .benchmark-button {
+                margin-right: 0;
+            }
+            .benchmark-button {
+                height: auto;
+                min-height: 35px;
+                max-width: 100%;
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
+            .benchmark-choice label {
+                overflow-wrap: anywhere;
+            }
+            .benchmark-select {
+                max-width: 100%;
+                height: auto !important;
+                min-height: 35px;
+            }
+        }
+        @media (max-width: 900px) {
+            .benchmark-table-scroll {
+                display: block;
+                overflow-x: auto;
+            }
+            .benchmark-table {
+                width: max-content;
+                min-width: 100%;
+                table-layout: auto;
+            }
+            .benchmark-sort-label {
+                overflow: visible;
+            }
+            .benchmark-sort-label, .benchmark-table td {
+                white-space: nowrap;
+            }
+        }
     </style>
 </head>
 <body>
@@ -337,32 +397,34 @@
     <h1>EffeTune Performance Benchmark</h1>
     <div id="benchmark-results" class="benchmark-container">
         <h2>Performance Benchmark</h2>
-        <div style="display: flex; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
-            <div style="margin-right: 15px; display: flex; align-items: center;">
-                <button id="run-benchmarks" class="benchmark-button" style="height: 35px;">Run Benchmarks</button>
-                <button id="run-score" class="benchmark-button" style="height: 35px;" disabled>Score Only</button>
-                <label for="sample-rate" style="margin-right: 8px;">Sampling Frequency:</label>
-                <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: var(--et-surface-10); color: var(--et-text-primary); border: 1px solid var(--et-surface-17); border-radius: 4px; height: 35px;">
-                    <option value="44100">44.1kHz</option>
-                    <option value="48000">48kHz</option>
-                    <option value="88200">88.2kHz</option>
-                    <option value="96000" selected>96kHz</option>
-                    <option value="176400">176.4kHz</option>
-                    <option value="192000">192kHz</option>
-                    <option value="352800">352.8kHz</option>
-                    <option value="384000">384kHz</option>
-                </select>
+        <div class="benchmark-controls">
+            <div class="benchmark-run-controls">
+                <button id="run-benchmarks" class="benchmark-button">Run Benchmarks</button>
+                <button id="run-score" class="benchmark-button" disabled>Score Only</button>
+                <div class="benchmark-choice">
+                    <label for="sample-rate" style="margin-right: 8px;">Sampling Frequency:</label>
+                    <select id="sample-rate" class="benchmark-select" style="padding: 8px; background-color: var(--et-surface-10); color: var(--et-text-primary); border: 1px solid var(--et-surface-17); border-radius: 4px; height: 35px;">
+                        <option value="44100">44.1kHz</option>
+                        <option value="48000">48kHz</option>
+                        <option value="88200">88.2kHz</option>
+                        <option value="96000" selected>96kHz</option>
+                        <option value="176400">176.4kHz</option>
+                        <option value="192000">192kHz</option>
+                        <option value="352800">352.8kHz</option>
+                        <option value="384000">384kHz</option>
+                    </select>
+                </div>
             </div>
-            <div style="display: flex; align-items: center;">
+            <div class="benchmark-choice">
                 <label for="dsp-mode" style="margin-right: 8px;">Processing Engine:</label>
                 <select id="dsp-mode" class="benchmark-select" style="padding: 8px; background-color: var(--et-surface-10); color: var(--et-text-primary); border: 1px solid var(--et-surface-17); border-radius: 4px; height: 35px;">
                     <option value="javascript">JavaScript</option>
-                    <option value="webassembly" selected>WebAssembly (automatic)</option>
+                    <option value="webassembly" selected>WebAssembly</option>
                 </select>
             </div>
         </div>
         <div class="benchmark-engine-note">
-            The initial engine follows the “Use WebAssembly audio processing” setting. WebAssembly automatically uses SIMD when supported.
+            The initial engine is Native when the Native audio driver is selected; otherwise it follows the “Use WebAssembly audio processing” setting. WebAssembly automatically uses SIMD when supported.
         </div>
         <div id="benchmark-status">Click "Run Benchmarks" to start performance testing.</div>
         <div id="benchmark-score" class="benchmark-score" aria-live="polite"></div>
@@ -374,10 +436,13 @@
 
     <script type="module">
         import { PluginManager } from '../js/plugin-manager.js';
+        import { PLUGIN_SUPPORT_SCRIPTS } from '../js/plugin-support-scripts.js';
+        import { isAndroidHost } from '../js/android/bridge.js';
         import { loadClassicScript, loadStylesheet, waitForStylesheets } from '../js/utils/classic-script-loader.js';
         import { startRendererWatchdogHeartbeat } from '../js/electron-watchdog.js';
         import { loadAudioPreferences } from '../js/electron/audioIntegration.js';
         import { copyTextToClipboard } from '../js/utils/clipboard-utils.js';
+        import { returnToEffeTune } from './measurement/return-to-effetune.js';
         import {
             BENCHMARK_DSP_MODES,
             BENCHMARK_IR_REVERB_NOTE,
@@ -387,8 +452,10 @@
             createBandwidthExtenderBenchmarkInput,
             createIrReverbBenchmarkAssets,
             createRoomEqBenchmarkAssets,
+            createSoundFontBenchmarkAssets,
             createDspBenchmarkRuntime,
-            getBandwidthExtenderBenchmarkWarmupFrames
+            getBandwidthExtenderBenchmarkWarmupFrames,
+            SOUNDFONT_BENCHMARK_NOTE
         } from './effetune-benchmark.js';
         import {
             BENCHMARK_SCORE_VERSION,
@@ -405,9 +472,12 @@
         let SAMPLE_RATE = 96000;
         const BUFFER_SIZE = 128;
         const CHANNEL_COUNT = 2;
+        // Routing and network-I/O plugins do not process audio and are not benchmarked.
+        const BENCHMARK_EXCLUDED_PLUGINS = new Set(['Section', 'Live Audio Send', 'Live Audio Receive']);
         let benchmarkAudioPreferences = {};
         let benchmarkRunning = false;
         let scoreSimdAvailable = null;
+        const SCORE_UNAVAILABLE_MESSAGE = 'EffeTune Score requires WebAssembly (SIMD) or Native processing.';
         let benchmarkScore = null;
         const BENCHMARK_SORT_ICONS = Object.freeze({
             asc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>',
@@ -476,24 +546,27 @@
             benchmarkScore = null;
             const message = document.createElement('div');
             message.className = 'benchmark-score-meta';
-            message.textContent = 'EffeTune Score requires WebAssembly (SIMD) processing.';
+            message.textContent = SCORE_UNAVAILABLE_MESSAGE;
             document.getElementById('benchmark-score').replaceChildren(message);
+        }
+
+        function scoreAvailableFor(dspMode) {
+            return dspMode === BENCHMARK_DSP_MODES.NATIVE ||
+                (dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY && scoreSimdAvailable !== false);
         }
 
         function setBenchmarkRunning(running) {
             benchmarkRunning = running;
             const dspModeSelect = document.getElementById('dsp-mode');
             document.getElementById('run-benchmarks').disabled = running;
-            document.getElementById('run-score').disabled = running ||
-                dspModeSelect.value !== BENCHMARK_DSP_MODES.WEBASSEMBLY || scoreSimdAvailable === false;
+            document.getElementById('run-score').disabled = running || !scoreAvailableFor(dspModeSelect.value);
             document.getElementById('sample-rate').disabled = running;
             dspModeSelect.disabled = running;
         }
 
         function updateScoreAvailability() {
             benchmarkScore = null;
-            if (document.getElementById('dsp-mode').value !== BENCHMARK_DSP_MODES.WEBASSEMBLY ||
-                scoreSimdAvailable === false) {
+            if (!scoreAvailableFor(document.getElementById('dsp-mode').value)) {
                 renderScoreUnavailable();
             } else {
                 renderBenchmarkScore();
@@ -506,7 +579,7 @@
             const { sampleRate, channelCount, blockSize } = BENCHMARK_SCORE_PROTOCOL;
             const rows = [
                 [`EffeTune Score ${BENCHMARK_SCORE_VERSION}`, formatScore(benchmarkScore.score)],
-                ['WebAssembly (SIMD)', `${sampleRate / 1000}kHz`, `${channelCount}ch`, `${blockSize} frames`],
+                [benchmarkScore.implementation, `${sampleRate / 1000}kHz`, `${channelCount}ch`, `${blockSize} frames`],
                 ['Effect', 'Real-Time Factor(x)', 'Reference ratio'],
                 ...BENCHMARK_SCORE_EFFECTS.map(({ name }) => [
                     name,
@@ -651,8 +724,9 @@
                     const pluginDefinitions = new Map();
                     let currentSection = null;
 
-                    await loadClassicScript('../plugins/plugin-base.js');
-                    await loadClassicScript('../plugins/multires-spectrum.js');
+                    for (const path of PLUGIN_SUPPORT_SCRIPTS) {
+                        await loadClassicScript(`../${path}`);
+                    }
 
                     text.split('\n').forEach(line => {
                         line = line.trim();
@@ -671,7 +745,7 @@
                         } else if (currentSection === 'plugins') {
                             const [path, info] = line.split(':').map(s => s.trim());
                             const [displayName, category, className, hasCSS] = info.split('|').map(s => s.trim());
-                            if (displayName != 'Section') {
+                            if (!BENCHMARK_EXCLUDED_PLUGINS.has(displayName)) {
                                 pluginDefinitions.set(displayName, {
                                     path: `../plugins/${path}`,
                                     category,
@@ -805,6 +879,13 @@
         async function measureScoreRtf(runtime, plugin, audioBuffer) {
             const { sampleRate, blockSize, channelCount, warmupSeconds, repetitionSeconds, repetitions } =
                 BENCHMARK_SCORE_PROTOCOL;
+            if (runtime.benchmarkPlugin) {
+                // Native runtimes warm up and time a sustained loop inside the engine.
+                const result = await runtime.benchmarkPlugin(plugin, audioBuffer,
+                    { channelCount, assets: new Map(), warmupFrames: warmupSeconds * sampleRate });
+                if (result.skipped) throw new Error(result.note);
+                return result.samplesPerSecond / sampleRate;
+            }
             const totalBlocks = Math.floor(audioBuffer.length / (blockSize * channelCount));
             const session = runtime.createPluginSession(plugin, { channelCount });
             const measured = [];
@@ -838,7 +919,7 @@
 
         async function runScorePass({ dspMode, preference, manager }) {
             benchmarkScore = null;
-            if (dspMode !== BENCHMARK_DSP_MODES.WEBASSEMBLY) {
+            if (!scoreAvailableFor(dspMode)) {
                 renderScoreUnavailable();
                 return;
             }
@@ -857,13 +938,14 @@
                     location: window.location,
                     basePath: '..'
                 });
-                if (runtime.variant !== 'simd') {
-                    scoreSimdAvailable = false;
-                    renderScoreUnavailable();
-                    benchmarkStatus.textContent = 'EffeTune Score requires WebAssembly (SIMD) processing.';
-                    return;
+                if (dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY) {
+                    scoreSimdAvailable = runtime.variant === 'simd';
+                    if (!scoreSimdAvailable) {
+                        renderScoreUnavailable();
+                        benchmarkStatus.textContent = SCORE_UNAVAILABLE_MESSAGE;
+                        return;
+                    }
                 }
-                scoreSimdAvailable = true;
                 const audioBuffer = createRandomAudioBuffer(sampleRate, inputSeconds, channelCount);
                 const measured = {};
                 const failures = [];
@@ -872,14 +954,19 @@
                     benchmarkStatus.textContent = `Measuring score (${index + 1}/${BENCHMARK_SCORE_EFFECTS.length})…`;
                     renderBenchmarkScore('…', '');
                     await new Promise(resolve => setTimeout(resolve, 10));
-                    if (!manager.isPluginAvailable(effect.name) || !runtime.supportsPlugin(effect.className)) {
-                        failures.push(`${effect.name} is not available for WebAssembly processing.`);
+                    const unavailable = `${effect.name} is not available for ${runtime.label} processing.`;
+                    if (!manager.isPluginAvailable(effect.name)) {
+                        failures.push(unavailable);
                         continue;
                     }
                     let plugin = null;
                     try {
                         plugin = manager.createPlugin(effect.name);
                         if (effect.parameters) plugin.setParameters(effect.parameters);
+                        if (!runtime.supportsPlugin(plugin, { channelCount })) {
+                            failures.push(unavailable);
+                            continue;
+                        }
                         measured[effect.name] = await measureScoreRtf(runtime, plugin, audioBuffer);
                     } catch (error) {
                         console.error(`Score measurement failed for ${effect.name}:`, error);
@@ -891,9 +978,9 @@
 
                 const result = computeBenchmarkScore(measured, BENCHMARK_SCORE_REFERENCE);
                 if (result.complete) {
-                    benchmarkScore = { ...result, measured };
+                    benchmarkScore = { ...result, measured, implementation: runtime.label };
                     renderBenchmarkScore(formatScore(result.score),
-                        `Score ${BENCHMARK_SCORE_VERSION} · WebAssembly (SIMD) · ` +
+                        `Score ${BENCHMARK_SCORE_VERSION} · ${runtime.label} · ` +
                         `${sampleRate / 1000}kHz / ${channelCount}ch / ${blockSize} frames`);
                     benchmarkStatus.textContent = 'Score measurement completed!';
                 } else {
@@ -1100,6 +1187,17 @@
                             });
                             warmupFrames = getBandwidthExtenderBenchmarkWarmupFrames(SAMPLE_RATE);
                             note = BANDWIDTH_EXTENDER_BENCHMARK_NOTE;
+                        } else if (name === 'SoundFont Player') {
+                            requiresWasmAssets = true;
+                            note = SOUNDFONT_BENCHMARK_NOTE;
+                            if (runtime.supportsAssets) {
+                                assets = await createSoundFontBenchmarkAssets({
+                                    sampleRate: SAMPLE_RATE,
+                                    channelCount,
+                                    blockSize: BUFFER_SIZE,
+                                    basePath: '..'
+                                });
+                            }
                         }
 
                         let result;
@@ -1154,7 +1252,10 @@
                 const sampleRateKHz = SAMPLE_RATE / 1000;
                 tableTitle.textContent = `${runtime.label} Processing Speed at ${sampleRateKHz}kHz Sampling Frequency`;
                 benchmarkTableContainer.appendChild(tableTitle);
-                benchmarkTableContainer.appendChild(table);
+                const tableScroll = document.createElement('div');
+                tableScroll.className = 'benchmark-table-scroll';
+                tableScroll.appendChild(table);
+                benchmarkTableContainer.appendChild(tableScroll);
 
                 benchmarkTableContainer.appendChild(createBenchmarkCopyButton(() => {
                     let tableText = benchmarkScoreText();
@@ -1170,7 +1271,7 @@
                 }));
             } catch (error) {
                 benchmarkStatus.textContent = 'The benchmark could not be completed. Try reloading the page and running it again.';
-                if (!benchmarkScore && dspMode === BENCHMARK_DSP_MODES.WEBASSEMBLY && scoreSimdAvailable !== false) {
+                if (!benchmarkScore && scoreAvailableFor(dspMode)) {
                     renderBenchmarkScore('N/A', benchmarkStatus.textContent);
                 }
                 console.error('Benchmark error:', error);
@@ -1184,15 +1285,41 @@
             }
         }
 
+        function createNativeBenchmarkOption() {
+            const option = document.createElement('option');
+            option.value = BENCHMARK_DSP_MODES.NATIVE;
+            option.textContent = 'Native';
+            return option;
+        }
+
         async function addNativeBenchmarkOption(select) {
             try {
-                if (await window.electronAPI?.audioEngine?.available?.() !== true) return;
-                const option = document.createElement('option');
-                option.value = BENCHMARK_DSP_MODES.NATIVE;
-                option.textContent = 'Native';
-                select.appendChild(option);
+                if (await window.electronAPI?.audioEngine?.available?.() !== true) return false;
+                select.appendChild(createNativeBenchmarkOption());
+                return true;
             } catch (error) {
                 console.error('Could not check native benchmark availability:', error);
+                return false;
+            }
+        }
+
+        function initialBenchmarkDspMode(preferences, nativeAvailable) {
+            if (nativeAvailable && (preferences.audioDriver ?? 'standard') !== 'standard') {
+                return BENCHMARK_DSP_MODES.NATIVE;
+            }
+            return preferences.useWasmDsp === false
+                ? BENCHMARK_DSP_MODES.JAVASCRIPT
+                : BENCHMARK_DSP_MODES.WEBASSEMBLY;
+        }
+
+        // Android always plays through the native engine, so it benchmarks only that engine and its rates.
+        function useAndroidNativeOnly(dspModeSelect) {
+            dspModeSelect.replaceChildren(createNativeBenchmarkOption());
+            dspModeSelect.value = BENCHMARK_DSP_MODES.NATIVE;
+            const sampleRateSelect = document.getElementById('sample-rate');
+            if (Number(sampleRateSelect.value) > 192000) sampleRateSelect.value = '192000';
+            for (const option of [...sampleRateSelect.options]) {
+                if (Number(option.value) > 192000) option.remove();
             }
         }
 
@@ -1202,14 +1329,25 @@
             document.getElementById('run-score').addEventListener('click', runScoreOnly);
 
             const dspModeSelect = document.getElementById('dsp-mode');
-            dspModeSelect.addEventListener('change', updateScoreAvailability);
+            const androidHost = Boolean(window.effetuneAndroid && isAndroidHost(window));
+            const status = document.getElementById('benchmark-status');
+            const initialStatus = status.textContent;
+            dspModeSelect.addEventListener('change', () => {
+                status.textContent = initialStatus;
+                updateScoreAvailability();
+            });
             setBenchmarkRunning(true);
             try {
-                await addNativeBenchmarkOption(dspModeSelect);
                 benchmarkAudioPreferences = await loadAudioPreferences(Boolean(window.electronAPI)) || {};
-                dspModeSelect.value = benchmarkAudioPreferences.useWasmDsp === false
-                    ? BENCHMARK_DSP_MODES.JAVASCRIPT
-                    : BENCHMARK_DSP_MODES.WEBASSEMBLY;
+                if (androidHost) {
+                    useAndroidNativeOnly(dspModeSelect);
+                } else {
+                    const nativeAvailable = await addNativeBenchmarkOption(dspModeSelect);
+                    const initialMode = initialBenchmarkDspMode(benchmarkAudioPreferences, nativeAvailable);
+                    dspModeSelect.value = initialMode;
+                    const initialOption = [...dspModeSelect.children].find(option => option.value === initialMode);
+                    initialOption.textContent += ' (automatic)';
+                }
                 updateScoreAvailability();
             } finally {
                 setBenchmarkRunning(false);
@@ -1217,19 +1355,7 @@
 
             const backButton = document.getElementById('back-button');
             backButton.addEventListener('click', () => {
-                if (window.electronAPI) {
-                    window.electronAPI.navigateToMain()
-                        .then(result => {
-                            if (!result || !result.success) {
-                                console.error('Failed to navigate to main page:', result ? result.error : 'Unknown error');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error navigating to main page:', error);
-                        });
-                } else {
-                    window.location.href = '../effetune.html';
-                }
+                returnToEffeTune('../effetune.html').catch(error => console.error('Error returning to EffeTune:', error));
             });
 
             if (window.electronAPI) {

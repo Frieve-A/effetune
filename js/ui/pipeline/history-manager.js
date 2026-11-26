@@ -54,6 +54,9 @@ export class HistoryManager {
         if (!this.isHistorySuppressed && !preserveOperation) this.endOperation();
         this.historySuppressionDepth++;
         try {
+            if (this.historySuppressionDepth === 1 && this.audioManager.batchPipelineMutations) {
+                return this.audioManager.batchPipelineMutations(callback);
+            }
             return callback();
         } finally {
             this.historySuppressionDepth--;
@@ -132,8 +135,9 @@ export class HistoryManager {
     /**
      * Save current pipeline state to history
      */
-    saveState({ operationToken } = {}) {
+    saveState({ operationToken, uiOnly = false } = {}) {
         if (this.isHistorySuppressed) return;
+        if (uiOnly) this.audioManager.savePipelineUIState?.();
         if (operationToken === undefined) {
             this.endOperation();
         } else if (operationToken !== this.activeOperationToken) {

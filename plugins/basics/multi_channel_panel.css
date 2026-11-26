@@ -110,6 +110,11 @@ body.layout-mobile .multichannel-panel-channel-container {
     overflow-x: clip;
 }
 
+body.layout-mobile .multichannel-panel-ui {
+    max-height: none;
+    overflow-y: visible;
+}
+
 body.layout-mobile .multichannel-panel-channel-header {
     min-width: 0;
 }
@@ -121,17 +126,14 @@ body.layout-mobile .multichannel-panel-level-meter {
 }
 
 body.layout-mobile .multichannel-panel-channel-controls {
-    flex-wrap: wrap;
-    align-items: center;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) var(--et-mobile-field-min-width);
     gap: 6px 8px;
 }
 
-body.layout-mobile .multichannel-panel-channel-space {
-    flex: 0 0 40px;
-}
-
 body.layout-mobile .multichannel-panel-button-controls {
-    flex: 0 0 auto;
+    grid-column: 2 / -1;
+    justify-self: start;
 }
 
 body.layout-mobile .multichannel-panel-link-button,
@@ -153,20 +155,17 @@ body.layout-mobile .multichannel-panel-link-button {
 }
 
 body.layout-mobile .multichannel-panel-ui label {
-    flex: 0 0 72px;
     min-width: 0;
-    margin-right: 0;
+    margin-inline-end: 0;
 }
 
-body.layout-mobile .multichannel-panel-ui input[type="range"] {
-    flex: 1 1 var(--et-mobile-effect-slider-basis);
-    width: auto;
-    min-width: var(--et-mobile-effect-slider-min-width);
-    max-width: 100%;
+body.layout-mobile .multichannel-panel-ui input[type="range"]:not(.vertical-slider) {
+    width: 100%;
+    min-width: 0;
+    margin-inline: 0;
 }
 
 body.layout-mobile .multichannel-panel-ui input[type="number"] {
-    flex: 0 0 var(--et-mobile-field-min-width);
     height: var(--et-mobile-control-height) !important;
     min-height: var(--et-mobile-control-height);
     width: var(--et-mobile-field-min-width) !important;

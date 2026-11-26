@@ -210,6 +210,19 @@ test('constructor recognizes Electron integration and user agent detection paths
   });
 });
 
+test('Android shows the benchmark and measurement and opens the bundled benchmark page', async () => {
+  await withStateGlobals({}, async ({ windowRef }) => {
+    windowRef.location.origin = 'https://appassets.androidplatform.net';
+    windowRef.location.href = '';
+    windowRef.effetuneAndroid = { postMessage() {} };
+    const manager = new StateManager({});
+    assert.equal(manager.benchmarkSettingsButton.hidden, false);
+    assert.equal(manager.measurementSettingsButton.hidden, false);
+    manager.benchmarkSettingsButton.click();
+    assert.equal(windowRef.location.href, 'features/effetune_bench.html');
+  });
+});
+
 test('settings gear toggles the Electron menu and audio item opens the dialog without changing status text', async () => {
   await withStateGlobals({
     electronIntegration: {
@@ -574,9 +587,9 @@ test('install menu item stays hidden in Electron environments', async () => {
   });
 });
 
-test('setError, clearError, and initAudio update visible UI state', async () => {
+test('setError and clearError update visible UI state', async () => {
   await withStateGlobals({}, async ({ calls, documentRef }) => {
-    const manager = new StateManager({ audioContext: { sampleRate: 96000 } });
+    const manager = new StateManager({});
 
     manager.setError('Failure', true);
     assert.equal(documentRef.elements.get('errorDisplay').textContent, 'Failure');
@@ -599,17 +612,6 @@ test('setError, clearError, and initAudio update visible UI state', async () => 
     manager.clearError();
     assert.equal(documentRef.elements.get('errorDisplay').textContent, '');
     assert.equal(documentRef.elements.get('errorDisplay').classList.contains('error-message'), false);
-
-    manager.initAudio();
-    assert.equal(documentRef.elements.get('sampleRate').textContent, '96000 Hz');
-  });
-});
-
-test('initAudio tolerates missing audio contexts', async () => {
-  await withStateGlobals({}, async ({ documentRef }) => {
-    const manager = new StateManager({});
-    manager.initAudio();
-    assert.equal(documentRef.elements.get('sampleRate').textContent, '');
   });
 });
 

@@ -24,7 +24,7 @@ public:
     for (auto handle : published_ ? retired_ : created_)
       pipeline_.engine_.destroyInstance(handle);
     if (published_)
-      for (auto id : removedIds_) {
+      for (auto id : retiredRuntimeIds_) {
         pipeline_.streams_.erase(id);
         pipeline_.pendingStreams_.erase(id);
       }
@@ -67,11 +67,19 @@ public:
       const bool retained =
           old != pipeline_.slots_.end() && old->second.settings.type == params.type;
       if (retained) {
-        slot.kernel = old->second.kernel;
-        slot.passthrough = old->second.passthrough;
+        if (params.skip && old->second.kernel) {
+          retired_.push_back(old->second.kernel);
+          retiredRuntimeIds_.push_back(id);
+        } else if (old->second.kernel) {
+          slot.kernel = old->second.kernel;
+          retained_.push_back(id);
+        }
+        if (params.skip || params.displayOnly)
+          slot.passthrough = old->second.passthrough;
+        else if (old->second.passthrough)
+          retired_.push_back(old->second.passthrough);
         if (!params.assetPending)
           params.assetPending = old->second.settings.assetPending;
-        retained_.push_back(id);
       }
       if (!params.skip && !slot.kernel) {
         if ((row[4] && row[8]) && (params.assetPending.value_or(false) ||
@@ -123,6 +131,7 @@ public:
       if (it != nextSlots_.end() && it->second.settings.type == slot.settings.type)
         continue;
       removedIds_.push_back(id);
+      retiredRuntimeIds_.push_back(id);
       if (slot.kernel)
         retired_.push_back(slot.kernel);
       if (slot.passthrough)
@@ -189,15 +198,21 @@ public:
     }
     for (auto handle : reset_)
       pipeline_.engine_.resetInstance(handle);
+    for (auto id : retiredRuntimeIds_) {
+      const auto &type = pipeline_.slots_.at(id).settings.type;
+      if (type == "SoundFontPlayerPlugin" || type == "SFZNotePlayerPlugin")
+        ++pipeline_.runtimeRevision_;
+      for (auto it = pipeline_.assets_.lower_bound({id, 0});
+           it != pipeline_.assets_.end() && it->first.first == id; ++it) {
+        it->second.reportedState = UINT32_MAX;
+      }
+    }
     for (auto id : removedIds_) {
       // Move the map nodes while render owns the live asset cache. This
       // transaction is reclaimed on control after the publish acknowledgement.
       auto it = pipeline_.assets_.lower_bound({id, 0});
       while (it != pipeline_.assets_.end() && it->first.first == id)
         retiredAssets_.insert(pipeline_.assets_.extract(it++));
-      const auto &type = pipeline_.slots_.at(id).settings.type;
-      if (type == "SoundFontPlayerPlugin" || type == "SFZNotePlayerPlugin")
-        ++pipeline_.runtimeRevision_;
     }
     pipeline_.sendId_ = sendId_;
     pipeline_.sendInstance_ = sendInstance_;
@@ -217,7 +232,8 @@ private:
   Pipeline &pipeline_;
   std::map<unsigned, Slot> nextSlots_;
   decltype(Pipeline::assets_) retiredAssets_;
-  std::vector<unsigned> order_, created_, retired_, retained_, mutations_, removedIds_, reset_;
+  std::vector<unsigned> order_, created_, retired_, retained_, mutations_, removedIds_,
+      retiredRuntimeIds_, reset_;
   std::set<unsigned> skipped_;
   std::vector<std::uint8_t> descriptor_, active_;
   Engine::PipelineTopologySnapshot snapshot_;

@@ -29,10 +29,10 @@ public final class AndroidMcpEndpointTest {
         try {
             assertTrue(bound.await(10, TimeUnit.SECONDS));
             Field field = AudioService.class.getDeclaredField("control"); field.setAccessible(true); Handler control = (Handler) field.get(service.get());
-            Method dispatch = AudioService.class.getDeclaredMethod("dispatchRemote", JSONObject.class, Consumer.class, java.util.function.BooleanSupplier.class); dispatch.setAccessible(true);
-            try (RemoteControlServer server = new RemoteControlServer(app, 47319, "android-contract-test", "", "", (request, reply, current) -> {
+            Method dispatch = AudioService.class.getDeclaredMethod("dispatchRemote", JSONObject.class, Consumer.class, java.util.function.BooleanSupplier.class, java.util.function.BooleanSupplier.class); dispatch.setAccessible(true);
+            try (RemoteControlServer server = new RemoteControlServer(app, 47319, "android-contract-test", "", "", (request, reply, current, writable) -> {
                 if (request.optString("op").equals("testFinish")) { reply.accept(AudioService.object("op", "ack", "seq", request.opt("seq"), "ok", true)); finished.countDown(); return; }
-                control.post(() -> { try { dispatch.invoke(service.get(), request, reply, current); } catch (Exception error) { throw new RuntimeException(error); } });
+                control.post(() -> { try { dispatch.invoke(service.get(), request, reply, current, writable); } catch (Exception error) { throw new RuntimeException(error); } });
             })) {
                 assertTrue("Run the paired MCP contract client while this instrumentation is waiting", finished.await(60, TimeUnit.SECONDS));
             }

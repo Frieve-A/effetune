@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { EventManager } from '../../js/audio/event-manager.js';
 import { MidiLiveInput } from '../../js/midi/live-input.js';
+import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 const shownPlayer = { paused: true, ui: { container: {} } };
 
@@ -20,8 +23,12 @@ function harness() {
     setLiveMidiInputSource(key) { sources.push(key); },
     enqueueLiveMidiInput(message) { messages.push(message); }
   };
+  const events = new EventManager({ runtimeOptions: { externalInput: true } });
+  audioManager.addEventListener = events.addEventListener.bind(events);
+  audioManager.removeEventListener = events.removeEventListener.bind(events);
+  audioManager.dispatchEvent = events.dispatchEvent.bind(events);
   const input = new MidiLiveInput({ manager, audioManager, powerController: power });
-  return { input, sources, messages, power,
+  return { input, sources, messages, power, audioManager,
     send(data, extra = {}) { receive?.({ data, timeStamp: 123.5, sourceKey: 'Virtual MIDI', port, ...extra }); },
     replacePort(next) { port = next; change?.(); },
     powerChange() { powerChange?.(); },
@@ -76,6 +83,55 @@ test('hidden network renderer player without UI leaves live MIDI available', asy
   assert.equal(h.messages.length, 1);
   assert.deepEqual(h.sources, ['Virtual MIDI']);
   h.input.dispose();
+});
+
+test('a restored queue allows live MIDI until playback is requested and gives it back after a failed load', async () => {
+  await withGlobals({ window: {}, document: { addEventListener() {}, removeEventListener() {} } }, async () => {
+    const h = harness();
+    const player = new AudioPlayer(h.audioManager);
+    try {
+      await player.stateRestored;
+      h.power.player = player;
+      player.ui.removeStateListeners();
+      const track = { name: 'Song', path: '/song.mid' };
+      player.playbackManager.installPlaybackSession({
+        playlist: [track], originalPlaylist: [track], currentOrdinal: 0,
+        position: 17, duration: 60, repeatMode: 'OFF', shuffleMode: false
+      });
+      player.ui.container = {};
+      await h.input.select('Virtual MIDI');
+      h.send([0x90, 60, 100]);
+      assert.equal(h.messages.length, 1);
+      assert.equal(player.stateManager.getStateSnapshot().currentTrackPosition, 17);
+
+      let loadSucceeds = false;
+      let sourceDuringLoad;
+      const playbackCalls = [];
+      player.contextManager.loadTrack = async () => {
+        sourceDuringLoad = h.sources.at(-1);
+        h.send([0x90, 62, 100]);
+        return loadSucceeds;
+      };
+      player.contextManager.seek = async position => playbackCalls.push(['seek', position]);
+      player.contextManager.play = async () => { playbackCalls.push(['play']); return true; };
+      assert.equal(await player.play(), false);
+      assert.equal(sourceDuringLoad, null);
+      assert.equal(h.sources.at(-1), 'Virtual MIDI');
+      h.send([0x90, 64, 100]);
+      assert.equal(h.messages.length, 2);
+
+      loadSucceeds = true;
+      assert.equal(await player.play(), true);
+      assert.equal(sourceDuringLoad, null);
+      assert.deepEqual(playbackCalls, [['seek', 17], ['play']]);
+      h.send([0x90, 65, 100]);
+      assert.equal(h.messages.length, 2);
+      assert.deepEqual(h.sources, ['Virtual MIDI', null, 'Virtual MIDI', null]);
+    } finally {
+      h.input.dispose();
+      player.playbackManager.dispose();
+    }
+  });
 });
 
 test('port replacement, disconnect, None and disposal clear source ownership and stale events', async () => {

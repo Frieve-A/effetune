@@ -22,6 +22,7 @@ export class RemoteControlDialog {
         this.previousFocus = this.doc.activeElement;
         this.busy = false;
         this.selected = 0;
+        this.qrLink = null;
         const overlay = this.doc.createElement('div');
         overlay.className = 'modal-overlay remote-control-overlay';
         overlay.innerHTML = `
@@ -168,12 +169,32 @@ export class RemoteControlDialog {
         }));
         const current = addresses[this.selected];
         el.link.textContent = current.webUrl;
+        if (this.api.createLinkQr) {
+            this.renderLinkQr(current.webUrl);
+            return;
+        }
         if (current.webQr) el.qr.src = current.webQr;
         else el.qr.removeAttribute('src');
     }
 
+    renderLinkQr(link) {
+        if (link === this.qrLink) return;
+        this.qrLink = link;
+        const { qr } = this.elements;
+        qr.style.display = 'none';
+        qr.removeAttribute('src');
+        const pending = this.api.createLinkQr(link);
+        this.pendingQr = pending;
+        void pending.then(source => {
+            if (!this.overlay || this.pendingQr !== pending) return;
+            qr.src = source;
+            qr.style.removeProperty('display');
+        }).catch(error => console.warn('[remote] could not generate pairing QR:', error));
+    }
+
     showError(key) {
-        this.elements.error.textContent = this.t(key);
+        this.elements.error.textContent = key === 'localNetworkPermission'
+            ? this.win.uiManager.t('dialog.config.localNetworkPermission') : this.t(key);
         this.elements.error.hidden = false;
     }
 
@@ -228,6 +249,7 @@ export class RemoteControlDialog {
         this.win.clearTimeout(this.copyTimer);
         this.overlay.remove();
         this.overlay = null;
+        this.pendingQr = null;
         this.previousFocus?.focus();
     }
 }

@@ -9,17 +9,27 @@ on:
       - 'tools/android/**'
       - 'tools/dsp-parity/**'
       - 'tools/test-android-remote.mjs'
+      - 'native/audio-engine/**'
+      - 'native/openhome-sidecar/**'
       - 'mcp/**'
       - 'scripts/**'
       - 'dsp/**'
       - 'plugins/**'
       - 'js/**'
       - 'css/**'
+      - 'images/**'
+      - 'presets/**'
       - 'features/measurement/**'
+      - 'features/effetune_bench.html'
+      - 'features/effetune-benchmark.js'
+      - 'features/effetune-benchmark-score.js'
+      - 'features/benchmark-score-reference.js'
       - 'docs/**'
+      - 'electron/THIRD_PARTY_NOTICES.txt'
       - 'electron/remote-music-dispatcher.cjs'
       - 'electron/network-music-*.cjs'
       - 'effetune.html'
+      - 'remote.html'
       - 'package*.json'
       - 'LICENSE'
   push:
@@ -63,6 +73,7 @@ jobs:
           fi
           sudo chmod a+rw /dev/kvm
           npm ci --ignore-scripts
+          node scripts/build-openhome-sidecar.mjs --android-sources
           node scripts/build-android-assets.mjs
           chmod +x android/gradlew
       - name: Build both ABIs and candidate packages

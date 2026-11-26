@@ -1,3 +1,5 @@
+import { installAndroidWindowUi } from './window-ui.js';
+
 export const ANDROID_ORIGIN = 'https://appassets.androidplatform.net';
 export const ANDROID_PROTOCOL_VERSION = 1;
 export const ANDROID_MESSAGE_LIMIT = 1024 * 1024;
@@ -39,15 +41,19 @@ export class AndroidBridge {
             return Promise.reject(new RangeError('Android request exceeds the transfer limit'));
         }
         return new Promise((resolve, reject) => {
-            const timer = command === 'documents.pick' ? null : setTimeout(() => {
-                this.pending.delete(id);
-                reject(new Error('Android request timed out'));
-            }, this.timeoutMs);
-            this.pending.set(id, { resolve, reject, timer });
+            const waitsForSelection = ['documents.pick', 'documents.takeShared', 'remote.selectConnectionFile'].includes(command);
+            const pending = { resolve, reject, timer: null, startDeadline: () => {
+                pending.timer = setTimeout(() => {
+                    this.pending.delete(id);
+                    reject(new Error('Android request timed out'));
+                }, this.timeoutMs);
+            } };
+            this.pending.set(id, pending);
+            if (!waitsForSelection) pending.startDeadline();
             try {
                 this.transport.postMessage(message);
             } catch (error) {
-                clearTimeout(timer);
+                clearTimeout(pending.timer);
                 this.pending.delete(id);
                 reject(error);
             }
@@ -65,7 +71,14 @@ export class AndroidBridge {
             return;
         }
         const pending = this.pending.get(message.id);
-        if (!pending || typeof message.ok !== 'boolean') return;
+        if (!pending) return;
+        if (typeof message.permissionWaiting === 'boolean') {
+            clearTimeout(pending.timer);
+            pending.timer = null;
+            if (!message.permissionWaiting) pending.startDeadline();
+            return;
+        }
+        if (typeof message.ok !== 'boolean') return;
         clearTimeout(pending.timer);
         this.pending.delete(message.id);
         if (message.ok) pending.resolve(message.result);
@@ -97,5 +110,9 @@ export class AndroidBridge {
 
 let bridge;
 export function getAndroidBridge() {
-    return bridge ||= new AndroidBridge();
+    if (!bridge) {
+        bridge = new AndroidBridge();
+        if (window.document?.body) installAndroidWindowUi(window, bridge);
+    }
+    return bridge;
 }

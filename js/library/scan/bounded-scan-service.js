@@ -16,6 +16,8 @@ import { classifyMetadataParseError, MetadataParseService } from './metadata-par
 
 const MEBIBYTE = 1024 * 1024;
 const CUE_STAGE_PAGE_ROWS = 8;
+const TRAVERSAL_SPILL_PAGE_ROWS = 64;
+const TRAVERSAL_SPILL_PAGE_BYTES = 256 * 1024;
 const CUE_WARNING_CATEGORIES = Object.freeze([
   'cue-invalid',
   'cue-unsupported',
@@ -44,6 +46,7 @@ export const SCAN_REPOSITORY_METHODS = Object.freeze([
   'beginScanFolder',
   'preflightScanBatch',
   'commitScanSeenBatch',
+  'scanTraversalQueue',
   'cueDirectoryStage',
   'listMetadataCandidates',
   'advanceScanMetadataCursor',
@@ -224,38 +227,34 @@ export class BoundedScanService {
   }
 
   async #enumerateRoot(context, batcher) {
-    const queue = new DirectoryQueue(this.config);
-    queue.push('');
-    while (queue.length) {
+    const queue = new DirectoryQueue(this.config, context.queueHighWater, request =>
+      this.repository.scanTraversalQueue({ ...runIdentity(context), ...request }));
+    let directories = [''];
+    while (directories.length) {
       this.#throwIfAborted(context.signal);
-      const directories = queue.shiftMany(this.config.directoryConcurrency);
-      const results = await Promise.all(directories.map(relativeDirectory =>
-        this.#readDirectory(context, relativeDirectory, batcher)));
-      for (const result of results) {
-        for (const relativePath of result.directories) {
-          try {
-            queue.push(relativePath);
-            context.queueHighWater.items = Math.max(context.queueHighWater.items, queue.highWaterItems);
-            context.queueHighWater.bytes = Math.max(context.queueHighWater.bytes, queue.highWaterBytes);
-          } catch (error) {
-            await this.#enumerationError(context, error, relativePath, 'traversal-queue');
-            throw error;
-          }
-        }
-        await this.#processCueDirectory(context, result.relativeDirectory, result.barrierCount, batcher, result.failed);
+      // Let every producer finish before pausing the run and clearing its staged rows.
+      const results = await Promise.allSettled(directories.map(relativeDirectory =>
+        this.#readDirectory(context, relativeDirectory, batcher, queue)));
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure) throw failure.reason;
+      for (const { value } of results) {
+        await this.#processCueDirectory(context, value.relativeDirectory, value.barrierCount, batcher, value.failed);
       }
+      this.#throwIfAborted(context.signal);
+      directories = await queue.shiftMany(this.config.directoryConcurrency);
     }
   }
 
-  async #readDirectory(context, relativeDirectory, batcher) {
-    const result = { relativeDirectory, directories: [], barrierCount: 0, failed: false };
+  async #readDirectory(context, relativeDirectory, batcher, queue) {
+    const result = { relativeDirectory, barrierCount: 0, failed: false };
     const ordinaryPage = [];
     const barrierPage = [];
     let barrierSequence = 0;
     let iterator;
+    let writingQueue = false;
     try {
       await this.#cueStage(context, relativeDirectory, 'reset');
-      iterator = toAsyncIterator(await this.filesystem.enumerateDirectory({
+      iterator = getDirectoryIterator(await this.filesystem.enumerateDirectory({
         root: context.folder.path,
         relativeDirectory,
         signal: context.signal
@@ -263,11 +262,18 @@ export class BoundedScanService {
       for (;;) {
         this.#throwIfAborted(context.signal);
         const next = await iterator.next();
-        if (next.done) break;
+        if (next.done) {
+          iterator = null;
+          break;
+        }
         const entry = next.value;
         const relativePath = normalizeRelativePath(entry?.relativePath ?? joinRelative(relativeDirectory, entry?.name));
-        if (entry?.kind === 'directory') result.directories.push(relativePath);
-        else if (entry?.kind === 'cue' || (entry?.kind === 'file' && isCueBarrierPath(relativePath))) {
+        if (entry?.kind === 'directory') {
+          writingQueue = true;
+          const write = queue.push(relativePath);
+          if (write) await write;
+          writingQueue = false;
+        } else if (entry?.kind === 'cue' || (entry?.kind === 'file' && isCueBarrierPath(relativePath))) {
           barrierPage.push({
             relativePath,
             path: entry?.path ?? null,
@@ -295,8 +301,11 @@ export class BoundedScanService {
       }
     } catch (error) {
       this.#throwIfAborted(context.signal);
+      if (writingQueue) throw error;
       result.failed = true;
       await this.#enumerationError(context, error, relativeDirectory, 'directory-iteration');
+    } finally {
+      await iterator?.return?.();
     }
     return result;
   }
@@ -949,37 +958,55 @@ export class BoundedScanService {
 }
 
 class DirectoryQueue {
-  constructor(config) {
+  constructor(config, highWater, stage) {
     this.config = config;
+    this.highWater = highWater;
+    this.stage = stage;
     this.items = [];
     this.bytes = 0;
-    this.highWaterItems = 0;
-    this.highWaterBytes = 0;
-  }
-
-  get length() {
-    return this.items.length;
+    this.spilling = false;
+    this.spillPage = [];
+    this.spillPageBytes = 0;
   }
 
   push(relativeDirectory) {
     const bytes = estimateDirectoryBytes(relativeDirectory);
-    if (this.items.length + 1 > this.config.maxQueuedDirectories ||
-        this.bytes + bytes > this.config.maxQueuedDirectoryBytes) {
-      throw new ScanServiceError('scanTraversalQueueLimit', 'Scan traversal queue limit exceeded', {
-        maxItems: this.config.maxQueuedDirectories,
-        maxBytes: this.config.maxQueuedDirectoryBytes
-      });
+    if (!this.spilling && this.items.length < this.config.maxQueuedDirectories &&
+        this.bytes + bytes <= this.config.maxQueuedDirectoryBytes) {
+      this.items.push({ relativeDirectory, bytes });
+      this.bytes += bytes;
+      this.highWater.items = Math.max(this.highWater.items, this.items.length);
+      this.highWater.bytes = Math.max(this.highWater.bytes, this.bytes);
+      return;
     }
-    this.items.push({ relativeDirectory, bytes });
-    this.bytes += bytes;
-    this.highWaterItems = Math.max(this.highWaterItems, this.items.length);
-    this.highWaterBytes = Math.max(this.highWaterBytes, this.bytes);
+    // New paths follow any older paths already staged in SQLite.
+    this.spilling = true;
+    this.spillPage.push(relativeDirectory);
+    this.spillPageBytes += jsonBytes(relativeDirectory) + 1;
+    if (this.spillPage.length >= TRAVERSAL_SPILL_PAGE_ROWS || this.spillPageBytes >= TRAVERSAL_SPILL_PAGE_BYTES) {
+      return this.#flushSpillPage();
+    }
   }
 
-  shiftMany(count) {
+  async shiftMany(count) {
     const shifted = this.items.splice(0, count);
     for (const item of shifted) this.bytes -= item.bytes;
-    return shifted.map(item => item.relativeDirectory);
+    const directories = shifted.map(item => item.relativeDirectory);
+    if (this.spilling && directories.length < count) {
+      await this.#flushSpillPage();
+      const page = await this.stage({ action: 'take', limit: count - directories.length });
+      this.spilling = page.hasMore;
+      directories.push(...page.directories);
+    }
+    return directories;
+  }
+
+  #flushSpillPage() {
+    if (this.spillPage.length === 0) return;
+    const directories = this.spillPage;
+    this.spillPage = [];
+    this.spillPageBytes = 0;
+    return this.stage({ action: 'append', directories });
   }
 }
 
@@ -1058,12 +1085,9 @@ class TimedBatch {
 }
 
 
-function toAsyncIterator(iterable) {
+function getDirectoryIterator(iterable) {
   if (iterable?.[Symbol.asyncIterator]) return iterable[Symbol.asyncIterator]();
-  if (iterable?.[Symbol.iterator]) {
-    const iterator = iterable[Symbol.iterator]();
-    return { next: () => Promise.resolve(iterator.next()) };
-  }
+  if (iterable?.[Symbol.iterator]) return iterable[Symbol.iterator]();
   throw createRepositoryError('invalidScanEnumerator', 'enumerateDirectory() must return an iterable');
 }
 

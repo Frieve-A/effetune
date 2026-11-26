@@ -789,6 +789,60 @@ export class AudioManager {
             : null;
     }
 
+    // Records a validated execution state; hosts without a worklet pass a null node.
+    _acceptDspExecutionState(workletNode, plugin, data, branch = null) {
+        const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
+        if (data.generation < currentGeneration) return;
+        this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
+        const validated = {
+            ...data,
+            ...(branch && { branch }),
+            validated: true
+        };
+
+        if (branch === 'B') {
+            this.dispatchEvent('dspExecutionState', validated);
+            if (this._parallelActive && data.state === 'bypassed' &&
+                data.reason === 'jsFallbackCapacityExceeded' &&
+                getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
+                this._invalidateParallelFallbackBudget(branch);
+            }
+            return;
+        }
+        const owner = this._dspExecutionStateOwner;
+        if (!owner || owner.workletNode !== workletNode ||
+            owner.graphGeneration !== this._audioGraphGeneration ||
+            owner.workletEpoch !== this._primaryWorkletEpoch ||
+            owner.topologyRevision !== this._topologyRevision ||
+            owner.executionGeneration !== data.generation) {
+            this._dspExecutionStates = new Map();
+            this._dspExecutionStateOwner = {
+                workletNode,
+                graphGeneration: this._audioGraphGeneration,
+                workletEpoch: this._primaryWorkletEpoch,
+                topologyRevision: this._topologyRevision,
+                executionGeneration: data.generation
+            };
+        }
+        this._dspExecutionStates.set(data.pluginId, Object.freeze({
+            pluginId: data.pluginId,
+            pluginType: data.pluginType,
+            state: data.state,
+            reason: data.reason ?? null,
+            jsFallbackSampleChannels: data.jsFallbackSampleChannels ?? 0,
+            generation: data.generation
+        }));
+        this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
+        updateWasmExecutionNotice(plugin, validated);
+        plugin.onMessage?.(validated);
+        this.dispatchEvent('dspExecutionState', validated);
+        if (this._parallelActive && data.state === 'bypassed' &&
+            data.reason === 'jsFallbackCapacityExceeded' &&
+            getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
+            this._invalidateParallelFallbackBudget(branch || 'A');
+        }
+    }
+
     _parallelBranchForWorklet(workletNode) {
         if (!this._parallelPreparing && !this._parallelActive) return null;
         if (workletNode === this._getPrimaryWorkletNode()) return 'A';
@@ -1120,6 +1174,11 @@ export class AudioManager {
                 this._releaseFrequencyPreviewLease = null;
             }, 20);
         }
+    }
+
+    // Clears one plugin's processing state in the live audio host.
+    resetPluginState(pluginId) {
+        window.workletNode?.port?.postMessage({ type: 'resetPluginState', pluginId });
     }
 
     _syncRealtimeOutputKeepalive() {
@@ -2771,56 +2830,7 @@ export class AudioManager {
                     data.pluginType
                 );
             if (!plugin) return;
-            const currentGeneration = this._dspExecutionGenerationsByNode.get(workletNode) ?? -1;
-            if (data.generation < currentGeneration) return;
-            this._dspExecutionGenerationsByNode.set(workletNode, data.generation);
-            const validated = {
-                ...data,
-                ...(branch && { branch }),
-                validated: true
-            };
-
-            if (!isPrimary) {
-                this.dispatchEvent('dspExecutionState', validated);
-                if (this._parallelActive && data.state === 'bypassed' &&
-                    data.reason === 'jsFallbackCapacityExceeded' &&
-                    getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
-                    this._invalidateParallelFallbackBudget(branch);
-                }
-                return;
-            }
-            const owner = this._dspExecutionStateOwner;
-            if (!owner || owner.workletNode !== workletNode ||
-                owner.graphGeneration !== this._audioGraphGeneration ||
-                owner.workletEpoch !== this._primaryWorkletEpoch ||
-                owner.topologyRevision !== this._topologyRevision ||
-                owner.executionGeneration !== data.generation) {
-                this._dspExecutionStates = new Map();
-                this._dspExecutionStateOwner = {
-                    workletNode,
-                    graphGeneration: this._audioGraphGeneration,
-                    workletEpoch: this._primaryWorkletEpoch,
-                    topologyRevision: this._topologyRevision,
-                    executionGeneration: data.generation
-                };
-            }
-            this._dspExecutionStates.set(data.pluginId, Object.freeze({
-                pluginId: data.pluginId,
-                pluginType: data.pluginType,
-                state: data.state,
-                reason: data.reason ?? null,
-                jsFallbackSampleChannels: data.jsFallbackSampleChannels ?? 0,
-                generation: data.generation
-            }));
-            this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
-            updateWasmExecutionNotice(plugin, validated);
-            plugin.onMessage?.(validated);
-            this.dispatchEvent('dspExecutionState', validated);
-            if (this._parallelActive && data.state === 'bypassed' &&
-                data.reason === 'jsFallbackCapacityExceeded' &&
-                getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
-                this._invalidateParallelFallbackBudget(branch || 'A');
-            }
+            this._acceptDspExecutionState(workletNode, plugin, data, branch);
         } else if (data.type === 'sfzSampleAvailability') {
             if (!this._isActiveDspWorklet?.(workletNode) || data.latched !== false ||
                 !['available', 'sampleUnavailable'].includes(data.cause) ||

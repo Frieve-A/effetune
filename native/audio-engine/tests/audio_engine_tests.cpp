@@ -187,7 +187,7 @@ bool fileFifoDeclinesNextAfterEnd() {
   return block == std::array<float, 4>{.1f, .2f, .3f, 0.f} && fifo.snapshot().generation == 2;
 }
 
-std::vector<std::uint8_t> descriptor(std::initializer_list<std::uint32_t> ids) {
+std::vector<std::uint8_t> descriptor(std::span<const std::uint32_t> ids) {
   std::vector<std::uint8_t> bytes(8 + ids.size() * 12);
   bytes[0] = 1;
   bytes[4] = static_cast<std::uint8_t>(ids.size());
@@ -199,6 +199,88 @@ std::vector<std::uint8_t> descriptor(std::initializer_list<std::uint32_t> ids) {
     pos += 12;
   }
   return bytes;
+}
+
+std::vector<std::uint8_t> descriptor(std::initializer_list<std::uint32_t> ids) {
+  return descriptor(std::span(ids));
+}
+
+bool reclaimsDisplayPassthrough(bool continuous) {
+  Session session;
+  if (!session.open({48000, 0, 2, 128}))
+    return false;
+  auto &pipeline = *session.pipeline();
+  const auto *rhythmType = effetune::registry::find("RhythmAnalyzerPlugin");
+  const auto *volumeType = effetune::registry::find("VolumePlugin");
+  PluginSettings rhythm{
+      1, "RhythmAnalyzerPlugin", rhythmType->paramsHash, {40.f, 240.f, 0.f, 0.f}, {}, false, true};
+  std::vector<PluginSettings> plugins;
+  std::vector<std::uint32_t> ids;
+  for (std::uint32_t id = 2; id < effetune::Engine::kMaxInstances; ++id) {
+    plugins.push_back({id, "VolumePlugin", volumeType->paramsHash, {0.f}, {}, false});
+    ids.push_back(id);
+  }
+  plugins.push_back(rhythm);
+  ids.push_back(rhythm.id);
+  if (!pipeline.configure(plugins, descriptor(ids)))
+    return false;
+  const auto kernel = pipeline.instance(rhythm.id);
+  plugins.back().displayOnly = false;
+  plugins.back().params[2] = 1.f;
+  if (continuous) {
+    auto change = pipeline.prepareChange(plugins, descriptor(ids));
+    if (!change || !change->capture() || !change->prepare() || !change->publish())
+      return false;
+  }
+  const auto extraId = effetune::Engine::kMaxInstances;
+  plugins.insert(plugins.end() - 1,
+                 {extraId, "VolumePlugin", volumeType->paramsHash, {0.f}, {}, false});
+  ids.insert(ids.end() - 1, extraId);
+  if (continuous) {
+    auto change = pipeline.prepareChange(plugins, descriptor(ids));
+    if (!change || !change->capture() || !change->prepare() || !change->publish())
+      return false;
+  } else if (!pipeline.configure(plugins, descriptor(ids))) {
+    return false;
+  }
+  return pipeline.instance(extraId) && pipeline.instance(rhythm.id) == kernel;
+}
+
+bool replacesSkippedKernel(bool continuous) {
+  Session session;
+  if (!session.open({48000, 0, 2, 128}))
+    return false;
+  auto &pipeline = *session.pipeline();
+  const auto hash = effetune::registry::find("VolumePlugin")->paramsHash;
+  constexpr auto capacity = effetune::Engine::kMaxInstances;
+  std::vector<PluginSettings> plugins;
+  std::vector<std::uint32_t> ids;
+  for (std::uint32_t id = 1; id <= capacity; ++id) {
+    plugins.push_back({id, "VolumePlugin", hash, {id == 1 ? -6.f : 0.f}, {}, false});
+    ids.push_back(id);
+  }
+  const auto initialCount = capacity - (continuous ? 1 : 0);
+  if (!pipeline.configure({plugins.begin(), plugins.begin() + initialCount},
+                          descriptor(std::span(ids).first(initialCount))))
+    return false;
+  const auto kernel = pipeline.instance(1);
+  plugins.front().skip = true;
+  if (continuous) {
+    auto change = pipeline.prepareChange({plugins.begin(), plugins.end() - 1},
+                                         descriptor(std::span(ids).first(initialCount)));
+    if (!change || !change->capture() || !change->prepare() || !change->publish())
+      return false;
+    change.reset();
+  }
+  if (!pipeline.configure(plugins, descriptor(ids)) || pipeline.instance(1))
+    return false;
+  std::array<float, 256> block;
+  block.fill(1.f);
+  if (!session.render(block, 128) || block.back() != 1.f)
+    return false;
+  plugins.front().skip = false;
+  return pipeline.configure(plugins, descriptor(ids)) && pipeline.instance(1) &&
+         pipeline.instance(1) != kernel;
 }
 
 bool preservesRamp() {
@@ -239,7 +321,7 @@ AssetData unitImpulse() {
   impulse.formatTag = 1;
   return impulse;
 }
-bool loadsIrAsset(bool removeNode) {
+bool loadsIrAsset(bool removeNode, bool skipNode = false) {
   Session session;
   if (!session.open({48000, 0, 2, 128}))
     return false;
@@ -271,6 +353,21 @@ bool loadsIrAsset(bool removeNode) {
     auto remove = pipeline->prepareChange({}, descriptor({}));
     return remove && remove->capture() && remove->prepare() && remove->publish() &&
            pipeline->assetState(1, 0) == 0 && session.render(signal, 128);
+  }
+  if (skipNode) {
+    const auto kernel = pipeline->instance(1);
+    ir.skip = true;
+    if (!pipeline->configure({ir}, descriptor({1})) || pipeline->instance(1) ||
+        (pipeline->assetState(1, 0) & 255u) != ET_ASSET_STATE_STAGED || pipeline->assetPending())
+      return false;
+    ir.skip = false;
+    if (!pipeline->configure({ir}, descriptor({1})) || !pipeline->instance(1) ||
+        pipeline->instance(1) == kernel)
+      return false;
+    for (unsigned i = 0; i < 64; ++i)
+      if (!session.render(signal, 128))
+        return false;
+    return (pipeline->assetState(1, 0) & 255u) == ET_ASSET_STATE_ACTIVE;
   }
   return (pipeline->assetState(1, 0) & 0xffu) == 3 && exchange(std::nullopt) &&
          pipeline->assetState(1, 0) == 0;
@@ -706,6 +803,18 @@ int main() {
   }
   if (!exchangesDisabledRoomEqWithoutDry()) {
     std::cerr << "Disabled Room EQ waited for a dry transition\n";
+    return 1;
+  }
+  if (!reclaimsDisplayPassthrough(true) || !reclaimsDisplayPassthrough(false)) {
+    std::cerr << "A processing effect blocked reuse of its obsolete display passthrough\n";
+    return 1;
+  }
+  if (!replacesSkippedKernel(true) || !replacesSkippedKernel(false)) {
+    std::cerr << "A skipped effect retained its kernel or could not be restored at capacity\n";
+    return 1;
+  }
+  if (!loadsIrAsset(false, true)) {
+    std::cerr << "A skipped effect could not rebuild its cached impulse response\n";
     return 1;
   }
   if (!keepsWetHistoryWhileBypassed() || !preservesRamp() || !loadsIrAsset(false) ||

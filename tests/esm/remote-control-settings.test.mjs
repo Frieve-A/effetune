@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createAndroidRemoteApi, getAndroidRemoteSettings } from '../../js/android/remote.js';
+import { NetworkMusicSettings } from '../../js/network-music/settings-view.js';
 import { getRemoteControlSettings } from '../../js/remote/remote-control-settings.js';
 import { createConsoleHarness, flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -120,5 +122,104 @@ test('late remote errors do not restore an error or busy state after unsubscribe
     assert.equal(settings.errorKey, null);
     assert.equal(settings.busy, false);
     assert.equal(settings.status, null);
+  });
+});
+
+test('Network settings use the supplied Remote capability and explain an unsupported HTTPS port', async t => {
+  const diagnostics = [];
+  await withGlobals({ console: createConsoleHarness({ error: (...args) => diagnostics.push(args) }) }, async () => {
+    const calls = [];
+    const bridge = {
+      on: () => () => {},
+      async request(command, payload) {
+        calls.push([command, payload]);
+        if (command === 'remote.getStatus') return { connection: { endpoint: '' } };
+        if (command === 'remote.selectConnectionFile') return { selectionId: 'selection', fileName: 'certificate.pem' };
+        if (command === 'remote.setConnection') throw Object.assign(new Error('internal detail'), { code: 'invalid-port' });
+      }
+    };
+    const api = getAndroidRemoteSettings(bridge);
+    const remoteSettings = getRemoteControlSettings(api);
+    const document = {
+      createElement(tag) {
+        return { tag, children: [], appendChild(child) { this.children.push(child); }, setAttribute() {},
+          addEventListener(type, action) { this[type] = action; } };
+      }
+    };
+    const root = document.createElement('div');
+    const view = new NetworkMusicSettings({ root, api: {}, remoteSettings, translate: key => key, documentRef: document });
+    t.after(() => view.dispose());
+    await view.mount();
+    await flushMicrotasks();
+    assert.equal(view.endpoint.disabled, false);
+    await view.connectionControls[1].click();
+    assert.equal(view.fileNames.certificate.textContent, 'certificate.pem');
+    view.endpoint.value = 'https://music.example';
+    await view.connectionControls[3].click();
+    assert.deepEqual(calls, [
+      ['remote.getStatus', undefined],
+      ['remote.selectConnectionFile', { kind: 'certificate' }],
+      ['remote.setConnection', { endpoint: 'https://music.example', certificateSelection: 'selection', keySelection: undefined }]
+    ]);
+    assert.equal(view.status.textContent, 'networkMusic.settings.unprivilegedPort');
+    assert.equal(diagnostics.length, 1);
+  });
+});
+
+test('Android approval focuses Deny and dismisses only the matching request', async () => {
+  const calls = [];
+  const events = new Map();
+  const bridge = {
+    on: (event, listener) => { events.set(event, listener); return () => events.delete(event); },
+    async request(command, payload) { calls.push([command, payload]); return { accepted: true }; }
+  };
+  let focused;
+  const make = tag => ({
+    tag, children: [],
+    append(child) { this.children.push(child); },
+    setAttribute() {},
+    addEventListener(event, listener) { this[event] = listener; },
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    remove() { this.removed = true; },
+    focus() { focused = this; }
+  });
+  const document = { createElement: make, body: make('body') };
+  const window = { document, uiManager: { t: key => key }, addEventListener() {}, removeEventListener() {} };
+  await withGlobals({ window }, async () => {
+    createAndroidRemoteApi(bridge);
+    events.get('pairing-request')({ requestId: 'pending', clientName: 'Living room', address: '192.168.1.2' });
+    const dialog = document.body.children[0];
+    assert.equal(focused.textContent, 'dialog.remoteControl.pairingRequestDeny');
+    assert.equal(dialog.open, true);
+    events.get('pairing-ended')({ requestId: 'older', status: 'expired' });
+    assert.equal(dialog.open, true);
+    let prevented = false;
+    dialog.cancel({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.deepEqual(calls, [['remote.pairDecision', { requestId: 'pending', allow: false }]]);
+    events.get('pairing-ended')({ requestId: 'pending', status: 'denied' });
+    assert.equal(dialog.open, false);
+    assert.equal(dialog.removed, true);
+  });
+});
+
+test('a denied Android local network permission is kept as its own Remote and Network settings error', async () => {
+  const window = { location: { origin: 'https://appassets.androidplatform.net' }, effetuneAndroid: { postMessage() {} } };
+  await withGlobals({ window, console: createConsoleHarness({ error() {} }) }, async () => {
+    const { settings, reads, writes } = harness();
+    const unsubscribe = settings.subscribe(() => {});
+    reads[0].resolve({ enabled: false });
+    await flushMicrotasks();
+    const pending = settings.setEnabled(true);
+    writes[0].reject(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+    await pending;
+    assert.equal(settings.errorKey, 'localNetworkPermission');
+    unsubscribe();
+
+    const view = new NetworkMusicSettings({ root: null, api: {}, translate: key => `label:${key}` });
+    view.status = {};
+    await view.run(async () => { throw Object.assign(new Error('required'), { code: 'permission-required' }); });
+    assert.equal(view.status.textContent, 'label:dialog.config.localNetworkPermission');
   });
 });

@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <utility>
 #include <vector>
 
 namespace effetune::plugins::resonator::horn_waveguide {
@@ -62,8 +63,8 @@ public:
     reflections_.resize(max_segments_);
     forward_.resize(static_cast<std::size_t>(max_channels_) * wave_stride);
     reverse_.resize(static_cast<std::size_t>(max_channels_) * wave_stride);
-    forward_temp_.resize(wave_stride);
-    reverse_temp_.resize(wave_stride);
+    forward_temp_.resize(static_cast<std::size_t>(max_channels_) * wave_stride);
+    reverse_temp_.resize(static_cast<std::size_t>(max_channels_) * wave_stride);
     low_delay_.resize(static_cast<std::size_t>(max_channels_) * max_segments_);
     low_delay_indices_.resize(max_channels_);
     mouth_x1_.resize(max_channels_);
@@ -98,67 +99,102 @@ public:
     }
     prepareControls(params);
 
-    const std::uint32_t sections = segment_count_;
-    const std::size_t wave_stride = static_cast<std::size_t>(max_segments_) + 1u;
     const double output_gain = std::pow(10.0, static_cast<double>(params.waveguideGain) / 20.0);
 
+    // Without pending ramps every control equals its target, so the targets are used directly.
+    if (crossover_ramp_.remaining == 0u && damping_ramp_.remaining == 0u &&
+        throat_reflection_ramp_.remaining == 0u) {
+      const Controls controls{crossover_ramp_.target, damping_ramp_.target,
+                              throat_reflection_ramp_.target};
+      processChannels<BoundaryVariant>(audio, channel_count, frame_count, output_gain,
+                                       [&controls](std::uint32_t) noexcept { return controls; });
+    } else {
+      processChannels<BoundaryVariant>(
+          audio, channel_count, frame_count, output_gain, [this](std::uint32_t frame) noexcept {
+            return Controls{crossover_ramp_.value(frame), damping_ramp_.value(frame),
+                            throat_reflection_ramp_.value(frame)};
+          });
+    }
+    // Each frame swaps the wave buffers, so an odd block leaves the state in the other pair.
+    waves_swapped_ = waves_swapped_ != ((frame_count & 1u) != 0u);
+    crossover_ramp_.advance(frame_count);
+    damping_ramp_.advance(frame_count);
+    throat_reflection_ramp_.advance(frame_count);
+  }
+
+  [[nodiscard]] std::uint32_t maximumSegments() const noexcept { return max_segments_; }
+
+private:
+  struct Controls {
+    dsp::LinkwitzRiley24Coefficients crossover;
+    double damping_gain;
+    double throat_reflection;
+  };
+
+  template <Variant BoundaryVariant, typename ControlsAt>
+  void processChannels(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                       double output_gain, ControlsAt controls_at) noexcept {
+    const std::uint32_t sections = segment_count_;
+    const std::size_t wave_stride = static_cast<std::size_t>(max_segments_) + 1u;
+    const float *reflections = reflections_.data();
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      float *forward = forward_.data() + static_cast<std::size_t>(channel) * wave_stride;
-      float *reverse = reverse_.data() + static_cast<std::size_t>(channel) * wave_stride;
+      const std::size_t wave_offset = static_cast<std::size_t>(channel) * wave_stride;
+      // The scattering junctions read one buffer pair and write the other, then swap roles.
+      float *forward = (waves_swapped_ ? forward_temp_ : forward_).data() + wave_offset;
+      float *reverse = (waves_swapped_ ? reverse_temp_ : reverse_).data() + wave_offset;
+      float *next_forward = (waves_swapped_ ? forward_ : forward_temp_).data() + wave_offset;
+      float *next_reverse = (waves_swapped_ ? reverse_ : reverse_temp_).data() + wave_offset;
       float *delay = low_delay_.data() + static_cast<std::size_t>(channel) * max_segments_;
       std::uint32_t delay_index = low_delay_indices_[channel];
       double mouth_x1 = static_cast<double>(mouth_x1_[channel]);
       double mouth_y1 = static_cast<double>(mouth_y1_[channel]);
       double mouth_y2 = static_cast<double>(mouth_y2_[channel]);
       double throat_y1 = static_cast<double>(throat_y1_[channel]);
-      dsp::LinkwitzRiley24State &low_state = lowpass_states_[channel];
-      dsp::LinkwitzRiley24State &high_state = highpass_states_[channel];
+      dsp::LinkwitzRiley24State low_state = lowpass_states_[channel];
+      dsp::LinkwitzRiley24State high_state = highpass_states_[channel];
       float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
 
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        const dsp::LinkwitzRiley24Coefficients crossover = crossover_ramp_.value(frame);
-        const double damping_gain = damping_ramp_.value(frame);
-        const double throat_reflection = throat_reflection_ramp_.value(frame);
+        const Controls controls = controls_at(frame);
+        const double damping_gain = controls.damping_gain;
         const double input = static_cast<double>(channel_audio[frame]);
         const double output_low =
-            dsp::processLinkwitzRiley24Sample(input, crossover.lowpass, low_state);
+            dsp::processLinkwitzRiley24Sample(input, controls.crossover.lowpass, low_state);
         const double output_high =
-            dsp::processLinkwitzRiley24Sample(input, crossover.highpass, high_state);
+            dsp::processLinkwitzRiley24Sample(input, controls.crossover.highpass, high_state);
 
         for (std::uint32_t section = 0u; section < sections; ++section) {
-          const double reflection = static_cast<double>(reflections_[section]);
+          const double reflection = static_cast<double>(reflections[section]);
           const double forward_in = static_cast<double>(forward[section]);
           const double reverse_in = static_cast<double>(reverse[section + 1u]);
           const double scatter_difference = reflection * (forward_in - reverse_in);
-          forward_temp_[section + 1u] =
+          next_forward[section + 1u] =
               static_cast<float>(damping_gain * (forward_in + scatter_difference));
-          reverse_temp_[section] =
+          next_reverse[section] =
               static_cast<float>(damping_gain * (reverse_in + scatter_difference));
         }
 
-        const double mouth_forward = static_cast<double>(forward_temp_[sections]);
+        const double mouth_forward = static_cast<double>(next_forward[sections]);
         double reflected_mouth = 0.0;
         if constexpr (BoundaryVariant == Variant::Base) {
           reflected_mouth = mouth_b0_ * mouth_forward - mouth_a1_ * mouth_y1;
           mouth_x1 = mouth_forward;
           mouth_y1 = reflected_mouth;
-          forward_temp_[0u] = static_cast<float>(
-              output_high + throat_reflection * static_cast<double>(reverse_temp_[0u]));
+          next_forward[0u] = static_cast<float>(
+              output_high + controls.throat_reflection * static_cast<double>(next_reverse[0u]));
         } else {
           reflected_mouth = mouth_b0_ * mouth_forward - mouth_a1_ * mouth_y1 - mouth_a2_ * mouth_y2;
           mouth_y2 = mouth_y1;
           mouth_y1 = reflected_mouth;
           const double filtered_throat =
-              throat_b0_ * static_cast<double>(reverse_temp_[0u]) - throat_a1_ * throat_y1;
+              throat_b0_ * static_cast<double>(next_reverse[0u]) - throat_a1_ * throat_y1;
           throat_y1 = filtered_throat;
-          forward_temp_[0u] = static_cast<float>(output_high + throat_reflection * filtered_throat);
+          next_forward[0u] =
+              static_cast<float>(output_high + controls.throat_reflection * filtered_throat);
         }
-        reverse_temp_[sections] = static_cast<float>(reflected_mouth);
-
-        for (std::uint32_t section = 0u; section <= sections; ++section) {
-          forward[section] = forward_temp_[section];
-          reverse[section] = reverse_temp_[section];
-        }
+        next_reverse[sections] = static_cast<float>(reflected_mouth);
+        std::swap(forward, next_forward);
+        std::swap(reverse, next_reverse);
 
         const double delayed_low = static_cast<double>(delay[delay_index]);
         delay[delay_index] = static_cast<float>(output_low);
@@ -174,16 +210,12 @@ public:
       mouth_y1_[channel] = static_cast<float>(mouth_y1);
       mouth_y2_[channel] = static_cast<float>(mouth_y2);
       throat_y1_[channel] = static_cast<float>(throat_y1);
+      lowpass_states_[channel] = low_state;
+      highpass_states_[channel] = high_state;
       low_delay_indices_[channel] = delay_index;
     }
-    crossover_ramp_.advance(frame_count);
-    damping_ramp_.advance(frame_count);
-    throat_reflection_ramp_.advance(frame_count);
   }
 
-  [[nodiscard]] std::uint32_t maximumSegments() const noexcept { return max_segments_; }
-
-private:
   [[nodiscard]] bool configurationChanged(const Parameters &params,
                                           std::uint32_t channel_count) const noexcept {
     return !configured_ || channel_count_ != channel_count ||
@@ -416,6 +448,7 @@ private:
     clearFloatBuffer(reverse_);
     clearFloatBuffer(forward_temp_);
     clearFloatBuffer(reverse_temp_);
+    waves_swapped_ = false;
     clearFloatBuffer(low_delay_);
     clearFloatBuffer(mouth_x1_);
     clearFloatBuffer(mouth_y1_);
@@ -442,6 +475,7 @@ private:
   std::vector<float> reverse_;
   std::vector<float> forward_temp_;
   std::vector<float> reverse_temp_;
+  bool waves_swapped_ = false;
   std::vector<float> low_delay_;
   std::vector<std::uint32_t> low_delay_indices_;
   std::vector<float> mouth_x1_;

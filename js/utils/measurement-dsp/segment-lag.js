@@ -67,3 +67,25 @@ export function segmentLag(S, R, lines, weights, period) {
     const { t, value } = correlationPeak(C, lines, period);
     return { lag: t, height: value / norm };
 }
+
+/**
+ * Lag of S behind R as segmentLag finds it, refined below a sample by the weighted least-squares phase
+ * slope of the cross spectrum over `lines` once the integer lag is removed.
+ */
+export function fractionalLag(S, R, lines, weights, period) {
+    const { lag } = segmentLag(S, R, lines, weights, period);
+    let slope = 0;
+    let norm = 0;
+    for (const f of lines) {
+        const sr = S[2 * f], si = S[2 * f + 1], rr = R[2 * f], ri = R[2 * f + 1];
+        const cr = sr * rr + si * ri, ci = si * rr - sr * ri;
+        // S = R·e^(−j2πf·delay/period): advance the cross spectrum by the integer lag.
+        const angle = 2 * Math.PI * ((f * lag) % period) / period;
+        const c = Math.cos(angle), s = Math.sin(angle);
+        const re = cr * c - ci * s, im = cr * s + ci * c;
+        const weight = weights[f] * Math.hypot(re, im);
+        slope += weight * f * Math.atan2(im, re);
+        norm += weight * f * f;
+    }
+    return norm > 0 ? lag - period * slope / (2 * Math.PI * norm) : lag;
+}

@@ -8,6 +8,7 @@
  * @returns {Promise<Object>} - Object with inputs and outputs arrays
  */
 import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+import { androidInputChannel } from '../../../js/android/measurement.js';
 import { nativeMeasurementDevice, nativeMeasurementInputIndices } from './native-measurement.js';
 import i18n from '../i18n.js';
 
@@ -117,7 +118,11 @@ async function startMicrophoneInput(deviceId = null, channel = 'left',
             const bridge = getAndroidBridge();
             // Release can post the corresponding native stop even while acquisition is pending.
             this.microphone = { native: true };
-            await bridge.request('audio.input', { deviceId: nativeDeviceId });
+            // The measurement input feeds only the level meter and capture, never playback.
+            await bridge.request('measurement.input', { deviceId: nativeDeviceId,
+                outputDeviceId: !outputDeviceId || outputDeviceId === 'default' ? 0 : Number(outputDeviceId),
+                outputChannelCount,
+                inputChannel: androidInputChannel(channel), sampleRate: this.audioContext.sampleRate });
             signal.throwIfAborted();
             const devices = await bridge.request('audio.devices');
             signal.throwIfAborted();
@@ -274,7 +279,7 @@ function stopMicrophoneInput() {
     if (isAndroidHost()) {
         if (this.microphone?.native) {
             this.microphone = null;
-            return getAndroidBridge().request('audio.input', { deviceId: -1 }).catch(error => console.warn('Android input release failed:', error));
+            return getAndroidBridge().request('measurement.input', { deviceId: -1 }).catch(error => console.warn('Android input release failed:', error));
         }
         return;
     }

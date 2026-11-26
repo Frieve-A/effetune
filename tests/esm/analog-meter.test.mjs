@@ -109,7 +109,7 @@ function createPluginBase() {
     };
 }
 
-async function loadPlugin({ telemetryHub = null, workletNode = null } = {}) {
+async function loadPlugin({ telemetryHub = null, audioManager = null } = {}) {
     const source = await fs.readFile(pluginPath, 'utf8');
     const context = vm.createContext({
         PluginBase: createPluginBase(),
@@ -117,7 +117,7 @@ async function loadPlugin({ telemetryHub = null, workletNode = null } = {}) {
         performance: { now: () => 0 },
         window: {
             dspTelemetryHub: telemetryHub,
-            workletNode,
+            audioManager,
             ThemePalette: { get: name => `theme-${name}` }
         }
     });
@@ -445,10 +445,10 @@ test('Analog Meter peak hold holds for the set time and then follows the detecto
     assert.equal(Plugin.isOverLit(state, 5000, 0), false);
 });
 
-test('Analog Meter Reset posts resetPluginState and parameters follow the mode', async () => {
-    const messages = [];
-    const workletNode = { port: { postMessage: message => messages.push(message) } };
-    const { plugin } = await loadPlugin({ workletNode });
+test('Analog Meter Reset resets its audio host state and parameters follow the mode', async () => {
+    const resets = [];
+    const audioManager = { resetPluginState: pluginId => resets.push(pluginId) };
+    const { plugin } = await loadPlugin({ audioManager });
     const ui = plugin.createUI();
     assert.equal(plugin.resetButton.style.display, 'none');
     const parameters = ui.children.find(child => child.className === 'analyzer-parameters');
@@ -472,5 +472,5 @@ test('Analog Meter Reset posts resetPluginState and parameters follow the mode',
     assert.equal(plugin.graphContainer.style.aspectRatio, '12 / 3');
 
     plugin.resetButton.listeners.get('click')();
-    assert.deepEqual(JSON.parse(JSON.stringify(messages)), [{ type: 'resetPluginState', pluginId: 7 }]);
+    assert.deepEqual(resets, [7]);
 });

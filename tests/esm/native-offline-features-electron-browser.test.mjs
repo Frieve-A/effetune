@@ -104,7 +104,7 @@ test('Performance Benchmark reports measured throughput on the Native page', {ti
   });
   await page.waitForURL('**/features/effetune_bench.html');
   await page.locator('#dsp-mode').selectOption('native');
-  assert.equal(await page.locator('#run-score').isDisabled(),true);
+  assert.equal(await page.locator('#run-score').isEnabled(),true);
   // Limit this UI regression to one shipped workload. Keep the real plugin and timer.
   await page.evaluate(() => {
     const fetchAsset = window.fetch.bind(window);

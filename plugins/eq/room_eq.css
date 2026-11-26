@@ -1,5 +1,6 @@
 .room-eq-measurement-row,
-.room-eq-channel-measurement-row { display: flex; align-items: center; flex-wrap: nowrap !important; gap: 10px; }
+.room-eq-channel-measurement-row { display: flex; align-items: center; gap: 10px; }
+body:not(.layout-mobile) :is(.room-eq-measurement-row, .room-eq-channel-measurement-row) { flex-wrap: nowrap; }
 .room-eq-measurement-row label,
 .room-eq-channel-measurement-row label { min-width: 120px; }
 .room-eq-measurement-row select,

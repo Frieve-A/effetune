@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "LoPassFilterPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/channel_lanes.h"
 
 #include <array>
 #include <cmath>
@@ -220,15 +221,18 @@ private:
   void processStable(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                      Bank &bank) noexcept {
     for (std::size_t section = 0u; section < bank.section_count; ++section) {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        State &state = bank.states[section * max_channels_ + channel];
-        const std::uint32_t offset = channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          audio[offset + frame] = static_cast<float>(dsp::processBiquadDf1Sample(
-              static_cast<double>(audio[offset + frame]), bank.coefficients[section], state));
-        }
-        dsp::quantizeBiquadStateToFloat(state);
-      }
+      const Coefficients coefficients = bank.coefficients[section];
+      State *const section_states = bank.states.data() + section * max_channels_;
+      dsp::forEachChannelPair(channel_count, [&](std::uint32_t channel, auto lanes) noexcept {
+        State *const states = section_states + channel;
+        dsp::processChannelLanes<decltype(lanes)::value>(
+            audio + static_cast<std::size_t>(channel) * frame_count, frame_count, frame_count,
+            states, [&coefficients](double input, State &state, std::uint32_t) noexcept {
+              return dsp::processBiquadDf1Sample(input, coefficients, state);
+            });
+        for (std::uint32_t lane = 0u; lane < lanes; ++lane)
+          dsp::quantizeBiquadStateToFloat(states[lane]);
+      });
     }
   }
 

@@ -8,7 +8,8 @@ export class MobileMenu {
         this.panel = null;
         this.backdrop = null;
         this.localizedActions = [];
-        this.installElements = [];
+        this.effectsActions = [];
+        this.sharedSettingsElements = [];
         this.unsubscribe = this.uiManager.layoutMode?.onChange(() => this.sync()) || null;
         this.sync();
     }
@@ -59,6 +60,11 @@ export class MobileMenu {
             this.panel.appendChild(resumeAudio);
             this.panel.appendChild(this.createLocalizedAction('menu.file.openMusicFile', 'Open music file...', () => document.getElementById('openMusicButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('menu.file.processAudioFiles', PROCESS_AUDIO_LABEL, () => this.processAudioFilesWithEffects()));
+            this.effectsActions = [
+                this.createLocalizedAction('ui.mobileNav.collapseAll', 'Collapse all', () => this.setAllPluginsExpanded(false)),
+                this.createLocalizedAction('ui.mobileNav.expandAll', 'Expand all', () => this.setAllPluginsExpanded(true))
+            ];
+            this.effectsActions.forEach(button => this.panel.appendChild(button));
             this.panel.appendChild(this.createLocalizedAction('dialog.config.title', 'Config', () => this.uiManager.stateManager?.openConfig?.()));
             this.panel.appendChild(this.createLocalizedAction('dialog.audioConfig.title', 'Audio Configuration', () => this.uiManager.stateManager?.openAudioConfig?.()));
             this.panel.appendChild(this.createLocalizedAction('menu.settings.performanceBenchmark', 'Performance Benchmark', () => this.uiManager.stateManager?.openFeaturePage?.('features/effetune_bench.html')));
@@ -69,32 +75,32 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
             this.panel.appendChild(this.createLocalizedAction('tour.menu', 'Take the tour', () => this.uiManager.startOnboardingTour()));
-            this.moveInstallElementsToPanel();
+            this.moveSharedSettingsElementsToPanel();
             document.body.appendChild(this.panel);
             this.uiManager.powerStateView?.refreshActions?.();
         }
         this.updateLabels();
     }
 
-    moveInstallElementsToPanel() {
-        ['installAppElement', 'installAppButton'].forEach(id => {
+    moveSharedSettingsElementsToPanel() {
+        ['webUpdateSettingsButton', 'installAppElement', 'installAppButton'].forEach(id => {
             const element = document.getElementById(id);
             if (!element) return;
             const closeMenu = () => this.close();
-            this.installElements.push({ element, parent: element.parentNode, closeMenu });
+            this.sharedSettingsElements.push({ element, parent: element.parentNode, closeMenu });
             element.addEventListener('click', closeMenu);
             element.classList.add('mobile-overflow-menu-item');
             this.panel.appendChild(element);
         });
     }
 
-    restoreInstallElements() {
-        this.installElements.forEach(({ element, parent, closeMenu }) => {
+    restoreSharedSettingsElements() {
+        this.sharedSettingsElements.forEach(({ element, parent, closeMenu }) => {
             element.removeEventListener('click', closeMenu);
             element.classList.remove('mobile-overflow-menu-item');
             parent?.appendChild(element);
         });
-        this.installElements = [];
+        this.sharedSettingsElements = [];
     }
 
     createAction(label, action) {
@@ -140,10 +146,15 @@ export class MobileMenu {
             return;
         }
 
+        this.uiManager.mobileNav?.setView('effects');
         const fileProcessor = this.uiManager.pipelineManager?.fileProcessor;
         const selectFiles = fileProcessor?.dropArea?.querySelector?.('.select-files') ||
             document.querySelector?.('.file-drop-area .select-files');
         selectFiles?.click?.();
+    }
+
+    setAllPluginsExpanded(expand) {
+        this.uiManager.pipelineManager.core.itemBuilder.setAllPluginsExpanded(expand);
     }
 
     toggle() {
@@ -156,6 +167,11 @@ export class MobileMenu {
 
     open() {
         this.ensureElements();
+        const showEffectsActions = this.uiManager.mobileNav?.getCurrentView() === 'effects' &&
+            this.uiManager.pipelineManager?.audioManager?.pipeline.length > 0;
+        this.effectsActions.forEach(button => {
+            button.hidden = !showEffectsActions;
+        });
         this.panel.inert = false;
         this.panel.classList.add('mobile-open');
         this.backdrop.classList.add('mobile-open');
@@ -171,7 +187,7 @@ export class MobileMenu {
 
     removeElements() {
         this.close();
-        this.restoreInstallElements();
+        this.restoreSharedSettingsElements();
         this.button?.remove();
         this.panel?.remove();
         this.backdrop?.remove();
@@ -179,6 +195,7 @@ export class MobileMenu {
         this.panel = null;
         this.backdrop = null;
         this.localizedActions = [];
+        this.effectsActions = [];
     }
 
     dispose() {

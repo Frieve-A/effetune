@@ -27,11 +27,12 @@ void formatConversion() {
   LoopbackSilence silence;
   check(!silence.takeBoundary(100, 10), "empty input emitted a boundary");
   silence.supplied(100);
-  check(!silence.takeBoundary(109, 10) && silence.takeBoundary(110, 10) &&
-            !silence.takeBoundary(130, 10),
+  check(!silence.takeBoundary(115, 10) && !silence.takeBoundary(129, 10),
+        "a late loopback packet must not end the burst");
+  check(silence.takeBoundary(130, 10) && !silence.takeBoundary(160, 10),
         "silence must emit one boundary per idle interval");
-  silence.supplied(140);
-  check(silence.takeBoundary(151, 10), "capture did not rearm the silence boundary");
+  silence.supplied(170);
+  check(silence.takeBoundary(201, 10), "capture did not rearm the silence boundary");
   const std::array formats{WasapiSampleFormat{1, 8, false},  WasapiSampleFormat{2, 16, false},
                            WasapiSampleFormat{3, 24, false}, WasapiSampleFormat{4, 24, false},
                            WasapiSampleFormat{4, 32, false}, WasapiSampleFormat{4, 32, true}};

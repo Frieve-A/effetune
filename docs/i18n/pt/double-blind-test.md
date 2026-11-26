@@ -28,7 +28,6 @@ O teste compara os dois pipelines descritos em [Usando Recursos de Pipeline AB](
 
 - **Aplicativo web:** Clique no botão **▼** logo à direita do botão de alternância A/B (o botão que mostra "A" ou "B" para o pipeline atual) no cabeçalho do Effect Pipeline e escolha **Teste duplo-cego** no menu exibido.
 - **Aplicativo desktop:** O mesmo menu **▼** está disponível, e você também pode abrir o teste pelo menu **Arquivo**.
-
 Enquanto o teste estiver aberto, a exibição do pipeline de efeitos fica oculta para que você não veja quais efeitos estão ativos e o teste permaneça cego. Feche o teste a qualquer momento com o botão **×** para voltar à visualização normal.
 
 ## Configurando o Teste

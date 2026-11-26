@@ -583,11 +583,13 @@ test('plugin item events add plugins at selected and appended positions', async 
       preventDefault() { pointerPrevented += 1; },
       stopPropagation() { pointerStopped += 1; }
     });
-    let suppressedClickPrevented = 0;
-    let suppressedClickStopped = 0;
+    assert.deepEqual(mobileNavCalls, [], 'the list must cover the tabs until the click is targeted');
+    let clickPrevented = 0;
+    let clickStopped = 0;
     await item.dispatchEvent('click', {
-      preventDefault() { suppressedClickPrevented += 1; },
-      stopPropagation() { suppressedClickStopped += 1; }
+      detail: 1,
+      preventDefault() { clickPrevented += 1; },
+      stopPropagation() { clickStopped += 1; }
     });
     runFrames();
     assert.deepEqual(
@@ -599,7 +601,7 @@ test('plugin item events add plugins at selected and appended positions', async 
       1
     );
     assert.deepEqual([pointerPrevented, pointerStopped], [1, 1]);
-    assert.deepEqual([suppressedClickPrevented, suppressedClickStopped], [1, 1]);
+    assert.deepEqual([clickPrevented, clickStopped], [1, 1]);
     assert.deepEqual(mobileNavCalls, [
       ['closePluginList'],
       ['setView', 'effects']
@@ -717,6 +719,7 @@ test('list templates release observers while tab changes and item actions create
     await item.dispatchEvent('pointerup', {
       pointerId: 1, clientX: 10, clientY: 20, preventDefault() {}, stopPropagation() {}
     });
+    await item.click();
     runFrames();
 
     const added = pipelineManager.audioManager.pipeline;

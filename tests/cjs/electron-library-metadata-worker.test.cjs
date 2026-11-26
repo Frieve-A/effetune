@@ -5,9 +5,34 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { Worker } = require('node:worker_threads');
 
 const { MetadataWorkerPool } = require('../../electron/library-metadata-worker-pool.cjs');
 const { validateParseMessage } = require('../../electron/library-metadata-worker.cjs');
+
+function createMetadataWorker() {
+  const worker = new Worker(`
+    const { parentPort, workerData } = require('node:worker_threads');
+    require(workerData);
+    parentPort.on('message', message => {
+      if (message === 'close') parentPort.close();
+    });
+  `, { eval: true, workerData: require.resolve('../../electron/library-metadata-worker.cjs') });
+  const exited = new Promise(resolve => worker.once('exit', resolve));
+  const terminate = worker.terminate.bind(worker);
+  let shutdown;
+  // A normal worker exit gives Node time to collect coverage after the last reply.
+  worker.terminate = () => shutdown ??= (async () => {
+    const timeout = setTimeout(terminate, 10_000);
+    try {
+      worker.postMessage('close');
+      return await exited;
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  return worker;
+}
 
 function createChunk(id, data) {
   const payload = Buffer.from(data);
@@ -63,7 +88,7 @@ test('Electron catalog metadata worker restores v2 CP932 RIFF INFO decoding', as
     { id: 'INAM', data: Buffer.from('MONA LISA\0', 'ascii') },
     { id: 'IART', data: Buffer.from('95bd89ea837d838a834a00', 'hex') }
   ]));
-  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000 });
+  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000, workerFactory: createMetadataWorker });
   t.after(async () => {
     await pool.close();
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -117,7 +142,7 @@ test('on-demand lyrics worker finds listed sidecars and rebases album lyrics', a
   const filePath = path.join(temporary, 'song.wav');
   await fs.writeFile(filePath, createRiffInfoWave([]));
   await fs.writeFile(path.join(temporary, 'SONG.LRC'), '[00:01.00]Before\n[00:05.00]Current\n[00:09.00]After');
-  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000 });
+  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000, workerFactory: createMetadataWorker });
   t.after(async () => {
     await pool.close();
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -147,7 +172,7 @@ test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', as
     { id: 'IRPD', data: Buffer.from('Alternate Album\0', 'ascii') },
     { id: 'ICRD', data: Buffer.from('2021-04-03\0', 'ascii') }
   ]));
-  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000 });
+  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000, workerFactory: createMetadataWorker });
   t.after(async () => {
     await pool.close();
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -173,7 +198,7 @@ test('metadata pool extracts the requested score from an archive and validates i
   const filePath = path.join(directory, 'scores.zip');
   const entry = 'Set/Song.mid';
   const score = Buffer.from('4d546864000000060000000101e04d54726b0000000400ff2f00', 'hex');
-  const pool = new MetadataWorkerPool({ workerCount: 2 });
+  const pool = new MetadataWorkerPool({ workerCount: 2, workerFactory: createMetadataWorker });
   t.after(async () => {
     await pool.close();
     await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });

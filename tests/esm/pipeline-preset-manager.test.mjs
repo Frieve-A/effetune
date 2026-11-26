@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { NativeAudioManager } from '../../js/native/audio-manager.js';
+import { EnginePort } from '../../js/native/engine-endpoint.js';
+import { GRAPH_V1_CAPACITY } from '../../js/native/graph-capacity.generated.js';
 import { PresetManager } from '../../js/ui/pipeline/preset-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -1111,6 +1114,43 @@ test('loadPreset suppresses reconstruction history before allowing one explicit 
     assert.equal(await manager.loadPreset('Named'), false);
     assert.equal(pipelineManager.historyManager.isHistorySuppressed, false);
     assert.equal(pipelineManager.calls.filter(call => call[0] === 'saveState').length, 0);
+  });
+});
+
+test('native preset admission keeps the playing impulse response attached when replacement exceeds capacity', async () => {
+  await withPresetGlobals({}, async ({ calls, windowRef }) => {
+    windowRef.uiManager = createUiManager(calls);
+    const impulse = new Float32Array([1, .5]);
+    const ir = Object.assign(createPlugin('IR Reverb'), {
+      asset: impulse,
+      cleanup() { this.asset = null; }
+    });
+    const pipeline = [ir];
+    const pipelineManager = createPipelineManager({ pipeline, expandedPlugins:[ir] });
+    const audioManager = Object.assign(pipelineManager.audioManager, {
+      validatePresetPipeline:NativeAudioManager.prototype.validatePresetPipeline,
+      audioContext:{sampleRate:48000}, preferences:{}, getOutputChannelCount:() => 2,
+      _buildBlindPluginData:plugins => plugins.map((plugin,i) => ({
+        id:i + 1,type:'VolumePlugin',enabled:plugin.enabled,parameters:plugin.parameters
+      }))
+    });
+    audioManager.workletNode = {port:new EnginePort(audioManager,0)};
+    const manager = await createInitializedManager(pipelineManager);
+    manager.currentPresetName = 'Playing';
+    const plugins = Array.from({length:GRAPH_V1_CAPACITY.maxEffectiveInstances + 1},() => ({nm:'Volume',en:true}));
+    assert.equal(await manager.loadPreset({plugins}),false);
+    assert.equal(audioManager.pipeline,pipeline);
+    assert.deepEqual(audioManager.pipeline,[ir]);
+    assert.equal(ir.asset,impulse);
+    assert.equal(pipelineManager.expandedPlugins.has(ir),true);
+    assert.equal(manager.currentPresetName,'Playing');
+    assert.deepEqual(calls.filter(([action]) => action === 'setError'),[['setError','error.pipelineTooLarge',true,undefined]]);
+    assert.equal(pipelineManager.calls.some(([action]) => action === 'saveState'),false);
+
+    assert.equal(await manager.loadPreset({plugins:plugins.slice(0,1)}),true);
+    assert.equal(ir.asset,null);
+    assert.deepEqual(audioManager.pipeline.map(plugin => plugin.name),['Volume']);
+    assert.equal(pipelineManager.calls.filter(([action]) => action === 'saveState').length,1);
   });
 });
 

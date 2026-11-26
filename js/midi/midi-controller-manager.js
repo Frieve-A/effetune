@@ -341,7 +341,7 @@ export class MidiControllerManager {
       .find(entry => entry.port === input)?.key ?? (input.name || '');
     // Musical input includes program change and pressure, which controller
     // mapping does not decode. Deliver it independently before that filter.
-    if (!event.nativeConsumed && deviceKey === this.performanceInputKey &&
+    if (deviceKey === this.performanceInputKey &&
         input === this.findInput(this.performanceInputKey)) {
       this.performanceInputCallback?.({
         data: event.data, timeStamp: event.timeStamp, sourceKey: deviceKey, port: input

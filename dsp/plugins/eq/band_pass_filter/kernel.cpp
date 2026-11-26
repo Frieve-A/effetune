@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "BandPassFilterPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/channel_lanes.h"
 #include "effetune/dsp/denormal_noise.h"
 
 #include <algorithm>
@@ -244,17 +245,19 @@ private:
 
   void applyBank(FilterBank &bank, float *audio, std::uint32_t channel_count,
                  std::uint32_t frame_count) noexcept {
+    const dsp::NyquistDenormalNoise &noise = denormal_noise_;
     for (std::size_t section = 0u; section < bank.sectionCount; ++section) {
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        State &state = bank.states[section * max_channels_ + channel];
-        const std::uint32_t offset = channel * frame_count;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const double output = dsp::processBiquadDf1SampleWithDenormalNoise(
-              static_cast<double>(audio[offset + frame]), bank.coefficients[section], state,
-              denormal_noise_.sample(frame));
-          audio[offset + frame] = static_cast<float>(output);
-        }
-      }
+      const Coefficients coefficients = bank.coefficients[section];
+      State *const section_states = bank.states.data() + section * max_channels_;
+      dsp::forEachChannelPair(channel_count, [&](std::uint32_t channel, auto lanes) noexcept {
+        dsp::processChannelLanes<decltype(lanes)::value>(
+            audio + static_cast<std::size_t>(channel) * frame_count, frame_count, frame_count,
+            section_states + channel,
+            [&coefficients, &noise](double input, State &state, std::uint32_t frame) noexcept {
+              return dsp::processBiquadDf1SampleWithDenormalNoise(input, coefficients, state,
+                                                                  noise.sample(frame));
+            });
+      });
     }
   }
 

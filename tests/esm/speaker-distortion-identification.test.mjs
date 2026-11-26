@@ -22,6 +22,7 @@ import {
     loudCheckConfig, playedCheckFig, recommendLength
 } from '../../js/utils/measurement-dsp/speaker-distortion/check.js';
 import { ODD_CONFIGS, SWEEP_FREQUENCIES } from '../../js/utils/measurement-dsp/speaker-distortion/constants.js';
+import { resampleByRatio } from '../../js/utils/measurement-dsp/resample.js';
 import { sweepWorstRise } from '../../js/utils/measurement-dsp/speaker-distortion/sweep.js';
 import { validateSpeakerModel } from '../../js/utils/measurement-dsp/speaker-distortion/index.js';
 import { biquad, createPlant, filterCascade, linearResponse } from '../helpers/distortion-plant-sim.mjs';
@@ -345,6 +346,14 @@ describe('speaker distortion signals and preprocessing', () => {
         const broken = analyzeCall(slipped([1, 3, 5, 7, 9, 11].map(i => [windowAt(i) + fsDev / 2, 960])), { ...options, reference });
         assert.equal(broken.gaps, 'interrupted');
         assert.ok(broken.periods < 0.7 * K || broken.dropped.length > 0.3 * K, `${broken.dropped}`);
+        // A recording clock 100 ppm fast moves each period 9.6 samples later than the one before;
+        // resampling onto the playback clock keeps every period.
+        for (const ratio of [1.0001, 0.9999]) {
+            const drifted = analyzeCall(resampleByRatio(base, 1 / ratio, latency), { ...options, reference });
+            assert.equal(drifted.gaps, null, `${ratio}`);
+            assert.equal(drifted.periods, K);
+            assert.ok(errorDb(drifted.Y) < -40, `${ratio}: ${errorDb(drifted.Y)} dB`);
+        }
     });
 });
 

@@ -91,6 +91,7 @@ export class DoubleBlindTest {
         this.restoredFromURI = false;
         this.testRunning = false;
         this._startPending = false;
+        this._restorePending = false;
         this._activeLabel = null;    // 'A' | 'B' | 'X'
         this._aIsPhysicalA = true;   // does on-screen label A map to physical pipeline A?
         this._xIsA = true;           // does X match on-screen label A?
@@ -120,7 +121,7 @@ export class DoubleBlindTest {
      * Restore both pipelines from a Double Blind Test share payload and open the
      * panel. Used by the web URL loader and by paste handling.
      * @param {string} encoded - base64 payload from the `dbt` URL parameter
-     * @returns {boolean} success
+     * @returns {boolean | Promise<boolean>} success
      */
     restoreFromShare(encoded) {
         if (this.active) return false;
@@ -145,7 +146,6 @@ export class DoubleBlindTest {
                 if (!plugin) return [];
                 applySerializedState(plugin, state);
                 if (plugin.updateParameters) plugin.updateParameters();
-                this.uiManager.expandedPlugins.add(plugin);
                 return plugin;
             } catch (error) {
                 console.warn(`[DoubleBlindTest] Failed to create plugin '${state.nm}':`, error);
@@ -159,14 +159,30 @@ export class DoubleBlindTest {
         // would silently test something other than what was shared.
         if ((obj.pA.length > 0 && pluginsA.length === 0) ||
             (obj.pB.length > 0 && pluginsB.length === 0)) {
+            this._discardUninstalledPlugins([...pluginsA, ...pluginsB]);
             console.error('[DoubleBlindTest] Shared pipeline effects could not be restored');
             return false;
         }
 
-        this._replacePipelines(pluginsA, pluginsB);
-        // Default the live pipeline to A; switching during the test re-routes it.
-        this.audioManager.setCurrentPipeline('A', true);
+        const finish = () => {
+            for (const plugin of [...pluginsA, ...pluginsB]) this.uiManager.expandedPlugins.add(plugin);
+            return this._showRestoredShare(obj);
+        };
+        const fail = error => {
+            this._discardUninstalledPlugins([...pluginsA, ...pluginsB]);
+            console.warn('[DoubleBlindTest] Failed to restore shared pipelines:', error);
+            this.uiManager.showTransientMessage(this.t('error.failedToLoadPreset'), true, {}, 3000);
+            return false;
+        };
+        try {
+            const restoration = this._replacePipelines(pluginsA, pluginsB);
+            return restoration ? restoration.then(finish).catch(fail) : finish();
+        } catch (error) {
+            return fail(error);
+        }
+    }
 
+    _showRestoredShare(obj) {
         this._resetTestState();
         this.testType = (obj.tT === 'ABPREF') ? 'ABPREF' : 'ABX';
         this.testName = obj.tn || '';
@@ -476,7 +492,7 @@ export class DoubleBlindTest {
         this.els.configShareBtn.addEventListener('click', () => this._share());
 
         this.els.testNameInput.addEventListener('input', () => {
-            this.testName = this.els.testNameInput.value;
+            if (!this.audioManager.restoreBlindTestPipelines) this.testName = this.els.testNameInput.value;
             this._updateTestNameClear();
             this._updateStartAvailability();
         });
@@ -510,7 +526,7 @@ export class DoubleBlindTest {
         });
         this.els.testNameInput.addEventListener('change', () => {
             const name = this.els.testNameInput.value.trim();
-            this.testName = name;
+            if (!name || !this.audioManager.restoreBlindTestPipelines) this.testName = name;
             if (name) return this._loadTest(name);
         });
         this.els.nameInput.addEventListener('input', () => {
@@ -609,11 +625,15 @@ export class DoubleBlindTest {
      */
     _updateStartAvailability() {
         const valid = DoubleBlindTest.abValid(this.audioManager);
-        if (this.els.startAbx) this.els.startAbx.disabled = !valid;
-        if (this.els.startAbpref) this.els.startAbpref.disabled = !valid;
+        const pending = this._startPending || this._restorePending;
+        if (this.els.config) this.els.config.inert = pending;
+        if (this.els.startAbx) this.els.startAbx.disabled = !valid || pending;
+        if (this.els.startAbpref) this.els.startAbpref.disabled = !valid || pending;
         if (this.els.bWarning) this.els.bWarning.classList.toggle('hidden', valid);
 
-        const canShare = valid && (this.testName || '').trim().length > 0;
+        const name = this.audioManager.restoreBlindTestPipelines
+            ? this.els.testNameInput?.value ?? this.testName : this.testName;
+        const canShare = valid && !this._restorePending && (name || '').trim().length > 0;
         if (this.els.configShareBtn) this.els.configShareBtn.disabled = !canShare;
         if (this.els.shareBtn) this.els.shareBtn.disabled = !canShare;
     }
@@ -704,7 +724,15 @@ export class DoubleBlindTest {
     /** Recall a saved test: restore both pipelines and settings, then resume. */
     async _loadTest(name) {
         const tests = await this._getTests();
-        if (!tests || !Object.hasOwn(tests, name)) return;
+        const nativeRestore = !!this.audioManager.restoreBlindTestPipelines;
+        if (this._restorePending) return;
+        if (!tests || !Object.hasOwn(tests, name)) {
+            if (nativeRestore && this.els.testNameInput?.value.trim() === name) {
+                this.testName = name;
+                this._updateStartAvailability();
+            }
+            return;
+        }
         const t = tests[name];
 
         const restoredPlugins = [];
@@ -718,6 +746,10 @@ export class DoubleBlindTest {
         });
 
         let pluginsA, pluginsB;
+        if (nativeRestore) {
+            this._restorePending = true;
+            this._updateStartAvailability();
+        }
         try {
             if (!Array.isArray(t?.pA) || (t.pB !== null && !Array.isArray(t.pB))) {
                 throw new Error('Invalid saved pipelines');
@@ -726,11 +758,15 @@ export class DoubleBlindTest {
             // Older saves used an empty array when Pipeline B was absent.
             const hasPipelineB = t.pB !== null && (t.v === SAVED_TEST_VERSION || t.pB.length > 0);
             pluginsB = hasPipelineB ? buildPipeline(t.pB) : null;
+            await this._replacePipelines(pluginsA, pluginsB);
         } catch (error) {
-            for (const plugin of restoredPlugins) plugin.cleanup?.();
+            this._discardUninstalledPlugins(restoredPlugins);
             console.warn('[DoubleBlindTest] Failed to restore saved pipelines:', error);
             // Do not label the unchanged pipelines as the test that failed to load.
-            if (this.testName === name) {
+            if (nativeRestore && this.els.testNameInput?.value.trim() === name) {
+                this.els.testNameInput.value = this.testName;
+                this._updateTestNameClear();
+            } else if (!nativeRestore && this.testName === name) {
                 this.testName = '';
                 if (this.els.testNameInput) this.els.testNameInput.value = '';
                 this._updateTestNameClear();
@@ -738,11 +774,14 @@ export class DoubleBlindTest {
             }
             this.uiManager.showTransientMessage(this.t('error.failedToLoadPreset'), true, {}, 3000);
             return;
+        } finally {
+            if (nativeRestore) {
+                this._restorePending = false;
+                this._updateStartAvailability();
+            }
         }
 
-        this._replacePipelines(pluginsA, pluginsB);
         for (const plugin of restoredPlugins) this.uiManager.expandedPlugins.add(plugin);
-        this.audioManager.setCurrentPipeline('A', true);
 
         this.testName = name;
         this.testCount = Math.max(1, parseInt(t.tc, 10) || 20);
@@ -758,12 +797,25 @@ export class DoubleBlindTest {
             ...(this.audioManager.pipelineA || []),
             ...(this.audioManager.pipelineB || [])
         ]);
+        if (this.audioManager.restoreBlindTestPipelines) {
+            return this.audioManager.restoreBlindTestPipelines(pipelineA, pipelineB)
+                .finally(() => this._discardUninstalledPlugins(oldPlugins));
+        }
         for (const plugin of oldPlugins) {
             plugin.cleanup?.();
             this.uiManager.expandedPlugins.delete(plugin);
         }
         this.audioManager.pipelineA = pipelineA;
         this.audioManager.pipelineB = pipelineB;
+        this.audioManager.setCurrentPipeline('A', true);
+    }
+
+    _discardUninstalledPlugins(plugins) {
+        for (const plugin of plugins) {
+            if (this.audioManager.pipelineA?.includes(plugin) || this.audioManager.pipelineB?.includes(plugin)) continue;
+            plugin.cleanup?.();
+            this.uiManager.expandedPlugins.delete(plugin);
+        }
     }
 
     // ===================================================================== //
@@ -821,9 +873,12 @@ export class DoubleBlindTest {
         }
 
         if (e.testInfo) {
+            const isMobileLayout = !!this.uiManager?.layoutMode?.isMobile ||
+                document.body.classList.contains('layout-mobile');
+            const test1 = this.t(isMobileLayout ? 'dbt.info.test1Touch' : 'dbt.info.test1');
             const lines = (this.testType === 'ABPREF')
-                ? [this.t('dbt.info.test1'), this.t('dbt.info.test2'), this.t('dbt.info.testPref')]
-                : [this.t('dbt.info.test1'), this.t('dbt.info.test2'), this.t('dbt.info.testAbx')];
+                ? [test1, this.t('dbt.info.test2'), this.t('dbt.info.testPref')]
+                : [test1, this.t('dbt.info.test2'), this.t('dbt.info.testAbx')];
             e.testInfo.innerHTML = '';
             lines.forEach((line) => {
                 const li = document.createElement('li');
@@ -837,9 +892,9 @@ export class DoubleBlindTest {
 
     _updateSampleRateText() {
         if (!this.els.sampleRate) return;
-        const ctx = this.audioManager?.audioContext;
-        if (ctx && ctx.sampleRate) {
-            this.els.sampleRate.textContent = this.t('dbt.sampleRate', { rate: ctx.sampleRate });
+        const rate = this.audioManager?.audioContext?.sampleRate ?? this.audioManager?.getReportedSampleRate?.();
+        if (rate) {
+            this.els.sampleRate.textContent = this.t('dbt.sampleRate', { rate });
         } else {
             this.els.sampleRate.textContent = '';
         }
@@ -850,6 +905,7 @@ export class DoubleBlindTest {
     // ===================================================================== //
 
     async _startTest(type) {
+        if (this._startPending || this._restorePending) return;
         // Both pipelines are required to run a test (Pipeline B may be missing
         // when the panel is opened just to recall a saved test).
         if (!DoubleBlindTest.abValid(this.audioManager)) {
@@ -879,7 +935,7 @@ export class DoubleBlindTest {
         const startSeq = ++this._startSeq;
 
         this.els.result.classList.add('hidden');
-        this._showTestScreen();
+        this._updateStartAvailability();
         this.updateTexts();
 
         // Run both pipelines in parallel for the duration of the test so that
@@ -892,15 +948,16 @@ export class DoubleBlindTest {
         }
         if (startSeq !== this._startSeq || !this.active || !this.testRunning) return;
         this._startPending = false;
+        this._updateStartAvailability();
         if (!parallelReady) {
             this.testRunning = false;
             this._showConfigScreen();
             this.updateTexts();
-            this._updateStartAvailability();
             this._showParallelStartError();
             return;
         }
 
+        this._showTestScreen();
         this.startTime = Date.now();
         this._nextTrial();
     }

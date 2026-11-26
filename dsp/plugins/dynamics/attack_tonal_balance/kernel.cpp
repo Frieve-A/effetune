@@ -29,18 +29,32 @@ constexpr std::uint32_t kStageCapacity = 1536u;
 constexpr std::uint32_t kTimeMedian = 9u;
 constexpr std::uint32_t kFrequencyMedian = 17u;
 
-// Fixed-size insertion sort needs no allocation for these short windows.
-template <std::size_t N> double median(std::array<double, N> values) noexcept {
-  for (std::size_t i = 1u; i < N; ++i) {
-    const double value = values[i];
-    std::size_t j = i;
-    while (j > 0u && values[j - 1u] > value) {
-      values[j] = values[j - 1u];
-      --j;
+// Bins whose medians are sorted together; the branch-free network vectorizes across them.
+constexpr std::uint32_t kMedianLanes = 4u;
+template <std::size_t N> using MedianWindows = std::array<std::array<double, kMedianLanes>, N>;
+
+// Sorts every lane with Batcher's odd-even merge network, truncated to N elements. The sorted
+// values, and so the medians, match any other exact sort.
+template <std::size_t N> void sortLanes(MedianWindows<N> &values) noexcept {
+  for (std::size_t p = 1u; p < N; p <<= 1u) {
+    for (std::size_t k = p; k >= 1u; k >>= 1u) {
+      for (std::size_t j = k % p; j + k < N; j += 2u * k) {
+        for (std::size_t i = 0u; i < k && i + j + k < N; ++i) {
+          if ((i + j) / (2u * p) != (i + j + k) / (2u * p)) {
+            continue;
+          }
+          std::array<double, kMedianLanes> &low = values[i + j];
+          std::array<double, kMedianLanes> &high = values[i + j + k];
+          for (std::uint32_t lane = 0u; lane < kMedianLanes; ++lane) {
+            const double a = low[lane];
+            const double b = high[lane];
+            low[lane] = a < b ? a : b;
+            high[lane] = a < b ? b : a;
+          }
+        }
+      }
     }
-    values[j] = value;
   }
-  return values[N / 2u];
 }
 
 enum class StageKind : std::uint8_t {
@@ -487,47 +501,60 @@ private:
   }
 
   void calculateGain(std::uint32_t begin, std::uint32_t end) noexcept {
-    for (std::uint32_t bin = begin; bin < end; ++bin) {
-      std::array<double, kTimeMedian> temporal{};
-      std::array<double, kFrequencyMedian> frequency{};
-      for (std::uint32_t i = 0u; i < kTimeMedian; ++i) {
-        temporal[i] = history_[static_cast<std::size_t>(bin) * kTimeMedian + i];
+    for (std::uint32_t first_bin = begin; first_bin < end; first_bin += kMedianLanes) {
+      MedianWindows<kTimeMedian> temporal{};
+      MedianWindows<kFrequencyMedian> frequency{};
+      for (std::uint32_t lane = 0u; lane < kMedianLanes; ++lane) {
+        // Lanes past the range repeat the last bin and are not stored.
+        const std::uint32_t bin = first_bin + lane < end ? first_bin + lane : end - 1u;
+        for (std::uint32_t i = 0u; i < kTimeMedian; ++i) {
+          temporal[i][lane] = history_[static_cast<std::size_t>(bin) * kTimeMedian + i];
+        }
+        for (std::uint32_t i = 0u; i < kFrequencyMedian; ++i) {
+          const auto neighbor =
+              static_cast<std::int32_t>(bin + i) - static_cast<std::int32_t>(kFrequencyMedian / 2u);
+          const std::uint32_t clamped = neighbor < 0
+                                            ? 0u
+                                            : (static_cast<std::uint32_t>(neighbor) >= half_bins_
+                                                   ? half_bins_ - 1u
+                                                   : static_cast<std::uint32_t>(neighbor));
+          frequency[i][lane] = magnitude_[clamped];
+        }
       }
-      for (std::uint32_t i = 0u; i < kFrequencyMedian; ++i) {
-        const auto neighbor =
-            static_cast<std::int32_t>(bin + i) - static_cast<std::int32_t>(kFrequencyMedian / 2u);
-        const std::uint32_t clamped = neighbor < 0
-                                          ? 0u
-                                          : (static_cast<std::uint32_t>(neighbor) >= half_bins_
-                                                 ? half_bins_ - 1u
-                                                 : static_cast<std::uint32_t>(neighbor));
-        frequency[i] = magnitude_[clamped];
+      sortLanes(temporal);
+      sortLanes(frequency);
+      const std::uint32_t lane_count =
+          end - first_bin < kMedianLanes ? end - first_bin : kMedianLanes;
+      for (std::uint32_t lane = 0u; lane < lane_count; ++lane) {
+        storeGain(first_bin + lane, temporal[kTimeMedian / 2u][lane],
+                  frequency[kFrequencyMedian / 2u][lane]);
       }
-      double h = median(temporal);
-      double p = median(frequency);
-      const double scale = h > p ? h : p;
-      double tonal = 0.0;
-      double attack = 0.0;
-      if (scale > 0.0) {
-        h /= scale;
-        p /= scale;
-        const double h2 = h * h;
-        const double p2 = p * p;
-        tonal = h2 / (h2 + 4.0 * p2);
-        attack = p2 / (p2 + 4.0 * h2);
-        // Rounding can make tonal exactly one while attack remains a tiny positive value.
-        const double remaining = 1.0 - tonal;
-        if (attack > remaining)
-          attack = remaining;
-      }
-      tonal_mask_[bin] = tonal;
-      attack_mask_[bin] = attack;
-      // The residual stays at unity; this form is exactly neutral at zero dB.
-      final_gain_[bin] = 1.0 + (job_tonal_gain_ - 1.0) * tonal + (job_attack_gain_ - 1.0) * attack;
     }
     if (end == half_bins_) {
       history_position_ = (history_position_ + 1u) % kTimeMedian;
     }
+  }
+
+  void storeGain(std::uint32_t bin, double h, double p) noexcept {
+    const double scale = h > p ? h : p;
+    double tonal = 0.0;
+    double attack = 0.0;
+    if (scale > 0.0) {
+      h /= scale;
+      p /= scale;
+      const double h2 = h * h;
+      const double p2 = p * p;
+      tonal = h2 / (h2 + 4.0 * p2);
+      attack = p2 / (p2 + 4.0 * h2);
+      // Rounding can make tonal exactly one while attack remains a tiny positive value.
+      const double remaining = 1.0 - tonal;
+      if (attack > remaining)
+        attack = remaining;
+    }
+    tonal_mask_[bin] = tonal;
+    attack_mask_[bin] = attack;
+    // The residual stays at unity; this form is exactly neutral at zero dB.
+    final_gain_[bin] = 1.0 + (job_tonal_gain_ - 1.0) * tonal + (job_attack_gain_ - 1.0) * attack;
   }
 
   void applyGain(std::uint32_t channel, std::uint32_t begin, std::uint32_t end) noexcept {

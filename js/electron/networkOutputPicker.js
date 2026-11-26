@@ -1,6 +1,10 @@
+import { getNetworkOutputBridge } from '../android/network-output.js';
+import { isLocalNetworkPermissionError } from '../android/network.js';
+
 const PREFIX = 'dialog.config.networkOutput.';
+const PERMISSION_FAILURE = 'localNetworkPermission';
 const STATES = ['searching', 'connecting', 'playing', 'unreachable'];
-const NOTES = ['offline', 'format', 'taken', 'startFailed'];
+const NOTES = ['offline', 'format', 'encoder', 'taken', 'startFailed'];
 
 export function updateNetworkOutputTargetText(row, target, selected, t) {
   row.type.textContent = target.type === 'cast' ? 'Chromecast' : 'UPnP AV';
@@ -13,7 +17,7 @@ export function updateNetworkOutputTargetText(row, target, selected, t) {
 }
 
 export function initNetworkOutputPicker(uiManager) {
-  const bridge = window.electronAPI?.networkOutputV1;
+  const bridge = getNetworkOutputBridge();
   if (!bridge?.setPickerOpen) return;
   const button = document.getElementById('networkOutputButton');
   const picker = document.getElementById('networkOutputPicker');
@@ -76,7 +80,8 @@ export function initNetworkOutputPicker(uiManager) {
     local.checked = status?.localEnabled !== false;
     local.disabled = !status;
     local.setAttribute('aria-disabled', String(!status || busy));
-    message.textContent = failure ? t(PREFIX + failure)
+    message.textContent = failure === PERMISSION_FAILURE ? t('dialog.config.localNetworkPermission')
+      : failure ? t(PREFIX + failure)
       : !status ? t(PREFIX + 'loading') : devices.length === 0 ? t(PREFIX + 'empty') : '';
   }
 
@@ -99,7 +104,7 @@ export function initNetworkOutputPicker(uiManager) {
       status = await pending;
     } catch (error) {
       console.warn('Failed to change Network Output selection:', error);
-      failure = 'pickerSaveFailed';
+      failure = isLocalNetworkPermissionError(error) ? PERMISSION_FAILURE : 'pickerSaveFailed';
     } finally {
       busy = false;
       render();
@@ -120,7 +125,7 @@ export function initNetworkOutputPicker(uiManager) {
     } catch (error) {
       console.warn('Failed to change Network Output picker visibility:', error);
       if (open && revision === visibilityRevision) {
-        failure = 'pickerLoadFailed';
+        failure = isLocalNetworkPermissionError(error) ? PERMISSION_FAILURE : 'pickerLoadFailed';
         render();
       }
     }

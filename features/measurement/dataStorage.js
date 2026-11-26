@@ -871,6 +871,38 @@ export class DataStorage {
         }
     }
 
+    async getMeasurementStorageSizes(measurements) {
+        const encoder = new TextEncoder();
+        const sizeOf = record => {
+            let sampleBytes = 0;
+            const metadata = JSON.stringify(record, (_key, value) => {
+                if (!ArrayBuffer.isView(value)) return value;
+                sampleBytes += value.byteLength;
+                return undefined;
+            });
+            return encoder.encode(metadata).byteLength + sampleBytes;
+        };
+        const sizes = new Map(measurements.map(measurement => [measurement.id, sizeOf(measurement)]));
+        if (!sizes.size || this.irPersistenceAvailable === false) return sizes;
+        const db = await this.openDatabase();
+        await new Promise((resolve, reject) => {
+            const transaction = db.transaction([this.IR_STORE], 'readonly');
+            const request = transaction.objectStore(this.IR_STORE).openCursor();
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) return;
+                const record = cursor.value;
+                if (sizes.has(record.measurementId)) {
+                    sizes.set(record.measurementId, sizes.get(record.measurementId) + sizeOf(record));
+                }
+                cursor.continue();
+            };
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(transaction.error);
+        });
+        return sizes;
+    }
+
     async ensureImpulseResponseQuota(records) {
         const estimate = await this.getStorageEstimate();
         if (!estimate || !Number.isFinite(estimate.usage) || !Number.isFinite(estimate.quota)) return;

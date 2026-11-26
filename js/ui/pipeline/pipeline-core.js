@@ -209,16 +209,14 @@ export class PipelineCore {
             ? window.uiManager.t('ui.title.masterToggle')
             : 'Enable or disable all effects';
 
-        this.masterToggle.onclick = () => {
-            this.enabled = !this.enabled;
-            this.masterToggle.classList.toggle('off', !this.enabled);
-            
-            // Update the shared pipeline and worklet state without rebuilding.
-            this.workletSync.updateMasterBypass(!this.enabled);
-            
-            // Immediately update display state for all plugins
-            this.updateAllPluginDisplayState();
-        };
+        this.masterToggle.onclick = () => this.applyMasterBypass(this.enabled);
+    }
+
+    applyMasterBypass(bypass, { updateAudio = true } = {}) {
+        this.enabled = !bypass;
+        this.masterToggle?.classList.toggle('off', bypass);
+        if (updateAudio) this.workletSync.updateMasterBypass(bypass);
+        this.updateAllPluginDisplayState();
     }
 
     /**

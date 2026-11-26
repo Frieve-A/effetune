@@ -1644,28 +1644,27 @@ void Engine::tracePipelineOutputs(et_instance send, RoutedTaps &taps) const noex
     auto &tap = taps[i];
     tap.instance = node.instance;
     const auto &action = pipeline_compensation_[i];
-    RoutedDelay incoming;
     for (unsigned ch = first; ch < first + count; ++ch) {
       auto &destination = paths[node.outputBus][ch];
-      merge(tap.output, destination);
       const auto previous = destination;
-      merge(incoming, previous,
+      // The kernel output is observed before its incoming merge delay.
+      merge(tap.output, previous,
             action.targets[ch] == DelayTarget::Incoming ? action.delays[ch] : 0);
       destination = {};
       if (node.inputBus != node.outputBus)
         merge(destination, previous,
               action.targets[ch] == DelayTarget::Destination ? action.delays[ch] : 0);
     }
+    // The input observation follows alignment. Only the upstream traversal crosses the delay.
+    merge(tap.input, tap.output, pipeline_kernel_latencies_[i]);
     for (unsigned ch = first; ch < first + count; ++ch) {
       auto &source = paths[node.inputBus][ch];
-      merge(source, incoming, pipeline_kernel_latencies_[i] + action.inputDelays[ch]);
+      merge(source, tap.input, action.inputDelays[ch]);
+      if (node.instance == send && ch - first < 2u)
+        source.network = action.inputDelays[ch];
     }
-    if (node.instance == send) {
-      for (unsigned ch = 0; ch < std::min(max_channels_, 2u); ++ch)
-        paths[0][ch].network = 0;
-    }
-    for (unsigned ch = first; ch < first + count; ++ch)
-      merge(tap.input, paths[node.inputBus][ch]);
+    if (node.instance == send)
+      tap.input.network = 0;
   }
 }
 

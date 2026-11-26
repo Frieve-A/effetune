@@ -1,8 +1,6 @@
-import { MAX_BACKUP_BYTES, MAX_ITEMS, prepareItems, selectItems, chooseName, replaceReferences,
-    nameIssue, references, clone, canonical } from './portable.js';
+import { MAX_BACKUP_BYTES, MAX_ITEMS, MAX_JSON_BYTES, prepareItems, selectItems, chooseName, replaceReferences,
+    nameIssue, references, canonical } from './portable.js';
 import { createArchive, openArchive, checkCancelled, loadZipClass } from './archive.js';
-
-const missingMessage = 'Required data is not available. Choose a backup that includes the data, or import the same original data and try again.';
 
 function catalog(items, unavailable = []) {
     return { items, unavailable, maxBytes: MAX_BACKUP_BYTES };
@@ -40,12 +38,12 @@ export class UserDataBackupService {
         this.running = false;
     }
 
-    async readItems() {
+    async readItems({ legacyMeasurementFingerprint = false } = {}) {
         const snapshot = await this.adapter.readSnapshot();
         if (!Array.isArray(snapshot.items) || snapshot.items.length > MAX_ITEMS) {
             throw new Error('There are too many saved items for one backup.');
         }
-        const items = await prepareItems(snapshot.items);
+        const items = await prepareItems(snapshot.items, { legacyMeasurementFingerprint });
         for (const item of items) {
             const issue = await this.adapter.validateItem?.(item);
             if (issue) { item.available = false; item.reason = issue; }
@@ -63,12 +61,19 @@ export class UserDataBackupService {
                 if (item.available && item.dependencies.some(dependency => dependency.required &&
                     byKey.get(dependency.key)?.available !== true)) {
                     item.available = false;
-                    item.reason = missingMessage;
+                    item.reason = 'missingData';
                     changed = true;
                 }
             }
         } while (changed);
-        return catalog(items, snapshot.unavailable || []);
+        const result = catalog(items, snapshot.unavailable || []);
+        if (legacyMeasurementFingerprint === null) {
+            const legacy = await prepareItems(snapshot.items, { legacyMeasurementFingerprint: true });
+            const fingerprints = new Map(legacy.filter(item => item.available).map(item => [item.key, item.fingerprint]));
+            result.legacyFingerprints = new Map(items.filter(item => fingerprints.has(item.key))
+                .map(item => [item, fingerprints.get(item.key)]));
+        }
+        return result;
     }
 
     listBackup() { return this.readItems(); }
@@ -90,9 +95,12 @@ export class UserDataBackupService {
                 canonical(item.dependencies) !== canonical(before.get(item.key)?.dependencies))) {
                 throw new Error('Saved data changed while the backup was open. Refresh the list and select the items again.');
             }
-            const embeddedBytes = items.reduce((total, item) => total +
-                ((item.kind === 'ir' && options.embedIr === false) ||
-                (item.kind === 'measurement' && options.embedMeasurements === false) ? 0 : item.bytes || 0), 0);
+            const embedded = items.filter(item => !(item.kind === 'ir' && options.embedIr === false) &&
+                !(item.kind === 'measurement' && options.embedMeasurements === false));
+            if (embedded.some(item => item.metadataBytes > MAX_JSON_BYTES)) {
+                throw new Error('An item is too large to include in this backup.');
+            }
+            const embeddedBytes = embedded.reduce((total, item) => total + (item.bytes || 0), 0);
             if (embeddedBytes > MAX_BACKUP_BYTES) throw new Error('This selection exceeds 256 MB. Select fewer items and create separate backups.');
             const byId = new Map(current.items.map(item => [`${item.kind}:${item.id}`, item]));
             for (const item of items) {
@@ -120,16 +128,16 @@ export class UserDataBackupService {
     }
 
     async planRestore(source, keys) {
-        const current = await this.readItems();
+        const current = await this.readItems(source.archive);
         const unavailable = new Set(current.unavailable.map(area => typeof area === 'string' ? area : area.kind));
         const items = source.items.map(item => {
             const value = { ...item, available: true, reason: nameIssue(item), selected: false };
-            if (unavailable.has(item.kind)) value.reason = 'This storage is unavailable. Try again after restoring access to it.';
-            const chosen = chooseName(item, current.items);
+            if (unavailable.has(item.kind)) value.reason = 'storageUnavailable';
+            const chosen = chooseName(item, current.items, current.legacyFingerprints);
             value.targetName = chosen.name;
             value.target = chosen.existing;
             value.status = chosen.existing ? 'reuse' : chosen.name === item.name ? 'add' : 'rename';
-            if (!item.embedded && !chosen.existing) { value.reason = missingMessage; value.status = 'missing'; }
+            if (!item.embedded && !chosen.existing) { value.reason = 'missingData'; value.status = 'missing'; }
             if (value.reason) { value.available = false; if (value.status !== 'missing') value.status = 'unavailable'; }
             return value;
         });
@@ -153,21 +161,33 @@ export class UserDataBackupService {
                     byKey.get(dependency.key)?.available !== true)) {
                     item.available = false;
                     item.status = 'missing';
-                    item.reason = missingMessage;
+                    item.reason = 'missingData';
                     changed = true;
                 }
             }
         } while (changed);
         const selectedKeys = selectItems({ items }, keys);
         const planned = [...current.items];
+        const occupiedIds = new Set(current.items.filter(item => item.kind === 'measurement').map(item => item.id));
+        const reservedIds = new Set([...occupiedIds, ...items.filter(item => item.kind === 'measurement').map(item => item.id)]);
         for (const item of orderedItems(items.filter(value => selectedKeys.has(value.key)))) {
             item.selected = true;
-            const chosen = chooseName(item, planned);
+            const chosen = chooseName(item, planned, current.legacyFingerprints);
             item.targetName = chosen.name;
             item.target = chosen.existing;
             item.status = chosen.existing ? 'reuse' : chosen.name === item.name ? 'add' : 'rename';
-            if (!chosen.existing) planned.push({ ...item, name: chosen.name,
-                id: item.kind === 'measurement' ? crypto.randomUUID() : item.id, plannedKey: item.key });
+            if (!chosen.existing) {
+                let id = item.id;
+                if (item.kind === 'measurement') {
+                    if (occupiedIds.has(id)) {
+                        do { id = crypto.randomUUID(); } while (reservedIds.has(id));
+                    }
+                    occupiedIds.add(id);
+                    reservedIds.add(id);
+                }
+                item.targetId = id;
+                planned.push({ ...item, name: chosen.name, id, plannedKey: item.key });
+            }
         }
         return { catalog: source, items, selectedKeys, unavailable: current.unavailable };
     }
@@ -186,10 +206,16 @@ export class UserDataBackupService {
             const hydratedByKey = new Map(hydrated.map(item => [item.key, item]));
             const fingerprintInputs = source.items.map(item => hydratedByKey.get(item.key) ||
                 { ...item, embedded: false, data: undefined, available: true });
-            const checked = await prepareItems(fingerprintInputs);
+            const sourceByKey = new Map(source.items.map(item => [item.key, item]));
+            const matchesArchive = item => item.available && item.fingerprint === sourceByKey.get(item.key).fingerprint;
+            let checked = await prepareItems(fingerprintInputs, source.archive);
+            if (source.archive.legacyMeasurementFingerprint === null &&
+                checked.some(item => plan.selectedKeys.has(item.key) && !matchesArchive(item))) {
+                checked = await prepareItems(fingerprintInputs, { legacyMeasurementFingerprint: true });
+            }
             const byId = new Map(source.items.map(item => [`${item.kind}:${item.id}`, item]));
             for (const item of checked.filter(value => plan.selectedKeys.has(value.key))) {
-                if (!item.available || item.fingerprint !== source.items.find(value => value.key === item.key).fingerprint) {
+                if (!matchesArchive(item)) {
                     throw new Error('The backup content does not match its item description. Choose another copy of the file.');
                 }
                 if (!item.embedded) continue;
@@ -213,8 +239,7 @@ export class UserDataBackupService {
             // Reserve IDs before writing to support calibration links between measurements.
             for (const item of items) {
                 if (item.target && !item.target.plannedKey) targets.set(item.key, { id: item.target.id, name: item.target.name });
-                else if (!item.target) targets.set(item.key, { id: item.kind === 'measurement' ? crypto.randomUUID() : item.id,
-                    name: item.targetName });
+                else if (!item.target) targets.set(item.key, { id: item.targetId, name: item.targetName });
             }
             const completed = new Set();
             let stopped = false;
@@ -254,7 +279,7 @@ export class UserDataBackupService {
                     onProgress?.({ completed: index + 1, total: items.length, currentName: item.name });
                 } catch (error) {
                     console.error('User data restore failed:', error);
-                    result.failed.push(itemResult(item, { reason: 'This item could not be saved. Check available storage and try again.' }));
+                    result.failed.push(itemResult(item, { reason: 'saveFailed' }));
                     targets.delete(item.key);
                     stopped = true;
                 }

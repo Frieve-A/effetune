@@ -139,7 +139,7 @@ export function validateItemShape(item) {
 export function nameIssue(item) {
     if ((item.kind === 'pipeline' || item.kind === 'plugin' || item.kind === 'visualizer') &&
         (reserved.has(item.name.trim()) || (item.kind === 'plugin' && reserved.has(item.pluginName)))) {
-        return 'This name cannot be saved. Rename the original item and create another backup.';
+        return 'invalidName';
     }
     return null;
 }
@@ -166,7 +166,55 @@ export function decodeFloat32(bytes) {
     return values;
 }
 
-export async function prepareItems(sourceItems) {
+const FLOAT32_ENCODING = 'float32le';
+
+function* legacyMeasurementPayloads(data) {
+    if (data.measurement.speakerModel !== undefined) {
+        yield { target: data.measurement, key: 'speakerModel', model: true };
+    }
+    for (const target of data.impulseResponses) yield { target, key: 'data', model: false };
+}
+
+export function* measurementPayloads(data, format = 'raw') {
+    if (format === 'legacy') {
+        if (data.impulseResponses.some(response => !record(response?.data) || Object.hasOwn(response.data, 'encoding'))) {
+            throw new Error('The measurement impulse response is missing.');
+        }
+        yield* legacyMeasurementPayloads(data);
+        return;
+    }
+    const isSamples = format === 'archive' ? value => value?.encoding === FLOAT32_ENCODING : ArrayBuffer.isView;
+    if (data.impulseResponses.some(response => !isSamples(response?.data))) {
+        throw new Error('The measurement impulse response is missing.');
+    }
+    function* visit(target) {
+        for (const [key, value] of Object.entries(target)) {
+            if (value === undefined) continue;
+            const model = target === data.measurement && key === 'speakerModel';
+            if (model || isSamples(value)) yield { target, key, model };
+            else if (value !== null && typeof value === 'object') yield* visit(value);
+        }
+    }
+    yield* visit(data);
+}
+
+export async function packBlob(bytes, addPayload) {
+    const hash = await sha256IrBytes(bytes);
+    const path = `blobs/${hash}.bin`;
+    await addPayload(path, bytes, hash);
+    return { blob: path, size: bytes.byteLength };
+}
+
+export async function packMeasurement(data, addPayload) {
+    for (const { target, key, model } of measurementPayloads(data)) {
+        const bytes = model ? jsonBytes(target[key]) : encodeFloat32(target[key]);
+        const reference = await packBlob(bytes, addPayload);
+        if (!model) reference.encoding = FLOAT32_ENCODING;
+        target[key] = reference;
+    }
+}
+
+export async function prepareItems(sourceItems, { legacyMeasurementFingerprint = false } = {}) {
     const items = sourceItems.map(source => ({ ...source, data: clone(source.data),
         available: source.available !== false, embedded: source.embedded !== false, dependencies: [] }));
     const byId = new Map(items.map(item => [`${item.kind}:${item.id}`, item]));
@@ -185,26 +233,28 @@ export async function prepareItems(sourceItems) {
                     original.sha256 = await sha256IrBytes(original.bytes);
                     item.bytes += original.bytes.byteLength;
                 }
+            } else if (item.kind === 'measurement' && legacyMeasurementFingerprint) {
+                // v2.19.0 hashed the model and IR payloads as digests and lengths.
+                for (const { target, key, model } of legacyMeasurementPayloads(item.data)) {
+                    const bytes = model ? jsonBytes(target[key]) : encodeFloat32(target[key]);
+                    target[key] = { sha256: await sha256IrBytes(bytes), bytes: bytes.byteLength };
+                }
             } else if (item.kind === 'measurement') {
-                const measurement = item.data.measurement;
-                // The archive stores the model as its own payload, so the fingerprint uses its digest.
-                if (measurement.speakerModel !== undefined) {
-                    const bytes = jsonBytes(measurement.speakerModel);
-                    measurement.speakerModel = { sha256: await sha256IrBytes(bytes), bytes: bytes.byteLength };
+                const blobs = new Set();
+                await packMeasurement(item.data, (path, bytes) => {
+                    if (blobs.has(path)) return;
+                    blobs.add(path);
                     item.bytes += bytes.byteLength;
-                }
-                item.bytes += jsonBytes(measurement).byteLength;
-                for (const response of item.data.impulseResponses) {
-                    const bytes = encodeFloat32(response.data);
-                    response.data = { sha256: await sha256IrBytes(bytes), bytes: bytes.byteLength };
-                    item.bytes += bytes.byteLength;
-                }
+                });
+                item.metadataBytes = jsonBytes({ id: item.id, pluginName: item.pluginName, data: item.data }).byteLength;
+                item.bytes += item.metadataBytes;
             } else item.bytes = jsonBytes(item.data).byteLength;
             item.reason = item.reason || nameIssue(item);
             if (item.reason) item.available = false;
         } catch (error) {
+            console.error('Backup item preparation failed:', error);
             item.available = false;
-            item.reason = error.message;
+            item.reason = 'invalidData';
         }
     }
     const fingerprint = async (item, visiting = new Set()) => {
@@ -228,7 +278,7 @@ export async function prepareItems(sourceItems) {
                 if (!hash || (reference.required && !dependency.available)) {
                     if (reference.required) {
                         item.available = false;
-                        item.reason = 'Required data is missing or cannot be read. Restore the original data, or leave this item unselected.';
+                        item.reason = 'missingData';
                     }
                     reference.target[reference.property] = 'unresolved';
                 } else {
@@ -240,8 +290,9 @@ export async function prepareItems(sourceItems) {
             fingerprints.set(item.key, hash);
             return hash;
         } catch (error) {
+            console.error('Backup item validation failed:', error);
             item.available = false;
-            item.reason = error.message;
+            item.reason = 'invalidData';
             return null;
         }
     };
@@ -267,18 +318,23 @@ export function selectItems(catalog, keys, includeRelated = false) {
     return selected;
 }
 
-export function chooseName(item, existing) {
+export function chooseName(item, existing, legacyFingerprints) {
     const sameNamespace = candidate => candidate.kind === item.kind &&
         (item.kind !== 'plugin' || candidate.pluginName === item.pluginName);
     const candidates = existing.filter(sameNamespace);
+    const sameFingerprint = candidate => candidate.fingerprint === item.fingerprint ||
+        (legacyFingerprints?.has(candidate) && legacyFingerprints.get(candidate) === item.fingerprint);
     if (item.kind === 'ir' || item.kind === 'measurement') {
-        const identical = candidates.find(candidate => candidate.available !== false && candidate.fingerprint === item.fingerprint);
+        const matches = candidate => candidate.available !== false && sameFingerprint(candidate);
+        const sameId = item.kind === 'measurement' && candidates.find(candidate => candidate.id === item.id);
+        const identical = sameId && matches(sameId) ? sameId
+            : item.kind === 'ir' || !item.embedded || sameId ? candidates.find(matches) : null;
         if (identical) return { name: identical.name, existing: identical };
     } else {
         const prefix = `${item.name} (`;
         const family = candidate => candidate.name === item.name || (candidate.name.startsWith(prefix) &&
             candidate.name.endsWith(')') && /^[2-9][0-9]*$|^1[0-9]+$/.test(candidate.name.slice(prefix.length, -1)));
-        const identical = candidates.find(candidate => family(candidate) && candidate.fingerprint === item.fingerprint);
+        const identical = candidates.find(candidate => family(candidate) && sameFingerprint(candidate));
         if (identical) return { name: identical.name, existing: identical };
     }
     const names = new Set(candidates.map(candidate => candidate.name));

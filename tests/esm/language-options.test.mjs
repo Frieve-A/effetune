@@ -76,7 +76,7 @@ test('resolveLanguagePreference works when navigator is unavailable', async () =
 
 test('getLanguageOptionLabel translates auto, returns known labels, and falls back to raw values', () => {
   assert.equal(getLanguageOptionLabel('auto', key => `translated:${key}`), 'translated:dialog.config.language.auto');
-  assert.equal(getLanguageOptionLabel('auto'), 'Auto (Browser)');
+  assert.equal(getLanguageOptionLabel('auto'), 'Auto');
   assert.equal(getLanguageOptionLabel('ja'), '日本語');
   assert.equal(getLanguageOptionLabel('custom'), 'custom');
 });

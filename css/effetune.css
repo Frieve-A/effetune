@@ -126,7 +126,7 @@ input[type="checkbox"] + label::before {
     position: absolute;
     top: 0;
     bottom: 0;
-    right: 100%;
+    inset-inline-end: 100%;
     /* Covers the 10px .parameter-row flex gap plus the widget's 5px margin. */
     width: 15px;
 }
@@ -194,7 +194,7 @@ input[type="checkbox"] + label::before {
 
 .header-buttons {
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     top: 0;
     display: flex;
     gap: 10px;
@@ -259,7 +259,7 @@ body.layout-desktop .header-buttons.show-captions > .header-button:has(.header-c
 
 .settings-menu {
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     top: calc(100% + 6px);
     min-width: 240px;
     background: var(--et-surface-5);
@@ -462,13 +462,13 @@ body.layout-desktop .header-buttons.show-captions > .header-button:has(.header-c
     display: flex;
     justify-content: flex-end;
     flex: 0 0 300px;
-    left: 0;
-    transition: left 0.3s ease;
+    inset-inline-start: 0;
+    transition: inset-inline-start 0.3s ease;
     z-index: 20;
 }
 
 .main-container.plugin-list-collapsed .plugin-list-shell {
-    left: calc(-1 * (var(--plugin-list-total-width, 300px) + 20px));
+    inset-inline-start: calc(-1 * (var(--plugin-list-total-width, 300px) + 20px));
 }
 
 body.layout-mobile .plugin-list-shell {
@@ -525,7 +525,8 @@ html[data-theme="mint"] .plugin-list {
     align-self: flex-start;
     flex-shrink: 0;
     /* Leave 20px above the tab and keep its width outside the list's shell. */
-    margin: 20px -15px 0 0;
+    margin-block-start: 20px;
+    margin-inline-end: -15px;
     /* Center in the viewport, below the list's sticky top plus the 20px gap. */
     top: max(40px, calc(50vh - 30px));
     width: 15px;
@@ -546,7 +547,7 @@ html[data-theme="mint"] .plugin-list {
 }
 
 .main-container.plugin-list-collapsed .pipeline {
-    margin-left: calc(-1 * (var(--plugin-list-total-width, 300px) + 20px));
+    margin-inline-start: calc(-1 * (var(--plugin-list-total-width, 300px) + 20px));
     flex-grow: 1;
     position: relative;
 }
@@ -566,7 +567,7 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
 
 .tab-switcher {
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     top: 0;
     display: flex;
     gap: 5px;
@@ -597,19 +598,20 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
 
 .plugin-list-header h2 {
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     top: 0;
     margin: 0;
 }
 
 .effect-search-input {
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     top: 0;
     width: calc(100% - 34px);
     height: var(--et-control-height-compact);
     box-sizing: border-box;
-    padding: 0 26px 0 4px;
+    padding-block: 0;
+    padding-inline: 4px 26px;
     background-color: var(--et-surface-17);
     border: 1px solid var(--et-surface-23);
     color: var(--et-text-primary);
@@ -620,7 +622,7 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
 
 .search-button {
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     top: 0;
     padding: 4px 8px;
     background-color: var(--et-surface-23);
@@ -672,7 +674,7 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
 
 .effect-search-clear-button {
     top: calc((var(--et-control-height-compact) - 18px) / 2);
-    right: 38px;
+    inset-inline-end: 38px;
 }
 
 .plugin-list-content {
@@ -797,7 +799,7 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
     border-radius: 4px;
     padding: 20px 20px 44px;
     position: relative;
-    transition: transform 0.3s ease, width 0.3s ease, margin-left 0.3s ease;
+    transition: transform 0.3s ease, width 0.3s ease, margin-inline-start 0.3s ease;
     z-index: 10;
 }
 
@@ -830,6 +832,7 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
 }
 
 .pipeline-cpu-meter {
+    direction: ltr;
     width: 72px;
     height: 6px;
     overflow: hidden;
@@ -854,13 +857,9 @@ body:not(.layout-mobile) #pipeline > .pipeline-header {
     background: var(--et-danger);
 }
 
-body.layout-mobile #pipelineList {
-    padding-bottom: 50px;
-}
-
 body.layout-mobile #pipelineStats {
-    right: 10px;
-    bottom: 10px;
+    position: static;
+    margin: 10px 10px 0;
     align-items: flex-end;
     flex-direction: column;
     gap: 4px;
@@ -971,7 +970,8 @@ body.layout-mobile #pipelineStats {
     -webkit-appearance: none;
     -moz-appearance: none;
     box-sizing: border-box;
-    padding: 4px 52px 4px 4px;
+    padding-block: 4px;
+    padding-inline: 4px 52px;
     background-color: var(--et-surface-17);
     border: 1px solid var(--et-surface-23);
     color: var(--et-text-primary);
@@ -1004,7 +1004,7 @@ body.layout-mobile #pipelineStats {
     content: "▼";
     position: absolute;
     top: 50%;
-    right: 9px;
+    inset-inline-end: 9px;
     transform: translateY(-50%);
     pointer-events: none;
     color: var(--et-text-primary);
@@ -1014,7 +1014,7 @@ body.layout-mobile #pipelineStats {
 
 .preset-clear-button {
     top: 50%;
-    right: 29px;
+    inset-inline-end: 29px;
     transform: translateY(-50%);
 }
 
@@ -1092,7 +1092,7 @@ body.layout-mobile #pipelineStats {
 .pipeline-header-right {
     display: flex;
     align-items: center;
-    margin-left: auto;
+    margin-inline-start: auto;
     gap: 10px;
 }
 
@@ -1234,7 +1234,7 @@ body.layout-mobile #pipelineStats {
 .pipeline-menu {
     position: absolute;
     top: 100%;
-    right: 0;
+    inset-inline-end: 0;
     background-color: var(--et-surface-10);
     border: 1px solid var(--et-surface-17);
     border-radius: 4px;
@@ -1629,18 +1629,10 @@ body:not(.layout-mobile) .plugin-parameter-ui .parameter-row:has(> input[type="n
     line-height: normal;
 }
 
-body.layout-mobile .plugin-parameter-ui .parameter-row:has(> .slope-select) > input[type="number"],
-body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"]) > .slope-select {
-    box-sizing: border-box;
-    flex: 0 0 90px;
-    width: 90px;
-    min-width: 90px;
-    max-width: 90px;
-    height: var(--et-mobile-control-height);
-    min-height: var(--et-mobile-control-height);
-    padding: 8px 6px;
-    font-size: 16px;
-    line-height: normal;
+.graph-container,
+.plugin-parameter-ui :is(canvas, .graph-axis-titled),
+:is(.fifteen-band-geq-plugin-ui, .group-delay-eq-plugin-ui) .sliders-container {
+    direction: ltr;
 }
 
 .graph-container {
@@ -2025,6 +2017,7 @@ body.layout-mobile .plugin-parameter-ui .graph-axis-titled::after {
 }
 
 .time-display {
+    direction: ltr;
     color: var(--et-text-primary);
     font-family: monospace;
     min-width: 45px;
@@ -4857,7 +4850,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-editor-navigation .visualizer-quality-label > select { height: 26px; padding: 2px 6px; }
 .visualizer-workspace { display: flex; align-items: stretch; min-height: 320px; height: calc(100vh - 250px); gap: 16px; }
 .visualizer-stage-host { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; min-width: 0; min-height: 200px; flex: 1; background: #000; } /* theme-allow: Black letterboxing surrounds the user-colored scene. */
-.visualizer-stage { position: relative; flex: none; overflow: hidden; }
+.visualizer-stage { position: relative; flex: none; overflow: hidden; direction: ltr; }
 .visualizer-stage canvas { display: block; width: 100%; height: 100%; }
 .visualizer-stage .visualizer-hdr-canvas { position: absolute; inset: 0; pointer-events: none; }
 .visualizer-stage .visualizer-hdr-canvas[hidden] { display: none; }
@@ -4869,6 +4862,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-viewport-controls { position: absolute; bottom: 12px; left: 12px; z-index: 3; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--et-border-strong); border-radius: 6px; background: var(--et-surface-12); color: var(--et-text-primary); }
 .visualizer-viewport-controls[hidden] { display: none; }
 .visualizer-viewport-controls button { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 28px; height: 28px; margin: 0; padding: 4px 8px; font: inherit; }
+.visualizer-viewport-controls button[aria-pressed="true"] { background: var(--et-accent); color: var(--et-on-accent); }
 .visualizer-viewport-controls output { min-width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
 body.layout-mobile #visualizerView.is-editing .visualizer-stage-host { min-height: clamp(260px, 50dvh, 600px); }
 .visualizer-stage.show-grid::after {
@@ -4884,7 +4878,8 @@ body.layout-mobile #visualizerView.is-editing .visualizer-stage-host { min-heigh
 }
 .visualizer-expand { position: absolute; right: 12px; bottom: 12px; z-index: 3; display: flex; align-items: center; justify-content: center; padding: 0; color: #fff; background: #0008; border: 1px solid #fff8; border-radius: 6px; width: 42px; height: 42px; cursor: pointer; opacity: 0; transition: opacity .2s; } /* theme-allow: Contrasting controls over user-selected scene colors. */
 .visualizer-expand svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.visualizer-stage-host.show-controls .visualizer-expand, .visualizer-expand:focus-visible { opacity: 1; }
+.visualizer-expand { pointer-events: none; }
+.visualizer-stage-host.show-controls .visualizer-expand, .visualizer-expand:focus-visible { opacity: 1; pointer-events: auto; }
 .visualizer-status { position: absolute; max-width: 80%; padding: 15px; color: #fff; background: #15151de8; border-radius: 6px; text-align: center; } /* theme-allow: Contrasting status overlay over user-selected scene colors. */
 .visualizer-editor { width: clamp(210px, 23vw, 300px); flex: none; overflow-y: auto; padding: 14px; border: 1px solid var(--et-surface-31); border-radius: 4px; color: var(--et-text-primary); box-sizing: border-box; }
 .visualizer-editor-inspector { width: clamp(240px, 26vw, 340px); }
@@ -4997,6 +4992,10 @@ body.visualizer-expanded #visualizerView { position: fixed; inset: 0; z-index: 1
 body.visualizer-expanded .visualizer-toolbar, body.visualizer-expanded .visualizer-editor { display: none; }
 body.visualizer-expanded .visualizer-workspace { width: 100%; height: 100%; min-height: 0; }
 body.visualizer-expanded .visualizer-stage-host { min-height: 0; }
+body.visualizer-expanded .visualizer-expand {
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+}
 body.layout-mini-player.view-visualizer #visualizerView { display: block !important; position: fixed; inset: 0 0 120px; padding: 0; margin: 0; }
 body.layout-mini-player.view-visualizer .visualizer-toolbar, body.layout-mini-player.view-visualizer .visualizer-editor, body.layout-mini-player.view-visualizer .visualizer-expand { display: none; }
 body.layout-mini-player.view-visualizer .visualizer-workspace { height: 100%; min-height: 0; }
@@ -5232,8 +5231,9 @@ body.view-visualizer .network-effects,
 .audio-player .player-volume { width: 64px; flex: 0 0 64px; }
 .audio-player .player-volume-value { display: none; }
 body.layout-mobile .library-local-nav, body.layout-mobile .network-library-nav { display: flex; gap: 6px; }
-body.layout-mobile .network-playback-target .network-select,
-body.layout-mobile .library-source .library-entity-sort-select { max-width: 30vw; width: 130px; padding: 0 8px; }
-body.layout-mobile .title-container:has(.network-playback-target) { min-height: 88px; }
-body.layout-mobile .title-container:has(.network-playback-target) .header-buttons { top: 44px; right: 0; }
+body.layout-mobile .network-playback-target { flex: 1 0 100%; }
+body.layout-mobile .network-playback-target .network-select { flex: 1 1 0; min-width: 0; max-width: none; width: 100%; padding: 0 8px; }
+body.layout-mobile .library-source .library-entity-sort-select { max-width: none; width: 100%; padding: 0 8px; }
+body.layout-mobile .title-container:has(.network-playback-target) { min-height: 138px; }
+body.layout-mobile .title-container:has(.network-playback-target) .header-buttons { position: static; margin-top: 12px; flex-wrap: wrap; }
 body.layout-mobile .header-buttons #openMusicButton { display: inline-flex !important; }

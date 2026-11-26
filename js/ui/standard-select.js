@@ -43,8 +43,8 @@ class StandardSelectManager {
           Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TAP_MOVE_TOLERANCE) return;
       event.preventDefault();
       touch.select.focus({ preventScroll: true });
-      if (this.activeSelect === touch.select) this.close();
-      else this.open(touch.select);
+      // A completed touch toggles the list in handleClick, after hit testing.
+      this.pointerSelect = null;
     }, true);
     documentRef.addEventListener('pointercancel', event => {
       if (this.pendingTouch?.pointerId === event.pointerId) this.pendingTouch = null;
@@ -319,15 +319,20 @@ class StandardSelectManager {
     const openAbove = desiredHeight > availableBelow && availableAbove > availableBelow;
     const availableHeight = openAbove ? availableAbove : availableBelow;
     const height = Math.min(desiredHeight, availableHeight);
+    this.list.style.maxHeight = `${height}px`;
     const previewWidth = this.list.querySelector('.standard-select-gradient-preview') ? 180 : 0;
-    const width = Math.min(Math.max(rect.width, previewWidth), Math.max(0, viewportWidth - margin * 2));
+    let preferredWidth = Math.max(rect.width, previewWidth);
+    if (this.document.body.classList.contains('layout-mobile')) {
+      this.list.style.width = 'max-content';
+      preferredWidth = Math.max(preferredWidth, Math.ceil(this.list.getBoundingClientRect().width / bodyZoom));
+    }
+    const width = Math.min(preferredWidth, Math.max(0, viewportWidth - margin * 2));
     const left = Math.min(Math.max(margin, rect.left), viewportWidth - margin - width);
     const top = openAbove ? rect.top - gap - height : rect.bottom + gap;
     Object.assign(this.list.style, {
       left: `${left}px`,
       top: `${Math.max(margin, top)}px`,
-      width: `${width}px`,
-      maxHeight: `${height}px`
+      width: `${width}px`
     });
   }
 

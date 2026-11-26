@@ -5,7 +5,6 @@ export const DSD_RANGE_BYTE_CAP = 1024 * 1024;
 
 export function getDsdPlaybackErrorKey(error) {
   if (typeof error?.code !== 'string' || !error.code.startsWith('DSD_')) return null;
-  if (error.code === 'DSD_NATIVE_UNSUPPORTED') return 'dsd.error.nativeUnsupported';
   if (error.code === 'DSD_UNSUPPORTED') return 'dsd.error.unsupported';
   return error.code === 'DSD_RANGE' ? 'dsd.error.range' : 'dsd.error.corrupt';
 }

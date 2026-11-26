@@ -43,11 +43,11 @@ Aucun mythe audiophile, juste de la science pure.
 
 ### Application Android
 
-Utilisez Android 10 ou une version ultérieure, avec Android System WebView à jour. Ouvrez des fichiers musicaux ou choisissez un dossier dans la bibliothèque musicale ; Android vous permet de sélectionner les fichiers et dossiers auxquels EffeTune peut accéder. Si un dossier devient inaccessible, sélectionnez-le à nouveau dans la bibliothèque. La lecture continue lorsque l’écran est éteint, et les commandes des notifications et de l’écran de verrouillage pilotent le même lecteur.
+Utilisez Android 10 ou une version ultérieure, avec Android System WebView à jour. Ouvrez des fichiers musicaux ou choisissez un dossier dans la bibliothèque musicale ; Android vous permet de sélectionner les fichiers et dossiers auxquels EffeTune peut accéder. Si un dossier devient inaccessible, sélectionnez-le à nouveau dans la bibliothèque. La lecture continue lorsque l’écran est éteint, et les commandes des notifications et de l’écran de verrouillage pilotent le même lecteur. Balayer EffeTune hors de l’écran des applications récentes ferme l’application et arrête la lecture, le partage de la bibliothèque et le contrôle à distance.
 
 Enregistrez ou partagez les fichiers exportés depuis les écrans de fichiers et de partage d’Android. Pour exporter plusieurs fichiers audio, choisissez un dossier de destination et gardez l’application ouverte. L’application Android et l’application web conservent leurs données séparément. Sauvegarde / Restauration permet d’échanger les préréglages, réponses impulsionnelles, mesures et données du visualiseur (jusqu’à 256 Mo) ; les fichiers musicaux, le catalogue musical, les identifiants de connexion et les réglages ne sont pas inclus. Les effets traitent le son lu ou reçu par EffeTune, sans remplacer celui des autres applications Android.
 
-Les commandes MIDI des paramètres et les changements programmés continuent lorsque l’écran est éteint. Gardez l’application ouverte pour utiliser le clavier ou une manette. Android accepte les entrées MIDI, mais n’envoie pas de retour aux faders motorisés ni aux LED. Touchez l’icône **Remote Control** dans la barre d’outils pour autoriser le contrôle à distance et copier un lien d’appairage. Gardez ce lien confidentiel.
+Les commandes MIDI des paramètres et les changements programmés continuent lorsque l’écran est éteint. Gardez l’application ouverte pour utiliser le clavier ou une manette. Android accepte les entrées et sorties MIDI, mais n’envoie pas de retour aux faders motorisés ni aux LED. Touchez l’icône **Remote Control** dans la barre d’outils pour autoriser le contrôle à distance et copier un lien d’appairage. Gardez ce lien confidentiel. Pour contrôler un autre EffeTune, collez son lien d’appairage dans le champ **Se connecter à un autre EffeTune** et touchez **Se connecter**.
 
 Choisissez la méthode de configuration adaptée à la source audio que vous souhaitez écouter.
 
@@ -166,6 +166,7 @@ Au premier lancement, une courte visite vous montre où écouter de la musique, 
    - Maj+Clic sur un effet Section pour développer/réduire tous les effets dans cette section
    - Maj+Clic sur d'autres effets pour développer/réduire tous les effets sauf la catégorie Analyzer
    - Ctrl+Clic pour développer/réduire tous les effets
+   - Sur mobile, ouvrez l'onglet **Effets**, touchez le bouton de menu et choisissez **Tout replier** ou **Tout déplier**
 6. Utilisez le bouton ON pour contourner les effets individuels
 7. Cliquez sur le bouton ? pour ouvrir sa documentation détaillée dans un nouvel onglet
 8. Supprimez les effets en utilisant le bouton ×
@@ -315,7 +316,7 @@ Vous pouvez appliquer la chaîne d’effets à des fichiers musicaux et enregist
 
 Vous pouvez partager la configuration de votre chaîne d'effets avec d'autres utilisateurs.
 1. Après avoir configuré la chaîne d'effets souhaitée, cliquez sur le bouton **Partager** dans le coin supérieur droit de la zone Effect Pipeline
-2. L'URL de l'application web sera automatiquement copiée dans votre presse-papiers
+2. L'URL de l'application web sera automatiquement copiée dans votre presse-papiers. Dans l'application Android, l'écran de partage d'Android s'ouvre à la place pour choisir où l'envoyer
 3. Partagez l'URL copiée avec d'autres — ils pourront recréer exactement votre chaîne d'effets en l'ouvrant
 4. Les URL partagées enregistrent les réglages d'effets nécessaires à la reproduction ; l'application web restaure aussi votre état de travail habituel depuis le stockage du navigateur
 5. Dans la version application de bureau, exportez les paramètres vers un fichier `.effetune_preset` depuis le menu **Fichier**
@@ -361,9 +362,9 @@ Si vous rencontrez des problèmes audio (coupures, parasites) :
 
 ### Musique en réseau et télécommande
 
-**Application de bureau :** Parcourez les serveurs musicaux, dont Subsonic / OpenSubsonic, partagez les dossiers choisis et écoutez sur cet appareil, un lecteur OpenHome ou un lecteur UPnP AV / DLNA. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md). Vous pouvez aussi activer la réception UPnP AV / DLNA et AirPlay pour écouter la musique envoyée par d’autres appareils avec les effets de cet ordinateur.
+**Application de bureau et application Android :** Parcourez les serveurs musicaux, dont Subsonic / OpenSubsonic, partagez les dossiers choisis et écoutez sur cet appareil, un lecteur OpenHome ou un lecteur UPnP AV / DLNA. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md). Vous pouvez aussi activer la réception UPnP AV / DLNA (et AirPlay dans l’application de bureau) pour écouter la musique envoyée par d’autres appareils avec les effets de cet appareil.
 
-La PWA peut lire la musique partagée d’un ordinateur EffeTune enregistré et les bibliothèques réseau autorisées avec les effets de cet appareil, ou piloter un lecteur réseau autorisé. Les connexions Subsonic directes sont aussi disponibles. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
+La PWA peut lire la musique partagée d’une application EffeTune de bureau ou Android enregistrée et les bibliothèques réseau autorisées avec les effets de cet appareil, ou piloter un lecteur réseau autorisé. Les connexions Subsonic directes sont aussi disponibles. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
 
 ### Piloter EffeTune avec un assistant IA (MCP)
 
@@ -380,7 +381,7 @@ Lien de connexion : <coller ici le lien copié>
 
 Une fois la configuration terminée, redémarrez le client si cela vous est demandé, puis essayez : « Affiche mes effets actuels ». Gardez le lien de connexion confidentiel ; si vous cliquez sur **Nouveau jeton** ou changez de port, refaites la configuration avec le nouveau lien.
 
-Ajoutez des morceaux à Music Library dans l’EffeTune auquel vous êtes connecté, puis demandez : « Joue [morceau] ». L’assistant cherche d’abord dans la bibliothèque de cet EffeTune et utilise son lecteur par défaut ; nul besoin de partager son dossier musical. Pour utiliser une autre bibliothèque ou un autre lecteur, précisez-le : « Cherche [morceau] dans [bibliothèque] et lis-le sur [lecteur] ». Si la musique se trouve sur un autre ordinateur avec EffeTune, partagez d’abord son dossier musical.
+Ajoutez des morceaux à Music Library dans l’EffeTune auquel vous êtes connecté, puis demandez : « Joue [morceau] ». L’assistant cherche d’abord dans la bibliothèque de cet EffeTune et utilise son lecteur par défaut ; nul besoin de partager son dossier musical. Pour utiliser une autre bibliothèque ou un autre lecteur, précisez-le : « Cherche [morceau] dans [bibliothèque] et lis-le sur [lecteur] ». Si la musique se trouve sur un autre appareil avec EffeTune, partagez d’abord son dossier musical.
 
 ## Combinaisons d'effets courantes
 

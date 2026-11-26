@@ -246,9 +246,11 @@ bool DeviceHost::clock(ClockSnapshot &out) const noexcept {
   const auto sequence = clockSequence_.load();
   if (!sequence || (sequence & 1))
     return false;
-  out = {timeNs_.load(),        position_.load(),         feedDelay_.load(),
-         feedUnderruns_.load(), captureUnderruns_.load(), converterDelay_.load(),
-         captureRatio_.load(),  captureState_.load(),     feedTarget_.load(),
+  out = {timeNs_.load(),           position_.load(),
+         feedDelay_.load(),        feedUnderruns_.load(),
+         captureUnderruns_.load(), converterDelay_.load(),
+         captureRatio_.load(),     captureConverterDelay_.load(),
+         captureState_.load(),     feedTarget_.load(),
          captureTarget_.load()};
   return clockSequence_.load() == sequence;
 }
@@ -470,7 +472,9 @@ void DeviceHost::renderOutput(std::span<float> out, std::span<const float> in, u
   feedUnderruns_.store(session.feed().underruns());
   captureUnderruns_.store(session.capture().underruns());
   captureState_.store(static_cast<unsigned>(session.capture().state()));
-  captureRatio_.store(session.io()->captureChannels() ? session.capture().inputPerOutput() : 0.);
+  const bool capturing = session.io()->captureChannels();
+  captureRatio_.store(capturing ? session.capture().inputPerOutput() : 0.);
+  captureConverterDelay_.store(capturing ? session.capture().delayInputFrames() : 0.);
   clockSequence_.fetch_add(1);
   if (clock.discontinuity)
     discontinuities_.fetch_add(1, std::memory_order_relaxed);
@@ -495,14 +499,15 @@ void DeviceHost::capture(void *context, std::span<const float> samples, unsigned
   if (!host.captureReady_.load(std::memory_order_acquire) ||
       host.captureBusy_.exchange(true, std::memory_order_acquire))
     return;
-  if (clock.discontinuity) {
-    host.captureGeneration_.fetch_add(1, std::memory_order_relaxed);
+  // Some drivers flag discontinuities on contiguous packets. The capture FIFO
+  // detects real frame loss from the device position, so the flag alone must
+  // not discard the queued input.
+  if (clock.discontinuity)
     host.discontinuities_.fetch_add(1, std::memory_order_relaxed);
-  }
   const auto generation = host.captureGeneration_.load(std::memory_order_relaxed);
   if (frames)
     host.session.capture().write(samples.data(), static_cast<unsigned>(samples.size() / frames),
-                                 frames, generation, clock.position);
+                                 frames, generation, clock.position, ClockedFifo::nowNs());
   else
     host.session.capture().silence(generation);
   host.captureBusy_.store(false, std::memory_order_release);

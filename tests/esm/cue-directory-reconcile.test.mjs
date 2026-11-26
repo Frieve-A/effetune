@@ -29,6 +29,7 @@ function createRepository(initialTracks) {
       };
     },
     async preflightScanBatch() { return { ok: true }; },
+    async scanTraversalQueue() { assert.fail('unexpected traversal spill'); },
     async commitScanSeenBatch(request) {
       for (const observation of request.observations) {
         for (const logical of observation.logicalCandidates) {

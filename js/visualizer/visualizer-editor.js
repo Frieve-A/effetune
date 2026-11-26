@@ -139,7 +139,9 @@ export class VisualizerEditor {
         this.viewportControls.appendChild(this.zoomOutput);
         this.zoomInButton = this.button(this.viewportControls, '+', () => this.zoomAt(this.zoom * 1.25));
         this.fitButton = this.button(this.viewportControls, '', () => this.fitViewport());
-        for (const button of [this.zoomOutButton, this.zoomInButton, this.fitButton]) button.className = 'header-button';
+        this.handButton = this.button(this.viewportControls, '✋', () => this.setHandTool(!this.handTool));
+        this.handButton.setAttribute('aria-pressed', 'false');
+        for (const button of [this.zoomOutButton, this.zoomInButton, this.fitButton, this.handButton]) button.className = 'header-button';
         this.updateUITexts();
         host.appendChild(this.viewportControls);
         host.addEventListener('pointerdown', event => this.startDrag(event));
@@ -167,7 +169,8 @@ export class VisualizerEditor {
         for (const [button, key, fallback] of [
             [this.zoomOutButton, 'zoomOut', 'Zoom out'],
             [this.zoomInButton, 'zoomIn', 'Zoom in'],
-            [this.fitButton, 'fitView', 'Fit']
+            [this.fitButton, 'fitView', 'Fit'],
+            [this.handButton, 'handTool', 'Hand tool']
         ]) {
             button.title = this.t(`visualizer.${key}`, fallback);
             button.setAttribute('aria-label', button.title);
@@ -273,6 +276,7 @@ export class VisualizerEditor {
     }
     setHandTool(active) {
         this.handTool = active;
+        this.handButton.setAttribute('aria-pressed', String(active));
         this.view.stageHost?.classList.toggle('hand-tool', active);
     }
     // Off keeps free placement; arrow and Ctrl+D steps then use the default division.

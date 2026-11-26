@@ -2,6 +2,8 @@ import FFT from './fft.js';
 import { analyzeImpulseResponse } from './analysis.js';
 import { applyInterfaceCalibration } from './interface-calibration.js';
 import { MIN_KEPT_SHARE } from './recording-gaps.js';
+import { MAX_CLOCK_OFFSET, clockRatio, correctClock } from './clock-drift.js';
+import { resampleWindowedSinc } from './resample.js';
 
 const MAX_FFT = 2 ** 23;
 
@@ -120,6 +122,38 @@ function peakIndex(data, start, end) {
     return position;
 }
 
+const PEAK_OVERSAMPLING = 32;
+
+function peakCorrelation({ response, peak }) {
+    // The peak height must be independent of whether the arrival falls between samples.
+    const radius = 96;
+    const oversampling = PEAK_OVERSAMPLING;
+    const fine = resampleWindowedSinc(response.subarray(peak - radius, peak + radius + 1), 1, oversampling);
+    return Math.abs(fine[peakIndex(fine, (radius - 1) * oversampling, (radius + 1) * oversampling + 1)]);
+}
+
+// Delay (samples, below one) of response b behind response a, each read from its integer peak: the slope
+// of their cross-spectrum phase weighted by its magnitude. Up to a quarter of the sample rate the phase
+// of a sub-sample delay cannot wrap.
+function fractionalDelay(a, peakA, b, peakB, sampleRate, minFrequency, maxFrequency) {
+    const size = 2 ** Math.ceil(Math.log2(0.1 * sampleRate));
+    const lead = size >> 2;
+    const A = transform(a.subarray(peakA - lead, peakA - lead + size), size);
+    const B = transform(b.subarray(peakB - lead, peakB - lead + size), size);
+    const last = Math.min(size >> 2, Math.floor(maxFrequency * size / sampleRate));
+    let numerator = 0;
+    let denominator = 0;
+    for (let k = Math.ceil(minFrequency * size / sampleRate); k <= last; k++) {
+        const real = B.real[k] * A.real[k] + B.imag[k] * A.imag[k];
+        const imag = B.imag[k] * A.real[k] - B.real[k] * A.imag[k];
+        const weight = Math.sqrt(real * real + imag * imag);
+        const omega = 2 * Math.PI * k / size;
+        numerator += weight * omega * Math.atan2(imag, real);
+        denominator += weight * omega * omega;
+    }
+    return denominator > 0 ? -numerator / denominator : 0;
+}
+
 // A repetition whose capture lost or inserted samples, or was disturbed by noise, differs from the
 // others far more than their noise does. Repetitions are compared in pairs and bands: a pair's residual
 // in a band is half their difference (each one's deviation from the pair's mean) relative to the
@@ -209,18 +243,63 @@ export function analyzeEssRecording(recording, sweep, {
     const referenceIndex = sweep.length - 1;
     // A known path latency replaces the peak search, so silent or noise-only captures stay aligned.
     const fixed = fixedLatencySamples !== undefined;
-    const captures = [];
-    for (let repeat = 0; repeat < repetitions; repeat++) {
-        const offset = playbackOffsetSamples + repeat * plan.intervalSamples;
-        if (offset + sweep.length + Math.round(2 * sampleRate) > recording.length) {
-            throw new RangeError('Incomplete ESS capture');
+    const minimumTail = Math.round(2 * sampleRate);
+    const lookBehindLimit = Math.max(0, sweep.tailSamples - minimumTail);
+    const locate = (source, lookForEarlyArrivals = false) => {
+        const found = [];
+        for (let repeat = 0; repeat < repetitions; repeat++) {
+            const elapsed = repeat * plan.intervalSamples;
+            const offset = playbackOffsetSamples + elapsed;
+            if (offset + sweep.length + minimumTail > source.length) {
+                throw new RangeError('Incomplete ESS capture');
+            }
+            // A slow recording clock can place the next sweep before its nominal start.
+            // Borrow only the end of the previous decay tail during the clock estimate.
+            const lookBehind = lookForEarlyArrivals && repeat > 0
+                ? Math.min(lookBehindLimit, Math.ceil((elapsed + sweep.length) * MAX_CLOCK_OFFSET)) : 0;
+            const capture = source.subarray(offset - lookBehind, Math.min(source.length, offset + plan.intervalSamples));
+            const response = convolveLinear(capture, sweep.inverseFilter);
+            const nominalPeak = referenceIndex + lookBehind;
+            const peak = fixed ? referenceIndex + fixedLatencySamples
+                : peakIndex(response, referenceIndex, nominalPeak + Math.round(sampleRate));
+            if (fixed || Math.abs(response[peak]) > 1e-8) {
+                found.push({ response, peak, repeat, latency: peak - nominalPeak });
+            }
         }
-        const capture = recording.subarray(offset, Math.min(recording.length, offset + plan.intervalSamples));
-        const response = convolveLinear(capture, sweep.inverseFilter);
-        const peak = fixed ? referenceIndex + fixedLatencySamples
-            : peakIndex(response, referenceIndex, referenceIndex + Math.round(sampleRate));
-        if (fixed || Math.abs(response[peak]) > 1e-8) captures.push({ response, peak });
+        return found;
+    };
+    const estimateClock = !fixed && repetitions > 1 && lookBehindLimit > 0;
+    const clockCaptures = locate(recording, estimateClock);
+    let captures;
+    if (!fixed && clockCaptures.length > 1) {
+        // The peak spacing of repeated sweeps gives the clock ratio; after resampling the
+        // recording onto the playback clock, the sweeps and their harmonic windows line up again.
+        const steps = clockCaptures.slice(1).map((capture, index) => {
+            const previous = clockCaptures[index];
+            const delay = capture.latency - previous.latency + fractionalDelay(previous.response, previous.peak,
+                capture.response, capture.peak, sampleRate, validMinFrequency, validMaxFrequency);
+            return delay / (capture.repeat - previous.repeat);
+        });
+        // With one measured spacing, an integer shift is also consistent with a sample slip.
+        // Test the full spacing before dividing by any missing repetitions.
+        const spacing = steps[0] * (clockCaptures[1].repeat - clockCaptures[0].repeat);
+        const hasClockEvidence = steps.length > 1 || Math.abs(spacing - Math.round(spacing)) >= 2 / PEAK_OVERSAMPLING;
+        const corrected = hasClockEvidence ? correctClock(recording, clockRatio(steps, plan.intervalSamples),
+            playbackOffsetSamples, { wideband: sweep.endFrequency > 0.45 * sampleRate }) : null;
+        if (corrected) {
+            const aligned = locate(corrected);
+            // A single spacing change could be a slip between the sweeps. Require stronger
+            // correlation with the reference sweep after changing the time scale of the signal itself.
+            const first = clockCaptures[0];
+            const candidate = aligned[0];
+            if (steps.length > 1 || (candidate?.repeat === first.repeat &&
+                peakCorrelation(candidate) > peakCorrelation(first) * 1.0001)) {
+                captures = aligned;
+            }
+        }
     }
+    // Without clock correction, use the original isolated sweep windows for the measurement.
+    captures ??= estimateClock ? locate(recording) : clockCaptures;
     if (!captures.length) throw new RangeError('No usable ESS response');
     const linear = orders[0];
     const { kept, excess } = consistentRepetitions(captures.map(({ response, peak }) => {
@@ -238,13 +317,14 @@ export function analyzeEssRecording(recording, sweep, {
             excess.map(value => value.toFixed(2)).join(', '));
     }
     if (recordingGaps === 'interrupted') reasons.add('inconsistent-capture');
-    const peaks = used.map(({ peak }) => peak);
-    // Compare repeated sweeps over the same band. Within one sweep, frequency-dependent
-    // group delay cannot be distinguished from clock mismatch without a known path.
-    if (Math.max(...peaks) - Math.min(...peaks) > 2) reasons.add('clock-drift');
+    const latencies = used.map(({ latency }) => latency);
+    // Repeated sweeps that still disagree after the clock correction lost or inserted samples, or
+    // drifted beyond a clock tolerance. Within one sweep, frequency-dependent group delay cannot be
+    // distinguished from clock mismatch without a known path.
+    if (Math.max(...latencies) - Math.min(...latencies) > 2) reasons.add('clock-drift');
     // Lost or inserted samples shift everything recorded after them, so the earliest kept repetition
     // is the least exposed one.
-    const latency = peaks[0] - referenceIndex;
+    const latency = latencies[0];
     for (const { response, peak } of used) {
         for (const entry of orders) {
             if (entry.order > 1 && entry.validMaxFrequency <= entry.validMinFrequency) continue;

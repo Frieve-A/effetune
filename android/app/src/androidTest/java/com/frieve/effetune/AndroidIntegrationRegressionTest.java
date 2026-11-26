@@ -37,9 +37,40 @@ public final class AndroidIntegrationRegressionTest {
         }
     }
 
+    @Test public void benchmarkNavigationLeavesPlayerOutputStoppedOnReturn() throws Exception {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class);
+             AndroidHostTest.ServiceLease lease = new AndroidHostTest.ServiceLease()) {
+            awaitReady(scenario);
+            JSONObject active = AndroidHostTest.call(lease.service, "audio.start", new JSONObject(), null, null);
+            assertEquals("ACTIVE", active.getString("powerState"));
+            evaluate(scenario, "window.app.openFeaturePage('features/effetune_bench.html');void 0");
+            waitFor(scenario, "location.pathname.endsWith('/effetune_bench.html')", 15000);
+            for (String command : new String[]{"audio.start", "playback.play", "playback.previous", "playback.next"}) {
+                java.util.concurrent.atomic.AtomicReference<AudioService.HostError> error = new java.util.concurrent.atomic.AtomicReference<>();
+                AndroidHostTest.call(lease.service, command, new JSONObject(), null, error);
+                assertNotNull(command, error.get());
+                assertEquals(command, "visible-start-required", error.get().code);
+            }
+            assertEquals("SUSPENDED", AndroidHostTest.call(lease.service, "snapshot.get", new JSONObject(), null, null).getString("powerState"));
+            evaluate(scenario, "history.back();void 0");
+            awaitReady(scenario);
+            JSONObject stopped = AndroidHostTest.call(lease.service, "snapshot.get", new JSONObject(), null, null);
+            assertEquals("SUSPENDED", stopped.getString("powerState"));
+            assertEquals("feature-page", stopped.getString("outputStopReason"));
+            JSONObject resumed = AndroidHostTest.call(lease.service, "audio.start", new JSONObject(), null, null);
+            assertEquals("ACTIVE", resumed.getString("powerState"));
+            assertTrue(resumed.isNull("outputStopReason"));
+        }
+    }
+
     @Test public void normalMeasurementFormRunsNativeCaptureAnalysisAndSave() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             awaitReady(scenario);
+            try (AndroidHostTest.ServiceLease lease = new AndroidHostTest.ServiceLease()) {
+                boolean rateAvailable = AndroidForegroundInputTest.openMeasurementInput(lease);
+                if (rateAvailable) lease.service.command(new JSONObject().put("command", "measurement.input").put("payload", new JSONObject().put("deviceId", -1)), (value, error) -> { }, true);
+                org.junit.Assume.assumeTrue("The audio devices share no measurement sampling frequency", rateAvailable);
+            }
             scenario.onActivity(activity -> {
                 try { Field field = MainActivity.class.getDeclaredField("webView"); field.setAccessible(true);
                     ((WebView) field.get(activity)).loadUrl("https://appassets.androidplatform.net/assets/web/features/measurement/measurement.html");

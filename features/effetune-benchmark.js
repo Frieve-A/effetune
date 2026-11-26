@@ -1,4 +1,5 @@
 import { buildDspPipelineDescriptor } from '../js/audio/dsp-pipeline-descriptor.js';
+import { bytesToBase64, getAndroidBridge, isAndroidHost } from '../js/android/bridge.js';
 import '../plugins/multires-spectrum.js';
 import {
     getPluginExecutionCapabilities,
@@ -19,6 +20,12 @@ import {
     estimateIrKernelCommitFootprint,
     resolveIrProcessingConfig
 } from '../js/ir-library/ir-plugin-contract.js';
+import { openSf2Source } from '../js/sf2/source.js';
+import { sf2SamplerRegions } from '../js/sf2/asset.js';
+import { packStreamedSfzAsset } from '../js/sfz/asset.js';
+import { samplePlayerPreparationData } from '../js/sfz/effect-cost.js';
+import { SFZ_DEFAULT_MAX_BYTES } from '../js/sfz/limits.js';
+import { materializeSfzAsset, sfzPlayerKind } from '../js/sfz/preparation-context.js';
 
 export const BENCHMARK_DSP_MODES = Object.freeze({
     JAVASCRIPT: 'javascript',
@@ -33,6 +40,10 @@ export const BENCHMARK_IR_REVERB_FRAMES = 256 * 1024;
 export const BENCHMARK_IR_REVERB_NOTE =
     'True Stereo; deterministic 4-channel IR, 256K samples/channel ' +
     '(IR load/preparation excluded from timing)';
+export const SOUNDFONT_BENCHMARK_VOICES = 64;
+export const SOUNDFONT_BENCHMARK_NOTE =
+    `Temporary dummy SoundFont; ${SOUNDFONT_BENCHMARK_VOICES} sustained voices ` +
+    '(SoundFont load excluded from timing)';
 export const BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ = 16000;
 export const BANDWIDTH_EXTENDER_BENCHMARK_NOTE =
     'Manual 16 kHz cutoff; deterministic band-limited input; four FFT frames of warmup';
@@ -95,11 +106,25 @@ const FIR_BENCHMARK_WORKLOADS = new Map([
 const DSP_OK = 0;
 const DSP_ASSET_STATE_PREPARING = 2;
 const DSP_ASSET_STATE_ACTIVE = 3;
-const NATIVE_BENCHMARK_BATCH_BLOCKS = 1024;
-const NATIVE_BENCHMARK_DURATION_NS = 1e9;
+// Matches the batch size of the native benchmark loop.
+const NATIVE_BENCHMARK_MIN_WARMUP_BLOCKS = 1024;
 const NATIVE_BENCHMARK_ASSET_TIMEOUT_MS = 2000;
+const NATIVE_BENCHMARK_FAILURE_NOTES = {
+    setup: 'Native DSP could not start processing this effect',
+    asset: 'Native DSP could not load this effect’s audio data',
+    processing: 'Native DSP stopped processing this effect'
+};
 const IR_REVERB_ASSET_SLOT = 0;
 const IR_REVERB_CHANNELS = 4;
+const SOUNDFONT_ASSET_SLOT = 0;
+const SOUNDFONT_BENCHMARK_SAMPLE_FRAMES = 4096;
+const SOUNDFONT_BENCHMARK_SAMPLE_CYCLES = 32;
+const SOUNDFONT_STREAM_GENERATION = 1;
+const SOUNDFONT_MIDI_GENERATION = 1;
+const SOUNDFONT_NOTE_ON = 0x90;
+const SOUNDFONT_NOTE_VELOCITY = 100;
+// Long enough that every note stays held for the whole native measurement.
+const SOUNDFONT_TIMELINE_SECONDS = 3600;
 
 export class DspBenchmarkUnavailableError extends Error {
     constructor(message) {
@@ -514,6 +539,151 @@ export function createIrReverbBenchmarkAssets({
     }]]);
 }
 
+function riffChunk(name, data) {
+    const bytes = new Uint8Array(8 + data.length + (data.length & 1));
+    for (let index = 0; index < 4; index++) bytes[index] = name.charCodeAt(index);
+    new DataView(bytes.buffer).setUint32(4, data.length, true);
+    bytes.set(data, 8);
+    return bytes;
+}
+
+function riffList(type, children) {
+    const totalBytes = children.reduce((sum, child) => sum + child.length, 4);
+    const data = new Uint8Array(totalBytes);
+    for (let index = 0; index < 4; index++) data[index] = type.charCodeAt(index);
+    let offset = 4;
+    for (const child of children) {
+        data.set(child, offset);
+        offset += child.length;
+    }
+    return data;
+}
+
+function littleEndianRecords(byteLength, write) {
+    const bytes = new Uint8Array(byteLength);
+    write(new DataView(bytes.buffer), bytes);
+    return bytes;
+}
+
+function writeAscii(bytes, offset, text) {
+    for (let index = 0; index < text.length; index++) bytes[offset + index] = text.charCodeAt(index);
+}
+
+// One preset, one full-range instrument zone and one looped sine sample.
+function createDummySoundFont() {
+    const frames = SOUNDFONT_BENCHMARK_SAMPLE_FRAMES;
+    const pcm = new Float32Array(frames);
+    const smpl = littleEndianRecords((frames + 46) * 2, view => {
+        for (let frame = 0; frame < frames; frame++) {
+            const value = Math.round(8192 * Math.sin(2 * Math.PI * SOUNDFONT_BENCHMARK_SAMPLE_CYCLES * frame / frames));
+            pcm[frame] = value / 32768;
+            view.setInt16(frame * 2, value, true);
+        }
+    });
+    const generators = pairs => littleEndianRecords(pairs.length * 4, view => pairs.forEach(([operator, amount], index) => {
+        view.setUint16(index * 4, operator, true);
+        view.setUint16(index * 4 + 2, amount, true);
+    }));
+    const tables = [
+        ['phdr', littleEndianRecords(38 * 2, (view, bytes) => {
+            writeAscii(bytes, 0, 'Benchmark');
+            view.setUint16(38 + 24, 1, true);
+        })],
+        ['pbag', generators([[0, 0], [1, 0]])],
+        ['pmod', new Uint8Array(10)],
+        ['pgen', generators([[41, 0], [0, 0]])],
+        ['inst', littleEndianRecords(22 * 2, (view, bytes) => {
+            writeAscii(bytes, 0, 'Benchmark');
+            view.setUint16(22 + 20, 1, true);
+        })],
+        ['ibag', generators([[0, 0], [3, 0]])],
+        ['imod', new Uint8Array(10)],
+        ['igen', generators([[43, 127 << 8], [54, 1], [53, 0], [0, 0]])],
+        ['shdr', littleEndianRecords(46 * 2, (view, bytes) => {
+            writeAscii(bytes, 0, 'Sine');
+            view.setUint32(24, frames, true);
+            view.setUint32(32, frames, true);
+            view.setUint32(36, 48000, true);
+            bytes[40] = 60;
+            view.setUint16(44, 1, true);
+        })]
+    ];
+    const bytes = riffChunk('RIFF', riffList('sfbk', [
+        riffChunk('LIST', riffList('INFO', [
+            riffChunk('ifil', new Uint8Array([2, 0, 4, 0])),
+            riffChunk('INAM', littleEndianRecords(10, (view, nameBytes) => writeAscii(nameBytes, 0, 'Benchmark')))
+        ])),
+        riffChunk('LIST', riffList('sdta', [riffChunk('smpl', smpl)])),
+        riffChunk('LIST', riffList('pdta', tables.map(([name, data]) => riffChunk(name, data))))
+    ]));
+    return { bytes, pcm };
+}
+
+async function estimateSoundFontPreparation(asset, context, { controlBinding, basePath, warning }) {
+    let binding = controlBinding;
+    if (!binding) {
+        const moduleInfo = await loadDspModule({ basePath, warning });
+        if (!moduleInfo) throw new DspBenchmarkUnavailableError('WebAssembly DSP could not be loaded');
+        binding = await instantiateDsp(moduleInfo.module || moduleInfo.bytes, { warning });
+    }
+    try {
+        return await materializeSfzAsset(asset, context, SFZ_DEFAULT_MAX_BYTES, (payload, prepared, formatTag) => {
+            const { control, payloadBytes } = samplePlayerPreparationData(payload);
+            return binding.estimateSfzEffectPreparation(control, prepared, formatTag, payloadBytes);
+        });
+    } finally {
+        if (binding !== controlBinding) binding.close();
+    }
+}
+
+// The bank load and page publishing are setup work; timing covers sustained voice rendering only.
+export async function createSoundFontBenchmarkAssets({
+    sampleRate,
+    channelCount = 2,
+    blockSize,
+    basePath = '..',
+    controlBinding = null,
+    warning = defaultWarning
+}) {
+    const { bytes, pcm } = createDummySoundFont();
+    const source = await openSf2Source({
+        size: bytes.byteLength,
+        revision: 'benchmark',
+        readRange: async (offset, length) => bytes.subarray(offset, offset + length)
+    });
+    const samples = new Map(source.samples.map(sample => [sample.path, {
+        frames: sample.frames, channels: 1, sampleRate: sample.sampleRate, revision: '0'.repeat(64)
+    }]));
+    const packed = packStreamedSfzAsset(sf2SamplerRegions(source), samples, {
+        cacheSlots: 8,
+        sourceProfile: source.compiled.sourceProfile,
+        presets: source.compiled.presets,
+        modulation: source.compiled
+    });
+    const asset = await estimateSoundFontPreparation(packed, {
+        sampleRate,
+        processingChannels: channelCount,
+        maxFrames: blockSize,
+        minimumPhysicalBpm: 0,
+        playerKind: sfzPlayerKind('SoundFontPlayerPlugin')
+    }, { controlBinding, basePath, warning });
+    const firstKey = 64 - SOUNDFONT_BENCHMARK_VOICES / 2;
+    return new Map([[SOUNDFONT_ASSET_SLOT, {
+        payload: asset.payload,
+        formatTag: asset.formatTag,
+        headBlock: asset.headBlock,
+        rateDivider: asset.rateDivider,
+        processingChannels: asset.processingChannels,
+        footprintBytes: asset.footprintBytes,
+        preparationContext: asset.preparationContext,
+        soundFont: {
+            frames: asset.samples,
+            pages: [{ sample: 0, pageIndex: 0, pcm, frames: pcm.length, channels: 1 }],
+            notes: Array.from({ length: SOUNDFONT_BENCHMARK_VOICES }, (_, index) => firstKey + index)
+        }
+    }]]);
+}
+
 export function createRoomEqBenchmarkAssets({
     sampleRate,
     channelCount = 2,
@@ -609,7 +779,7 @@ class JavascriptBenchmarkRuntime {
 }
 
 class WasmBenchmarkSession {
-    constructor(runtime, plugin, instanceId, arena, channelCount, assetSlots) {
+    constructor(runtime, plugin, instanceId, arena, channelCount, assetSlots, soundFont) {
         this.runtime = runtime;
         this.plugin = plugin;
         this.instanceId = instanceId;
@@ -617,7 +787,21 @@ class WasmBenchmarkSession {
         this.channelCount = channelCount;
         this.sampleCount = channelCount * runtime.blockSize;
         this.assetSlots = assetSlots;
+        this.soundFont = soundFont;
         this.closed = false;
+    }
+
+    startSoundFontNotes() {
+        const { binding } = this.runtime;
+        const events = this.soundFont.notes.map((key, noteId) => ({
+            status: SOUNDFONT_NOTE_ON, data1: key, data2: SOUNDFONT_NOTE_VELOCITY, offsetFrames: 0, noteId
+        }));
+        assertStatus(binding.instanceSetMidiEvents(this.instanceId, [], SOUNDFONT_MIDI_GENERATION, 1),
+            'WebAssembly benchmark MIDI reset');
+        assertStatus(binding.instanceSetMidiClock(this.instanceId, 0, SOUNDFONT_MIDI_GENERATION, 1),
+            'WebAssembly benchmark MIDI clock');
+        assertStatus(binding.instanceSetMidiEvents(this.instanceId, events, SOUNDFONT_MIDI_GENERATION, 0),
+            'WebAssembly benchmark note start');
     }
 
     prepareAssets() {
@@ -656,6 +840,7 @@ class WasmBenchmarkSession {
             this.runtime.binding.resetInstance(this.instanceId),
             'WebAssembly benchmark instance reset'
         );
+        if (this.soundFont) this.startSoundFontNotes();
         return block;
     }
 
@@ -784,6 +969,7 @@ class WasmBenchmarkRuntime {
             }
 
             const assetSlots = [];
+            let soundFont = null;
             for (const [slot, asset] of assets) {
                 if (!Number.isInteger(slot) || slot < 0 ||
                     !(asset?.payload instanceof ArrayBuffer)) {
@@ -794,11 +980,26 @@ class WasmBenchmarkRuntime {
                         instanceId,
                         slot,
                         asset.payload,
-                        asset,
+                        asset.soundFont ? { ...asset, frames: asset.soundFont.frames, topology: 0 } : asset,
                         asset.formatTag
                     ),
                     `${typeName} asset staging`
                 );
+                if (asset.soundFont) {
+                    soundFont = asset.soundFont;
+                    assertStatus(
+                        this.binding.configureSfzSampleStream(instanceId, SOUNDFONT_STREAM_GENERATION),
+                        `${typeName} sample stream configuration`
+                    );
+                    for (const page of soundFont.pages) {
+                        assertStatus(
+                            this.binding.publishSfzSamplePage(instanceId, {
+                                ...page, generation: SOUNDFONT_STREAM_GENERATION, resident: true
+                            }),
+                            `${typeName} sample page publication`
+                        );
+                    }
+                }
                 assetSlots.push(slot);
             }
 
@@ -826,7 +1027,8 @@ class WasmBenchmarkRuntime {
                 instanceId,
                 arena,
                 channelCount,
-                assetSlots
+                assetSlots,
+                soundFont
             );
             this.activeSession = session;
             return session;
@@ -880,6 +1082,41 @@ class WasmBenchmarkRuntime {
     }
 }
 
+function prepareNativeBenchmarkPlugin(plugin, sampleRate, blockSize, channelCount) {
+    const parameters = preparePlugin(plugin, sampleRate, blockSize, channelCount);
+    if (channelCount > 2) parameters.channel = 'A';
+    const { id, channel } = plugin;
+    const descriptor = buildDspPipelineDescriptor([plugin], {
+        getInstanceId: () => id,
+        getParameters: () => parameters,
+        omitInactive: true
+    });
+    const item = packed({ id, type: getPluginType(plugin), parameters, channel,
+        executionCapabilities: getPluginExecutionCapabilities(plugin) }, sampleRate, channelCount, true);
+    return { descriptor, item };
+}
+
+function getNativeBenchmarkUnsupportedReason(plugin, sampleRate, channelCount) {
+    if (!DSP_PARAM_PACKERS.has(getPluginType(plugin))) return 'Native DSP is not available for this plugin';
+    return getBenchmarkFormatUnsupportedReason(plugin, sampleRate, channelCount);
+}
+
+function completeBlockSamples(audioBuffer, blockSize, channelCount) {
+    const blockSamples = blockSize * channelCount;
+    return Math.floor(audioBuffer.length / blockSamples) * blockSamples;
+}
+
+function nativeWarmupBlocks(warmupFrames, blockSize) {
+    return Math.max(NATIVE_BENCHMARK_MIN_WARMUP_BLOCKS, Math.ceil(warmupFrames / blockSize));
+}
+
+function formatNativeBenchmarkResult(result, elapsedNs, totalCalls, blockSize, sampleRate) {
+    const elapsedSeconds = elapsedNs / 1e9;
+    const samplesPerSecond = Math.round(totalCalls * blockSize / elapsedSeconds);
+    return { ...result, samplesPerSecond, totalCalls, elapsedTime: elapsedSeconds.toFixed(3),
+        speedupFactor: (samplesPerSecond / sampleRate).toFixed(1) };
+}
+
 class NativeBenchmarkRuntime {
     constructor({ connect, bridge, sampleRate, blockSize, warning }) {
         this.connect = connect;
@@ -905,8 +1142,7 @@ class NativeBenchmarkRuntime {
     }
 
     getPluginUnsupportedReason(plugin, { channelCount = 2 } = {}) {
-        if (!DSP_PARAM_PACKERS.has(getPluginType(plugin))) return 'Native DSP is not available for this plugin';
-        return getBenchmarkFormatUnsupportedReason(plugin, this.sampleRate, channelCount);
+        return getNativeBenchmarkUnsupportedReason(plugin, this.sampleRate, channelCount);
     }
 
     supportsPlugin(plugin, options) {
@@ -921,27 +1157,67 @@ class NativeBenchmarkRuntime {
     async prepareAssets(pluginId, assets, channelCount) {
         if (!assets.size) return;
         const pending = new Set(assets.keys());
+        const soundFont = assets.get(SOUNDFONT_ASSET_SLOT)?.soundFont;
         let rejected = false;
+        let streamGeneration = null;
+        let midiPrepared = false;
         const receiveAsset = ({ data }) => {
-            if (data.pluginId !== pluginId || !pending.has(data.slot)) return;
+            if (data.type === 'midiPrepared' && data.generation === SOUNDFONT_MIDI_GENERATION) midiPrepared = true;
+            if (data.pluginId !== pluginId) return;
+            if (data.type === 'sfzStreamReady') streamGeneration = data.generation;
+            if (!pending.has(data.slot)) return;
             if (data.type === 'assetState' && data.state === DSP_ASSET_STATE_ACTIVE) pending.delete(data.slot);
             if (data.type === 'assetLoadRejected') rejected = true;
         };
         this.client.port.addEventListener('message', receiveAsset);
         try {
-            for (const [slot, { payload, ...asset }] of assets) {
-                this.client.send({ type: 'setPluginAsset', pluginId, slot, ...asset, attachment: payload });
+            for (const [slot, { payload, soundFont: _soundFont, ...asset }] of assets) {
+                this.client.send({ type: 'setPluginAsset', pluginId, slot, operationRevision: 1, ...asset,
+                    attachment: payload });
             }
             const deadline = performance.now() + NATIVE_BENCHMARK_ASSET_TIMEOUT_MS;
             const silence = new Float32Array(this.blockSize * channelCount);
-            while (pending.size && performance.now() < deadline) {
-                await this.render(this.blockSize, silence.buffer);
-                if (rejected) throw new Error('Asset rejected');
+            const renderUntil = async (done, reason, poll = false) => {
+                while (!done() && performance.now() < deadline) {
+                    // Score preparation admits notes only after a page poll confirms the resident sample.
+                    if (poll) await this.pollSoundFontPages(pluginId, streamGeneration);
+                    await this.render(this.blockSize, silence.buffer);
+                    if (rejected) throw new Error('Asset rejected');
+                }
+                if (!done()) throw new Error(reason);
+            };
+            if (soundFont) {
+                await renderUntil(() => streamGeneration !== null, 'SoundFont stream timed out');
+                await this.publishSoundFontPages(pluginId, streamGeneration, soundFont.pages);
             }
-            if (pending.size) throw new Error('Asset preparation timed out');
+            await renderUntil(() => !pending.size, 'Asset preparation timed out');
+            if (soundFont) {
+                // A timeline of sustained notes keeps every voice sounding for the whole measurement.
+                this.client.send({ type: 'midiTransport', generation: SOUNDFONT_MIDI_GENERATION, position: 0,
+                    preparing: true, timeline: { duration: SOUNDFONT_TIMELINE_SECONDS,
+                        events: soundFont.notes.map(key => ({ seconds: 0, status: SOUNDFONT_NOTE_ON,
+                            data1: key, data2: SOUNDFONT_NOTE_VELOCITY })) } });
+                await renderUntil(() => midiPrepared, 'SoundFont notes did not prepare', true);
+                this.client.send({ type: 'midiStart', generation: SOUNDFONT_MIDI_GENERATION, delayFrames: 0 });
+            }
         } finally {
             this.client.port.removeEventListener('message', receiveAsset);
         }
+    }
+
+    async publishSoundFontPages(pluginId, generation, pages) {
+        for (const { pcm, ...page } of pages) {
+            const { ok } = await this.client.request({ type: 'sfzPublishPage', pluginId, operationRevision: 1,
+                generation, requestId: 1, page: { ...page, generation, resident: true }, attachment: pcm.slice().buffer },
+            'sfzStreamPagesPublished');
+            if (!ok) throw new Error('SoundFont page was rejected');
+        }
+    }
+
+    async pollSoundFontPages(pluginId, generation) {
+        const { ok, requests } = await this.client.request({ type: 'sfzPollPages', pluginId, generation, requestId: 2 },
+            'sfzStreamRequests');
+        if (!ok || requests.length) throw new Error('SoundFont pages are not resident');
     }
 
     async benchmarkPlugin(plugin, audioBuffer, { channelCount, assets, warmupFrames }) {
@@ -950,18 +1226,11 @@ class NativeBenchmarkRuntime {
         const type = getPluginType(plugin);
         const id = plugin.id;
         const result = { category: '', name: plugin.name, implementation: this.label };
-        let failureNote = 'Native DSP could not start processing this effect';
+        let failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.setup;
         let opened = false;
         try {
-            const parameters = preparePlugin(plugin, sampleRate, blockSize, channelCount);
-            if (channelCount > 2) parameters.channel = 'A';
-            const descriptor = buildDspPipelineDescriptor([plugin], {
-                getInstanceId: () => id,
-                getParameters: () => parameters,
-                omitInactive: true
-            });
-            const { records, ...binary } = packRecords([packed({ id, type, parameters, channel: plugin.channel,
-                executionCapabilities: getPluginExecutionCapabilities(plugin) }, sampleRate, channelCount, true)], descriptor);
+            const { descriptor, item } = prepareNativeBenchmarkPlugin(plugin, sampleRate, blockSize, channelCount);
+            const { records, ...binary } = packRecords([item], descriptor);
             const state = await this.client.request({ type: 'openSession', sampleRate, outputChannels: channelCount,
                 inputChannels: 0, periodFrames: blockSize }, 'sessionState',
             reply => reply.state === 'open' || reply.state === 'failed');
@@ -970,44 +1239,20 @@ class NativeBenchmarkRuntime {
             await this.client.request({ type: 'configurePipeline', revision: 1, plugins: records, ...binary },
                 'pipelineApplied', reply => reply.revision === 1);
 
-            failureNote = 'Native DSP could not load this effect’s audio data';
+            failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.asset;
             await this.prepareAssets(id, assets, channelCount);
 
-            failureNote = 'Native DSP stopped processing this effect';
-            const blockSamples = blockSize * channelCount;
-            const totalBlocks = Math.floor(audioBuffer.length / blockSamples);
-            if (!totalBlocks) throw new Error('Benchmark input must contain a complete block');
-            let blockIndex = 0;
-            const renderBlocks = (blocks, samples) => {
-                const frames = blocks * blockSize;
-                for (let block = 0; block < blocks; block++) {
-                    const source = (blockIndex++ % totalBlocks) * blockSamples;
-                    for (let channel = 0; channel < channelCount; channel++) {
-                        const offset = source + channel * blockSize;
-                        samples.set(audioBuffer.subarray(offset, offset + blockSize), channel * frames + block * blockSize);
-                    }
-                }
-                return this.render(frames, samples.buffer);
-            };
-            const batchBlocks = NATIVE_BENCHMARK_BATCH_BLOCKS;
-            const warmupBlocks = Math.max(batchBlocks, Math.ceil(warmupFrames / blockSize));
-            const batch = new Float32Array(batchBlocks * blockSamples);
-            await renderBlocks(warmupBlocks, warmupBlocks === batchBlocks ? batch :
-                new Float32Array(warmupBlocks * blockSamples));
-            let elapsedNs = 0;
-            let totalCalls = 0;
-            while (elapsedNs < NATIVE_BENCHMARK_DURATION_NS) {
-                const { processingNanoseconds } = await renderBlocks(batchBlocks, batch);
-                if (!Number.isFinite(processingNanoseconds) || processingNanoseconds <= 0) {
-                    throw new Error('Native benchmark response has no processing time');
-                }
-                elapsedNs += processingNanoseconds;
-                totalCalls += batchBlocks;
+            failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.processing;
+            const completeSamples = completeBlockSamples(audioBuffer, blockSize, channelCount);
+            if (!completeSamples) throw new Error('Benchmark input must contain a complete block');
+            // The engine replays the input for one second of DSP time and returns only the totals.
+            const { elapsedNanoseconds, blocks } = await this.client.request({ type: 'benchmarkNull', blockSize,
+                warmupBlocks: nativeWarmupBlocks(warmupFrames, blockSize),
+                attachment: audioBuffer.slice(0, completeSamples).buffer }, 'benchmarkResult');
+            if (!(elapsedNanoseconds > 0) || !Number.isInteger(blocks) || blocks <= 0) {
+                throw new Error('Invalid native benchmark result');
             }
-            const elapsedSeconds = elapsedNs / 1e9;
-            const samplesPerSecond = Math.round(totalCalls * blockSize / elapsedSeconds);
-            return { ...result, samplesPerSecond, totalCalls, elapsedTime: elapsedSeconds.toFixed(3),
-                speedupFactor: (samplesPerSecond / sampleRate).toFixed(1) };
+            return formatNativeBenchmarkResult(result, elapsedNanoseconds, blocks, blockSize, sampleRate);
         } catch (error) {
             this.warning(`Native benchmark failed for ${type}: ${error.message}`);
             return { ...result, samplesPerSecond: null, speedupFactor: null, skipped: true, note: failureNote };
@@ -1028,8 +1273,107 @@ class NativeBenchmarkRuntime {
     }
 }
 
+class AndroidNativeBenchmarkRuntime {
+    constructor({ bridge, sampleRate, blockSize, warning }) {
+        Object.assign(this, { bridge, sampleRate, blockSize, warning });
+        this.label = 'Native';
+        this.supportsAssets = true;
+        this.input = null;
+        this.closed = false;
+        this.release = () => { void this.close(); };
+        this.window = globalThis.window;
+        this.window.addEventListener('pagehide', this.release);
+    }
+
+    getPluginUnsupportedReason(plugin, { channelCount = 2 } = {}) {
+        return getNativeBenchmarkUnsupportedReason(plugin, this.sampleRate, channelCount);
+    }
+
+    supportsPlugin(plugin, options) {
+        return this.getPluginUnsupportedReason(plugin, options) === null;
+    }
+
+    async upload(kind, bytes) {
+        const chunkBytes = 256 * 1024;
+        for (let offset = 0; offset < bytes.byteLength; offset += chunkBytes) {
+            if (this.closed) throw new Error('Benchmark is closed');
+            await this.bridge.request('benchmark.upload', { kind, offset, byteLength: bytes.byteLength,
+                data: bytesToBase64(bytes.subarray(offset, offset + chunkBytes)) });
+        }
+    }
+
+    async benchmarkPlugin(plugin, audioBuffer, { channelCount, assets, warmupFrames }) {
+        const { sampleRate, blockSize } = this;
+        const result = { category: '', name: plugin.name, implementation: this.label };
+        let failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.setup;
+        try {
+            const { descriptor, item } = prepareNativeBenchmarkPlugin(plugin, sampleRate, blockSize, channelCount);
+            const { id, type, layoutHash, skip, floats, bytes } = item;
+            const completeSamples = completeBlockSamples(audioBuffer, blockSize, channelCount);
+            if (skip || !completeSamples) throw new Error('Invalid benchmark effect or input');
+            if (this.input !== audioBuffer || this.inputChannels !== channelCount) {
+                this.input = null;
+                await this.upload('input', new Uint8Array(audioBuffer.buffer, audioBuffer.byteOffset,
+                    completeSamples * Float32Array.BYTES_PER_ELEMENT));
+                this.input = audioBuffer;
+                this.inputChannels = channelCount;
+            }
+
+            let asset;
+            if (assets.size) {
+                failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.asset;
+                if (assets.size !== 1) throw new Error('Android benchmark expects one asset per effect');
+                const [slot, { payload, preparationContext: _context, soundFont, ...metadata }] =
+                    assets.entries().next().value;
+                asset = { ...metadata, slot, byteLength: payload.byteLength, ...(soundFont && { soundFont: {
+                    notes: soundFont.notes,
+                    pages: soundFont.pages.map(({ pcm, ...page }) => ({ ...page,
+                        pcm: bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)) }))
+                } }) };
+                await this.upload('asset', new Uint8Array(payload));
+            }
+
+            if (this.closed) throw new Error('Benchmark is closed');
+            failureNote = NATIVE_BENCHMARK_FAILURE_NOTES.processing;
+            const { status, elapsedNs, blocks } = await this.bridge.request('benchmark.run', {
+                rate: sampleRate, channels: channelCount, blockSize,
+                warmupBlocks: nativeWarmupBlocks(warmupFrames, blockSize), asset,
+                plugins: [{ id, type, layoutHash, parameterValues: Array.from(floats),
+                    ...(bytes && { parameterBytes: bytesToBase64(bytes) }) }],
+                descriptor: bytesToBase64(descriptor)
+            });
+            if (status === 'setup' || status === 'asset') failureNote = NATIVE_BENCHMARK_FAILURE_NOTES[status];
+            if (status !== 'ok' || !Number.isFinite(elapsedNs) || elapsedNs <= 0 ||
+                !Number.isInteger(blocks) || blocks <= 0) {
+                throw new Error(`Invalid native benchmark result: ${status}`);
+            }
+            return formatNativeBenchmarkResult(result, elapsedNs, blocks, blockSize, sampleRate);
+        } catch (error) {
+            this.warning(`Native benchmark failed for ${getPluginType(plugin)}: ${error.message}`);
+            return { ...result, samplesPerSecond: null, speedupFactor: null, skipped: true, note: failureNote };
+        }
+    }
+
+    async close() {
+        if (this.closed) return;
+        this.closed = true;
+        this.input = null;
+        this.window.removeEventListener('pagehide', this.release);
+        try {
+            await this.bridge.request('benchmark.release');
+        } catch (error) {
+            this.warning(`Native benchmark input could not be released: ${error.message}`);
+        }
+    }
+}
+
 async function createNativeBenchmarkRuntime({ sampleRate, blockSize, dependencies }) {
     const warning = dependencies.warning || defaultWarning;
+    if (isAndroidHost()) {
+        return new AndroidNativeBenchmarkRuntime({
+            bridge: dependencies.androidBridge || getAndroidBridge(), sampleRate, blockSize, warning
+        });
+    }
     const bridge = dependencies.audioEngine || globalThis.window?.electronAPI?.audioEngine;
     if (!bridge) throw new DspBenchmarkUnavailableError('Native DSP is unavailable');
     const connect = dependencies.connectAudioEngine || connectAudioEngine;

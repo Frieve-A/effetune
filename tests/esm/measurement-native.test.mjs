@@ -4,7 +4,7 @@ import { MessageChannel } from 'node:worker_threads';
 import { getNativeMeasurementDriver, NativeMeasurement, nativeMeasurementInputIndices } from
     '../../features/measurement/audio-utils/native-measurement.js';
 import audioUtils from '../../features/measurement/audio-utils/index.js';
-import AudioProcessing from '../../features/measurement/measurement-controller/audio-processing.js';
+import AudioProcessing, { SweepCancelledError } from '../../features/measurement/measurement-controller/audio-processing.js';
 import { MeasurementController } from '../../features/measurement/measurement-controller/index.js';
 import uiManager from '../../features/measurement/ui/ui-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -205,6 +205,46 @@ test('native recording uses the rendered playback buffer and forwards timing, ev
     } finally {
         audioUtils.nativeMeasurement = original;
     }
+});
+
+test('native sweep cancellation terminates only its analysis worker', async t => {
+    const previous = { audioContext: audioUtils.audioContext, nativeMeasurement: audioUtils.nativeMeasurement };
+    t.after(() => Object.assign(audioUtils, previous));
+    const sampleRate = 8000;
+    audioUtils.audioContext = { sampleRate, createBuffer(count, length) {
+        const channels = Array.from({ length: count }, () => new Float32Array(length));
+        return { length, sampleRate, getChannelData: channel => channels[channel] };
+    } };
+    audioUtils.nativeMeasurement = { session: { outputChannels: 2 }, async record() {
+        return { recording: new Float32Array(8), sampleRate, playbackStartFrame: 0, captureStartFrame: 0 };
+    } };
+    const sweep = { sampleRate, length: 2, tailSamples: 0, channels: [Float32Array.of(0.5, -0.5)] };
+    const controller = { ...AudioProcessing, measurementConfig: { averaging: 1, outputChannel: 'left' } };
+    const workers = [];
+    class Worker {
+        postMessage() { workers.push(this); }
+        terminate() { this.terminated = true; }
+    }
+    await withGlobals({ Worker, document: { getElementById: () => ({ value: '-12' }) } }, async () => {
+        const cancelled = controller.playAndRecordSweep(sweep);
+        const rejected = assert.rejects(cancelled, SweepCancelledError);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(workers.length, 1);
+        controller.cancelActiveSweep();
+        const latest = controller.playAndRecordSweep(sweep);
+        const latestAbort = controller.nativeMeasurementAbort;
+        assert.equal(workers[0].terminated, true);
+        await rejected;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(workers.length, 2);
+        const result = { data: Float32Array.of(1) };
+        workers[0].onmessage({ data: { result } });
+        assert.equal(workers[1].terminated, undefined);
+        assert.equal(controller.nativeMeasurementAbort, latestAbort);
+        workers[1].onmessage({ data: { result } });
+        assert.deepEqual((await latest).impulseResponse, result.data);
+        assert.equal(controller.nativeMeasurementAbort, null);
+    });
 });
 
 test('native Redo, Redo Channel and test signal reopen interrupted sessions on explicit retry',

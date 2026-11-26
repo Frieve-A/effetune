@@ -651,6 +651,9 @@ private:
       return;
     }
     const double transient_exponent = 1.0 - job_lift_;
+    // gain_floor_ is constant below 6 kHz and above 12 kHz, so neighboring bins reuse the power.
+    double cached_floor = -1.0;
+    double cached_transient_floor = 0.0;
     for (std::uint32_t bin = begin; bin < end; ++bin) {
       const double scaled_noise = noise_power_[bin] * job_sensitivity_scale_;
       const double noise = scaled_noise > kNoisePowerFloor ? scaled_noise : kNoisePowerFloor;
@@ -663,7 +666,11 @@ private:
       const double ratio = prior / (prior + 1.0);
       const double wiener = std::pow(ratio, 0.7);
       double gain = wiener > gain_floor_[bin] ? wiener : gain_floor_[bin];
-      const double transient_floor = std::pow(gain_floor_[bin], transient_exponent);
+      if (gain_floor_[bin] != cached_floor) {
+        cached_floor = gain_floor_[bin];
+        cached_transient_floor = std::pow(cached_floor, transient_exponent);
+      }
+      const double transient_floor = cached_transient_floor;
       if (transient_floor > gain) {
         gain = transient_floor;
       }

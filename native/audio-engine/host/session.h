@@ -32,13 +32,15 @@ struct SessionFormat {
 
 class Session {
 public:
+  enum class RenderRoute { Playback, Measurement };
+
   Session();
   ~Session();
   bool open(SessionFormat format);
   bool reconfigureDevice(SessionFormat format);
   void close() noexcept;
   bool render(std::span<float> planar, std::uint32_t frames, std::optional<FeedTime> feedTime = {},
-              bool sourceActive = false) noexcept;
+              bool sourceActive = false, RenderRoute route = RenderRoute::Playback) noexcept;
   void reserveBoundaries(unsigned replace, StreamBoundaries::List &incoming,
                          StreamBoundaries::List &reclaimed) noexcept {
     boundaries_.reserve(replace, incoming, reclaimed);

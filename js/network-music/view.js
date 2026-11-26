@@ -109,8 +109,9 @@ export class NetworkMusicView {
     const caption = this.element('span', 'header-caption', 'Player');
     caption.setAttribute('aria-hidden', 'true');
     this.root.append(caption, this.playerSelect, this.refreshButton);
-    if (this.controller.api.isPwa) {
-      this.registration = new PwaDeviceRegistration({ api: this.controller.api, uiManager: this.uiManager });
+    const { api } = this.controller;
+    if (api.isPwa) {
+      this.registration = new PwaDeviceRegistration({ api, uiManager: this.uiManager });
     }
     (document.getElementById('networkOutputButton') ?? openMusic).before(this.root);
     this.remoteControlButton = document.getElementById('remoteControlButton');
@@ -185,7 +186,9 @@ export class NetworkMusicView {
       options.push({ id: selectedId, name: select.selectedOptions?.[0]?.textContent || this.controller.selectedPlayer?.name || this.label('networkMusic.unavailable') });
     }
     if (select === this.playerSelect && this.registration) options.push({ id: 'pwa-add-device', name: this.label('networkMusic.pwa.addDevice') });
-    if (select === this.librarySelect && this.controller.api.isPwa) options.push({ id: 'pwa-add-source', name: this.t('networkMusic.settings.addSource') });
+    if (select === this.librarySelect && this.controller.api.isPwa) {
+      options.push({ id: 'pwa-add-source', name: this.t('networkMusic.settings.addSource') });
+    }
     const signature = JSON.stringify(options.map(entry => [entry.id, entry.name, entry.available]));
     if (select.dataset.signature !== signature) {
       select.replaceChildren(...options.map(entry => {

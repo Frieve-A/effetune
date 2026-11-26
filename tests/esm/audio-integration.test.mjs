@@ -173,16 +173,41 @@ test('MIDI selection refreshes on demand, retains disconnected choices and appli
   assert.equal(changed, null);
 });
 
-test('Android audio settings omit performance MIDI and ReplayGain without starting or overwriting saved values', async t => {
+test('Android reports microphone denial and returns confirmed settings after partial failure', async t => {
+  const document = createFakeDocument();
+  const confirmed = { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID, sampleRate: 48000 };
+  const callbacks = [];
+  const harness = createAudioHarness({ window: {
+    location: { origin: 'https://appassets.androidplatform.net' },
+    effetuneAndroid: { postMessage() {} },
+    audioManager: { async reset() {
+      harness.window.audioPreferences = confirmed;
+      throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+    } }
+  } });
+  await withGlobals({ window: harness.window, document, navigator: {} }, async () => {
+    t.mock.method(getAndroidBridge(), 'request', async command => command === 'audio.devices'
+      ? { inputs: [{ id: 1, label: 'Mic' }], outputs: [{ id: 2, label: 'Speaker' }] }
+      : { sampleRate: 48000, supportedSampleRates: [44100, 48000], channelCount: 2 });
+    await withMutedConsole('log', async () => withMutedConsole('error', async () => {
+      await showAudioConfigDialog(false, { sampleRate: 48000 }, value => callbacks.push(value));
+      document.getElementById('sample-rate').value = '44100';
+      await document.getElementById('apply-button').dispatchEvent('click');
+    }));
+  });
+  assert.deepEqual(harness.uiCalls.at(-1), ['setError', 'error.androidMicrophonePermissionDenied', true]);
+  assert.deepEqual(callbacks, [confirmed]);
+});
+
+test('Android audio settings apply MIDI and ReplayGain', async t => {
   const document = createFakeDocument();
   const resetCalls = [];
   const harness = createAudioHarness({ window: {
     location: { origin: 'https://appassets.androidplatform.net' },
     effetuneAndroid: { postMessage() {} },
     app: {
-      ensureMidiControllerManager() { assert.fail('Performance MIDI settings must stay unavailable'); },
-      applyMidiInputPreference() { assert.fail('Android audio changes must not start performance MIDI'); },
-      applyMidiOutputPreference() { assert.fail('Android audio changes must not start MIDI output'); }
+      ensureMidiControllerManager() { return null; },
+      applyMidiOutputPreference() { assert.fail('Android options must reach the Service through reset'); }
     },
     audioManager: { async reset(preferences) { resetCalls.push(preferences); return ''; } }
   } });
@@ -190,21 +215,39 @@ test('Android audio settings omit performance MIDI and ReplayGain without starti
     t.mock.method(getAndroidBridge(), 'request', async command => {
       if (command === 'audio.devices') return { inputs: [{ id: 1, label: 'Mic' }], outputs: [{ id: 2, label: 'Speaker' }] };
       assert.equal(command, 'snapshot.get');
-      return { sampleRate: 48000, channelCount: 2 };
+      return { sampleRate: 48000, supportedSampleRates: [44100, 48000], channelCount: 2,
+        gaplessPlayback: false, midiOutputDeviceKey: 'Native synth' };
     });
     await withMutedConsole('log', async () => {
       await showAudioConfigDialog(false, { midiInputDeviceKey: 'Saved keyboard', midiOutputDeviceKey: 'Saved synth', sampleRate: 48000 });
-      assert.equal(document.getElementById('midi-input-device'), null);
-      assert.equal(document.getElementById('midi-output-device'), null);
-      assert.equal(document.getElementById('refresh-midi-devices'), null);
-      assert.equal(document.getElementById('replay-gain-mode'), null);
+      // The Service owns gapless chaining, so the dialog offers it and shows the Service's value.
+      assert.equal(document.getElementById('gapless-playback').checked, false);
+      assert.equal(document.getElementById('midi-input-device').value, 'Saved keyboard');
+      const output = document.getElementById('midi-output-device');
+      assert.equal(output.value, 'Native synth');
+      output.value = 'New synth';
+      assert.ok(document.getElementById('refresh-midi-devices'));
+      const mode = document.getElementById('replay-gain-mode');
+      assert.equal(mode?.value, 'off');
+      assert.equal(document.getElementById('replay-gain-target')?.value, 'manual');
+      mode.value = 'track';
+      await mode.dispatchEvent('change');
+      document.getElementById('replay-gain-preamp').value = '-3';
+      document.getElementById('sample-rate').value = '44100';
       await document.getElementById('apply-button').dispatchEvent('click');
     });
   });
   assert.equal(resetCalls.length, 1);
-  assert.equal(Object.hasOwn(resetCalls[0], 'midiInputDeviceKey'), false);
-  assert.equal(Object.hasOwn(resetCalls[0], 'midiOutputDeviceKey'), false);
-  assert.equal(Object.hasOwn(resetCalls[0], 'replayGainMode'), false);
+  assert.ok(!Object.hasOwn(resetCalls[0], 'midiInputDeviceKey'));
+  assert.ok(!Object.hasOwn(resetCalls[0], 'outputChannels'));
+  assert.equal(resetCalls[0].midiOutputDeviceKey, 'New synth');
+  assert.equal(resetCalls[0].replayGainMode, 'track');
+  assert.equal(resetCalls[0].replayGainTarget, 'manual');
+  assert.equal(resetCalls[0].replayGainPreampDb, -3);
+  assert.equal(resetCalls[0].replayGainAutoCoverage, 95);
+  assert.equal(resetCalls[0].replayGainPreventClipping, true);
+  assert.equal(resetCalls[0].replayGainPeakCeilingDb, 0);
+  assert.equal(resetCalls[0].gaplessPlayback, false);
 });
 
 test('audio preferences load and save honor Electron and Web storage availability', async () => {

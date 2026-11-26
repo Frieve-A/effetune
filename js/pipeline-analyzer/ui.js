@@ -536,6 +536,9 @@ export class PipelineAnalyzerUI {
         this.analysisControls.append(this.harmonicControls, this.waterfallControls);
         this.analysisMessage = createElement(this.document, 'p', 'pipeline-analyzer-analysis-message');
         this.analysisMessage.hidden = true;
+        this.runFailure = createElement(this.document, 'p', 'pipeline-analyzer-analysis-message');
+        this.runFailure.hidden = true;
+        this.runFailure.setAttribute('role', 'status');
         this.displayControls = {
             smoothingOct: this.buildDisplaySettingControl({
                 key: 'smoothingOct',
@@ -559,7 +562,8 @@ export class PipelineAnalyzerUI {
             this.displayControls.smoothingOct.row,
             this.displayControls.impulseRangeMs.row
         );
-        this.graphSection.append(this.viewGroup, this.displayControl, this.analysisControls, this.graphShell, this.analysisMessage);
+        this.graphSection.append(this.viewGroup, this.displayControl, this.analysisControls,
+            this.runFailure, this.graphShell, this.analysisMessage);
         this.body.appendChild(this.graphSection);
         this.panel.append(header, this.body);
         this.refreshTexts();
@@ -1236,6 +1240,7 @@ export class PipelineAnalyzerUI {
     }
 
     setResult(result, { stale = false } = {}) {
+        this.clearRunFailure();
         const timeRange = this.impulseView?.timeRange;
         this.result = result || null;
         this.impulseView = timeRange && result?.views?.impulse?.timeRange
@@ -1248,9 +1253,27 @@ export class PipelineAnalyzerUI {
 
     setMeasuring(measuring) {
         this.measuring = measuring === true;
+        if (this.measuring) this.clearRunFailure();
         if (this.graphSpinner) this.graphSpinner.hidden = !this.measuring;
         this.graphSvg?.setAttribute?.('aria-busy', String(this.measuring));
         this.analysisCanvas?.setAttribute?.('aria-busy', String(this.measuring));
+    }
+
+    setRunFailure(effectName) {
+        if (!this.runFailure) return;
+        const [key, fallback] = effectName
+            ? ['pipelineAnalyzer.error.effect', '{name} could not be analyzed. Check its settings and run the analysis again.']
+            : ['pipelineAnalyzer.error.analysis', 'The pipeline could not be analyzed. Check the effect settings and try again.'];
+        const translated = this.window?.uiManager?.t?.(key, { name: effectName });
+        this.runFailure.textContent = translated && translated !== key
+            ? translated : replaceTokens(fallback, { name: effectName });
+        this.runFailure.hidden = false;
+    }
+
+    clearRunFailure() {
+        if (!this.runFailure) return;
+        this.runFailure.hidden = true;
+        this.runFailure.textContent = '';
     }
 
     currentView() {

@@ -19,7 +19,7 @@ When updating Electron or preparing a desktop release, check
 [Chromium issue 572363272](https://issues.chromium.org/issues/572363272),
 [the Chromium fix](https://chromium.googlesource.com/chromium/src/+/3d2d8d9b2e7f7fdf7179a452088bfd537d72ecb0),
 and [Symphonia #585](https://github.com/pdeljanov/Symphonia/issues/585).
-Electron 45.2.2 uses Chromium 156.0.8078.80, whose decoder source still has the
+Development Electron 45.5.0 uses Chromium 156.0.8078.109, whose decoder source still has the
 affected 32-bit side-channel path. An upstream fix alone is not enough: verify
 that the Electron runtime being shipped contains it.
 
@@ -35,9 +35,11 @@ or an unverified Chromium version cutoff.
 
 ## Android builds
 
-The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio and uses the desktop host library from `native/audio-engine` with `ET_AUDIO_ENGINE_HOST_ONLY` enabled. Foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.9.2. The project pins Android Gradle Plugin 9.5.0, Oboe 1.11.0, and AndroidX WebKit 1.18.0.
+The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio and uses the desktop host library from `native/audio-engine` with `ET_AUDIO_ENGINE_HOST_ONLY` enabled. Foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.9.2. The project pins Android Gradle Plugin 9.5.3, Oboe 1.11.2, and AndroidX WebKit 1.18.0.
 
 Android 10 (API 29) is the minimum, and API 37 is the target. Use an updated Android System WebView with `WEB_MESSAGE_LISTENER` support; an old system-image WebView is not sufficient even when native audio tests pass. The supported APK ABIs are `arm64-v8a` and `x86_64`.
+
+Before the first Android build, run `node scripts/build-openhome-sidecar.mjs --android-sources` once to prepare the pinned OpenHome sources under `out/openhome-android`. It requires Python 3.
 
 From the repository root:
 
@@ -52,7 +54,7 @@ adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-android
 ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
 ```
 
-On Windows use `gradlew.bat`. Build the Web assets again after changing shared UI, plugin, measurement, or documentation inputs. Assets are generated under `out/android/assets/web`; the bundled page opens at `/assets/web/effetune.html`. Android does not register the PWA service worker. WebView storage belongs to the application's bundled HTTPS origin and is separate from the public PWA's storage.
+On Windows use `gradlew.bat`. Build the Web assets again after changing shared UI, plugin, or measurement inputs. Assets are generated under `out/android/assets/web`; the bundled page opens at `/assets/web/effetune.html`. Android does not register the PWA service worker. WebView storage belongs to the application's bundled HTTPS origin and is separate from the public PWA's storage.
 
 Set `ANDROID_SERIAL` to the intended device (PowerShell: `$env:ANDROID_SERIAL='emulator-5554'`). The device runner retains installed packages and detects JUnit failures even when adb exits successfully; use `--class` for focused classes and `--arg upgradePhase=seed` or `--arg upgradePhase=verify` for the upgrade test. AGP's connected-test task removes test installations, so use the retained runner when checking MCP connections or upgrade storage continuity.
 
@@ -955,7 +957,7 @@ npm run build:mac:arm64
 
 The producer downloads revisions pinned in
 `native/openhome-sidecar/dependencies.lock.json`, verifies every archive's
-SHA-256 hash, and reuses the ignored `tmp/cache/openhome-sidecar/` directory.
+SHA-256 hash, and reuses the ignored `out/cache/openhome-sidecar/` directory.
 It runs CTest and a stdio handshake smoke, then writes one of:
 
 - `out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe`

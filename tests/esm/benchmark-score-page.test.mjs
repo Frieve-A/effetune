@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { PluginManager } from '../../js/plugin-manager.js';
+import { PLUGIN_SUPPORT_SCRIPTS } from '../../js/plugin-support-scripts.js';
 import {
   BENCHMARK_DSP_MODES,
   configureFirBenchmarkWorkload
@@ -24,8 +25,10 @@ function textOf(element) {
 }
 
 function createHarness({
-  variant = 'simd', useWasmDsp = true, missing = null, fail = null,
+  variant = 'simd', useWasmDsp = true, audioDriver = 'standard', missing = null, fail = null,
   audioEngine,
+  android = false,
+  stubPluginLoader = true,
   unsupportedReason = 'WebAssembly DSP is not enabled for this plugin'
 } = {}) {
   const document = createFakeDocument();
@@ -55,16 +58,26 @@ function createHarness({
   document.allElements.forEach(enhance);
   const createElement = document.createElement.bind(document);
   document.createElement = tagName => enhance(createElement(tagName));
+  // The fake DOM registers only elements with an id, so mirror the static engine options.
+  for (const [value, text] of [['javascript', 'JavaScript'], ['webassembly', 'WebAssembly']]) {
+    const option = document.createElement('option');
+    Object.assign(option, { value, textContent: text });
+    document.getElementById('dsp-mode').appendChild(option);
+  }
+  // The static sample-rate options are not registered either; the Android rate limit only needs the list.
+  document.getElementById('sample-rate').options = [];
   const events = {};
   const runtimes = [];
   const calls = [];
   const clipboard = [];
   let clock = 0;
-  const pluginClasses = Object.fromEntries(BENCHMARK_SCORE_EFFECTS.map(({ name }) => [name, class {
-    constructor() { this.name = name; }
-    setParameters(parameters) { calls.push(['parameters', name, parameters]); }
-    cleanup() { calls.push(['cleanup', name]); }
-  }]));
+  const pluginClasses = Object.fromEntries(BENCHMARK_SCORE_EFFECTS.map(({ name, className }) => [name, {
+    [className]: class {
+      constructor() { this.name = name; }
+      setParameters(parameters) { calls.push(['parameters', name, parameters]); }
+      cleanup() { calls.push(['cleanup', name]); }
+    }
+  }[className]]));
   const context = vm.createContext({
     ...scoreModule,
     BENCHMARK_DSP_MODES,
@@ -79,10 +92,12 @@ function createHarness({
     window: {
       location: { href: 'https://example.test/features/effetune_bench.html' },
       ...(audioEngine && { electronAPI: { audioEngine, async hideApplicationMenu() { return { success: true }; } } }),
+      ...(android && { effetuneAndroid: {} }),
       addEventListener(type, callback) { events[type] = callback; }
     },
     startRendererWatchdogHeartbeat() {},
-    loadAudioPreferences: async () => ({ useWasmDsp }),
+    isAndroidHost: () => android,
+    loadAudioPreferences: async () => ({ useWasmDsp, audioDriver }),
     copyTextToClipboard: async text => { clipboard.push(text); return true; },
     alert() {},
     console: { error(...args) { calls.push(['error', ...args]); } },
@@ -102,9 +117,10 @@ function createHarness({
         supportsAssets: usesWasm,
         sessions: [],
         closed: false,
+        // Like the native runtime, support is decided from a plugin instance, never a type name.
         getPluginUnsupportedReason(plugin) {
-          const type = typeof plugin === 'string' ? plugin : plugin.constructor.name;
-          return type === missing ? unsupportedReason : null;
+          if (typeof plugin === 'string') return 'Native DSP is not available for this plugin';
+          return plugin.constructor.name === missing ? unsupportedReason : null;
         },
         supportsPlugin(plugin, settings) {
           return runtime.getPluginUnsupportedReason(plugin, settings) === null;
@@ -126,14 +142,22 @@ function createHarness({
         },
         close() { runtime.closed = true; calls.push(['close-runtime', options.sampleRate]); }
       };
+      if (options.mode === BENCHMARK_DSP_MODES.NATIVE) {
+        runtime.label = 'Native (AVX2)';
+        runtime.benchmarkPlugin = async (plugin, input, settings) => {
+          calls.push(['native-benchmark', plugin.name, settings.warmupFrames]);
+          return { samplesPerSecond: options.sampleRate * 2 };
+        };
+      }
       runtimes.push(runtime);
       return runtime;
     }
   });
   vm.runInContext(pageScript, context, { filename: 'effetune_bench.html' });
   context.pluginClasses = pluginClasses;
+  context.stubPluginLoader = stubPluginLoader;
   vm.runInContext(`
-    TestPluginManager.prototype.loadPlugins = async function () {
+    if (stubPluginLoader) TestPluginManager.prototype.loadPlugins = async function () {
       this.pluginClasses = pluginClasses;
       return {
         pluginClasses,
@@ -163,8 +187,31 @@ test('score panel, imports and controls preserve the English-only page contract'
   assert.match(html, /EffeTune Score/);
   assert.doesNotMatch(html, /100 = reference PC/);
   assert.doesNotMatch(html, /renderBenchmarkScore\('…', benchmarkStatus\.textContent\)/);
-  assert.match(html, /variant !== 'simd'/);
+  assert.match(html, /variant === 'simd'/);
   assert.doesNotMatch(html, /data-i18n|benchmark-page-i18n/);
+});
+
+test('benchmark loads the shared support scripts before registering dependent effects', async () => {
+  const h = createHarness({ stubPluginLoader: false });
+  const loads = [];
+  const catalog = [
+    '[categories]', 'EQ: Equalizers', 'Others: Other effects', '[plugins]',
+    'eq/five_band_fir_peq: 5Band FIR PEQ | EQ | FiveBandFIRPEQPlugin',
+    'others/soundfont_player: SoundFont Player | Others | SoundFontPlayerPlugin'
+  ].join('\n');
+  Object.assign(h.context, {
+    PLUGIN_SUPPORT_SCRIPTS,
+    fetch: async () => ({ text: async () => catalog }),
+    async loadClassicScript(source) {
+      loads.push(source);
+      vm.runInContext(readFileSync(new URL(source, new URL('../../features/', import.meta.url)), 'utf8'), h.context);
+    },
+    async waitForStylesheets() {}
+  });
+  const { pluginClasses } = await h.run('new TestPluginManager().loadPlugins()');
+  assert.deepEqual(loads.slice(0, PLUGIN_SUPPORT_SCRIPTS.length), PLUGIN_SUPPORT_SCRIPTS.map(path => `../${path}`));
+  assert.equal(pluginClasses['5Band FIR PEQ'].name, 'FiveBandFIRPEQPlugin');
+  assert.equal(pluginClasses['SoundFont Player'].name, 'SoundFontPlayerPlugin');
 });
 
 test('initial JavaScript preference and engine changes immediately gate score display and controls', async () => {
@@ -172,7 +219,7 @@ test('initial JavaScript preference and engine changes immediately gate score di
   await h.events.load();
   assert.equal(h.document.getElementById('run-score').disabled, true);
   assert.equal(h.panel().children.length, 1);
-  assert.equal(textOf(h.panel()).trim(), 'EffeTune Score requires WebAssembly (SIMD) processing.');
+  assert.equal(textOf(h.panel()).trim(), 'EffeTune Score requires WebAssembly (SIMD) or Native processing.');
   assert.equal(h.runtimes.length, 0);
   const select = h.document.getElementById('dsp-mode');
   select.value = BENCHMARK_DSP_MODES.WEBASSEMBLY;
@@ -181,7 +228,7 @@ test('initial JavaScript preference and engine changes immediately gate score di
   assert.match(textOf(h.panel()), /Run Benchmarks to measure the score\./);
 });
 
-test('native is offered only when an Electron executable is available and disables score', async () => {
+test('native is offered only when an Electron executable is available and measures the score', async () => {
   let starts = 0;
   for (const availability of [undefined, false, true]) {
     const audioEngine = availability === undefined ? undefined : {
@@ -196,12 +243,51 @@ test('native is offered only when an Electron executable is available and disabl
     if (availability === true) {
       mode.value = BENCHMARK_DSP_MODES.NATIVE;
       await mode.dispatchEvent('change');
+      assert.equal(h.document.getElementById('run-score').disabled, false);
       await h.scorePass(BENCHMARK_DSP_MODES.NATIVE);
-      assert.equal(h.document.getElementById('run-score').disabled, true);
-      assert.equal(h.runtimes.length, 0);
+      const { sampleRate, warmupSeconds } = BENCHMARK_SCORE_PROTOCOL;
+      assert.equal(h.runtimes.length, 1);
+      assert.equal(h.runtimes[0].sessions.length, 0);
+      assert.deepEqual(h.calls.filter(call => call[0] === 'native-benchmark'),
+        BENCHMARK_SCORE_EFFECTS.map(({ name }) => ['native-benchmark', name, warmupSeconds * sampleRate]));
+      assert.match(textOf(h.panel()), /Native \(AVX2\)/);
+      assert.match(h.run('benchmarkScoreText()'), /^EffeTune Score .*\t200\nNative \(AVX2\)\t/);
     }
   }
   assert.equal(starts, 0);
+});
+
+test('native audio driver preference selects and labels native when it is offered', async () => {
+  for (const availability of [false, true]) {
+    const h = createHarness({ useWasmDsp: false, audioDriver: 'wasapi',
+      audioEngine: { available: async () => availability } });
+    await h.events.load();
+    const select = h.document.getElementById('dsp-mode');
+    const expected = availability ? BENCHMARK_DSP_MODES.NATIVE : BENCHMARK_DSP_MODES.JAVASCRIPT;
+    assert.equal(select.value, expected);
+    assert.deepEqual(select.children.filter(option => option.textContent.endsWith(' (automatic)'))
+      .map(option => option.value), [expected]);
+    assert.equal(h.document.getElementById('run-score').disabled, !availability);
+  }
+});
+
+test('Android offers only native and limits it to native sample rates', async () => {
+  const h = createHarness({ android: true });
+  const sampleRate = h.document.getElementById('sample-rate');
+  const rates = [192000, 384000].map(value => {
+    const option = { value: String(value), remove() { sampleRate.options.splice(sampleRate.options.indexOf(option), 1); } };
+    return option;
+  });
+  sampleRate.options.push(...rates);
+  sampleRate.value = '384000';
+  await h.events.load();
+  const select = h.document.getElementById('dsp-mode');
+  assert.deepEqual(select.children.map(option => [option.value, option.textContent]),
+    [[BENCHMARK_DSP_MODES.NATIVE, 'Native']]);
+  assert.equal(select.value, BENCHMARK_DSP_MODES.NATIVE);
+  assert.deepEqual(sampleRate.options.map(option => option.value), ['192000']);
+  assert.equal(sampleRate.value, '192000');
+  assert.equal(h.document.getElementById('run-score').disabled, false);
 });
 
 test('JavaScript creates no score runtime and baseline closes without processing any blocks', async () => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CatalogPlaybackBridge } from '../../js/ui/audio-player/catalog-playback-bridge.js';
+import { ReversibleShufflePermutation } from '../../js/ui/audio-player/playback-sequence.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 import { DurableActionController } from '../../js/ui/library/durable-action-controller.js';
 
@@ -111,6 +112,69 @@ function stalledPlaybackBridge({ install, commit, status, requestFolderAccess, c
     emit: () => workerListener({ kind: 'terminal', operationId: 'operation-stall', result: terminal })
   };
 }
+
+test('Android Play uses the completed queue if its provisional document was removed', async () => {
+  const publications = [];
+  const scenario = stalledPlaybackBridge({
+    install: options => {
+      assert.equal(options.provisionalUnavailable, true);
+      return { accepted: true };
+    },
+    commit: options => {
+      publications.push(options);
+      return { accepted: true };
+    },
+    status: async () => null,
+    client: sequenceClient({ resolveSequenceEntrySource: () => {
+      throw Object.assign(new Error('Missing document'), { code: 'document-not-found' });
+    } })
+  });
+  scenario.player.contextManager = { nativeQueueOwned: true };
+  try {
+    scenario.terminal.result.itemCount = 3;
+    await scenario.bridge.start(playbackRequest());
+    scenario.emit();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal((await scenario.bridge.status('operation-stall')).terminalKind, 'succeeded');
+    assert.equal(publications.length, 1);
+    assert.equal(publications[0].operationId, 'operation-stall');
+    assert.equal(publications[0].sequence.itemCount, 3);
+    assert.deepEqual(scenario.messages, []);
+  } finally { scenario.bridge.close(); }
+});
+
+test('queue and play next report queue preparation while the player applies the result', async () => {
+  for (const [kind, destination] of [['play', 'replace'], ['playNext', 'after-current'], ['queue', 'append']]) {
+    const scenario = stalledPlaybackBridge({
+      install: async () => ({ accepted: true }),
+      commit: async () => { throw Object.assign(new Error('Missing files'), { code: 'library-files-missing' }); },
+      status: async () => null
+    });
+    Object.assign(scenario.terminal.result, { operationKind: kind, destination });
+    await scenario.bridge.start(playbackRequest(kind));
+    scenario.emit();
+    await new Promise(resolve => setImmediate(resolve));
+    const status = await scenario.bridge.status('operation-stall');
+    assert.equal(status.terminalKind, 'failed');
+    assert.equal(status.result.code, 'library-files-missing');
+    assert.deepEqual(scenario.messages, []);
+    scenario.bridge.close();
+  }
+
+  for (const [kind, destination] of [['queue', 'append'], ['playNext', 'after-current']]) {
+    const scenario = stalledPlaybackBridge({ status: async () => null });
+    Object.assign(scenario.terminal.result, { operationKind: kind, destination });
+    await scenario.bridge.start(playbackRequest(kind));
+    const id = 'operation-stall';
+    assert.equal((await scenario.bridge.status(id)).phase, 'PREPARING_PLAYER');
+    scenario.bridge.subscribeOperation(id, event => scenario.events.push(event));
+    scenario.emit();
+    assert.equal((await scenario.bridge.status(id)).phase, 'PREPARING_PLAYER');
+    assert.equal(scenario.events[0].progress.phase, 'PREPARING_PLAYER');
+    await new Promise(resolve => setImmediate(resolve));
+    scenario.bridge.close();
+  }
+});
 
 test('pending playback exposes a cancellable waiting phase after worker completion and never forwards late success', async () => {
   const scenario = stalledPlaybackBridge();
@@ -434,13 +498,25 @@ test('Play applies dedicated and restored player shuffle to the session sequence
   const cases = [
     {
       name: 'dedicated Library Shuffle',
-      requestOptions: { currentOrdinal: 6, seed: 71 },
+      requestOptions: { seed: 71 },
       restoredShuffleMode: false,
       expectedSeed: 71
     },
     {
       name: 'ordinary Library Play with restored player shuffle',
       requestOptions: { currentOrdinal: 6 },
+      restoredShuffleMode: true,
+      expectedSeed: null
+    },
+    {
+      name: 'Play from the first displayed row while shuffle is on',
+      requestOptions: { currentOrdinal: 0 },
+      restoredShuffleMode: true,
+      expectedSeed: null
+    },
+    {
+      name: 'whole selection Play while shuffle is on',
+      requestOptions: {},
       restoredShuffleMode: true,
       expectedSeed: null
     }
@@ -452,7 +528,10 @@ test('Play applies dedicated and restored player shuffle to the session sequence
       let startedRequest = null;
       let committed = null;
       let shuffleMode = false;
-      const firstEntry = { entryInstanceId: 'clicked-entry', trackUid: 'clicked-track' };
+      const provisionalIds = [];
+      const rows = Array.from({ length: 17 }, (_, i) => ({ entryInstanceId: `entry-${i}`, trackUid: `track-${i}` }));
+      const selectedOrdinal = scenario.requestOptions.currentOrdinal;
+      const firstEntry = rows[selectedOrdinal ?? 0];
       const service = {
         async start(request) {
           startedRequest = request;
@@ -474,7 +553,10 @@ test('Play applies dedicated and restored player shuffle to the session sequence
         },
         ui: { container: {} },
         playbackManager: {
-          async installBulkPlayProvisional() { return { accepted: true }; },
+          async installBulkPlayProvisional({ receipt }) {
+            provisionalIds.push(receipt.provisionalEntry.entryInstanceId);
+            return { accepted: true };
+          },
           async commitCatalogDestination(options) {
             committed = options;
             return { accepted: true };
@@ -486,17 +568,7 @@ test('Play applies dedicated and restored player shuffle to the session sequence
         service,
         sequenceClient: sequenceClient({
           readSequencePage({ ordinal, limit }) {
-            return {
-              items: Array.from({ length: limit }, (_, index) => {
-                const canonicalOrdinal = ordinal + index;
-                return canonicalOrdinal === 6
-                  ? firstEntry
-                  : {
-                      entryInstanceId: `entry-${canonicalOrdinal}`,
-                      trackUid: `track-${canonicalOrdinal}`
-                    };
-              })
-            };
+            return { items: rows.slice(ordinal, ordinal + limit) };
           }
         })
       });
@@ -508,13 +580,14 @@ test('Play applies dedicated and restored player shuffle to the session sequence
       const sessionSeed = startedRequest.options.seed;
       assert.equal(Number.isSafeInteger(sessionSeed), true);
       if (scenario.expectedSeed !== null) assert.equal(sessionSeed, scenario.expectedSeed);
+      assert.deepEqual(provisionalIds, selectedOrdinal == null ? [] : [firstEntry.entryInstanceId]);
 
       operationListener({
         kind: 'terminal',
         operationId: 'shuffle-operation',
         result: successfulTerminal({
-          itemCount: 17,
-          firstOrdinal: 6,
+          itemCount: rows.length,
+          firstOrdinal: selectedOrdinal ?? 0,
           firstEntry,
           shuffleSeed: sessionSeed
         })
@@ -524,9 +597,26 @@ test('Play applies dedicated and restored player shuffle to the session sequence
       const descriptor = committed.sequence.getDescriptor();
       assert.equal(descriptor.shuffleEnabled, true);
       assert.equal(descriptor.shuffleSeed, sessionSeed);
-      assert.equal(committed.sequence.toCanonicalOrdinal(committed.currentOrdinal), 6);
-      assert.equal((await committed.sequence.getEntry(committed.currentOrdinal)).entryInstanceId, 'clicked-entry');
-      assert.deepEqual(committed.firstEntry, firstEntry);
+      const permutation = new ReversibleShufflePermutation(rows.length, sessionSeed);
+      const first = selectedOrdinal ?? permutation.permute(0);
+      assert.deepEqual(provisionalIds, [rows[first].entryInstanceId]);
+      assert.equal(committed.firstEntry.entryInstanceId, rows[first].entryInstanceId);
+      const status = await bridge.status('shuffle-operation');
+      assert.equal(status.result.result.firstOrdinal, first);
+      assert.deepEqual(status.result.result.firstEntry, committed.firstEntry);
+      assert.equal(committed.currentOrdinal, 0);
+      assert.equal(descriptor.shuffleTransportOffset, permutation.invert(first));
+      let ordinal = committed.currentOrdinal;
+      const played = new Set();
+      for (let i = 0; i < rows.length; i++) {
+        assert.equal(ordinal, i);
+        const entry = await committed.sequence.getEntry(ordinal);
+        if (i === 0) assert.equal(entry.entryInstanceId, committed.firstEntry.entryInstanceId);
+        played.add(entry.entryInstanceId);
+        ordinal = committed.sequence.moveTransportOrdinal(ordinal, 1, 'OFF');
+      }
+      assert.equal(ordinal, null);
+      assert.deepEqual(played, new Set(rows.map(entry => entry.entryInstanceId)));
     });
   }
 });

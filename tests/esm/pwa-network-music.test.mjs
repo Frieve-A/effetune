@@ -12,6 +12,7 @@ import { normalizePlaybackSourceDescriptor, choosePlaybackMode } from '../../js/
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { NetworkMusicController } from '../../js/network-music/controller.js';
 import { PwaDeviceRegistration } from '../../js/network-music/pwa-registration.js';
+import { getAndroidRemoteSettings } from '../../js/android/remote.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 
 const originA = 'http://192.168.1.20:47300';
@@ -149,6 +150,28 @@ function cameraRegistrationFixture(t) {
   return { ...source, acquisition, detection, formats, requests, detectors, stream, open,
     get stops() { return stops; }, get submission() { return submission; } };
 }
+
+test('Android never probes the WebView barcode API and pairs using the pasted link', async t => {
+  const camera = cameraRegistrationFixture(t);
+  camera.window.location = { origin: 'https://appassets.androidplatform.net' };
+  camera.window.effetuneAndroid = { postMessage() {} };
+  let barcodeAccesses = 0;
+  Object.defineProperty(camera.window, 'BarcodeDetector', {
+    get() { barcodeAccesses++; throw new Error('Android WebView barcode API accessed'); }
+  });
+  camera.open();
+  assert.equal(camera.form().children[1].children[1].hidden, true);
+  await camera.registration.startCamera();
+  assert.equal(barcodeAccesses, 0);
+  assert.deepEqual(camera.requests, []);
+
+  const calls = [];
+  const api = getAndroidRemoteSettings({ request(command, payload) { calls.push([command, payload]); } });
+  assert.equal(api.attachPairingScanner, undefined);
+  const link = 'http://effetune.local:47300/?t=copied-pairing-token';
+  await api.join(link);
+  assert.deepEqual(calls, [['remote.join', { link }]]);
+});
 
 test('a supported QR scan registers through the pairing form and releases its camera before connecting', { timeout: 3000 }, async t => {
   const camera = cameraRegistrationFixture(t);

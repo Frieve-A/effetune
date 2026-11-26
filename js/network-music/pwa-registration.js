@@ -1,4 +1,5 @@
 import { parsePwaPairingLink } from './pwa-connection.js';
+import { isAndroidHost } from '../android/bridge.js';
 
 const MESSAGES = {
   invalidPairingLink: 'Paste the Remote Control link from EffeTune on your local network.',
@@ -16,13 +17,9 @@ const MESSAGES = {
   storageRemoveFailed: 'Device removed for this session. Browser storage could not be updated.'
 };
 
-export class PwaDeviceRegistration {
-  constructor({ api, uiManager, documentRef = globalThis.document, windowRef = globalThis.window }) {
-    Object.assign(this, { api, uiManager, document: documentRef, window: windowRef });
-    this.generation = 0;
-    this.api.manageConnection = id => this.open(id);
-    this.onPageHide = () => this.close();
-    this.window.addEventListener('pagehide', this.onPageHide);
+export class PairingQrScanner {
+  constructor({ uiManager, documentRef = globalThis.document, windowRef = globalThis.window }) {
+    Object.assign(this, { uiManager, document: documentRef, window: windowRef });
   }
 
   text(key, fallback) {
@@ -45,6 +42,89 @@ export class PwaDeviceRegistration {
     return button;
   }
 
+  createScanControls(onPairingLink) {
+    this.onPairingLink = onPairingLink;
+    const scan = this.button('Scan QR code', 'scan', () => { void this.startCamera(); });
+    scan.hidden = true;
+    if (!isAndroidHost(this.window)) {
+      const detector = this.window.BarcodeDetector;
+      if (detector && this.window.navigator?.mediaDevices?.getUserMedia) {
+        void detector.getSupportedFormats().then(formats => { scan.hidden = !formats.includes('qr_code'); }).catch(() => {});
+      }
+    }
+    this.video = this.element('video');
+    this.video.muted = true;
+    this.video.playsInline = true;
+    this.video.hidden = true;
+    this.stopScanButton = this.button('Stop camera', 'stopCamera', () => this.stopCamera());
+    this.stopScanButton.hidden = true;
+    this.status = this.element('p', '', 'pwa-device-status');
+    this.status.setAttribute('role', 'status');
+    return scan;
+  }
+
+  showStatus(key) {
+    this.status.textContent = this.text(key, MESSAGES[key]);
+    this.status.title = this.status.textContent;
+  }
+
+  async startCamera() {
+    if (isAndroidHost(this.window)) return;
+    this.stopCamera();
+    const generation = this.cameraGeneration;
+    try {
+      const stream = await this.window.navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      if (generation !== this.cameraGeneration) { stream.getTracks().forEach(track => track.stop()); return; }
+      this.stream = stream;
+      this.video.srcObject = stream;
+      this.video.hidden = false;
+      this.stopScanButton.hidden = false;
+      await this.video.play();
+      const detector = new this.window.BarcodeDetector({ formats: ['qr_code'] });
+      const scan = async () => {
+        if (!this.stream || generation !== this.cameraGeneration) return;
+        try {
+          const codes = await detector.detect(this.video);
+          if (!this.stream || generation !== this.cameraGeneration) return;
+          if (codes.length) {
+            this.stopCamera();
+            this.onPairingLink(codes[0].rawValue);
+            return;
+          }
+        } catch {
+          if (generation !== this.cameraGeneration) return;
+          this.showStatus('cameraUnavailable');
+          this.stopCamera();
+          return;
+        }
+        this.scanTimer = setTimeout(scan, 250);
+      };
+      await scan();
+    } catch {
+      if (generation === this.cameraGeneration) { this.stopCamera(); this.showStatus('cameraDenied'); }
+    }
+  }
+
+  stopCamera() {
+    this.cameraGeneration = (this.cameraGeneration ?? 0) + 1;
+    clearTimeout(this.scanTimer);
+    this.stream?.getTracks().forEach(track => track.stop());
+    this.stream = null;
+    if (this.video) { this.video.srcObject = null; this.video.hidden = true; }
+    if (this.stopScanButton) this.stopScanButton.hidden = true;
+  }
+}
+
+export class PwaDeviceRegistration extends PairingQrScanner {
+  constructor({ api, ...options }) {
+    super(options);
+    this.api = api;
+    this.generation = 0;
+    this.api.manageConnection = id => this.open(id);
+    this.onPageHide = () => this.close();
+    this.window.addEventListener('pagehide', this.onPageHide);
+  }
+
   open(id = null) {
     this.close();
     const selected = this.api.registrations.find(record => record.id === id);
@@ -57,7 +137,7 @@ export class PwaDeviceRegistration {
       : this.text('addDeviceTitle', 'Add device'));
     heading.id = 'pwa-device-title';
     dialog.setAttribute('aria-labelledby', heading.id);
-    const help = this.element('p', this.text('setup', 'On the desktop, open Settings > Remote Control, enable Allow remote control, and copy its link or scan its QR code here.'));
+    const help = this.element('p', this.text('setup', 'On the device you want to add, open Remote Control, turn on Allow remote control, then copy its link or scan its QR code here.'));
     help.title = help.textContent;
     const form = this.element('form');
     const label = this.element('label', this.text('pairingLinkLabel', 'Pairing link'));
@@ -67,22 +147,18 @@ export class PwaDeviceRegistration {
     input.maxLength = 1024;
     input.required = true;
     input.setAttribute('aria-label', label.textContent);
-    input.title = this.text('pairingLink', 'Paste the link shown in Remote Control on the desktop.');
+    input.title = this.text('pairingLink', 'Paste the link shown in Remote Control on the device you want to add.');
     label.append(input);
     const actions = this.element('div', '', 'pwa-device-actions');
     const connect = this.button(selected ? 'Update connection' : 'Connect', selected ? 'update' : 'connect', () => {});
     connect.type = 'submit';
-    const scan = this.button('Scan QR code', 'scan', () => { void this.startCamera(); });
-    scan.hidden = true;
+    const scan = this.createScanControls(link => {
+      try { parsePwaPairingLink(link); }
+      catch { this.showStatus('invalidPairingLink'); return; }
+      input.value = link;
+      input.form.requestSubmit();
+    });
     actions.append(connect, scan);
-    this.video = this.element('video');
-    this.video.muted = true;
-    this.video.playsInline = true;
-    this.video.hidden = true;
-    this.stopScanButton = this.button('Stop camera', 'stopCamera', () => this.stopCamera());
-    this.stopScanButton.hidden = true;
-    this.status = this.element('p', '', 'pwa-device-status');
-    this.status.setAttribute('role', 'status');
     const legacy = this.button('Open remote editor', 'openEditor', () => {
       try {
         const target = parsePwaPairingLink(input.value);
@@ -123,12 +199,6 @@ export class PwaDeviceRegistration {
     this.document.body.append(dialog);
     dialog.showModal();
     input.focus();
-    const detector = this.window.BarcodeDetector;
-    if (detector && this.window.navigator?.mediaDevices?.getUserMedia) {
-      void detector.getSupportedFormats().then(formats => {
-        if (generation === this.generation) scan.hidden = !formats.includes('qr_code');
-      }).catch(() => {});
-    }
     return true;
   }
 
@@ -147,57 +217,6 @@ export class PwaDeviceRegistration {
         }));
       this.savedDevices.append(row);
     }
-  }
-
-  showStatus(key) {
-    this.status.textContent = this.text(key, MESSAGES[key]);
-    this.status.title = this.status.textContent;
-  }
-
-  async startCamera() {
-    this.stopCamera();
-    const generation = ++this.cameraGeneration;
-    try {
-      const stream = await this.window.navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-      if (!this.dialog || generation !== this.cameraGeneration) { stream.getTracks().forEach(track => track.stop()); return; }
-      this.stream = stream;
-      this.video.srcObject = stream;
-      this.video.hidden = false;
-      this.stopScanButton.hidden = false;
-      await this.video.play();
-      const detector = new this.window.BarcodeDetector({ formats: ['qr_code'] });
-      const scan = async () => {
-        if (!this.stream || generation !== this.cameraGeneration) return;
-        try {
-          const codes = await detector.detect(this.video);
-          if (!this.stream || generation !== this.cameraGeneration) return;
-          if (codes.length) {
-            parsePwaPairingLink(codes[0].rawValue);
-            this.input.value = codes[0].rawValue;
-            this.stopCamera();
-            this.input.form.requestSubmit();
-            return;
-          }
-        } catch (error) {
-          this.showStatus(error.code === 'invalidPairingLink' ? 'invalidPairingLink' : 'cameraUnavailable');
-          this.stopCamera();
-          return;
-        }
-        this.scanTimer = setTimeout(scan, 250);
-      };
-      await scan();
-    } catch {
-      if (generation === this.cameraGeneration && this.dialog) { this.stopCamera(); this.showStatus('cameraDenied'); }
-    }
-  }
-
-  stopCamera() {
-    this.cameraGeneration = (this.cameraGeneration ?? 0) + 1;
-    clearTimeout(this.scanTimer);
-    this.stream?.getTracks().forEach(track => track.stop());
-    this.stream = null;
-    if (this.video) { this.video.srcObject = null; this.video.hidden = true; }
-    if (this.stopScanButton) this.stopScanButton.hidden = true;
   }
 
   close() {

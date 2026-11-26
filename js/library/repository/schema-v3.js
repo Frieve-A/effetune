@@ -208,6 +208,15 @@ CREATE TABLE IF NOT EXISTS scan_run_folders(
   PRIMARY KEY(scan_id, folder_id)
 );
 
+CREATE TABLE IF NOT EXISTS scan_traversal_queue(
+  scan_id TEXT NOT NULL,
+  folder_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  relative_path TEXT NOT NULL,
+  PRIMARY KEY(folder_id, scan_id, sequence),
+  FOREIGN KEY(scan_id, folder_id) REFERENCES scan_run_folders(scan_id, folder_id) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS scan_seen(
   scan_id TEXT NOT NULL,
   folder_id TEXT NOT NULL,

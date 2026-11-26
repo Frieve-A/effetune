@@ -48,6 +48,9 @@ function createRepository(options = {}) {
       if (options.commitError) throw options.commitError;
       return { committed: true };
     },
+    async scanTraversalQueue() {
+      assert.fail('unexpected traversal spill');
+    },
     async listMetadataCandidates() {
       return { items: [], nextCursor: null };
     },
@@ -212,17 +215,33 @@ test('enumeration errors durably block the whole sweep while samples remain capp
   assert.equal(repository.calls.some(([name]) => name === 'enqueue-sweep'), false);
 });
 
-test('traversal queue overflow is bounded and durably pauses sweep-ineligible', async () => {
+test('wide traversal spills while enumerating and visits every directory before sweeping', async () => {
   const repository = createRepository();
+  const visited = [];
+  const pending = [];
+  const children = Array.from({ length: 140 }, (_, index) => `directory-${index}`);
+  repository.scanTraversalQueue = async ({ action, directories, limit }) => {
+    if (action === 'append') {
+      pending.push(...directories);
+      return;
+    }
+    assert.equal(action, 'take');
+    const next = pending.splice(0, limit);
+    return { directories: next, hasMore: pending.length > 0 };
+  };
   const filesystem = {
     async *enumerateDirectory({ relativeDirectory }) {
-      if (relativeDirectory) return;
-      yield { kind: 'directory', name: 'one' };
-      yield { kind: 'directory', name: 'two' };
-      yield { kind: 'directory', name: 'three' };
+      visited.push(relativeDirectory);
+      if (relativeDirectory === children[0]) yield { kind: 'directory', name: 'nested' };
+      if (relativeDirectory) {
+        yield { kind: 'file', name: 'track.mp3' };
+        return;
+      }
+      for (const name of children) yield { kind: 'directory', name };
+      assert.ok(pending.length > 0, 'overflow must spill before directory enumeration completes');
     },
-    async statFile() {
-      throw new Error('not reached');
+    async statFile({ entry }) {
+      return { fileIdentity: entry.relativePath, size: 1024, mtimeMs: 1000 };
     }
   };
   const service = new BoundedScanService({
@@ -232,14 +251,14 @@ test('traversal queue overflow is bounded and durably pauses sweep-ineligible', 
     config: { maxQueuedDirectories: 2, maxBatchDelayMs: 10000 }
   });
 
-  await assert.rejects(
-    () => service.runFolder({ scanId: 'scan-queue', folder }),
-    error => error.code === 'scanTraversalQueueLimit'
-  );
-  assert.equal(repository.calls.filter(([name]) => name === 'ineligible').length, 1);
-  const pause = repository.calls.find(([name, input]) => name === 'pause' && input.stopReason === 'system')?.[1];
-  assert.equal(pause.sweepEligibility, 'INELIGIBLE');
-  assert.equal(repository.calls.some(([name]) => name === 'enqueue-sweep'), false);
+  const result = await service.runFolder({ scanId: 'scan-queue', folder });
+
+  assert.equal(result.status, 'completed');
+  assert.equal(result.counts.found, children.length + 1);
+  assert.equal(result.queueHighWater.items, 2);
+  assert.deepEqual(visited, ['', ...children, `${children[0]}/nested`]);
+  assert.deepEqual(pending, []);
+  assert.equal(repository.calls.filter(([name]) => name === 'enqueue-sweep').length, 1);
 });
 
 test('preflight shortfall pauses without entering read-only diagnostic mode', async () => {

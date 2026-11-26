@@ -1617,9 +1617,9 @@ export function packSimpleJitterPluginParams(params = {}) {
   return packed;
 }
 
-export const SoundFontPlayerPlugin_PARAMS_HASH = 0x25427170;
+export const SoundFontPlayerPlugin_PARAMS_HASH = 0x98b0761b;
 export function packSoundFontPlayerPluginParams(params = {}) {
-  const packed = new Float32Array(13);
+  const packed = new Float32Array(15);
   packed[0] = (() => { const value = params["mc"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 16) return 16; return value; })();
   packed[1] = (() => { const value = params["pl"]; if (!(Number.isSafeInteger(value))) return 256; if (value < 1) return 1; if (value > 1024) return 1024; return value; })();
   packed[2] = (() => { const value = params["og"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0; if (value < -60) return -60; if (value > 12) return 12; return value; })();
@@ -1633,6 +1633,8 @@ export function packSoundFontPlayerPluginParams(params = {}) {
   packed[10] = (params["rx"] === true || params["rx"] === 1 ? 1 : params["rx"] === false || params["rx"] === 0 ? 0 : 1);
   packed[11] = (() => { const value = params["tr"]; if (!(Number.isSafeInteger(value))) return 0; if (value < -12) return -12; if (value > 12) return 12; return value; })();
   packed[12] = (() => { const value = params["mco"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 65535) return 65535; return value; })();
+  packed[13] = (() => { const value = params["tu"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 2) return 2; return value; })();
+  packed[14] = (() => { const value = params["tk"]; if (!(Number.isSafeInteger(value))) return 0; if (value < 0) return 0; if (value > 23) return 23; return value; })();
   return packed;
 }
 
@@ -2826,7 +2828,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   SaturationPlugin: Object.freeze({ hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 }),
   SFZNotePlayerPlugin: Object.freeze({ hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 21 }),
   SimpleJitterPlugin: Object.freeze({ hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 }),
-  SoundFontPlayerPlugin: Object.freeze({ hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 13 }),
+  SoundFontPlayerPlugin: Object.freeze({ hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 15 }),
   SpatialMapperPlugin: Object.freeze({ hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 }),
   SpeakerDistortionCorrectionPlugin: Object.freeze({ hash: SpeakerDistortionCorrectionPlugin_PARAMS_HASH, floatCount: 4 }),
   SpectrogramPlugin: Object.freeze({ hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 }),
@@ -2946,7 +2948,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["SaturationPlugin", Object.freeze({ pack: packSaturationPluginParams, hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 })],
   ["SFZNotePlayerPlugin", Object.freeze({ pack: packSFZNotePlayerPluginParams, hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 21 })],
   ["SimpleJitterPlugin", Object.freeze({ pack: packSimpleJitterPluginParams, hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 })],
-  ["SoundFontPlayerPlugin", Object.freeze({ pack: packSoundFontPlayerPluginParams, hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 13 })],
+  ["SoundFontPlayerPlugin", Object.freeze({ pack: packSoundFontPlayerPluginParams, hash: SoundFontPlayerPlugin_PARAMS_HASH, floatCount: 15 })],
   ["SpatialMapperPlugin", Object.freeze({ pack: packSpatialMapperPluginParams, hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 })],
   ["SpeakerDistortionCorrectionPlugin", Object.freeze({ pack: packSpeakerDistortionCorrectionPluginParams, hash: SpeakerDistortionCorrectionPlugin_PARAMS_HASH, floatCount: 4 })],
   ["SpectrogramPlugin", Object.freeze({ pack: packSpectrogramPluginParams, hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 })],

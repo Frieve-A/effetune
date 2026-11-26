@@ -22,7 +22,7 @@ import {
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
-import { isAndroidHost } from '../../../js/android/bridge.js';
+import { getAndroidBridge, isAndroidHost } from '../../../js/android/bridge.js';
 import { configureAndroidMeasurementOutput } from '../../../js/android/measurement.js';
 import { nativeMeasurementDevice } from '../audio-utils/native-measurement.js';
 
@@ -132,7 +132,11 @@ export class MeasurementController {
     async initialize() {
         try {
             await audioUtils.initialize();
-            
+            if (isAndroidHost()) {
+                this.detachNativeInvalidation ??= getAndroidBridge().on('measurement-invalidated',
+                    event => this.handleNativeMeasurementInvalidated(event?.reason));
+            }
+
         } catch (error) {
             console.error('Failed to initialize audio:', error);
         }
@@ -202,12 +206,14 @@ export class MeasurementController {
             try {
                 await audioUtils.reinitialize(preferredSampleRate);
             } catch (error) {
+                if (isAndroidHost()) throw error;
                 console.warn(`Could not reinitialize audio context with sample rate ${preferredSampleRate}Hz:`, error);
             }
         } else if (!audioUtils.audioContext) {
             try {
                 await audioUtils.initialize(preferredSampleRate);
             } catch (error) {
+                if (isAndroidHost()) throw error;
                 console.warn(`Could not initialize audio context with sample rate ${preferredSampleRate}Hz:`, error);
             }
         }
@@ -217,14 +223,13 @@ export class MeasurementController {
         
         const outputChannels = selectionFromConfig(configSnapshot);
         const multiChannel = isMultiChannelSelection(outputChannels);
-        if (isAndroidHost()) {
-            const route = await configureAndroidMeasurementOutput(configSnapshot);
-            configSnapshot.outputChannelCount = route.channelCount;
-        }
         const pipelineSnapshot = configSnapshot.effectPipeline ? this.pipelineHandoff?.snapshot : null;
         if (configSnapshot.effectPipeline) {
-            if (!pipelineSnapshot || isAndroidHost()) {
+            if (!pipelineSnapshot) {
                 throw new MeasurementSetupError('pipelineUnavailable');
+            }
+            if (isAndroidHost() && pipelineSnapshot.channelCount > configSnapshot.outputChannelCount) {
+                throw new MeasurementSetupError('pipelineOutputChannelsUnavailable');
             }
             if (actualSampleRate !== pipelineSnapshot.sampleRate) {
                 throw new MeasurementSetupError('pipelineSampleRateMismatch');
@@ -234,10 +239,13 @@ export class MeasurementController {
                 throw new MeasurementSetupError('pipelineInputChannelUnavailable');
             }
             // Every pipeline output plays on its matching device channel.
-            configSnapshot.outputChannelCount = audioUtils.nativeMeasurement ? pipelineSnapshot.channelCount
+            configSnapshot.outputChannelCount = audioUtils.nativeMeasurement || isAndroidHost() ? pipelineSnapshot.channelCount
                 : SUPPORTED_OUTPUT_CHANNEL_COUNTS.find(count => count >= pipelineSnapshot.channelCount);
         }
-        if (audioUtils.nativeMeasurement) {
+        if (isAndroidHost()) {
+            const route = await configureAndroidMeasurementOutput(configSnapshot);
+            configSnapshot.outputChannelCount = route.channelCount;
+        } else if (audioUtils.nativeMeasurement) {
             const device = nativeMeasurementDevice(audioUtils.devices.outputs, configSnapshot.audioOutputId);
             if (device?.channels < configSnapshot.outputChannelCount && pipelineSnapshot) {
                 throw new MeasurementSetupError('pipelineOutputChannelsUnavailable');
@@ -340,6 +348,7 @@ export class MeasurementController {
                 previousState.interfaceCalibrationImpulseResponse;
             this.interfaceCalibrationImpulseResponsesByChannel =
                 previousState.interfaceCalibrationImpulseResponsesByChannel;
+            if (error.code === 'measurement-rate-unavailable') throw new MeasurementSetupError('measurementRateUnavailable');
             throw error;
         }
 

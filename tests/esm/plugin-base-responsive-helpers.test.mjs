@@ -155,7 +155,7 @@ test('rendered Volume control commits to the native host without replaying hydra
   const writes = [];
   const manager = Object.create(AndroidAudioManager.prototype);
   Object.assign(manager, {
-    isAndroid: true, pendingMutation: Promise.resolve(), currentPipeline: 'A',
+    pendingMutation: Promise.resolve(), currentPipeline: 'A',
     eventManager: { dispatchEvent() {} },
     snapshot: { revision: 4, sampleRate: 48000, channelCount: 2 },
     nativeAssets: {

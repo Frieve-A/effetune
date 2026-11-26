@@ -30,6 +30,64 @@ body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"
     height: var(--et-mobile-control-height);
 }
 
+body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="range"]:not(.vertical-slider), > select) {
+    row-gap: 4px;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="range"]:not(.vertical-slider), > select) > label:first-child {
+    flex: 0 0 100%;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row > label:first-child ~ input[type="range"]:not(.vertical-slider) {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row > label:first-child ~ input[type="range"] + input[type="number"] {
+    box-sizing: border-box;
+    flex: 0 0 6em;
+    min-width: 0;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row > .slope-select {
+    flex: 0 1 auto;
+    width: auto;
+    max-width: 100%;
+    padding-inline: 6px;
+}
+
+.digital-error-mode-text { display: none; }
+body.layout-mobile .digital-error-emulator-plugin-ui .parameter-row > select {
+    width: 100%;
+}
+body.layout-mobile .digital-error-mode-text {
+    display: block;
+    flex: 0 0 100%;
+    overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+    body.layout-mobile .plugin-parameter-ui :is(.checkbox-row, .radio-option):has(> label[for]) {
+        position: relative;
+        min-inline-size: var(--et-mobile-control-height);
+        min-block-size: var(--et-mobile-control-height);
+    }
+
+    /* The associated label also receives taps around the native glyph. */
+    body.layout-mobile .plugin-parameter-ui :is(.checkbox-row, .radio-option) > label[for]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
+    body.layout-mobile .plugin-parameter-ui label:has(> input:is([type="radio"], [type="checkbox"])) {
+        min-inline-size: var(--et-mobile-control-height);
+    }
+}
+
 .plugin-parameter-ui .parameter-row input[type="range"] {
     flex: 1 1 120px;
     min-width: 120px;
@@ -148,6 +206,8 @@ input[type="range"] {
 }
 
 input[type="range"]:not(.vertical-slider) {
+    /* Custom drag handling uses rightward movement to increase the value. */
+    direction: ltr;
     -webkit-appearance: none;
     appearance: none;
     height: 16px;

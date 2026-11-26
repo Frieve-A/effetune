@@ -73,6 +73,14 @@ export class Oo1DatabaseSyncAdapter {
     return statement;
   }
 
+  // Same shape as node:sqlite DatabaseSync#function, which the shared UPnP query uses.
+  function(name, options, fn) {
+    this.raw.createFunction(name, (_context, ...values) => fn(...values), {
+      arity: fn.length,
+      deterministic: options?.deterministic === true
+    });
+  }
+
   close() {
     this.statements.clear();
     this.raw.close();

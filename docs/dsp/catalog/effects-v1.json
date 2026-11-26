@@ -6749,6 +6749,22 @@
           "default": 0,
           "minimum": 0,
           "maximum": 65535
+        },
+        {
+          "name": "tuning",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        {
+          "name": "tuningKey",
+          "type": "integer",
+          "count": 1,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 23
         }
       ],
       "seeded": true,
@@ -10030,7 +10046,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "2a611d1730e6b03a01602f87f89d55b12cc825cbdfad6685dcb03f78a0c5d0f0",
-    "privateLayoutSha256": "ea6daebe26b4248301edd6439f18959850e62a69cb1b1f28c29b374c11b35441"
+    "publicCatalogSha256": "385b9d3b72f26884aac4a2af108e5f9e642c73a576068cb46b6bb2cfb27924dd",
+    "privateLayoutSha256": "fd1de8e9945a1967a1f4ade46bdeee62dd20aa55c37e3516d82578cec27cf5f9"
   }
 }

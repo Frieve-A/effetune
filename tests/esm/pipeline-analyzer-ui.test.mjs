@@ -72,7 +72,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-graph-shell\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-view-switcher\s*\{[^}]*position:\s*absolute;/s);
   assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend\s*\{[^}]*top:\s*5px;[^}]*right:\s*5px;[^}]*left:\s*auto;[^}]*font-size:\s*10px;/s);
-  assert.match(uiSource, /this\.graphSection\.append\(this\.viewGroup, this\.displayControl, this\.analysisControls, this\.graphShell, this\.analysisMessage\)/);
+  assert.match(uiSource, /this\.graphSection\.append\(this\.viewGroup, this\.displayControl, this\.analysisControls,\s*this\.runFailure, this\.graphShell, this\.analysisMessage\)/);
   assert.doesNotMatch(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend-label(?:-short)?\s*\{/s);
   assert.match(mobileCss, /body\.layout-mobile \.pipeline-analyzer-panel input\[type='number'\],\s*body\.layout-mobile \.pipeline-analyzer-panel select,[\s\S]*?min-height:\s*var\(--et-mobile-control-height\);[\s\S]*?font-size:\s*16px;/s);
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option,/);
@@ -999,15 +999,21 @@ uiTest('limits hover interpolation to finite adjacent points inside each curve s
   assert.equal(ui.hoverSvg.querySelectorAll('.pipeline-analyzer-cursor-marker').length, 2);
 });
 
-uiTest('contains no nonnumeric message regions and retains graph semantics', () => {
+uiTest('shows a localized analysis failure and retains graph semantics', () => {
   const source = fs.readFileSync(new URL('../../js/pipeline-analyzer/ui.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /measurementWarnings|graphEmpty|staleBadge|provenance|setStatus|pipeline-analyzer-(?:status|warnings|provenance|graph-empty|stale-badge)/);
   const fixture = createFixture();
+  fixture.windowRef.uiManager = { t(key, { name }) { return `${key} ${name}`; } };
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
   assert.equal(ui.graphSvg.getAttribute('role'), 'img');
   assert.equal(ui.graphSvg.getAttribute('aria-label'), 'Pipeline response graph');
   assert.equal(ui.graphSvg.getAttribute('aria-busy'), undefined);
   assert.equal(ui.graphSpinner.hidden, true);
+  ui.setRunFailure('Room EQ');
+  assert.equal(ui.runFailure.hidden, false);
+  assert.equal(ui.runFailure.textContent, 'pipelineAnalyzer.error.effect Room EQ');
+  ui.setMeasuring(true);
+  assert.equal(ui.runFailure.hidden, true);
   ui.setMeasuring(true);
   assert.equal(ui.graphSvg.getAttribute('aria-busy'), 'true');
   assert.equal(ui.graphSpinner.hidden, false);

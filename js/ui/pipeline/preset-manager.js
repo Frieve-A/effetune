@@ -329,100 +329,60 @@ export class PresetManager {
             await options.beforeCommit?.();
             historyManager = this.pipelineManager.historyManager;
             const commit = () => historyManager.withHistorySuppressed(() => {
-            // Store expanded state for non-current pipeline before clearing
-            const currentPipeline = this.audioManager.currentPipeline;
-            const nonCurrentPipeline = currentPipeline === 'A' ? this.audioManager.pipelineB : this.audioManager.pipelineA;
-            const nonCurrentExpandedPlugins = new Set();
-            
-            if (nonCurrentPipeline) {
-                nonCurrentPipeline.forEach(plugin => {
-                    if (this.pipelineManager.expandedPlugins.has(plugin)) {
-                        nonCurrentExpandedPlugins.add(plugin);
+                const states = Array.isArray(preset.pipeline) ? preset.pipeline.map(pluginState => ({
+                    nm: pluginState.name,
+                    en: pluginState.enabled,
+                    ...(pluginState.inputBus !== undefined && { ib: pluginState.inputBus }),
+                    ...(pluginState.outputBus !== undefined && { ob: pluginState.outputBus }),
+                    ...(pluginState.channel !== undefined && { ch: pluginState.channel }),
+                    ...pluginState.parameters
+                })) : preset.plugins;
+                const plugins = [];
+                const needsAdmission = typeof this.audioManager.validatePresetPipeline === 'function';
+                let admitted = false;
+                try {
+                    for (const state of states) {
+                        const plugin = this.pipelineManager.pluginManager.createPlugin(state.nm);
+                        if (!plugin) continue;
+                        plugins.push(plugin);
+                        if (!needsAdmission) {
+                            applySerializedState(plugin, state);
+                            continue;
+                        }
+                        // Candidate parameters must stay private until the native host admits the preset.
+                        const active = plugin.audioHostActive;
+                        plugin.audioHostActive = false;
+                        try { applySerializedState(plugin, state); }
+                        finally { plugin.audioHostActive = active; }
                     }
-                });
-            }
-            
-            // Clean up existing plugins before removing them
-            this.audioManager.pipeline.forEach(plugin => {
-                if (typeof plugin.cleanup === 'function') {
-                    plugin.cleanup();
+                    admitted = !needsAdmission || this.audioManager.validatePresetPipeline(plugins);
+                } finally {
+                    if (!admitted) plugins.forEach(plugin => plugin.cleanup?.());
                 }
+                if (!admitted) return false;
+
+                const currentPipeline = this.audioManager.currentPipeline;
+                const nonCurrentPipeline = currentPipeline === 'A' ? this.audioManager.pipelineB : this.audioManager.pipelineA;
+                const expanded = this.pipelineManager.expandedPlugins;
+                const nonCurrentExpanded = (nonCurrentPipeline || []).filter(plugin => expanded.has(plugin));
+                this.audioManager.pipeline.forEach(plugin => plugin.cleanup?.());
+                this.audioManager.pipeline.length = 0;
+                expanded.clear();
+                for (const plugin of [...plugins, ...nonCurrentExpanded]) expanded.add(plugin);
+                this.audioManager.updateCurrentPipeline(plugins);
+                this.pipelineManager.core.updatePipelineUI(true);
+                this.pipelineManager.core.updateWorkletPlugins();
+
+                this.pipelineManager.core.enabled = true;
+                this.audioManager.setMasterBypass(false);
+                document.querySelector('.toggle-button.master-toggle')?.classList.remove('off');
+                this.pipelineManager.core.updateAllPluginDisplayState();
+                return true;
             });
-            
-            // Clear current pipeline and expanded plugins
-            this.audioManager.pipeline.length = 0;
-            this.pipelineManager.expandedPlugins.clear();
-            
-            let plugins = [];
-            
-            // Handle both old format (plugins array) and new format (pipeline array)
-            if (preset.pipeline && Array.isArray(preset.pipeline)) {
-                // New format
-                plugins = preset.pipeline.map(pluginState => {
-                    const plugin = this.pipelineManager.pluginManager.createPlugin(pluginState.name);
-                    if (!plugin) return null;
-                    
-                    // Create a state object in the format expected by applySerializedState
-                    const state = {
-                        nm: pluginState.name,
-                        en: pluginState.enabled,
-                        ...(pluginState.inputBus !== undefined && { ib: pluginState.inputBus }),
-                        ...(pluginState.outputBus !== undefined && { ob: pluginState.outputBus }),
-                        ...(pluginState.channel !== undefined && { ch: pluginState.channel }),
-                        ...pluginState.parameters
-                    };
-                    
-                    // Apply serialized state
-                    applySerializedState(plugin, state);
-                    
-                    this.pipelineManager.expandedPlugins.add(plugin);
-                    return plugin;
-                }).filter(plugin => plugin !== null);
-            } else if (preset.plugins && Array.isArray(preset.plugins)) {
-                // Old format
-                plugins = preset.plugins.map(state => {
-                    const plugin = this.pipelineManager.pluginManager.createPlugin(state.nm);
-                    if (!plugin) return null;
-                    
-                    // Apply serialized state
-                    applySerializedState(plugin, state);
-                    
-                    this.pipelineManager.expandedPlugins.add(plugin);
-                    return plugin;
-                }).filter(plugin => plugin !== null);
-            } else {
-                throw new Error('Unrecognized preset format');
-            }
-            
-            // Update current pipeline (A or B) with new plugins
-            this.audioManager.updateCurrentPipeline(plugins);
-            
-            // Restore expanded state for non-current pipeline
-            if (nonCurrentPipeline) {
-                nonCurrentPipeline.forEach(plugin => {
-                    if (nonCurrentExpandedPlugins.has(plugin)) {
-                        this.pipelineManager.expandedPlugins.add(plugin);
-                    }
-                });
-            }
-            
-            // Update UI with force rebuild flag
-            this.pipelineManager.core.updatePipelineUI(true);
-            
-            // Update worklet directly without rebuilding pipeline
-            this.pipelineManager.core.updateWorkletPlugins();
-            
-            // Ensure master bypass is OFF after loading preset
-            this.pipelineManager.core.enabled = true;
-            this.audioManager.setMasterBypass(false);
-            const masterToggle = document.querySelector('.toggle-button.master-toggle');
-            if (masterToggle) {
-                masterToggle.classList.remove('off');
-            }
-            this.pipelineManager.core.updateAllPluginDisplayState();
-            });
-            if (this.audioManager.withMutationOptions) await this.audioManager.withMutationOptions(options, commit);
-            else commit();
+            const committed = this.audioManager.withMutationOptions
+                ? await this.audioManager.withMutationOptions(options, commit)
+                : commit();
+            if (committed === false) return false;
 
             historyManager.saveState();
             

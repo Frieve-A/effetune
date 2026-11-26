@@ -1,6 +1,8 @@
 :root {
     --et-bottom-nav-height: 56px;
     --et-mini-player-height: 52px;
+    --et-mobile-fab-size: 56px;
+    --et-mobile-fab-gap: 16px;
     --et-mobile-gap: 10px;
     --et-mobile-page-padding: 8px;
     --et-mobile-control-height: 40px;
@@ -84,7 +86,7 @@ body.layout-mobile h1 {
     font-size: 20px;
     line-height: 32px;
     /* Reserve room for the Visualizer and overflow header buttons. */
-    padding-right: calc(2 * var(--et-mobile-control-height) + 16px);
+    padding-inline-end: calc(2 * var(--et-mobile-control-height) + 16px);
 }
 
 body.layout-mobile .subtitle,
@@ -98,7 +100,7 @@ body.layout-mobile .column-control-button {
 /* Keep the shared Visualizer button beside the mobile overflow menu. */
 body.layout-mobile .header-buttons {
     display: flex;
-    right: calc(var(--et-mobile-control-height) + 8px);
+    inset-inline-end: calc(var(--et-mobile-control-height) + 8px);
 }
 
 body.layout-mobile .header-buttons .header-button {
@@ -127,7 +129,7 @@ body.layout-mobile .subtitle-container {
 
 body.layout-mobile .mobile-menu-button {
     position: absolute;
-    right: 0;
+    inset-inline-end: 0;
     top: 0;
     width: var(--et-mobile-control-height);
     height: var(--et-mobile-control-height);
@@ -234,7 +236,7 @@ body.layout-mobile .mobile-menu-backdrop.mobile-open {
 body.layout-mobile .mobile-overflow-menu {
     position: fixed;
     top: calc(8px + env(safe-area-inset-top));
-    right: 8px;
+    inset-inline-end: 8px;
     visibility: hidden;
     opacity: 0;
     translate: 0 -8px;
@@ -276,6 +278,13 @@ body.layout-mobile .mobile-overflow-menu-item {
     font-size: 16px;
 }
 
+body.layout-mobile #networkOutputPicker {
+    position-area: bottom span-all;
+    position-try-fallbacks: flip-block;
+    justify-self: start;
+    margin-inline: var(--et-mobile-page-padding);
+}
+
 body.layout-mobile .main-container {
     display: block;
     min-height: 0;
@@ -300,7 +309,8 @@ body.layout-mobile .file-drop-area .drop-message {
 
 body.layout-mobile.view-player .main-container,
 body.layout-mobile.view-player .mobile-mini-player,
-body.layout-mobile.view-player .mobile-plugin-fab {
+body.layout-mobile.view-player .mobile-plugin-fab,
+body.layout-mobile.view-effects:has(> .double-blind-test) > .mobile-plugin-fab {
     display: none;
 }
 
@@ -314,7 +324,12 @@ body.layout-mobile.view-effects .double-blind-test {
 }
 
 body.layout-mobile.view-effects {
-    padding-bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 8px);
+    --et-mobile-fab-bottom-space: calc(var(--et-mobile-fab-gap) + var(--et-mobile-fab-size));
+    padding-bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + var(--et-mobile-fab-bottom-space) + 8px);
+}
+
+body.layout-mobile.view-effects:has(> .double-blind-test) {
+    --et-mobile-fab-bottom-space: 0px;
 }
 
 /* Lay the Player tab out as a flex column so the player fills the space left
@@ -327,6 +342,10 @@ body.layout-mobile.view-player {
     flex-direction: column;
     height: 100svh;
     overflow-y: hidden;
+}
+
+body.layout-mobile.view-player > .title-container {
+    flex-shrink: 0;
 }
 
 body.layout-mobile .mobile-player-view {
@@ -374,7 +393,7 @@ body.layout-mobile .mobile-audio-resume-prompt {
     left: max(16px, env(safe-area-inset-left));
     right: max(16px, env(safe-area-inset-right));
     bottom: calc(var(--et-bottom-nav-height) + env(safe-area-inset-bottom) + 16px);
-    z-index: 1205;
+    z-index: 999;
     min-height: 44px;
     border: 1px solid color-mix(in srgb, var(--et-text-primary) 22%, transparent);
     border-radius: 8px;
@@ -505,11 +524,12 @@ body.layout-mobile .mobile-mini-open-music[hidden] {
 
 body.layout-mobile .mobile-plugin-fab {
     position: fixed;
-    right: 16px;
-    bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 16px);
+    inset-inline-end: var(--et-mobile-fab-gap);
+    bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + var(--et-mobile-fab-gap));
     z-index: 980;
-    width: 56px;
-    height: 56px;
+    box-sizing: border-box;
+    width: var(--et-mobile-fab-size);
+    height: var(--et-mobile-fab-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -566,7 +586,7 @@ body.layout-mobile .plugin-list.mobile-closing {
 body.layout-mobile .mobile-plugin-list-close {
     position: fixed;
     top: calc(12px + env(safe-area-inset-top));
-    right: 12px;
+    inset-inline-end: 12px;
     z-index: 1110;
     width: 40px;
     height: 40px;
@@ -632,7 +652,7 @@ body.layout-mobile .effect-search-input {
     min-width: 0;
     height: 40px;
     margin: 0;
-    padding: 0 36px 0 12px;
+    padding-inline: 12px 36px;
     font-size: 16px;
 }
 
@@ -649,7 +669,7 @@ body.layout-mobile .search-button {
 
 body.layout-mobile .effect-search-clear-button {
     top: calc(71px + env(safe-area-inset-top));
-    right: 48px;
+    inset-inline-end: 48px;
 }
 
 body.layout-mobile .effect-search-clear-button.visible {
@@ -673,8 +693,7 @@ body.layout-mobile .category-effects-count {
 
 body.layout-mobile .plugin-category-items {
     display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 150px));
-    justify-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
     gap: 8px;
 }
 
@@ -685,12 +704,29 @@ body.layout-mobile .plugin-item {
     padding: 9px 12px;
     margin: 0;
     line-height: 1.25;
+    overflow-wrap: anywhere;
     cursor: pointer;
     box-sizing: border-box;
 }
 
-body.layout-mobile .plugin-description {
-    display: none !important;
+body.layout-mobile .plugin-list:not(:has(#effectsTab.active)) .plugin-description {
+    display: none;
+}
+
+body.layout-mobile .plugin-list:has(#effectsTab.active) .plugin-item {
+    display: block;
+}
+
+body.layout-mobile .plugin-list:has(#effectsTab.active) .plugin-description {
+    display: block;
+    position: static;
+    width: auto;
+    margin-block-start: 4px;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--et-text-secondary);
+    font-size: 0.875em;
 }
 
 body.layout-mobile .pipeline-empty,
@@ -710,7 +746,7 @@ body.layout-mobile .pipeline-empty-message {
 
 body.layout-mobile .pipeline {
     width: 100% !important;
-    margin-left: 0 !important;
+    margin-inline-start: 0 !important;
     padding: 10px 0;
     box-sizing: border-box;
     overflow-x: hidden;
@@ -723,14 +759,11 @@ body.layout-mobile .pipeline-header {
     margin-inline: var(--et-mobile-page-padding);
 }
 
-/* Share the row with the master toggle / A-B controls when everything fits;
-   margin-left: auto keeps the toolbar groups right-aligned both on the shared
-   row and after wrapping onto their own row. */
+/* The toolbar stays at the inline end when sharing a row or wrapping. */
 body.layout-mobile .pipeline-header-right {
     flex: 0 1 auto;
     flex-wrap: wrap;
     justify-content: flex-end;
-    margin-left: auto;
     min-width: 0;
 }
 
@@ -744,12 +777,12 @@ body.layout-mobile .preset-select {
     height: var(--et-mobile-control-height);
     min-height: var(--et-mobile-control-height);
     min-width: var(--et-mobile-field-min-width);
-    padding-right: 64px;
+    padding-inline-end: 64px;
     box-sizing: border-box;
 }
 
 body.layout-mobile .preset-clear-button {
-    right: var(--et-mobile-control-height);
+    inset-inline-end: var(--et-mobile-control-height);
 }
 
 body.layout-mobile select {
@@ -976,8 +1009,8 @@ body.layout-mobile .plugin-parameter-ui .parameter-row > select {
 
 /* Slider readouts use the same compact width as numeric parameter fields. */
 body.layout-mobile .plugin-parameter-ui .parameter-row > input[type="range"] + input[type="text"][readonly] {
-    flex: 0 0 var(--et-mobile-field-min-width);
-    width: var(--et-mobile-field-min-width);
+    flex: 0 0 6em;
+    width: 6em;
 }
 
 body.layout-mobile .plugin-parameter-ui label,
@@ -1162,8 +1195,8 @@ body.layout-mobile .player-artwork {
     grid-area: artwork;
     display: grid;
     place-items: center;
-    width: min(68vw, 280px);
-    height: min(68vw, 280px);
+    width: min(68vw, 280px, max(120px, 100vh - 495px));
+    height: min(68vw, 280px, max(120px, 100vh - 495px));
     margin: 0 auto;
     border-radius: 10px;
     background: var(--et-surface-3);
@@ -1298,6 +1331,7 @@ body.layout-mobile .seek-bar {
     max-width: 100%;
     margin: 0;
     box-sizing: border-box;
+    touch-action: pan-y;
 }
 
 body.layout-mobile .time-display {
@@ -1430,6 +1464,72 @@ body.layout-mobile .player-playlist {
     box-sizing: border-box;
 }
 
+@media (orientation: landscape) and (max-height: 500px) {
+    body.layout-mobile.view-effects {
+        --et-mobile-fab-bottom-space: 0px;
+    }
+    body.layout-mobile.view-effects .main-container {
+        margin-inline-start: calc(var(--et-mobile-fab-size) + 2 * var(--et-mobile-fab-gap));
+    }
+    body.layout-mobile.view-effects .mobile-plugin-fab {
+        inset-inline-start: var(--et-mobile-fab-gap);
+        inset-inline-end: auto;
+    }
+    body.layout-mobile .audio-player {
+        grid-template-columns: minmax(100px, 25%) minmax(0, 1fr);
+        grid-template-rows: auto auto auto;
+        grid-template-areas: "title controls" "artwork controls" "track controls";
+        gap: 4px 8px;
+        padding: 4px;
+    }
+    body.layout-mobile .player-artwork { width: 64px; height: 64px; }
+    body.layout-mobile .track-name { font-size: 14px; }
+    body.layout-mobile .player-controls,
+    body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden])) {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        grid-template-rows: 40px 48px auto;
+        grid-template-areas:
+            "seek seek seek seek seek seek time time"
+            "shuffle speed previous stop play next repeat close"
+            "playlist playlist playlist playlist playlist playlist playlist playlist";
+        gap: 4px;
+    }
+    body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden])) {
+        grid-template-rows: 40px 48px 40px auto;
+        grid-template-areas:
+            "seek seek seek seek seek seek time time"
+            "shuffle speed previous stop play next repeat close"
+            "volume volume volume volume volume volume volume volume"
+            "playlist playlist playlist playlist playlist playlist playlist playlist";
+    }
+    body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button {
+        width: 40px; height: 40px; min-height: 40px;
+    }
+    body.layout-mobile .player-playlist { min-height: 0; }
+
+    @media (max-width: 499px) {
+        body.layout-mobile .player-controls,
+        body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden])) {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: 40px 48px 48px auto;
+            grid-template-areas:
+                "seek seek time time"
+                "shuffle speed previous stop"
+                "play next repeat close"
+                "playlist playlist playlist playlist";
+        }
+        body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden])) {
+            grid-template-rows: 40px 48px 48px 40px auto;
+            grid-template-areas:
+                "seek seek time time"
+                "shuffle speed previous stop"
+                "play next repeat close"
+                "volume volume volume volume"
+                "playlist playlist playlist playlist";
+        }
+    }
+}
+
 body.layout-mobile .player-playlist-item {
     min-height: 44px;
     font-size: 14px;
@@ -1481,6 +1581,42 @@ body.layout-mobile .ai-dialog.mobile-closing {
 body.layout-mobile .preset-dialog-name-input,
 body.layout-mobile .preset-dialog-search-input {
     font-size: 16px;
+}
+
+body.layout-mobile .preset-dialog :is(.preset-dialog-system-preset, .preset-dialog-user-preset) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: start;
+}
+
+@media (pointer: coarse) {
+    body.layout-mobile .preset-dialog .preset-dialog-delete-button {
+        min-height: var(--et-mobile-control-height);
+    }
+
+    body.layout-mobile .preset-dialog :is(.preset-dialog-close, .preset-dialog-rename-button) {
+        box-sizing: border-box;
+        width: var(--et-mobile-control-height);
+        min-height: var(--et-mobile-control-height);
+    }
+
+    body.layout-mobile .preset-dialog .preset-dialog-rename-button {
+        position: relative;
+        isolation: isolate;
+        border: 0;
+        background: transparent;
+    }
+
+    body.layout-mobile .preset-dialog .preset-dialog-rename-button::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        z-index: -1;
+        border: 1px solid var(--et-surface-31);
+        border-radius: 4px;
+        background: var(--et-control-gradient);
+        pointer-events: none;
+    }
 }
 
 /* The search input appears only when the sheet is at max height or a query is active; keep that height so filtering does not shrink the sheet and move the input. */
@@ -1572,6 +1708,18 @@ body.layout-mobile .config-dialog {
 body.layout-mobile .config-dialog {
     width: min(760px, calc(100% - 32px));
     height: min(900px, calc(100% - 32px));
+}
+
+/* Keep dialogs clear of the status and navigation bars in edge-to-edge
+   layouts in either layout mode (the insets are 0 without system bars);
+   the percentage dialog sizes are relative to this padded box. */
+.modal-overlay {
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.remote-control-overlay {
+    padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 body.layout-mobile .checkbox-container,
@@ -1781,10 +1929,18 @@ body.layout-mobile input[type="range"].vertical-slider::-moz-range-thumb {
         --et-motion-exit: 0ms;
     }
 }
-body.layout-mobile .visualizer-workspace { flex-direction: column; height: calc(100dvh - 180px); gap: 8px; }
+body.layout-mobile.view-visualizer:not(.visualizer-expanded) { display: flex; flex-direction: column; min-height: 100dvh; }
+body.layout-mobile.view-visualizer:not(.visualizer-expanded) #visualizerView:not(.is-editing) { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+body.layout-mobile .visualizer-workspace { flex-direction: column; height: auto; min-height: 0; flex: 1; gap: 8px; }
 body.layout-mobile #visualizerView.is-editing .visualizer-workspace { height: auto; min-height: calc(100dvh - 180px); }
-body.layout-mobile .visualizer-stage-host { min-height: 160px; }
+/* Keep room for the expand button without letting the canvas dictate the stage height. */
+body.layout-mobile.view-visualizer:not(.visualizer-expanded) #visualizerView:not(.is-editing) .visualizer-stage-host {
+    contain: size;
+    min-height: 66px;
+}
 body.layout-mobile #visualizerView.is-editing .visualizer-stage-host.scroll-gutters { margin-inline: 24px; }
+body.layout-mobile #visualizerView.is-editing .visualizer-expand { display: none; }
+body.layout-mobile .visualizer-viewport-controls { right: 12px; flex-wrap: wrap; }
 body.layout-mobile .visualizer-editor { width: 100%; max-height: 25dvh; }
 body.layout-mobile .visualizer-editor-navigation { order: -1; }
 body.layout-mobile .visualizer-toolbar { gap: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
@@ -1794,5 +1950,5 @@ body.layout-mobile .visualizer-toolbar > button > span { display: none; }
 body.layout-mobile .visualizer-quality-label { gap: 3px; }
 body.layout-mobile.view-visualizer .mobile-mini-player,
 body.layout-mobile.view-visualizer .mobile-plugin-fab { display: none !important; }
-body.layout-mobile.visualizer-expanded .mobile-bottom-nav { display: none; }
+body.layout-mobile.visualizer-expanded :is(.mobile-bottom-nav, .mobile-mini-player, .mobile-plugin-fab, .mobile-player-view, .audio-player, .mobile-audio-resume-prompt) { display: none !important; }
 body.layout-mobile.visualizer-expanded .visualizer-workspace { height: 100%; }

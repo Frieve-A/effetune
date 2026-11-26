@@ -40,6 +40,11 @@ body.layout-mobile .matrix-button {
 
 body.layout-mobile .matrix-table-wrapper {
     --matrix-button-box: 40px;
+    max-height: none;
+}
+
+body.layout-mobile .matrix-table th.matrix-sticky-header[colspan] {
+    text-align: start;
 }
 
 .matrix-table-expanded {

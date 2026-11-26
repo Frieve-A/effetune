@@ -119,7 +119,10 @@ export class FileProcessor {
         // Add click handler for file selection
         const selectFiles = dropArea.querySelector('.select-files');
         selectFiles.addEventListener('click', () => {
-            if (this.processingPromise) return;
+            if (this.processingPromise) {
+                this.scrollToMobileProgress();
+                return;
+            }
             fileInput.click();
         });
 
@@ -393,6 +396,12 @@ export class FileProcessor {
         }, { passive: false });
     }
 
+    scrollToMobileProgress() {
+        if (isAndroidHost() && document.body.classList.contains('layout-mobile')) {
+            this.dropArea.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+
     /**
      * Show progress UI
      */
@@ -450,7 +459,7 @@ export class FileProcessor {
 
         // Add the click handler
         cancelButton.addEventListener('click', this._cancelHandler);
-
+        this.scrollToMobileProgress();
     }
 
     /**
@@ -673,9 +682,16 @@ export class FileProcessor {
                 const file = await documents.bridge.request('documents.create', {
                     uri: directory.uri, name, mimeType: blob.type || 'application/octet-stream'
                 });
-                await documents.write(file.uri, blob, { signal: { throwIfAborted: () => {
-                    if (this.isCancelled) throw new DOMException('Processing cancelled', 'AbortError');
-                } } });
+                try {
+                    await documents.write(file.uri, blob, { signal: { throwIfAborted: () => {
+                        if (this.isCancelled) throw new DOMException('Processing cancelled', 'AbortError');
+                    } } });
+                } catch (error) {
+                    // Remove only the partial document created by this export.
+                    await documents.bridge.request('documents.delete', { uri: file.uri })
+                        .catch(deleteError => console.warn('Failed to remove an incomplete export:', deleteError));
+                    throw error;
+                }
             }, outputSettings);
         } else if ('showDirectoryPicker' in window) {
             let dirHandle;
@@ -995,13 +1011,18 @@ export class FileProcessor {
                 window.uiManager.t('ui.downloadSingleFile', { size: (blob.size / (1024 * 1024)).toFixed(1) })) :
                 `Download ${isZip ? 'processed files' : 'processed file'} (${(blob.size / (1024 * 1024)).toFixed(1)} MB)`;
 
+            const android = isAndroidHost();
+            const icon = android
+                ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>'
+                : '<span class="download-icon">⭳</span>';
             downloadLink.innerHTML = `
-                <span class="download-icon">⭳</span>
+                ${icon}
                 ${downloadText}
             `;
 
-            // Clean up object URL when downloaded
-            downloadLink.addEventListener('click', () => {
+            // Clean up object URL when downloaded. Android keeps it until _clearDownload()
+            // so a cancelled save dialog can be retried with the same result.
+            if (!android) downloadLink.addEventListener('click', () => {
                 setTimeout(() => {
                     URL.revokeObjectURL(downloadUrl);
                     if (this._downloadUrl === downloadUrl) this._downloadUrl = null;

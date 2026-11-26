@@ -7595,6 +7595,18 @@
               "minimum": 0,
               "maximum": 65535,
               "default": 0
+            },
+            "tuning": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2,
+              "default": 0
+            },
+            "tuningKey": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23,
+              "default": 0
             }
           }
         },

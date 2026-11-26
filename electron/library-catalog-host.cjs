@@ -270,6 +270,7 @@ class LibraryCatalogHost extends EventEmitter {
   beginScanFolder(options) { return this.request('beginScanFolder', options); }
   preflightScanBatch(options) { return this.request('preflightScanBatch', options); }
   commitScanSeenBatch(options) { return this.request('commitScanSeenBatch', options); }
+  scanTraversalQueue(options) { return this.request('scanTraversalQueue', options); }
   cueDirectoryStage(options) { return this.request('cueDirectoryStage', options); }
   listMetadataCandidates(options) { return this.request('listMetadataCandidates', options); }
   advanceScanMetadataCursor(options) { return this.request('advanceScanMetadataCursor', options); }

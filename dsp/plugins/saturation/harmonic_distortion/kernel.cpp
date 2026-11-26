@@ -49,26 +49,32 @@ public:
       ramp_remaining_ = ramp_frames_;
     }
 
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      if (ramp_remaining_ != 0u) {
-        for (std::size_t index = 0u; index < current_.size(); ++index)
-          current_[index] += step_[index];
-        if (--ramp_remaining_ == 0u)
-          current_ = target_;
-      }
-      const double inverse_sensitivity = 1.0 / (current_[4] + 1.0e-9);
+    // Coefficients change per frame only while ramping; the remaining frames use one constant set
+    // and run channel by channel so the memoryless shaper vectorizes.
+    const std::uint32_t ramp_count = ramp_remaining_ < frame_count ? ramp_remaining_ : frame_count;
+    for (std::uint32_t frame = 0u; frame < ramp_count; ++frame) {
+      for (std::size_t index = 0u; index < current_.size(); ++index)
+        current_[index] += step_[index];
+      if (--ramp_remaining_ == 0u)
+        current_ = target_;
       for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
         const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;
-        audio[index] = static_cast<float>(shaper_.process(channel, audio[index], [&](double input) {
-          const double scaled = input * current_[4];
-          const double squared = scaled * scaled;
-          const double cubed = squared * scaled;
-          const double fourth_power = squared * squared;
-          const double fifth_power = fourth_power * scaled;
-          const double nonlinear = scaled + current_[0] * squared + current_[1] * cubed +
-                                   current_[2] * fourth_power + current_[3] * fifth_power;
-          return nonlinear * inverse_sensitivity;
-        }));
+        audio[index] = processSample(channel, audio[index], current_);
+      }
+    }
+    if (ramp_count == frame_count)
+      return;
+    const std::array<double, 5u> coefficients = current_;
+    const double inverse_sensitivity = inverseSensitivity(coefficients);
+    const bool oversampled = dsp::OversampledShaper::factor(params_.oversampling, 8u) != 1u;
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      float *const data = audio + static_cast<std::size_t>(channel) * frame_count;
+      if (oversampled) {
+        for (std::uint32_t frame = ramp_count; frame < frame_count; ++frame)
+          data[frame] = processSample(channel, data[frame], coefficients);
+      } else {
+        for (std::uint32_t frame = ramp_count; frame < frame_count; ++frame)
+          data[frame] = static_cast<float>(shape(data[frame], coefficients, inverse_sensitivity));
       }
     }
   }
@@ -85,6 +91,30 @@ public:
   }
 
 private:
+  static double shape(double input, const std::array<double, 5u> &coefficients,
+                      double inverse_sensitivity) noexcept {
+    const double scaled = input * coefficients[4];
+    const double squared = scaled * scaled;
+    const double cubed = squared * scaled;
+    const double fourth_power = squared * squared;
+    const double fifth_power = fourth_power * scaled;
+    const double nonlinear = scaled + coefficients[0] * squared + coefficients[1] * cubed +
+                             coefficients[2] * fourth_power + coefficients[3] * fifth_power;
+    return nonlinear * inverse_sensitivity;
+  }
+
+  static double inverseSensitivity(const std::array<double, 5u> &coefficients) noexcept {
+    return 1.0 / (coefficients[4] + 1.0e-9);
+  }
+
+  float processSample(std::uint32_t channel, float input,
+                      const std::array<double, 5u> &coefficients) noexcept {
+    const double inverse_sensitivity = inverseSensitivity(coefficients);
+    return static_cast<float>(shaper_.process(channel, input, [&](double value) noexcept {
+      return shape(value, coefficients, inverse_sensitivity);
+    }));
+  }
+
   dsp::OversampledShaper shaper_;
   std::uint32_t max_channels_ = 0u;
   std::array<double, 5u> current_{};

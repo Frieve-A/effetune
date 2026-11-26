@@ -1,7 +1,11 @@
 import { ANDROID_ORIGIN, getAndroidBridge, isAndroidHost, base64ToBytes } from './bridge.js';
+import { getAudioMimeType } from '../audio/audio-mime.js';
+import { LibraryRepositoryError } from '../library/repository/contract-errors.js';
 
 const COMMANDS = new Set(['documents.read', 'documents.list', 'documents.stat',
-    'documents.resolve', 'documents.permission', 'documents.compareRoots']);
+    'documents.resolve', 'documents.permission', 'documents.compareRoots',
+    // Loudness tag writing rebuilds files next to the original.
+    'documents.create', 'documents.write', 'documents.replace', 'documents.delete', 'documents.copyRange', 'documents.compareRange']);
 const pending = new Map();
 
 export function isAndroidDirectory(value) {
@@ -30,7 +34,9 @@ export function receiveAndroidDocumentReply(message) {
     pending.delete(message.id);
     clearTimeout(operation.timer);
     if (message.ok) operation.resolve(message.result);
-    else operation.reject(new Error('Android document access failed'));
+    else if (message.code === 'document-not-found') {
+        operation.reject(new LibraryRepositoryError(message.code, 'Android document access failed'));
+    } else operation.reject(new Error('Android document access failed'));
     return true;
 }
 
@@ -39,7 +45,8 @@ export function forwardAndroidDocumentRequest(worker, message) {
     if (!isAndroidHost() || !COMMANDS.has(message.command)) return true;
     void getAndroidBridge().request(message.command, message.payload).then(
         result => worker.postMessage({ protocolVersion: 1, type: 'android-document-reply', id: message.id, ok: true, result }),
-        () => worker.postMessage({ protocolVersion: 1, type: 'android-document-reply', id: message.id, ok: false })
+        error => worker.postMessage({ protocolVersion: 1, type: 'android-document-reply', id: message.id, ok: false,
+            ...(error?.code === 'document-not-found' && { code: error.code }) })
     );
     return true;
 }
@@ -49,7 +56,7 @@ export class AndroidDocumentFile {
     constructor(record, offset = 0, size = record.size) {
         this.androidUri = record.uri;
         this.name = record.name;
-        this.type = record.mimeType || '';
+        this.type = getAudioMimeType(this.name?.includes('.') ? this.name : '', record.mimeType || '');
         this.lastModified = record.lastModified || 0;
         this.size = size;
         this.offset = offset;

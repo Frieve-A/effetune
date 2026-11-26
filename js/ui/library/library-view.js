@@ -57,6 +57,7 @@ const PAGED_PLAYLIST_ITEM_DRAG_TYPE = 'application/x-effetune-playlist-item-key'
 const DESKTOP_LIBRARY_MIN_HEIGHT_PX = 360;
 const DESKTOP_LIBRARY_BOTTOM_GAP_PX = 20;
 const PAGED_ACTION_TOAST_DELAY_MS = 750;
+const PAGED_ACTION_TOAST_DURATION_MS = 5_000;
 const PAGED_DEFAULT_SELECT_ALL_SCOPE_KEYS = Object.freeze([
   'albumKey', 'artistKey', 'genreKey', 'subfolderKey', 'playlistId', 'folderDirKey'
 ]);
@@ -221,6 +222,7 @@ export class LibraryView {
     this.suppressPopStateCount = 0;
     this.isViewShown = false;
     this.lastRevealedMobileNavView = null;
+    this.hasPagedNavCounts = false;
     this.typeJumpBuffer = '';
     this.typeJumpTimer = null;
     this.renderScheduled = false;
@@ -246,8 +248,8 @@ export class LibraryView {
       ${libraryMain(
         libraryButton(this.t('library.action.addFolder'), { className: 'library-add-folder', icon: ICONS.add }) +
         libraryButton(this.t('library.action.rescan'), { className: 'library-rescan', icon: ICONS.refresh, iconOnly: true }) +
-        (!isAndroidHost() ? libraryButton(this.t('library.action.analyzeLoudness'), { className: 'library-analyze', icon: ICONS.loudness, iconOnly: true }) : '') +
-        (this.manager.runtime === 'electron' ? libraryButton(this.t('library.action.writeLoudnessTags'), { className: 'library-write-tags', icon: ICONS.edit, iconOnly: true }) : '')
+        libraryButton(this.t('library.action.analyzeLoudness'), { className: 'library-analyze', icon: ICONS.loudness, iconOnly: true }) +
+        (this.manager.runtime === 'electron' || isAndroidHost() ? libraryButton(this.t('library.action.writeLoudnessTags'), { className: 'library-write-tags', icon: ICONS.edit, iconOnly: true }) : '')
       )}
     `;
     const mainContainer = document.querySelector('.main-container');
@@ -373,9 +375,17 @@ export class LibraryView {
 
     clearTimeout(this.pagedActionToastTimer);
     this.pagedActionToastTimer = null;
-    this.pagedActionToastVisible = Boolean(state?.status === 'waiting' ||
-      state?.status === 'cancelling' ||
-      (state?.status === 'terminal' && state.terminalKind !== 'succeeded'));
+    const showTerminalToast = state?.status === 'terminal' && state.terminalKind !== 'succeeded' &&
+      state.result?.code !== 'library-files-missing';
+    this.pagedActionToastVisible = state?.status === 'waiting' ||
+      state?.status === 'cancelling' || showTerminalToast;
+    if (showTerminalToast) {
+      this.pagedActionToastTimer = setTimeout(() => {
+        this.pagedActionToastTimer = null;
+        this.pagedActionToastVisible = false;
+        this.renderPagedActionToast();
+      }, PAGED_ACTION_TOAST_DURATION_MS);
+    }
   }
 
   handleCatalogInvalidation(event) {
@@ -1280,11 +1290,13 @@ export class LibraryView {
       if (countElement.textContent !== countText) countElement.textContent = countText;
     });
 
+    const receivedFirstCounts = counts !== undefined && !this.hasPagedNavCounts;
+    if (counts !== undefined) this.hasPagedNavCounts = true;
     if (!isMobileLayout()) {
       this.lastRevealedMobileNavView = null;
     } else if (
       this.isViewShown &&
-      this.lastRevealedMobileNavView !== this.currentView
+      (this.lastRevealedMobileNavView !== this.currentView || receivedFirstCounts)
     ) {
       this.nav.querySelector('[aria-current="page"]')?.scrollIntoView?.({
         block: 'nearest',
@@ -3568,8 +3580,10 @@ export class LibraryView {
   }
 
   async writeLoudnessTags() {
-    if (this.manager.runtime !== 'electron') return;
-    const api = window.electronAPI.libraryCatalogV1;
+    // The Android Web catalog client mirrors the desktop tag API.
+    const api = this.manager.runtime === 'electron' ? window.electronAPI.libraryCatalogV1
+      : isAndroidHost() ? this.manager.client : null;
+    if (!api) return;
     const { eligible, snapshotId } = await api.prepareLoudnessTagWrite();
     if (!eligible) {
       this.uiManager?.setError?.(this.t('library.loudness.noTags'), false);
@@ -3593,7 +3607,9 @@ export class LibraryView {
     }
     if (syncFailed) messages.push(this.t('library.error.actionFailed'));
     if (result.rescanFailed) messages.push(this.t('library.state.scanError'));
-    this.uiManager?.setError?.(messages.join(' · '), Boolean(result.rescanFailed || syncFailed));
+    if (result.backupRemaining) messages.push(this.t('library.loudness.backupRemaining'));
+    if (result.temporaryRemaining) messages.push(this.t('library.loudness.temporaryRemaining'));
+    this.uiManager?.setError?.(messages.join(' · '), Boolean(result.rescanFailed || syncFailed || result.backupRemaining || result.temporaryRemaining));
   }
 
   async handleReconnectFolder(folderId) {
@@ -3882,6 +3898,7 @@ function fallbackText(key, params = {}) {
     'library.nav.playlists': 'Playlists',
     'library.nav.recentlyAdded': 'Recently Added',
     'library.search.placeholder': 'Search library',
+    'library.search.playlistsPlaceholder': 'Search playlists',
     'library.search.results': 'Search Results',
     'library.search.showAll': 'Show all',
     'library.action.addFolder': 'Add Music Folder',
@@ -3899,6 +3916,8 @@ function fallbackText(key, params = {}) {
     'library.loudness.skip.unsupported': `Unsupported file structure: ${params.count ?? 0}`,
     'library.loudness.skip.changed': `Changed since measurement: ${params.count ?? 0}`,
     'library.loudness.skip.unavailable': `Inaccessible or in use: ${params.count ?? 0}`,
+    'library.loudness.backupRemaining': 'Check the music folder for a backup of the original song.',
+    'library.loudness.temporaryRemaining': 'A temporary tag file could not be removed from the music folder.',
     'library.action.removeFolder': 'Remove',
     'library.action.play': 'Play',
     'library.action.shuffle': 'Shuffle',
@@ -4153,8 +4172,10 @@ export function getPagedInvalidationDecision(query, event, dependentQueries = []
     queries.some(visibleQuery => visibleQuery.endpoint === 'entities' && visibleQuery.entityType === 'folder') &&
     scope.startsWith('folder:')
   ) || (
-    queries.some(visibleQuery => visibleQuery.endpoint === 'entities' && visibleQuery.entityType === 'playlist') &&
-    scope.startsWith('playlist:')
+    scope.startsWith('playlist:') && queries.some(visibleQuery =>
+      visibleQuery.endpoint === 'entities' && visibleQuery.entityType === 'playlist' &&
+      (visibleQuery.includeSystemPlaylists || !isSystemPlaylistId(scope.slice('playlist:'.length)))
+    )
   ));
   return changedScope
     ? { restart: true, reason: 'visible-scope-changed', changedScope }

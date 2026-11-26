@@ -760,6 +760,21 @@ test('validates pipeline availability and manages entry/exit gating', async () =
   });
 });
 
+test('the Android host opens the blind test and restores shared pipelines', async () => {
+  await withHarness({}, async h => {
+    h.windowObject.location.origin = 'https://appassets.androidplatform.net';
+    h.windowObject.effetuneAndroid = { postMessage() {} };
+    const share = encodePipelineState({ pA: [], pB: [] });
+
+    assert.equal(DoubleBlindTest.abValid(h.uiManager.audioManager), true);
+    h.dbt.enterFresh();
+    assert.equal(h.dbt.isActive(), true);
+    await h.dbt.exit();
+    assert.equal(h.dbt.restoreFromShare(share), true);
+    assert.equal(h.dbt.isActive(), true);
+  });
+});
+
 test('waits for primary pipeline teardown before completing DBT exit and finish', async () => {
   for (const mode of ['exit', 'finish']) {
     let resolveTeardown;
@@ -1103,6 +1118,49 @@ test('a failed saved test recall leaves both pipelines and settings in place', a
     assert.deepEqual(expandedPlugins, new Set([...pipelineA, ...pipelineB]));
     assert.deepEqual(cleaned, ['GoodA', 'GoodB']);
     assert.equal(h.errors.filter(error => error.isError && error.message === 'error.failedToLoadPreset').length, 3);
+  });
+});
+
+test('host DBT rejection preserves the prior test and reports both recall and share failures', async () => {
+  await withHarness({}, async h => {
+    h.dbt.enterFresh();
+    h.dbt.testName = 'Previous';
+    const saved = { v: 1, tc: 8, pA: [{ nm: 'RestoredA' }], pB: [{ nm: 'RestoredB' }] };
+    await h.dbt._persistTests({ Rejected: saved });
+    const { audioManager } = h.uiManager;
+    const { pipelineA, pipelineB } = audioManager;
+    let rejectRestoration;
+    let entered;
+    const enteredRestoration = new Promise(resolve => { entered = resolve; });
+    audioManager.restoreBlindTestPipelines = () => new Promise((_resolve, reject) => {
+      rejectRestoration = reject;
+      entered();
+    });
+
+    h.dbt.els.testNameInput.value = 'Rejected';
+    await h.dbt.els.testNameInput.dispatch('input');
+    assert.equal(h.dbt.testName, 'Previous');
+    const load = h.dbt.els.testNameInput.dispatch('change');
+    await enteredRestoration;
+    assert.equal(h.dbt.testName, 'Previous');
+    assert.equal(h.dbt.els.config.inert, true);
+    assert.equal(h.errors.length, 0);
+    rejectRestoration(new Error('Host rejected the restore'));
+    await load;
+    assert.equal(h.dbt.testName, 'Previous');
+    assert.equal(h.dbt.els.testNameInput.value, 'Previous');
+    assert.equal(h.dbt.els.config.inert, false);
+    assert.equal(audioManager.pipelineA, pipelineA);
+    assert.equal(audioManager.pipelineB, pipelineB);
+    assert.equal(h.errors.at(-1).message, 'error.failedToLoadPreset');
+
+    h.dbt.active = false;
+    audioManager.restoreBlindTestPipelines = async () => { throw new Error('Host rejected the share'); };
+    assert.equal(await h.dbt.restoreFromShare(encodePipelineState(saved)), false);
+    assert.equal(h.dbt.active, false);
+    assert.equal(h.dbt.restoredFromURI, false);
+    assert.equal(h.errors.length, 2);
+    assert.ok(h.errors.every(error => error.isError && error.message === 'error.failedToLoadPreset'));
   });
 });
 
@@ -1488,6 +1546,10 @@ test('waits for parallel readiness and ignores stale completion after close or f
 
       const starting = h.dbt._startTest('ABX');
       await flushMicrotasks();
+      assert.equal(h.dbt.els.config.classList.contains('hidden'), false);
+      assert.equal(h.dbt.els.test.classList.contains('hidden'), true);
+      assert.equal(h.dbt.els.startAbx.disabled, true);
+      assert.equal(h.dbt.els.startAbpref.disabled, true);
       assert.equal(trials, 0);
       assert.equal(h.dbt.testRunning, true);
       h.dbt._vote('A');

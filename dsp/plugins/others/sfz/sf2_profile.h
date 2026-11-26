@@ -21,6 +21,8 @@ struct Inputs {
   // Follows the SoundFont 2.04 text literally instead of the E-mu hardware
   // behavior that common synthesizers emulate and banks are authored for.
   bool strictSpec = false;
+  // Fractional key added for pitch only (tuning); dropped when the zone fixes the key.
+  float keyOffset = 0.0F;
 };
 struct RouteSpan {
   const float *words = nullptr;
@@ -205,9 +207,10 @@ inline bool evaluate(std::span<const float, kGeneratorCount> generators, RouteSp
   // attenuation generator by 0.4; modulator contributions are unscaled.
   if (!input.strictSpec)
     result.generators[48] *= .4F;
-  input.key = generators[46] >= 0.0F && generators[46] <= 127.0F
-                  ? static_cast<std::uint32_t>(generators[46])
-                  : input.key;
+  if (generators[46] >= 0.0F && generators[46] <= 127.0F) {
+    input.key = static_cast<std::uint32_t>(generators[46]);
+    input.keyOffset = 0.0F;
+  }
   input.velocity = generators[47] >= 0.0F && generators[47] <= 127.0F
                        ? static_cast<std::uint32_t>(generators[47])
                        : input.velocity;
@@ -262,9 +265,10 @@ inline bool evaluate(std::span<const float, kGeneratorCount> generators, RouteSp
   result.effectiveKey = input.key;
   result.effectiveVelocity = input.velocity;
   const auto root = g[58] >= 0.0F && g[58] <= 127.0F ? g[58] : sampleRoot;
-  result.pitchCents = (static_cast<float>(input.key) - root) * clamp(g[56], 0.0F, 1200.0F) +
-                      clamp(g[51], -120.0F, 120.0F) * 100.0F + clamp(g[52], -99.0F, 99.0F) +
-                      pitchCorrection + g[60];
+  result.pitchCents =
+      (static_cast<float>(input.key) + input.keyOffset - root) * clamp(g[56], 0.0F, 1200.0F) +
+      clamp(g[51], -120.0F, 120.0F) * 100.0F + clamp(g[52], -99.0F, 99.0F) + pitchCorrection +
+      g[60];
   result.cutoffHz = frequency(clamp(g[8], 1500.0F, 13500.0F));
   result.resonanceDb = clamp(g[9], 0.0F, 960.0F) * .1F;
   result.attenuationCb = clamp(g[48], 0.0F, 1440.0F);

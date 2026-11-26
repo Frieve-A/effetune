@@ -245,10 +245,12 @@ export async function startRemoteClient(win = window) {
 
     // Local history does not exist here: undo and redo are the host's.
     const history = pipelineManager.historyManager;
+    // history1 hosts accept the history, slot and copySlot ops of sync1 without its edits.
+    const hostHasHistory = () => !!session.features && (session.features.has('sync1') || session.features.has('history1'));
     history.saveState = () => {};
     history.saveStateAtomicallyIfChanged = () => false;
     history.undo = () => {
-        if (!session.features?.has('sync1')) return;
+        if (!hostHasHistory()) return;
         engine.noteGesture();
         history.endOperation();
         engine.flushNow();
@@ -257,7 +259,7 @@ export async function startRemoteClient(win = window) {
             error => showCommandError('EffeTune could not undo the last change. Try again.', error));
     };
     history.redo = () => {
-        if (!session.features?.has('sync1')) return;
+        if (!hostHasHistory()) return;
         engine.noteGesture();
         history.endOperation();
         engine.flushNow();
@@ -333,8 +335,13 @@ export async function startRemoteClient(win = window) {
     }
     $('undoButton')?.addEventListener('click', () => pipelineManager.undo());
     $('redoButton')?.addEventListener('click', () => pipelineManager.redo());
+    // Legacy chain writes carry no slot: commit them before the host changes its active slot.
+    const flushLegacyEdits = () => {
+        if (engine instanceof LegacySyncEngine) engine.flushNow();
+    };
     toggleButton?.addEventListener('click', () => {
         engine.noteGesture();
+        flushLegacyEdits();
         session.sendCommand({ op: 'slot', slot: adapter.slot === 'A' ? 'B' : 'A' })
             .catch(error => showCommandError('EffeTune could not switch pipelines. Try again.', error));
     });
@@ -349,6 +356,7 @@ export async function startRemoteClient(win = window) {
     const copySlot = (from, to) => () => {
         menu?.classList.remove('show');
         engine.noteGesture();
+        flushLegacyEdits();
         session.sendCommand({ op: 'copySlot', from, to })
             .catch(error => showCommandError('EffeTune could not copy the pipeline. Try again.', error));
     };
@@ -365,9 +373,10 @@ export async function startRemoteClient(win = window) {
                 engine = sync ? new SyncEngine(engineOptions) : new LegacySyncEngine(engineOptions);
             }
             engine.onConnected();
+            const hasHistory = hostHasHistory();
             for (const id of ['undoButton', 'redoButton', 'pipelineToggleButton', 'pipelineMenuButton']) {
                 const button = $(id);
-                if (button) button.disabled = !sync;
+                if (button) button.disabled = !hasHistory;
             }
             if (Array.isArray(message.effects)) {
                 const available = new Set(message.effects);

@@ -16,16 +16,22 @@ void check(bool value, const char *message) {
     std::exit(1);
   }
 }
-std::vector<std::uint8_t>
-descriptor(const std::vector<std::pair<et_instance, std::int8_t>> &nodes) {
+struct Route {
+  et_instance instance;
+  std::int8_t channel;
+  std::uint8_t input = 0, output = 0;
+};
+std::vector<std::uint8_t> descriptor(const std::vector<Route> &nodes) {
   std::vector<std::uint8_t> bytes(8 + 12 * nodes.size());
   bytes[0] = 1;
   bytes[4] = static_cast<std::uint8_t>(nodes.size());
   for (std::size_t i = 0; i < nodes.size(); ++i) {
     auto *row = bytes.data() + 8 + 12 * i;
-    std::memcpy(row, &nodes[i].first, 4);
+    std::memcpy(row, &nodes[i].instance, 4);
     row[4] = row[8] = 1;
-    row[7] = static_cast<std::uint8_t>(nodes[i].second);
+    row[5] = nodes[i].input;
+    row[6] = nodes[i].output;
+    row[7] = static_cast<std::uint8_t>(nodes[i].channel);
   }
   return bytes;
 }
@@ -85,4 +91,22 @@ int main() {
   check(engine->processPipeline(2, 128, 128. / 48000., 0) == ET_OK &&
             engine->combined()[128 + 64] == .375f,
         "replacement preserved the right-channel impulse");
+
+  const auto parallel = descriptor({{unity, -2, 0, 1}, {delay, -2}, {substitute, -2, 1, 0}});
+  check(engine->configurePipeline(parallel.data(), static_cast<unsigned>(parallel.size())) == ET_OK,
+        "configure delayed main path and unity return");
+  Engine::RoutedTaps taps;
+  engine->tracePipelineOutputs(0, taps);
+  check(taps[2].instance == substitute && taps[2].output.local == 192 && taps[2].input.local == 192,
+        "unity return observes both taps before incoming merge compensation");
+
+  const auto align = descriptor({{unity, 1}, {delay, 0}, {substitute, -2}});
+  check(engine->configurePipeline(align.data(), static_cast<unsigned>(align.size())) == ET_OK,
+        "configure stereo send with right input compensation");
+  engine->tracePipelineOutputs(substitute, taps);
+  check(taps[2].instance == substitute && taps[2].input.local == 0 && taps[2].input.network == 0 &&
+            taps[2].output.network == -1,
+        "send marker observes aligned input before taking the network branch");
+  check(taps[0].instance == unity && taps[0].output.local == 192 && taps[0].output.network == 192,
+        "upstream right channel traverses the alignment delay to both outputs");
 }

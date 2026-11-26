@@ -41,7 +41,8 @@ public final class WorkflowDocumentsProvider extends DocumentsProvider {
             else if (column.equals(COLUMNS[2])) value = file.isDirectory() ? DocumentsContract.Document.MIME_TYPE_DIR : "application/octet-stream";
             else if (column.equals(COLUMNS[3])) value = file.length();
             else if (column.equals(COLUMNS[4])) value = file.lastModified();
-            else if (column.equals(COLUMNS[5])) value = file.isDirectory() ? DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE : DocumentsContract.Document.FLAG_SUPPORTS_WRITE | DocumentsContract.Document.FLAG_SUPPORTS_DELETE;
+            else if (column.equals(COLUMNS[5])) value = file.isDirectory() ? DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
+                    : DocumentsContract.Document.FLAG_SUPPORTS_WRITE | DocumentsContract.Document.FLAG_SUPPORTS_DELETE | DocumentsContract.Document.FLAG_SUPPORTS_RENAME;
             row.add(column, value);
         }
     }
@@ -70,6 +71,15 @@ public final class WorkflowDocumentsProvider extends DocumentsProvider {
         return id;
     }
     @Override public void deleteDocument(String id) throws FileNotFoundException { if (!file(id).delete()) throw new FileNotFoundException(id); }
+    @Override public String renameDocument(String id, String name) throws FileNotFoundException {
+        if (name.isEmpty() || name.contains("/") || name.contains("\\") || name.equals(".") || name.equals("..")) throw new FileNotFoundException(name);
+        File source = file(id);
+        if (source.getName().equals("refuse-install.tmp")) throw new FileNotFoundException("Fixture refused installation");
+        if (source.getName().equals("redirect-install.tmp")) name = "different-name.flac";
+        String target = id.substring(0, id.lastIndexOf('/') + 1) + name;
+        if (file(target).exists() || !source.renameTo(file(target))) throw new FileNotFoundException(target);
+        return target;
+    }
     @Override public boolean isChildDocument(String parent, String child) { return child.startsWith(parent + "/"); }
 
     private static String fixtureDirectory(String directory) {
@@ -123,8 +133,8 @@ public final class WorkflowDocumentsProvider extends DocumentsProvider {
                 if (send == null || !Intent.ACTION_SEND.equals(send.getAction())) throw new IllegalArgumentException("Invalid fixture share");
                 Uri uri = send.getParcelableExtra(Intent.EXTRA_STREAM);
                 if (uri == null || !"content".equals(uri.getScheme()) || !(APP_PACKAGE + ".files").equals(uri.getAuthority())
-                        || uri.getPathSegments().size() != 2 || !"imports".equals(uri.getPathSegments().get(0))
-                        || !uri.getLastPathSegment().endsWith("-" + directory + ".effetune_backup")) {
+                        || uri.getPathSegments().size() != 3 || !"imports".equals(uri.getPathSegments().get(0))
+                        || !uri.getLastPathSegment().equals(directory + ".effetune_backup")) {
                     throw new IllegalArgumentException("Invalid fixture share URI");
                 }
                 long bytes = 0;

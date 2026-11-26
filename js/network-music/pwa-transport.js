@@ -2,6 +2,8 @@ import { networkMusicError, parsePwaPairingLink, validatePwaMediaUrl } from './p
 import { playPwaNetworkItems } from './pwa-playback-provider.js';
 import { PwaSubsonicSource } from './subsonic-source.js';
 import { ensureAndroidNetworkAccess } from '../android/network.js';
+import { isAndroidHost } from '../android/bridge.js';
+import { AndroidSubsonicTransport } from '../android/subsonic.js';
 
 const STORAGE_KEY = 'effetune.networkMusic.devices.v1';
 const MAX_FRAME_BYTES = 4 * 1024 * 1024;
@@ -18,6 +20,7 @@ export class PwaNetworkMusicTransport {
     this.isPwa = true;
     this.records = new Map();
     this.sources = new Map();
+    this.androidSubsonic = isAndroidHost(windowRef) ? new AndroidSubsonicTransport({ windowRef, fetchImpl }) : null;
     this.connectingSources = new Set();
     this.listeners = new Set();
     this.effectListeners = new Set();
@@ -177,9 +180,25 @@ export class PwaNetworkMusicTransport {
     } catch { if (this.records.get(record.hostId) === record && generation === record.refreshGeneration) record.available = false; }
   }
 
+  loadAndroidSources() {
+    this.androidSourcesReady ??= this.androidSubsonic.command('list').then(({ sources }) => {
+      if (this.closed) return;
+      for (const entry of sources) this.sources.set(entry.id, new PwaSubsonicSource({ ...entry, android: this.androidSubsonic }));
+    }).catch(error => {
+      this.androidSourcesReady = null;
+      throw error;
+    });
+    return this.androidSourcesReady;
+  }
+
   networkMusicGetState() {
+    if (this.androidSubsonic) return this.loadAndroidSources().then(() => this.stateSnapshot());
+    return Promise.resolve(this.stateSnapshot());
+  }
+
+  stateSnapshot() {
     const records = [...this.records.values()];
-    return Promise.resolve({ queueTracksMax: 4096, sharing: { enabled: false, folderIds: [], folders: [] },
+    return { queueTracksMax: 4096, sharing: { enabled: false, folderIds: [], folders: [] },
       sources: [...this.sources.values()].map(source => ({ ...source.descriptor, url: source.endpoint, user: source.user })),
       players: records.flatMap(record => [{ id: playerId(record), name: record.name, available: record.available && record.info?.capabilities.playback === true, isEffeTune: true,
         capabilities: { effects: record.info?.capabilities.effects === true },
@@ -193,10 +212,24 @@ export class PwaNetworkMusicTransport {
         searchSupported: record.info.capabilities.searchSupported === true, catalogSearch: record.info.capabilities.catalogSearch === true
       }] : []), ...(record.info?.libraries ?? []).filter(device => validId(device.id) && device.id !== 'local').map(device => ({ ...device,
         id: gatewayDeviceId(record, 'library', device.id), name: `${device.name} · ${record.name}`,
-        available: record.available && device.available !== false }))])) });
+        available: record.available && device.available !== false }))])) };
   }
 
   async networkMusicConfigure({ subsonic }) {
+    if (this.androidSubsonic) {
+      if (!subsonic || this.closed) throw networkMusicError('unavailable');
+      await this.loadAndroidSources();
+      const result = await this.androidSubsonic.configure(subsonic);
+      if (this.closed) throw networkMusicError('unavailable');
+      if (subsonic.action === 'add') {
+        this.sources.set(result.id, new PwaSubsonicSource({ ...result, android: this.androidSubsonic }));
+      } else if (subsonic.action === 'remove') {
+        this.sources.get(subsonic.id)?.dispose();
+        this.sources.delete(subsonic.id);
+      }
+      this.emit();
+      return this.networkMusicGetState();
+    }
     const networkPermission = ensureAndroidNetworkAccess({ request: true, windowRef: this.windowRef });
     if (networkPermission) await networkPermission;
     if (!subsonic) throw networkMusicError('unavailable');
@@ -254,6 +287,9 @@ export class PwaNetworkMusicTransport {
   }
 
   async networkMusicResolveTrack({ serverId, trackId, localPlayback = false, target, resources }) {
+    if (this.androidSubsonic && localPlayback && this.sources.has(serverId)) {
+      return this.sources.get(serverId).resolveTrack(trackId);
+    }
     if (localPlayback) {
       const protocols = this.browserProtocols(resources);
       if (protocols?.length === 0) throw networkMusicError('unsupportedFormat');
@@ -326,6 +362,7 @@ export class PwaNetworkMusicTransport {
   canPlayItem(item, destination) {
     if (this.sources.has(item.serverId)) {
       if (destination !== 'local' || item.playable === false) return false;
+      if (this.androidSubsonic) return true;
     } else {
       let source;
       try { source = this.deviceFor(item.serverId, 'library'); } catch { return false; }

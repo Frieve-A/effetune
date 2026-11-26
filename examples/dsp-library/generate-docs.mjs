@@ -925,6 +925,12 @@ renders a MIDI file.
   \`0\` excludes none.
 - \`transpose\` shifts melodic notes by −12 to +12 semitones. The default is
   \`0\`. Drum parts keep their original keys.
+- \`tuning\`: \`0\` (default) is Equal temperament, \`1\` is Just intonation, and \`2\`
+  is quarter-comma Meantone. \`tuningKey\` names the key the tuning is built on:
+  \`0\` to \`11\` are C to B major and \`12\` to \`23\` are C to B minor. The default is
+  \`0\` (C major). The correction follows each note's key before \`transpose\`, so
+  transposing does not change it, and drum parts are never retuned. A tuning
+  change applies to the next note; sounding notes keep their pitch.
 - \`respondGm\`, \`respondGs\` and \`respondXg\` each enable playback for the
   corresponding MIDI system. All three default to \`true\`. The library starts
   in GM mode and its MIDI API ignores system reset messages.

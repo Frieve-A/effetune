@@ -14,6 +14,16 @@ function besselI0(value) {
     return sum;
 }
 
+// Kaiser-windowed sinc for a band limit (fraction of Nyquist) and a 100 dB stopband.
+function kaiserKernel(bandLimit, transition = bandLimit * 0.1) {
+    const attenuationDb = 100;
+    return {
+        cutoff: bandLimit - transition / 2,
+        beta: 0.1102 * (attenuationDb - 8.7),
+        radius: Math.ceil((attenuationDb - 8) / (4.57 * Math.PI * transition))
+    };
+}
+
 const coefficientTableCache = new Map();
 
 function greatestCommonDivisor(left, right) {
@@ -67,14 +77,10 @@ export function resampleWindowedSinc(input, sourceRate, targetRate, options = {}
     const outputLength = Math.max(1, Math.round(input.length * targetRate / sourceRate));
     const output = new Float32Array(outputLength);
     const ratio = sourceRate / targetRate;
-    const bandLimit = targetRate < sourceRate ? targetRate / sourceRate : 1;
-    const cutoff = bandLimit * 0.95;
-    const transitionWidthRadians = Math.PI * bandLimit * 0.1;
-    const attenuationDb = 100;
-    const beta = options.beta ?? 0.1102 * (attenuationDb - 8.7);
-    const radius = options.radius ?? Math.ceil(
-        (attenuationDb - 8) / (4.57 * transitionWidthRadians)
-    );
+    const kernel = kaiserKernel(targetRate < sourceRate ? targetRate / sourceRate : 1);
+    const cutoff = kernel.cutoff;
+    const beta = options.beta ?? kernel.beta;
+    const radius = options.radius ?? kernel.radius;
     if (!Number.isSafeInteger(radius) || radius < 1 || !Number.isFinite(beta) || beta < 0) {
         throw new TypeError('Resampler radius and beta must be valid');
     }
@@ -114,6 +120,58 @@ export function resampleWindowedSinc(input, sourceRate, targetRate, options = {}
             weightTotal += weight;
         }
         output[outputIndex] = weightTotal === 0 ? 0 : weighted / weightTotal;
+    }
+    return output;
+}
+
+// Fractional positions between RATIO_PHASES table phases interpolate linearly between neighbouring phases.
+const RATIO_PHASES = 1024;
+const ratioTables = new Map();
+
+function getRatioTable(wideband) {
+    let table = ratioTables.get(wideband);
+    if (!table) {
+        // Preserve the 98% ESS band with up to 0.5% clock error in either direction.
+        const { cutoff, beta, radius } = wideband ? kaiserKernel(0.995, 0.01) : kaiserKernel(1);
+        const normalizer = besselI0(beta);
+        const taps = radius * 2;
+        const coefficients = new Float64Array((RATIO_PHASES + 1) * taps);
+        for (let phase = 0; phase <= RATIO_PHASES; phase += 1) {
+            coefficients.set(createPhaseCoefficients(phase / RATIO_PHASES, cutoff, radius, beta, normalizer), phase * taps);
+        }
+        table = { radius, taps, coefficients };
+        ratioTables.set(wideband, table);
+    }
+    return table;
+}
+
+/**
+ * `input` on a time axis scaled by `ratio` around `origin`: output[n] = input(origin + (n − origin)·ratio),
+ * band-limited interpolation with zeros outside the input. For ratios close to 1, such as a clock
+ * mismatch between devices; the output has the input's length.
+ */
+export function resampleByRatio(input, ratio, origin = 0, { wideband = false } = {}) {
+    if (!(input instanceof Float32Array) && !(input instanceof Float64Array)) {
+        throw new TypeError('Resampler input must be a floating-point array');
+    }
+    if (!(ratio > 0) || !Number.isFinite(origin)) throw new TypeError('Resampling ratio and origin must be valid');
+    const { radius, taps, coefficients } = getRatioTable(wideband);
+    const output = new Float32Array(input.length);
+    for (let outputIndex = 0; outputIndex < output.length; outputIndex += 1) {
+        const position = origin + (outputIndex - origin) * ratio;
+        const center = Math.floor(position);
+        const scaled = (position - center) * RATIO_PHASES;
+        const phase = Math.floor(scaled);
+        const blend = scaled - phase;
+        const lower = phase * taps;
+        const first = center - radius + 1;
+        const end = first + taps > input.length ? input.length - first : taps;
+        let weighted = 0;
+        for (let tap = first < 0 ? -first : 0; tap < end; tap += 1) {
+            const coefficient = coefficients[lower + tap];
+            weighted += input[first + tap] * (coefficient + blend * (coefficients[lower + taps + tap] - coefficient));
+        }
+        output[outputIndex] = weighted;
     }
     return output;
 }

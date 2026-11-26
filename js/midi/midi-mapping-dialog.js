@@ -98,6 +98,7 @@ export class MidiMappingDialog {
     this.document = windowRef.document;
     this.nowDate = nowDate;
     this.overlay = null;
+    this.opening = null;
     this.status = null;
     this.content = null;
     this.pendingConflict = null;
@@ -117,10 +118,23 @@ export class MidiMappingDialog {
     return enableStandardSelect(createElement(this.document, 'select', 'config-select'));
   }
 
-  async open() {
-    if (this.overlay) return this.overlay;
+  open() {
+    if (this.opening) return this.opening;
+    if (this.overlay) return Promise.resolve(this.overlay);
+    this.opening = this.openDialog().finally(() => { this.opening = null; });
+    return this.opening;
+  }
+
+  async openDialog() {
     loadStylesheet(LIBRARY_STYLESHEET, { documentRef: this.document });
-    await this.manager.setDialogOpen(true);
+    try {
+      await this.manager.setDialogOpen(true);
+    } catch (error) {
+      void this.manager.setDialogOpen(false).catch(cleanupError => {
+        console.error('Failed to reset controller mapping settings:', cleanupError);
+      });
+      throw error;
+    }
     this.overlay = createElement(this.document, 'div', 'library-dialog-backdrop');
     const dialog = createElement(
       this.document,
@@ -144,7 +158,7 @@ export class MidiMappingDialog {
     this.content = createElement(this.document, 'div', 'library-properties-body midi-mapping-content');
     const footer = createElement(this.document, 'div', 'library-properties-head');
     footer.appendChild(createElement(this.document, 'span', '', ''));
-    const close = createElement(this.document, 'button', 'library-button', this.t('midi.close', 'Close'));
+    const close = createElement(this.document, 'button', 'library-button midi-mapping-close', this.t('midi.close', 'Close'));
     close.type = 'button';
     close.addEventListener('click', () => this.close());
     footer.appendChild(close);
@@ -176,13 +190,19 @@ export class MidiMappingDialog {
   async close() {
     if (!this.overlay) return;
     closeStandardSelect(this.document);
-    this.manager.cancelLearn();
-    await this.manager.setDialogOpen(false);
     this.removeManagerListener?.();
     this.removeManagerListener = null;
     this.document.removeEventListener('keydown', this.handleKeyDown, true);
     this.overlay.remove();
     this.overlay = null;
+    this.pendingConflict = null;
+    try {
+      await this.manager.setDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to sync controller mapping settings:', error);
+      this.window.uiManager?.setError?.(this.t('midi.settingsUnavailable',
+        'Could not load or update controller mapping settings. Please try again.'), true);
+    }
   }
 
   setStatus(message, warning = false) {
@@ -443,6 +463,7 @@ export class MidiMappingDialog {
     section.appendChild(header);
     const list = createElement(this.document, 'dl', 'library-properties-list');
     section.appendChild(list);
+    const inputs = this.manager.listInputs();
     if (!this.manager.isSupported()) {
       const row = createElement(this.document, 'div');
       row.appendChild(createElement(this.document, 'dt', '', ''));
@@ -468,7 +489,13 @@ export class MidiMappingDialog {
       )));
       list.appendChild(row);
     }
-    for (const input of this.manager.listInputs()) {
+    if (this.manager.isSupported() && !this.manager.midiAccessError && !inputs.length) {
+      const row = createElement(this.document, 'div');
+      row.appendChild(createElement(this.document, 'dt', '', ''));
+      row.appendChild(createElement(this.document, 'dd', 'midi-note', this.t('midi.noDevices', 'No MIDI devices are connected.')));
+      list.appendChild(row);
+    }
+    for (const input of inputs) {
       const deviceKey = input.key || input.name;
       const row = createElement(this.document, 'div', 'midi-device-row');
       const name = createElement(this.document, 'dt');

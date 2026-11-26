@@ -27,7 +27,8 @@ void ClockedFifo::flush(std::uint64_t generation) noexcept {
 }
 
 bool ClockedFifo::write(const float *planar, unsigned channels, std::size_t frames,
-                        std::uint64_t generation, std::uint64_t sourceFrame) noexcept {
+                        std::uint64_t generation, std::uint64_t sourceFrame,
+                        std::uint64_t arrivalNs) noexcept {
   if (!frames || !channels || channels > maxChannels_ || !planar || generation < generation_)
     return false;
   flush(generation);
@@ -63,6 +64,8 @@ bool ClockedFifo::write(const float *planar, unsigned channels, std::size_t fram
     offset += count;
   }
   expected_ = sourceFrame + frames;
+  if (auto *packets = producerPacketEnds_.load(std::memory_order_acquire))
+    packets[(end + frames - 1) % capacity_] = {frames, arrivalNs};
   write_.store(end + frames, std::memory_order_release);
   return true;
 }
@@ -83,14 +86,20 @@ void ClockedFifo::silence(std::uint64_t generation, std::optional<std::uint64_t>
 }
 
 void ClockedFifo::open(unsigned channels, unsigned inputRate, unsigned outputRate,
-                       std::size_t targetFrames) {
+                       std::size_t targetFrames, bool live) {
   if (channels > maxChannels_ || !targetFrames || targetFrames >= capacity_)
     throw std::invalid_argument("Invalid FIFO reader configuration");
+  if (live && !packetEnds_) {
+    packetEnds_ = std::make_unique<PacketEnd[]>(capacity_);
+    producerPacketEnds_.store(packetEnds_.get(), std::memory_order_release);
+  }
   resampler_.emplace(channels, inputRate, outputRate, true);
   channels_ = channels;
   outputRate_ = outputRate;
   nominal_ = resampler_->inputPerOutput();
   target_ = targetFrames;
+  inputRate_ = inputRate;
+  live_ = live;
   zero_.assign(static_cast<std::size_t>(2 * resampler_->delayInputFrames()), 0);
   fadeLength_ = std::max(1u, outputRate / 1000);
   discardBuffered();
@@ -142,7 +151,8 @@ std::size_t ClockedFifo::queued() const noexcept {
   return static_cast<std::size_t>(write_.load(std::memory_order_acquire) - cursor);
 }
 
-void ClockedFifo::read(float *planar, std::size_t stride, std::size_t frames) noexcept {
+void ClockedFifo::read(float *planar, std::size_t stride, std::size_t frames,
+                       std::uint64_t nowNs) noexcept {
   for (unsigned ch = 0; ch < channels_; ++ch)
     std::fill_n(planar + ch * stride, frames, 0);
   auto cursor = read_.load(std::memory_order_relaxed);
@@ -159,7 +169,21 @@ void ClockedFifo::read(float *planar, std::size_t stride, std::size_t frames) no
   while (scan_ < end && !silenceMarks_[scan_ % capacity_])
     ++scan_;
   const bool ending = scan_ < end;
-  const auto available = scan_ - cursor;
+  auto available = scan_ - cursor;
+  // Device input arrives in packets. Counting the newest packet only as far as
+  // its duration has elapsed keeps the level independent of whether a packet
+  // lands just before or just after this read; otherwise that phase alone moves
+  // the level by a whole packet and the controller mistakes it for clock drift.
+  auto level = static_cast<double>(available);
+  if (live_ && available && !ending) {
+    // The PCM release publishes this packet's timing in its final slot. The
+    // producer cannot reuse that slot until this read publishes its cursor.
+    const auto &packet = packetEnds_[(end - 1) % capacity_];
+    const auto size = static_cast<double>(packet.frames);
+    const double elapsed =
+        nowNs > packet.arrivalNs ? (nowNs - packet.arrivalNs) * 1e-9 * inputRate_ : 0.;
+    level -= size - std::min(size, elapsed);
+  }
   if (ending && !available && state_ != FifoState::running) {
     sourceFrame_ = double(positions_[cursor % capacity_]);
     scan_ = ++cursor;
@@ -167,10 +191,24 @@ void ClockedFifo::read(float *planar, std::size_t stride, std::size_t frames) no
   }
   if (state_ == FifoState::idle && available)
     state_ = FifoState::priming;
-  if (state_ == FifoState::priming && (available >= target_ || ending)) {
+  const bool starting = state_ == FifoState::priming && (level >= target_ || ending);
+  if (starting)
     state_ = FifoState::running;
-    beginFade();
+  // Live input queued beyond the target is already late, whether it piled up
+  // before playback started or while the reader stalled. Dropping it returns to
+  // the intended latency at once instead of slewing it away over seconds. While
+  // running, only a backlog the controller cannot absorb quickly is dropped.
+  const bool stale = live_ && state_ == FifoState::running &&
+                     level > (starting ? 1.0 : 2.0) * static_cast<double>(target_);
+  if (stale) {
+    const auto count = std::min(available, static_cast<std::uint64_t>(level - target_));
+    cursor += count;
+    available -= count;
+    level -= static_cast<double>(count);
+    resampler_->reset();
   }
+  if (starting || stale)
+    beginFade();
   std::size_t produced = 0;
   sourceStep_ = nominal_;
   if (state_ == FifoState::priming && available) {
@@ -178,7 +216,7 @@ void ClockedFifo::read(float *planar, std::size_t stride, std::size_t frames) no
     sourceFrame_ = double(positions_[cursor % capacity_]) - resampler_->delayInputFrames();
   }
   if (state_ == FifoState::running) {
-    const double error = (static_cast<double>(available) - target_) / target_;
+    const double error = (level - target_) / target_;
     const double alpha = std::min(1.0, 2.0 * frames / outputRate_);
     correction_ += alpha * (std::clamp(0.01 * error, -0.002, 0.002) - correction_);
     resampler_->setCorrection(correction_);

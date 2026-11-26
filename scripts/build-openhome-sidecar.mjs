@@ -25,21 +25,26 @@ export const openHomeSidecarBuildContract = Object.freeze({
   inputs: Object.freeze([
     'native/openhome-sidecar/CMakeLists.txt',
     'native/openhome-sidecar/dependencies.lock.json',
+    'native/openhome-sidecar/src/av-providers.cpp',
+    'native/openhome-sidecar/src/av-providers.h',
     'native/openhome-sidecar/src/main.cpp',
     'native/openhome-sidecar/src/protocol.cpp',
     'native/openhome-sidecar/src/protocol.h',
     'native/openhome-sidecar/src/providers.cpp',
     'native/openhome-sidecar/src/providers.h',
+    'native/openhome-sidecar/src/runtime.cpp',
+    'native/openhome-sidecar/src/runtime.h',
     'native/openhome-sidecar/tests/protocol_test.cpp',
     'tools/openhome-linux-provenance.mjs',
   ]),
 });
 
 const sidecarRoot = join(repositoryRoot, 'native', 'openhome-sidecar');
-const cacheRoot = join(repositoryRoot, 'tmp', 'cache', 'openhome-sidecar');
+const cacheRoot = join(repositoryRoot, 'out', 'cache', 'openhome-sidecar');
 const sourceRoot = join(cacheRoot, 'src');
 const buildRoot = join(repositoryRoot, 'out', 'native', 'openhome-sidecar');
 const cmakeBuildRoot = join(buildRoot, 'cmake');
+const androidSourceRoot = join(repositoryRoot, 'out', 'openhome-android');
 const lockPath = join(sidecarRoot, 'dependencies.lock.json');
 
 function quoteForCmd(value) {
@@ -249,14 +254,14 @@ async function ensureArchive(entry) {
   return archivePath;
 }
 
-function extractArchive(entry, archivePath) {
-  const destination = join(sourceRoot, `${entry.name}-${entry.commit}`);
+function extractArchive(entry, archivePath, root) {
+  const destination = join(root, `${entry.name}-${entry.commit}`);
   if (existsSync(destination)) {
     return destination;
   }
 
-  const temporaryRoot = join(sourceRoot, `.extract-${entry.name}-${process.pid}`);
-  assertInside(sourceRoot, temporaryRoot);
+  const temporaryRoot = join(root, `.extract-${entry.name}-${process.pid}`);
+  assertInside(root, temporaryRoot);
   rmSync(temporaryRoot, { recursive: true, force: true });
   mkdirSync(temporaryRoot, { recursive: true });
   try {
@@ -519,17 +524,14 @@ export function posixOhNetMakeArgs(platform, architecture) {
   return args;
 }
 
-async function main() {
-  const { architecture, publishDevelopment } = parseBuildOptions(process.argv.slice(2));
-  validateTarget(process.platform, architecture);
+async function prepareLockedSources(root) {
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
   if (lock.schemaVersion !== 1 || !Array.isArray(lock.archives)) {
     throw new Error('The OpenHome dependency lock has an unsupported format.');
   }
 
   mkdirSync(cacheRoot, { recursive: true });
-  mkdirSync(sourceRoot, { recursive: true });
-  mkdirSync(buildRoot, { recursive: true });
+  mkdirSync(root, { recursive: true });
 
   const roots = new Map();
   for (const entry of lock.archives) {
@@ -537,7 +539,7 @@ async function main() {
       throw new Error('The OpenHome dependency lock contains an invalid archive entry.');
     }
     const archivePath = await ensureArchive(entry);
-    roots.set(entry.name, extractArchive(entry, archivePath));
+    roots.set(entry.name, extractArchive(entry, archivePath, root));
   }
 
   const ohNetRoot = roots.get('ohNet');
@@ -546,6 +548,104 @@ async function main() {
     throw new Error('The OpenHome dependency lock must include ohNet and ohNetGenerated.');
   }
   patchOhNetSizeFormats(ohNetRoot);
+  return { ohNetRoot, generatedRoot };
+}
+
+const ohNetPublicHeaders = /^(Buffer|Exception|Functor.*|MimeTypes|OhNetDefines|Defines|OsTypes|OhNetTypes|Types)\.h$/;
+const ohNetNetPublicHeaders = /^(FunctorAsync|OhNet)\.h$/;
+const anyHeader = /\.h$/;
+
+// [source directory, file pattern, Build/Include subdirectory, excluded files], in the
+// order of ohNet's Makefile copy_build_includes target (JavaScript test files omitted).
+const ohNetIncludeCopies = [
+  ['OpenHome', anyHeader, 'OpenHome/Private', ohNetPublicHeaders],
+  ['OpenHome', /^(Buffer\.inl|Optional\.h)$/, 'OpenHome'],
+  ['OpenHome', ohNetPublicHeaders, 'OpenHome'],
+  ['OpenHome/TestFramework', anyHeader, 'OpenHome/Private'],
+  ['OpenHome/Net', anyHeader, 'OpenHome/Net/Private', ohNetNetPublicHeaders],
+  ['OpenHome/Net', ohNetNetPublicHeaders, 'OpenHome/Net/Core'],
+  ['OpenHome/Net', ohNetNetPublicHeaders, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Shell', anyHeader, 'OpenHome/Private'],
+  ['OpenHome/Net/ControlPoint', /^(AsyncPrivate|Cpi.*|FunctorCpiDevice)\.h$/, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/ControlPoint', /^(CpStack|CpDevice|CpDeviceDv|CpDeviceUpnp|CpProxy|FunctorCpDevice)\.h$/, 'OpenHome/Net/Core'],
+  ['OpenHome/Net/ControlPoint', /^CpProxy\.h$/, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Net/ControlPoint/Dv', /^CpiDeviceDv\.h$/, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/ControlPoint/Lpec', /^CpiDeviceLpec\.h$/, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/ControlPoint/Proxies', anyHeader, 'OpenHome/Net/Core'],
+  ['OpenHome/Net/ControlPoint/Upnp', anyHeader, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/Device', /^(DvStack|DvDevice|DvInvocationResponse|DvProvider|DvResourceWriter|DvServerUpnp)\.h$/, 'OpenHome/Net/Core'],
+  ['OpenHome/Net/Device', /^(DvProvider|DvResourceWriter|DvServerUpnp)\.h$/, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Net/Device', /^(DviDevice|DviServer|DviService|DviStack|DviSubscription|FunctorDviInvocation)\.h$/, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/Device/Tests', /^TestBasicDv\.h$/, 'OpenHome/Net/Private/Tests'],
+  ['OpenHome/Net/Device/Bonjour', anyHeader, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/Device/Providers', anyHeader, 'OpenHome/Net/Core'],
+  ['OpenHome/Net/Device/Upnp', anyHeader, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/Device/Lpec', anyHeader, 'OpenHome/Net/Private'],
+  ['OpenHome/Net/Bindings/C', anyHeader, 'OpenHome/Net/C'],
+  ['OpenHome/Net/Bindings/C/ControlPoint', anyHeader, 'OpenHome/Net/C'],
+  ['OpenHome/Net/Bindings/C/ControlPoint/Proxies', anyHeader, 'OpenHome/Net/C'],
+  ['OpenHome/Net/Bindings/C/Device', anyHeader, 'OpenHome/Net/C'],
+  ['OpenHome/Net/Bindings/C/Device/Providers', anyHeader, 'OpenHome/Net/C'],
+  ['OpenHome/Net/Bindings/Cpp/ControlPoint', anyHeader, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Net/Bindings/Cpp/ControlPoint/Proxies', anyHeader, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Net/Bindings/Cpp/Device', anyHeader, 'OpenHome/Net/Cpp'],
+  ['OpenHome/Net/Bindings/Cpp/Device/Providers', anyHeader, 'OpenHome/Net/Cpp'],
+  ['Os', /\.(h|inl)$/, 'OpenHome'],
+];
+
+function copyMatching(fromDirectory, pattern, toDirectory, excluded = null) {
+  mkdirSync(toDirectory, { recursive: true });
+  for (const name of readdirSync(fromDirectory)) {
+    if (pattern.test(name) && !excluded?.test(name)) {
+      copyFileSync(join(fromDirectory, name), join(toDirectory, name));
+    }
+  }
+}
+
+// Reproduces ohNet's Makefile copy_build_includes and patch_thirdparty_sources targets
+// (without libnl, which Android does not use) so a plain CMake project can build ohNet.
+function prepareOhNetBuildTree(ohNetRoot) {
+  const ohNetBuild = join(ohNetRoot, 'Build');
+  const includeRoot = join(ohNetBuild, 'Include');
+  const mdnsRoot = join(ohNetBuild, 'mDNS');
+  rmSync(includeRoot, { recursive: true, force: true });
+  rmSync(mdnsRoot, { recursive: true, force: true });
+  for (const [from, pattern, to, excluded] of ohNetIncludeCopies) {
+    copyMatching(join(ohNetRoot, from), pattern, join(includeRoot, to), excluded);
+  }
+
+  const mdnsSource = join(ohNetRoot, 'thirdparty', 'mDNSResponder-1310.80.1');
+  copyMatching(join(mdnsSource, 'mDNSCore'), /\.(c|h|patch)$/, mdnsRoot);
+  copyMatching(
+    join(mdnsSource, 'mDNSShared'),
+    /(\.patch|^dnssd_clientshim\.c|^dnssd_clientlib\.c|^dns_sd\.h|^dns_sd_internal\.h|^dns_sd_private\.h|^mDNSFeatures\.h)$/,
+    mdnsRoot
+  );
+  for (const name of readdirSync(mdnsRoot).filter((file) => file.endsWith('.patch')).sort()) {
+    run('python', [join('thirdparty', 'python_patch', 'patch.py'), join('Build', 'mDNS', name)], {
+      cwd: ohNetRoot,
+    });
+  }
+  copyMatching(mdnsRoot, anyHeader, join(includeRoot, 'OpenHome', 'Net', 'Private'));
+}
+
+// The Android app builds ohNet from these sources with its own CMake project.
+async function prepareAndroidSources() {
+  const { ohNetRoot, generatedRoot } = await prepareLockedSources(androidSourceRoot);
+  prepareOhNetBuildTree(ohNetRoot);
+  console.log(`OpenHome Android sources ready: ${ohNetRoot} ${generatedRoot}`);
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  if (args.length === 1 && args[0] === '--android-sources') {
+    await prepareAndroidSources();
+    return;
+  }
+  const { architecture, publishDevelopment } = parseBuildOptions(args);
+  validateTarget(process.platform, architecture);
+  mkdirSync(buildRoot, { recursive: true });
+  const { ohNetRoot, generatedRoot } = await prepareLockedSources(sourceRoot);
 
   let ohNetLibrary;
   let vsDevCmd = null;

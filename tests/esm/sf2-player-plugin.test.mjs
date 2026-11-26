@@ -118,6 +118,20 @@ test('SoundFont Player enables automatic fallback by default and saves the choic
   assert.equal(packSoundFontPlayerPluginParams(restored.getWorkletPluginData().parameters)[4], 0);
 });
 
+test('SoundFont Player clamps and rounds Tuning and Tuning Key and saves them', () => {
+  const plugin = player();
+  assert.deepEqual([plugin.getParameters().tu, plugin.getParameters().tk], [0, 0]);
+  plugin.setParameters({ tu: 1.6, tk: 20.4 });
+  assert.deepEqual([plugin.getParameters().tu, plugin.getParameters().tk], [2, 20]);
+  plugin.setParameters({ tu: 9, tk: -3 });
+  assert.deepEqual([plugin.getParameters().tu, plugin.getParameters().tk], [2, 0]);
+  plugin.setParameters({ tu: 'x', tk: 30 });
+  assert.deepEqual([plugin.getParameters().tu, plugin.getParameters().tk], [2, 23]);
+  const restored = player();
+  restored.setParameters(JSON.parse(JSON.stringify(plugin.getParameters())));
+  assert.deepEqual([restored.getParameters().tu, restored.getParameters().tk], [2, 23]);
+});
+
 function telemetry({ voices = 2, limit = 64, bank = 0, program = 0, note = 60, flags = 0, peak = 0,
   stolenReleased = 0, stolenHeld = 0 } = {}) {
   const payload = new DataView(new ArrayBuffer(588));

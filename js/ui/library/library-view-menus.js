@@ -27,7 +27,7 @@ export const menusMethods = {
     menu.setAttribute('role', 'dialog');
     menu.setAttribute('aria-label', this.t('library.action.addToPlaylist'));
     menu.innerHTML = `
-      <input class="library-search library-playlist-picker-search" type="search" autocomplete="off" placeholder="${escapeHtml(this.t('library.search.placeholder'))}">
+      <input class="library-search library-playlist-picker-search" type="search" autocomplete="off" placeholder="${escapeHtml(this.t('library.search.playlistsPlaceholder'))}">
       <button type="button" class="library-playlist-menu-item library-playlist-menu-new">${ICONS.add}<span>${escapeHtml(this.t('library.action.newPlaylist'))}</span></button>
       <div class="library-playlist-picker-results"></div>
       <div class="library-playlist-picker-navigation">
@@ -138,8 +138,13 @@ export const menusMethods = {
     const actionBar = anchor?.closest?.('.library-action-bar');
     this.playlistMenuReturnFocus = getRestorableFocusElement(anchor);
     this.preserveContentScroll(() => {
-      actionBar?.after?.(menu);
-      if (!menu.parentNode) this.content.appendChild(menu);
+      if (isMobileLayout()) {
+        menu.classList.add('library-action-sheet');
+        document.body.appendChild(menu);
+      } else {
+        actionBar?.after?.(menu);
+        if (!menu.parentNode) this.content.appendChild(menu);
+      }
       this.playlistMenu = menu;
       this.focusWithoutContentScroll(menu.querySelector('.library-playlist-picker-search'));
     });

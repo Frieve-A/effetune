@@ -606,33 +606,38 @@ DeviceLatency deviceLatency(const JsonValue &message) {
 }
 
 void sendInputState(DeviceHost &device, unsigned requestId = 0, bool reopened = false) {
+  const auto &input = device.inputFormat();
+  const auto error = device.inputError();
+  const auto channels = error == DeviceError::None ? input.selectedChannels : 0;
   Object state{{"type", "inputState"},
                {"requestId", double(requestId)},
                {"reopened", reopened},
-               {"inputChannels", double(device.inputFormat().selectedChannels)},
-               {"state", device.inputError() == DeviceError::None
-                             ? (device.inputFormat().selectedChannels ? "acquired" : "none")
-                             : "failed"}};
-  if (device.inputError() != DeviceError::None)
-    state.emplace("reason", std::string(deviceErrorName(device.inputError())));
+               {"inputChannels", double(channels)},
+               {"captureRate", double(channels ? device.session.format().captureRate : 0)},
+               {"inputLatencyFrames", double(channels ? input.latencyFrames : 0)},
+               {"state", error == DeviceError::None ? (channels ? "acquired" : "none") : "failed"}};
+  if (error != DeviceError::None)
+    state.emplace("reason", std::string(deviceErrorName(error)));
   send(std::move(state));
 }
 
 void sendOpenState(DeviceHost &device, bool reportInput = false) {
   const auto &format = device.session.format();
+  const auto inputFailed = device.inputError() != DeviceError::None;
+  const auto inputChannels = inputFailed ? 0 : format.inputChannels;
   send({{"type", "sessionState"},
         {"state", "open"},
         {"recoveryId", double(device.recoveryId())},
         {"sampleRate", double(format.sampleRate)},
         {"deviceRate", double(format.deviceRate)},
-        {"captureRate", double(format.captureRate)},
-        {"inputChannels", double(format.inputChannels)},
-        {"inputFailed", device.inputError() != DeviceError::None},
+        {"captureRate", double(inputChannels ? format.captureRate : 0)},
+        {"inputChannels", double(inputChannels)},
+        {"inputFailed", inputFailed},
         {"outputChannels", double(format.outputChannels)},
         {"periodFrames", double(format.periodFrames)},
         {"width", double(format.width())},
         {"outputLatencyFrames", double(device.outputFormat().latencyFrames)},
-        {"inputLatencyFrames", double(device.inputFormat().latencyFrames)}});
+        {"inputLatencyFrames", double(inputChannels ? device.inputFormat().latencyFrames : 0)}});
   if (reportInput)
     sendInputState(device, 0, true);
   if (device.rebuilt()) {
@@ -854,6 +859,22 @@ void handleControl(DeviceHost &device, Frame &frame) {
           {"channelCount", double(device.session.format().width())},
           {"processingNanoseconds", double(processingNs)}},
          std::move(result));
+  } else if (type == "benchmarkNull") {
+    // The renderer sends the input once; the engine replays it for one second of
+    // DSP time so the measurement pays no per-batch PCM transport.
+    constexpr std::uint64_t durationNs = 1'000'000'000;
+    if (device.physical())
+      throw std::runtime_error("null benchmark on physical backend");
+    if (frame.attachment.size() % sizeof(float))
+      throw std::invalid_argument("invalid benchmark input");
+    std::vector<float> blockLoop(frame.attachment.size() / sizeof(float));
+    std::memcpy(blockLoop.data(), frame.attachment.data(), frame.attachment.size());
+    const auto timing =
+        NullDevice::benchmark(device.session, blockLoop, readNumber(frame.message, "blockSize", 0),
+                              readNumber(frame.message, "warmupBlocks", 0), durationNs);
+    send({{"type", "benchmarkResult"},
+          {"elapsedNanoseconds", double(timing.elapsedNs)},
+          {"blocks", double(timing.blocks)}});
   } else if (!type) {
     throw std::runtime_error("missing control message type");
   } else if (!handleSampleStream(device, *branch, frame) &&
@@ -1086,6 +1107,7 @@ int run(int argc, char **argv) {
                                               : clock.captureState == 1 ? "priming"
                                                                         : "idle"},
                          {"captureRatio", clock.captureRatio},
+                         {"captureConverterDelayFrames", clock.captureConverterDelay},
                          {"deviceDiscontinuities", double(device.discontinuities())},
                          {"callbackOverruns", double(device.callbackOverruns())},
                          {"outputLatencyFrames", double(device.outputFormat().latencyFrames)},
@@ -1111,7 +1133,8 @@ int run(int argc, char **argv) {
       }
       if (type == "stopParallel" && !device.commandsSettled())
         continue;
-      if (type == "renderNull" || type == "renderNullDevice" || type == "captureNull")
+      if (type == "renderNull" || type == "benchmarkNull" || type == "renderNullDevice" ||
+          type == "captureNull")
         throw std::runtime_error("null test command on physical backend");
       if (type == "configurePipeline" && device.running()) {
         if (!topology)

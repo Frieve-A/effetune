@@ -7,9 +7,8 @@ const PENDING_CAPACITY = 4096;
 // Feeds MIDI sent by the embedded Browser page to the app's live MIDI input.
 // The page owns the live input from its first event until its page lifetime
 // ends, claiming it again with its next event if another source replaced it;
-// replacing the input session releases its sounding notes. A shown
-// Music Player owns live input, as in MidiLiveInput: it ends the page's claim,
-// and the page claims again with its next event after the player detaches.
+// replacing the input session releases its sounding notes. When Music Player
+// takes over MIDI, the page can claim it again once the player releases it.
 export class BrowserMidiSource {
     constructor(audioManager, api) {
         this.audioManager = audioManager;
@@ -19,7 +18,9 @@ export class BrowserMidiSource {
         this.previousSource = null;
         this.unsubscribe = api?.onMidi?.(message => this.receive(message)) ?? null;
         const power = audioManager?.powerPolicyController;
-        this.unsubscribePower = power?.subscribe(() => { if (musicPlayerOwnsMidi(power)) this.release(); }) ?? null;
+        this.syncOwnership = () => { if (musicPlayerOwnsMidi(power)) this.release(); };
+        this.unsubscribePower = power?.subscribe(this.syncOwnership) ?? null;
+        audioManager.addEventListener?.('playerPlaybackPendingChanged', this.syncOwnership);
     }
 
     receive(message) {
@@ -88,6 +89,7 @@ export class BrowserMidiSource {
     dispose() {
         this.unsubscribe?.();
         this.unsubscribePower?.();
+        this.audioManager.removeEventListener?.('playerPlaybackPendingChanged', this.syncOwnership);
         this.unsubscribe = this.unsubscribePower = null;
         this.release();
     }

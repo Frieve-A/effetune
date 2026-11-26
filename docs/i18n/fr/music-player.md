@@ -22,13 +22,10 @@ Ouvrez les fichiers `.dsf` (DSF) ou `.dff` (DSDIFF) comme les autres fichiers mu
 
 Les effets reçoivent les canaux DSD dans l’ordre du fichier. Si cet ordre diffère de celui des sorties de vos enceintes, placez [**Matrix**](plugins/basics.md#matrix) en tête de la chaîne d’effets. Pour lire un fichier DSF à cinq canaux sur une sortie 5.1 standard, reliez les entrées 1 à 3 aux sorties de même numéro, l’entrée 4 à la seule sortie 5 et l’entrée 5 à la seule sortie 6. La sortie 4 (LFE) reste ainsi silencieuse.
 
-Certaines variantes d’encodage DST (trames segmentées), les fichiers de plus de six canaux, le DSD512 et le DSD basé sur 48 kHz ne sont pas pris en charge. Si un fichier ne peut pas être lu, utilisez un DFF non compressé ou une copie PCM compatible, par exemple en FLAC ou WAV. La lecture des fichiers DSD est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android native.
-
+Certaines variantes d’encodage DST (trames segmentées), les fichiers de plus de six canaux, le DSD512 et le DSD basé sur 48 kHz ne sont pas pris en charge. Si un fichier ne peut pas être lu, utilisez un DFF non compressé ou une copie PCM compatible, par exemple en FLAC ou WAV.
 Les fichiers DSD à fréquence élevée demandent davantage de puissance de traitement, surtout à vitesse de lecture accélérée. Si le son s’interrompt ou si la lecture s’arrête, réduisez la vitesse.
 
 ## Fichiers MIDI
-
-La lecture MIDI et MusicXML et l’ajout de ces fichiers à la bibliothèque sont disponibles dans l’application de bureau et le lecteur web/PWA. Ces fonctions ne sont pas prises en charge dans l’application Android.
 
 Ouvrez les fichiers `.mid`, `.midi` ou `.kar` avec le sélecteur musical habituel ou par glisser-déposer. MIDI contient des notes et leur chronologie, pas du son enregistré. Ajoutez [**SoundFont Player**](plugins/others.md#soundfont-player) depuis **Others** dans Effect Pipeline, puis choisissez un instrument avec **SoundFont Library…**. L’ouverture du fichier n’ajoute pas d’instrument automatiquement. Vous pouvez aussi l’ajouter à Music Library.
 Pour afficher les paroles dans **Lyrics** de Visualizer, utilisez les paroles intégrées au MIDI ou placez un fichier `.wrd` de même nom à côté. Sur le Web, sélectionnez ou déposez les deux fichiers ensemble, sauf si le dossier est accessible via Music Library. Le `.wrd` accompagne le morceau sans créer de piste ; si sa lecture échoue, le MIDI continue.
@@ -66,15 +63,15 @@ Les notes, silences, accords, voix, liaisons de tenue, changements de tempo et r
 - Cliquez sur le bouton de vitesse à côté du bouton **Aléatoire** pour choisir l’un des neuf préréglages ou régler n’importe quelle vitesse de `0.25x` à `4x` par pas de `0.01x`. **Conserver la hauteur** est activé par défaut : la hauteur reste la même quand la vitesse change. Désactivez-le pour que la hauteur monte et descende avec la vitesse, comme sur une bande ou un disque.
 - Dans l’application de bureau, choisissez **Affichage > Mini-lecteur** (`Ctrl/Cmd+Shift+M`) ou cliquez sur le bouton mini-lecteur du lecteur pour passer à une fenêtre compacte. Cliquez sur le bouton d’épingle pour la garder toujours au premier plan.
 
-Le lecteur de bureau affiche aussi la [musique en réseau et AirPlay](openhome.md). Pendant AirPlay, les informations du morceau, la pochette et le temps apparaissent lorsqu’ils sont transmis par l’émetteur ; survolez le titre pour en savoir plus. Commandez la lecture et le volume depuis l’appareil émetteur. Fermer le lecteur avec **×**, ou utiliser **Arrêter**, met fin à cette session ; le récepteur reste activé et disponible pour une nouvelle connexion.
+Le lecteur affiche aussi la [musique en réseau](openhome.md) et, dans l’application de bureau, AirPlay. Pendant AirPlay, les informations du morceau, la pochette et le temps apparaissent lorsqu’ils sont transmis par l’émetteur ; survolez le titre pour en savoir plus. Commandez la lecture et le volume depuis l’appareil émetteur. Fermer le lecteur avec **×**, ou utiliser **Arrêter**, met fin à cette session ; le récepteur reste activé et disponible pour une nouvelle connexion.
 
 Le curseur de volume et le bouton de sourdine règlent le son du lecteur avant son passage dans les effets. Les changements effectués à distance sont également affichés ici : vous pouvez ainsi vérifier le volume et rétablir le son sur l’appareil qui lit la musique.
 
 ## Reprendre là où vous vous êtes arrêté
 
-Lorsque vous rouvrez l’application de bureau ou l’application web, le lecteur retrouve la file d’attente et se met en pause à la dernière position enregistrée dans le morceau en cours. La vitesse de lecture revient à 1x. La position est enregistrée toutes les 10 secondes environ pendant la lecture. Les changements effectués juste avant de quitter peuvent donc être perdus.
+Lorsque vous rouvrez EffeTune, le lecteur retrouve la file d’attente et se met en pause à la dernière position enregistrée dans le morceau en cours. Dans l’application de bureau et l’application web, la vitesse de lecture revient à 1x. La position est enregistrée toutes les 10 secondes environ pendant la lecture. Les changements effectués juste avant de quitter peuvent donc être perdus.
 
-Les deux versions retrouvent les morceaux de la bibliothèque. La version de bureau retrouve aussi les fichiers locaux ouverts directement. Sur le web, le navigateur peut vous demander de sélectionner à nouveau votre dossier de musique au moment de lancer la lecture. Ajoutez à nouveau les fichiers ouverts directement dans la version web et les morceaux provenant du réseau.
+Toutes les versions retrouvent les morceaux de la bibliothèque, et la version de bureau retrouve aussi les fichiers locaux ouverts directement. L’application Android retrouve également les fichiers ouverts qu’elle peut encore lire ; elle ignore les morceaux Subsonic et les fichiers qu’elle ne peut plus ouvrir, et indique combien de morceaux ont été ignorés. Sur le web, le navigateur peut vous demander de sélectionner à nouveau votre dossier de musique au moment de lancer la lecture. Ajoutez à nouveau les fichiers ouverts directement dans la version web et les morceaux provenant du réseau.
 
 Pour retrouver les morceaux d’une archive, lisez-les depuis la bibliothèque. Si vous avez ouvert l’archive directement, ouvrez-la de nouveau.
 
@@ -82,9 +79,9 @@ Pour effacer la file enregistrée, fermez le lecteur avec **×**. Si une fonctio
 
 ## Lecture sans interruption
 
-**Lecture sans interruption**, dans **Configuration audio**, est activée par défaut et enchaîne sans blanc les morceaux locaux compatibles ; la prise en charge dépend du format du fichier et de l’environnement, navigateur ou application. Les formats non pris en charge et certains environnements mobiles utilisent un mode de secours économe en mémoire, si bien qu’un bref silence peut subsister. La désactiver privilégie une faible consommation de mémoire et la stabilité, au prix d’un bref silence possible ; ce changement n’interrompt pas le morceau en cours. La lecture sans interruption ne fonctionne qu’à la vitesse 1x ; changer la vitesse pendant une lecture sans interruption relance le morceau à la même position après une brève coupure.
+**Lecture sans interruption**, dans **Configuration audio**, est activée par défaut et enchaîne sans blanc les morceaux locaux compatibles ; la prise en charge dépend du format du fichier et de l’environnement, navigateur ou application. Les formats non pris en charge et certains environnements mobiles utilisent un mode de secours économe en mémoire, si bien qu’un bref silence peut subsister. La désactiver privilégie une faible consommation de mémoire et la stabilité, au prix d’un bref silence possible ; ce changement n’interrompt pas le morceau en cours. Dans l’application de bureau et l’application web, la lecture sans interruption ne fonctionne qu’à la vitesse 1x ; changer la vitesse pendant une lecture sans interruption relance le morceau à la même position après une brève coupure.
 
-Dans l’application de bureau, lorsque le **Pilote** de **Configuration audio** est autre que **Standard**, les fichiers WAV et FLAC multicanaux jusqu’à six canaux sont eux aussi lus sans interruption. Les effets reçoivent leurs canaux dans l’ordre du fichier. Si cet ordre diffère de celui des sorties de vos enceintes, placez [**Matrix**](plugins/basics.md#matrix) en tête de la chaîne d’effets, comme pour le [DSD multicanal](#dsd-files).
+Dans l’application de bureau, lorsque le **Pilote** de **Configuration audio** est autre que **Standard**, ainsi que dans l’application Android, les fichiers WAV et FLAC multicanaux jusqu’à six canaux sont eux aussi lus sans interruption. Les effets reçoivent leurs canaux dans l’ordre du fichier. Si cet ordre diffère de celui des sorties de vos enceintes, placez [**Matrix**](plugins/basics.md#matrix) en tête de la chaîne d’effets, comme pour le [DSD multicanal](#dsd-files).
 
 ## ReplayGain
 
@@ -100,8 +97,7 @@ Avec **Niveau cible** réglé sur **Manuel** (par défaut), la cible est de −1
 
 **Éviter l’écrêtage**, activé par défaut, réduit le gain si la crête vraie mesurée ou la crête indiquée dans les balises risque de dépasser le plafond. Abaissez le plafond, initialement à 0 dB, pour laisser de la marge aux effets qui amplifient le signal. Le mode automatique tient compte du plafond même si la protection est désactivée. Les réglages prennent effet pendant la lecture.
 
-La correction s’applique au son du lecteur avant son entrée dans la chaîne d’effets ; la position du curseur de volume ne change pas. ReplayGain ne s’applique pas à la lecture MIDI ou MusicXML, à la musique en réseau, à la réception AirPlay, à la lecture sur des lecteurs OpenHome ou UPnP AV / DLNA, ni au traitement de fichiers hors ligne. ReplayGain est disponible dans l’application de bureau et le lecteur web/PWA, mais pas dans l’application Android.
-
+La correction s’applique au son du lecteur avant son entrée dans la chaîne d’effets ; la position du curseur de volume ne change pas. ReplayGain ne s’applique pas à la lecture MIDI ou MusicXML, à la musique en réseau, à la réception AirPlay, à la lecture sur des lecteurs OpenHome ou UPnP AV / DLNA, ni au traitement de fichiers hors ligne.
 ## Vidéo {#video}
 
 La vidéo s’affiche dans la zone de pochette du lecteur. Dans l’interface de bureau, le panneau du lecteur se développe automatiquement au démarrage d’une vidéo. Vous pouvez le réduire à nouveau pendant la lecture en cours. Déplacez le pointeur sur la vidéo ou touchez-la pour afficher le bouton d’agrandissement ; il disparaît après un court moment sans interaction. Sélectionnez **⛶** pour qu’elle occupe tout l’affichage de l’application ; survolez la vidéo avec le pointeur ou touchez-la pour afficher les commandes de lecture en bas. Vous pouvez aussi ajouter un élément **Video** dans Visualizer. Pour inclure les fichiers vidéo dans la Bibliothèque musicale, consultez le [guide de la Bibliothèque musicale](music-library.md#availability).
@@ -119,7 +115,7 @@ Les boutons et curseurs conservent leur fonctionnement habituel.
 
 Dans le sélecteur en haut de la fenêtre, choisissez **This device**, un lecteur OpenHome ou un lecteur UPnP AV / DLNA. La bibliothèque et le lecteur se choisissent séparément. Changer de lecteur n’arrête pas le précédent et ne déplace pas sa file. La piste, la file, la position et les commandes prises en charge sont affichées, dont **Volume** et **Muet** si disponibles. Les modifications des autres contrôleurs sont également reflétées.
 
-Le son transmis est celui d’origine, sans les effets de l’ordinateur source. Un lecteur EffeTune applique ses propres effets. Le serveur et le lecteur doivent pouvoir communiquer. La file propre à OpenHome peut continuer après la déconnexion du contrôleur ; une séquence gérée par EffeTune ou une connexion passant par un ordinateur EffeTune exige que celui-ci reste allumé.
+Le son transmis est celui d’origine, sans les effets de l’appareil source. Un lecteur EffeTune applique ses propres effets. Le serveur et le lecteur doivent pouvoir communiquer. La file propre à OpenHome peut continuer après la déconnexion du contrôleur ; une séquence gérée par EffeTune ou une connexion passant par un appareil EffeTune exige que celui-ci reste allumé.
 
 [musique en réseau et télécommande](openhome.md)
 

@@ -1,6 +1,7 @@
 import { createRepositoryError } from '../repository/contract-errors.js';
 import { normalizeRelativePath } from '../constants.js';
 import { WebFolderHandleStore } from './web-folder-handle-store.js';
+import { queryFolderPermission } from './web-file-system-adapter.js';
 import { isAndroidHost, getAndroidBridge } from '../../android/bridge.js';
 
 const STORAGE_PERSIST_TIMEOUT_MS = 2_000;
@@ -49,7 +50,7 @@ export function createWebLibraryServices({
         : options;
       throwIfAborted(request.signal);
       let selection = selectionFrom(request);
-      if (!selection && typeof windowRef?.showDirectoryPicker === 'function') {
+      if (!selection && !request.reselectFolder && typeof windowRef?.showDirectoryPicker === 'function') {
         const stored = await restoreStoredHandleAccess(storedHandles, folderId, request);
         throwIfAborted(request.signal);
         if (stored.handle) {
@@ -111,9 +112,10 @@ async function restoreStoredHandleAccess(handleStore, folderId, request = {}) {
   if (!handle) return { attempted: false, handle: null };
   try {
     if (typeof handle.queryPermission === 'function') {
-      const current = await handle.queryPermission({ mode: 'read' });
+      const current = await queryFolderPermission(handle);
       throwIfAborted(request.signal);
       if (current === 'granted') return { attempted: true, handle };
+      if (current === 'unresponsive') return { attempted: false, handle: null };
     }
     if (typeof handle.requestPermission !== 'function') {
       return { attempted: false, handle: null };
@@ -166,7 +168,13 @@ async function pickLibraryFolder(windowRef, options = {}) {
   const supplied = selectionFrom(options);
   if (supplied) return supplied;
   if (isAndroidHost(windowRef)) {
-    const result = await runUserInteraction(options, () => getAndroidBridge().request('documents.pick', { kind: 'tree' }));
+    let result;
+    try {
+      result = await runUserInteraction(options, () => getAndroidBridge().request('documents.pick', { kind: 'tree' }));
+    } catch (error) {
+      if (error?.name === 'AbortError') return null;
+      throw error;
+    }
     if (!result?.uri) return null;
     return { handle: { kind: 'directory', androidUri: result.uri, name: result.name }, displayName: result.name };
   }

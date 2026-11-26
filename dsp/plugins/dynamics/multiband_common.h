@@ -1,6 +1,7 @@
 #ifndef EFFETUNE_PLUGINS_DYNAMICS_MULTIBAND_COMMON_H
 #define EFFETUNE_PLUGINS_DYNAMICS_MULTIBAND_COMMON_H
 
+#include "effetune/dsp/channel_lanes.h"
 #include "effetune/dsp/denormal_noise.h"
 #include "effetune/dsp/linkwitz_riley.h"
 #include "effetune/kernel.h"
@@ -33,9 +34,8 @@ public:
     lowpass_states_.resize(static_cast<std::size_t>(kFiveBandCrossoverCount) * max_channels_);
     highpass_states_.resize(static_cast<std::size_t>(kFiveBandCrossoverCount) * max_channels_);
     band_storage_.resize(static_cast<std::size_t>(max_channels_) * kFiveBandCount * max_frames_);
-    input_.resize(max_frames_);
-    highpass1_.resize(max_frames_);
-    highpass2_.resize(max_frames_);
+    // Two channel lanes each own two intermediate high-pass buffers.
+    remainders_.resize(static_cast<std::size_t>(4u) * max_frames_);
     reset();
   }
 
@@ -79,29 +79,11 @@ public:
         frame_count == 0u || frame_count > max_frames_) {
       return;
     }
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      const float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        input_[frame] = channel_audio[frame];
-      }
-
-      filterBlock(input_.data(), band(channel, 0u), coefficients_[0u].lowpass,
-                  lowpassState(0u, channel), frame_count);
-      filterBlock(input_.data(), highpass1_.data(), coefficients_[0u].highpass,
-                  highpassState(0u, channel), frame_count);
-      filterBlock(highpass1_.data(), band(channel, 1u), coefficients_[1u].lowpass,
-                  lowpassState(1u, channel), frame_count);
-      filterBlock(highpass1_.data(), highpass2_.data(), coefficients_[1u].highpass,
-                  highpassState(1u, channel), frame_count);
-      filterBlock(highpass2_.data(), band(channel, 2u), coefficients_[2u].lowpass,
-                  lowpassState(2u, channel), frame_count);
-      filterBlock(highpass2_.data(), highpass1_.data(), coefficients_[2u].highpass,
-                  highpassState(2u, channel), frame_count);
-      filterBlock(highpass1_.data(), band(channel, 3u), coefficients_[3u].lowpass,
-                  lowpassState(3u, channel), frame_count);
-      filterBlock(highpass1_.data(), band(channel, 4u), coefficients_[3u].highpass,
-                  highpassState(3u, channel), frame_count);
-    }
+    // Channel pairs and each crossover's low/high outputs share one loop so the independent
+    // recursions overlap without changing any filter's arithmetic.
+    dsp::forEachChannelPair(channel_count, [&](std::uint32_t channel, auto lanes) noexcept {
+      splitLanes<decltype(lanes)::value>(audio, channel, frame_count);
+    });
     denormal_noise_.advance(frame_count);
   }
 
@@ -121,14 +103,74 @@ private:
     }
   }
 
-  void filterBlock(const float *input, float *output, const dsp::BiquadCoefficients &coefficients,
-                   dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
-    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
-          static_cast<double>(input[frame]), coefficients, state, denormal_noise_.sample(frame)));
+  // Splits Lanes adjacent channels into five bands with the crossover tree.
+  template <std::uint32_t Lanes>
+  void splitLanes(const float *audio, std::uint32_t channel, std::uint32_t frame_count) noexcept {
+    const float *input[Lanes];
+    float *low[Lanes];
+    float *high[Lanes];
+    float *remainder1[Lanes];
+    float *remainder2[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      remainder1[lane] = remainders_.data() + static_cast<std::size_t>(2u * lane) * max_frames_;
+      remainder2[lane] = remainder1[lane] + max_frames_;
     }
-    if (state_storage_ == dsp::LinkwitzRileyStateStorage::Float32) {
-      dsp::quantizeLinkwitzRiley24StateToFloat(state);
+    // Crossover k reads `source`, writes band k to `low` and the remainder to `target`.
+    const auto crossover = [&](std::uint32_t index, auto source, auto target) noexcept {
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        input[lane] = source(lane);
+        low[lane] = band(channel + lane, index);
+        high[lane] = target(lane);
+      }
+      crossoverLanes<Lanes>(input, low, high, index, channel, frame_count);
+    };
+    crossover(
+        0u,
+        [&](std::uint32_t lane) {
+          return audio + static_cast<std::size_t>(channel + lane) * frame_count;
+        },
+        [&](std::uint32_t lane) { return remainder1[lane]; });
+    crossover(
+        1u, [&](std::uint32_t lane) { return remainder1[lane]; },
+        [&](std::uint32_t lane) { return remainder2[lane]; });
+    crossover(
+        2u, [&](std::uint32_t lane) { return remainder2[lane]; },
+        [&](std::uint32_t lane) { return remainder1[lane]; });
+    crossover(
+        3u, [&](std::uint32_t lane) { return remainder1[lane]; },
+        [&](std::uint32_t lane) { return band(channel + lane, 4u); });
+  }
+
+  // Applies one crossover's low-pass and high-pass to Lanes channels in a single frame loop.
+  template <std::uint32_t Lanes>
+  void crossoverLanes(const float *const *input, float *const *low, float *const *high,
+                      std::uint32_t index, std::uint32_t channel,
+                      std::uint32_t frame_count) noexcept {
+    const dsp::LinkwitzRiley24Coefficients coefficients = coefficients_[index];
+    dsp::LinkwitzRiley24State low_state[Lanes];
+    dsp::LinkwitzRiley24State high_state[Lanes];
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      low_state[lane] = lowpassState(index, channel + lane);
+      high_state[lane] = highpassState(index, channel + lane);
+    }
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      const double noise = denormal_noise_.sample(frame);
+      for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+        const double sample = static_cast<double>(input[lane][frame]);
+        low[lane][frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+            sample, coefficients.lowpass, low_state[lane], noise));
+        high[lane][frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+            sample, coefficients.highpass, high_state[lane], noise));
+      }
+    }
+    const bool quantize = state_storage_ == dsp::LinkwitzRileyStateStorage::Float32;
+    for (std::uint32_t lane = 0u; lane < Lanes; ++lane) {
+      if (quantize) {
+        dsp::quantizeLinkwitzRiley24StateToFloat(low_state[lane]);
+        dsp::quantizeLinkwitzRiley24StateToFloat(high_state[lane]);
+      }
+      lowpassState(index, channel + lane) = low_state[lane];
+      highpassState(index, channel + lane) = high_state[lane];
     }
   }
 
@@ -147,9 +189,7 @@ private:
   std::vector<dsp::LinkwitzRiley24State> lowpass_states_;
   std::vector<dsp::LinkwitzRiley24State> highpass_states_;
   std::vector<float> band_storage_;
-  std::vector<float> input_;
-  std::vector<float> highpass1_;
-  std::vector<float> highpass2_;
+  std::vector<float> remainders_;
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t max_frames_ = 0u;

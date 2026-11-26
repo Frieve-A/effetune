@@ -3206,6 +3206,7 @@ test('remote Player selection keeps the local context menu playlist action tied 
     await fixture.pendingCommand;
     assert.equal(view.contextMenu, null);
     assert.ok(view.playlistMenu);
+    assert.match(view.playlistMenu.innerHTML, /placeholder="Search playlists"/);
     assert.match(view.playlistMenu.querySelector('.library-playlist-picker-results').innerHTML,
       /data-playlist-id="playlist-1" data-playlist-version="7" data-playlist-name="Daily"/);
     destination.listeners.get('click')();
@@ -4711,6 +4712,17 @@ test('short playback actions do not add status UI or change the library scroll p
   assert.equal(appended, 0);
   assert.equal(view.pagedActionToastVisible, false);
   assert.equal(view.pagedActionToastTimer, null);
+  view.updatePagedActionToastVisibility({
+    status: 'terminal', terminalKind: 'failed', actionToken: 2,
+    result: { state: 'failed', code: 'library-files-missing' }
+  });
+  assert.equal(view.pagedActionToastVisible, false);
+  view.updatePagedActionToastVisibility({
+    status: 'terminal', terminalKind: 'failed', actionToken: 3,
+    result: { state: 'failed', code: 'other-error' }
+  });
+  assert.equal(view.pagedActionToastVisible, true);
+  clearTimeout(view.pagedActionToastTimer);
 });
 
 test('current-session action tracking does not require cross-session operation lookup', () => {
@@ -4787,13 +4799,17 @@ test('queue replacement Undo stays in session status across later actions and to
   });
 });
 
-test('failed playback actions use a non-layout terminal toast without Retry', () => {
+test('failed playback actions show a temporary terminal toast without Retry', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   let toast = null;
   const content = {
     querySelector(selector) {
       if (selector === '[data-library-paged-action-toast]') return toast;
       if (selector === '.library-paged-attempt') {
-        return { appendChild(element) { toast = element; } };
+        return { appendChild(element) {
+          toast = element;
+          toast.remove = () => { toast = null; };
+        } };
       }
       return null;
     },
@@ -4817,6 +4833,8 @@ test('failed playback actions use a non-layout terminal toast without Retry', ()
     assert.equal(toast.className, 'library-paged-action-toast');
     assert.doesNotMatch(toast.innerHTML, /library-paged-action-toast-retry/);
     assert.doesNotMatch(toast.innerHTML, /library\.job\.phase|Request received/);
+    t.mock.timers.tick(5_000);
+    assert.equal(toast, null);
   });
 });
 
@@ -5390,15 +5408,23 @@ test('unrelated invalidations preserve the active page, viewport, and selection'
   }), { restart: false, reason: 'unrelated-scope' });
 
   const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.currentView = 'playlists';
+  view.detail = { type: 'playlist', key: 'my-playlist' };
   view.pagedQueryKey = 'active-query';
   view.pagedViewportOrdinal = 4567;
   view.pagedController = { markSelectionStale: () => assert.fail('selection must remain current') };
   view.renderPagedNav = () => {};
   view.renderPagedStatus = async () => {};
-  view.handleCatalogInvalidation({ changedScopes: ['playlist:other'] });
+  const playbackUpdate = { changedScopes: ['playlist:system_recently_played'] };
+  view.handleCatalogInvalidation(playbackUpdate);
 
   assert.equal(view.pagedQueryKey, 'active-query');
   assert.equal(view.pagedViewportOrdinal, 4567);
+  const collection = { endpoint: 'entities', entityType: 'playlist' };
+  assert.equal(getPagedInvalidationDecision(collection, playbackUpdate).restart, false);
+  assert.equal(getPagedInvalidationDecision({ ...collection, includeSystemPlaylists: true }, playbackUpdate).restart, true);
+  view.detail.key = 'system_recently_played';
+  assert.equal(getPagedInvalidationDecision(view.getPagedQuery(), playbackUpdate).restart, true);
 });
 
 test('folder invalidation expires offscreen browse pages before visible-query early return', () => {

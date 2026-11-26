@@ -945,7 +945,7 @@ body.view-library:not(.layout-mobile) .library-empty-icon {
   display: grid;
   place-items: center;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   background: rgba(0, 0, 0, 0.62);
 }
 
@@ -1290,6 +1290,7 @@ body.layout-mobile .library-nav-item {
   flex: 0 0 auto;
   width: auto;
   min-height: 36px;
+  white-space: nowrap;
 }
 
 body.layout-mobile .library-main {
@@ -1299,10 +1300,12 @@ body.layout-mobile .library-main {
 body.layout-mobile .library-header {
   gap: 8px;
   padding: 10px;
+  flex-wrap: wrap;
 }
 
 body.layout-mobile .library-search-wrap {
   min-width: 0;
+  flex: 1 0 100%;
 }
 
 body.layout-mobile .library-content {
@@ -1314,7 +1317,13 @@ body.layout-mobile .library-status {
 }
 
 body.layout-mobile .library-header-actions {
-  white-space: nowrap;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+body.layout-mobile .library-empty {
+  min-height: 0;
+  padding: 24px 0;
 }
 
 body.layout-mobile .library-section-head-sortable {
@@ -1346,9 +1355,8 @@ body.layout-mobile .library-action-bar .library-button {
 
 body.layout-mobile .library-action-bar .library-button span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 body.layout-mobile .library-track-header {
@@ -1376,12 +1384,16 @@ body.layout-mobile .library-now-playing-indicator:not([hidden]) + .library-track
   grid-column: 2;
 }
 
-body.layout-mobile .library-context-menu.library-action-sheet {
+body.layout-mobile .library-context-menu.library-action-sheet,
+body.layout-mobile .library-playlist-menu.library-action-sheet {
   position: fixed;
   inset: auto 8px calc(74px + env(safe-area-inset-bottom, 0px)) 8px;
   width: auto;
+  max-width: none;
   max-height: min(70vh, 480px);
   overflow: auto;
+  z-index: 10020;
+  margin: 0;
   padding: 10px;
   border-radius: 8px 8px 0 0;
 }
@@ -1390,8 +1402,12 @@ body.layout-mobile .library-context-menu.library-action-sheet button {
   min-height: 44px;
 }
 
+body.layout-mobile .library-playlist-menu.library-action-sheet button {
+  min-height: 44px;
+}
+
 body.layout-mobile .library-dialog-backdrop {
-  padding: 12px;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
 }
 
 body.layout-mobile .library-properties-list div {
@@ -1844,12 +1860,41 @@ body.layout-mobile .library-paged-media-card > .library-card-subtitle {
 }
 
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-track-number-cell,
-body.layout-mobile .library-paged-tracks .library-paged-row > .library-artist-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-album-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-genre-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-duration-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-paged-favorite-cell {
   display: none;
+}
+
+body.layout-mobile .library-paged-tracks .library-paged-row > .library-track-title {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+}
+
+body.layout-mobile .library-paged-tracks .library-paged-row > .library-artist-cell {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--library-muted);
+  font-size: 12px;
+}
+
+body.layout-mobile .library-view:not(.mobile-selection-mode) .library-paged-tracks .library-paged-row > :is(.library-track-title, .library-artist-cell) {
+  grid-column: 1;
+}
+
+body.layout-mobile .library-paged-tracks .library-paged-row > :is(.library-paged-select-cell, .library-paged-more-cell) {
+  grid-row: 1 / 3;
+}
+
+body.layout-mobile .library-paged-tracks .library-paged-row > .library-paged-more-cell {
+  grid-column: -2;
 }
 
 body.layout-mobile .library-paged-folder-row > .library-badge {
@@ -1877,6 +1922,6 @@ body.layout-mobile .library-paged-folder-row > .library-paged-folder-actions {
 }
 
 body.layout-mobile .library-source {
-  flex: 0 0 auto;
+  flex: 1 0 100%;
   margin: 0;
 }

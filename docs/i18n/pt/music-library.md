@@ -22,8 +22,7 @@ A Biblioteca de música também indexa arquivos `.dsf` e `.dff`. Reescaneie uma 
 
 Para incluir arquivos MP4, WebM, M4V, MOV, MKV e 3GP, ative **Incluir formatos de vídeo na Biblioteca de música** em **Configurações > Configuração... > Geral** e depois adicione ou reescaneie uma pasta. Essa opção fica desativada por padrão; alterá-la não modifica imediatamente o catálogo existente. A reprodução efetiva, incluindo o codec de áudio dentro de um arquivo de vídeo, depende do decodificador do navegador ou do sistema operacional. Para a exibição de vídeo, consulte o [guia do Player de música](music-player.md#video).
 
-Para incluir arquivos MIDI/KAR (`.mid`, `.midi`, `.kar`) e MusicXML (`.musicxml`, `.xml`, `.mxl`), ative **Incluir arquivos MIDI na Biblioteca de música** nas mesmas configurações e depois adicione ou reescaneie uma pasta. Essa opção fica desativada por padrão; alterá-la não modifica imediatamente o catálogo existente. Para ouvir esses arquivos, adicione SoundFont Player e carregue um instrumento, ou selecione um **Dispositivo de saída MIDI** externo; veja [Arquivos MIDI](music-player.md#arquivos-midi) e [Arquivos MusicXML](music-player.md#musicxml-files). A reprodução de MIDI e MusicXML e a inclusão desses arquivos na biblioteca estão disponíveis no aplicativo de desktop e no player web/PWA. Não são compatíveis com o aplicativo Android.
-
+Para incluir arquivos MIDI/KAR (`.mid`, `.midi`, `.kar`) e MusicXML (`.musicxml`, `.xml`, `.mxl`), ative **Incluir arquivos MIDI na Biblioteca de música** nas mesmas configurações e depois adicione ou reescaneie uma pasta. Essa opção fica desativada por padrão; alterá-la não modifica imediatamente o catálogo existente. Para ouvir esses arquivos, adicione SoundFont Player e carregue um instrumento, ou selecione um **Dispositivo de saída MIDI** externo; veja [Arquivos MIDI](music-player.md#arquivos-midi) e [Arquivos MusicXML](music-player.md#musicxml-files).
 Depois de ativar **Incluir arquivos MIDI na Biblioteca de música**, ative **Incluir arquivos MIDI dentro de arquivos compactados (ZIP, LZH etc.)** para incluir arquivos MIDI, KAR e MusicXML de pacotes ZIP, LZH/LHA, tar, gzip ou tar comprimido com gzip. A opção fica desativada por padrão e entra em vigor ao adicionar ou reescanear uma pasta. A biblioteca adiciona até 500 faixas por pacote e ignora arquivos protegidos por senha e pacotes RAR ou 7z. Para exibir a capa, procura primeiro na pasta da faixa dentro do pacote e depois na pasta em que o pacote está.
 
 Essas configurações afetam apenas a Biblioteca de música. Você ainda pode abrir arquivos compatíveis diretamente no Player de música.
@@ -112,9 +111,9 @@ Escolher **Remover** apenas retira a pasta do catálogo do EffeTune; seus arquiv
 
 Selecione **Analisar sonoridade** na parte superior da biblioteca para medir as faixas novas ou modificadas. Você pode cancelar e retomar o trabalho iniciando a análise novamente. Para usar as medições, escolha **Faixa** ou **Álbum** em **Configuração de Áudio** → **ReplayGain**. As **Propriedades** da faixa mostram a sonoridade geral (LUFS), o maior pico verdadeiro (dBTP) e a faixa de sonoridade (LU). Quanto maior a faixa, maior a diferença entre trechos suaves e fortes.
 
-As versões de desktop e web podem medir MP3, AAC, FLAC, WAV, Vorbis e Opus, além de trilhas de áudio de vídeos compatíveis e faixas individuais de folhas CUE. A compatibilidade depende do decodificador. O aplicativo para macOS também mede ALAC. A análise aceita áudio mono, estéreo e 5.1. DSD, MIDI, MusicXML e músicas da rede ficam de fora. Se algum arquivo estiver indisponível, reconecte a pasta e execute a análise novamente.
+O EffeTune pode medir MP3, AAC, FLAC, WAV, Vorbis e Opus, além de trilhas de áudio de vídeos compatíveis e faixas individuais de folhas CUE. A compatibilidade depende do decodificador. O aplicativo para macOS também mede ALAC. A análise aceita áudio mono, estéreo e 5.1. DSD, MIDI, MusicXML e músicas da rede ficam de fora. Se algum arquivo estiver indisponível, reconecte a pasta e execute a análise novamente.
 
-No aplicativo de desktop, **Gravar tags ReplayGain** salva as medições nos arquivos FLAC, MP3 e M4A compatíveis para uso em outros players. Ao confirmar, você altera os arquivos originais e substitui as tags ReplayGain existentes. A referência das tags é sempre −18 LUFS, independentemente do alvo de reprodução. Faixas CUE são ignoradas. Até você gravar as tags, as medições ficam na biblioteca.
+Nos aplicativos de desktop e Android, **Gravar tags ReplayGain** salva as medições nos arquivos FLAC, MP3 e M4A compatíveis para uso em outros players. No aplicativo Android, os arquivos precisam estar em uma pasta na qual o EffeTune possa renomear e excluir arquivos. Ao confirmar, você altera os arquivos originais e substitui as tags ReplayGain existentes. A referência das tags é sempre −18 LUFS, independentemente do alvo de reprodução. Faixas CUE são ignoradas. Até você gravar as tags, as medições ficam na biblioteca.
 
 ## Playlists
 
@@ -145,11 +144,11 @@ Ao exportar uma playlist, ative **Caminhos relativos** se quiser mover o arquivo
 - Limpar os dados do site no navegador remove o catálogo e as playlists do aplicativo web; exporte as playlists importantes para mantê-las.
 - Coleções grandes são carregadas progressivamente conforme você rola a tela. Use a Biblioteca de música em uma única janela do EffeTune por vez.
 
-## Música na sua rede (aplicativo de desktop)
+## Música na sua rede (aplicativo de desktop e Android)
 
-Use **Library** para explorar este dispositivo ou um servidor detectado e o seletor de dispositivos no topo da janela para escolher onde ouvir. Trocar a biblioteca muda apenas a navegação e a busca. Adicionar pastas, refazer a varredura e outras tarefas locais ficam disponíveis com **This device** selecionado.
+Use **Library** para explorar este dispositivo ou um servidor detectado e o seletor de dispositivos no topo da janela para escolher onde ouvir. Trocar a biblioteca muda apenas a navegação e a busca. Adicionar pastas, refazer a varredura e outras tarefas locais ficam disponíveis com **Este dispositivo** selecionado.
 
-Ao explorar a biblioteca de outro EffeTune, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added** e **Playlists** como no seu dispositivo. Busque na biblioteca selecionada, ordene suas listas e abra um álbum, artista ou gênero para ver as faixas. Em **Folders**, use **Tree** para navegar pela estrutura de pastas ou **Flat** para listar todas as faixas da pasta selecionada. Só aparecem músicas compartilhadas. Você pode explorar e reproduzir as playlists remotas; para editá-las, use o computador de origem.
+Ao explorar a biblioteca de outro EffeTune, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added** e **Playlists** como no seu dispositivo. Busque na biblioteca selecionada, ordene suas listas e abra um álbum, artista ou gênero para ver as faixas. Em **Folders**, use **Tree** para navegar pela estrutura de pastas ou **Flat** para listar todas as faixas da pasta selecionada. Só aparecem músicas compartilhadas. Você pode explorar e reproduzir as playlists remotas; para editá-las, use o dispositivo de origem.
 
 Outros servidores de música mostram as categorias e a estrutura de pastas que disponibilizam; a busca e a ordenação só ficam disponíveis quando o servidor oferece suporte.
 
@@ -157,18 +156,18 @@ Outros servidores de música mostram as categorias e a estrutura de pastas que d
 
 ### Servidores Subsonic / OpenSubsonic
 
-No desktop, abra **Configurações > Configuração... > Rede > Subsonic / OpenSubsonic**. Preencha **Nome**, **URL do servidor**, **Usuário** e **Senha**, e escolha **Adicionar**. Selecione o servidor em **Library** para explorar álbuns, faixas e playlists do servidor, pesquisar e reproduzir ou adicionar músicas à fila do destino escolhido. A ordem e as faixas repetidas são preservadas; edite playlists no servidor. **Testar conexão** verifica uma conexão salva e **Remover** a desconecta.
+No aplicativo de desktop ou no Android, abra **Configurações > Configuração... > Rede > Subsonic / OpenSubsonic**. Preencha **Nome**, **URL do servidor**, **Usuário** e **Senha**, e escolha **Adicionar**. Selecione o servidor em **Library** para explorar álbuns, faixas e playlists do servidor, pesquisar e reproduzir ou adicionar músicas à fila do destino escolhido. A ordem e as faixas repetidas são preservadas; edite playlists no servidor. **Testar conexão** verifica uma conexão salva e **Remover** a desconecta.
 
-Na PWA, escolha **Library > Adicionar servidor de música…** para conectar diretamente por HTTPS. O servidor deve permitir acesso pelo navegador (CORS); conexão e login duram apenas durante a sessão. Para reproduzir em outro dispositivo, ou se o acesso direto falhar, adicione o servidor em um computador EffeTune cadastrado e permita acessar outros servidores nele. Escolha a biblioteca oferecida por esse computador; veja a [configuração da PWA](openhome.md#pwa).
+Na PWA, escolha **Library > Adicionar servidor de música…** para conectar diretamente por HTTPS. O servidor deve permitir acesso pelo navegador (CORS); conexão e login duram apenas durante a sessão. Para reproduzir em outro dispositivo, ou se o acesso direto falhar, adicione o servidor em um aplicativo desktop ou Android do EffeTune cadastrado e permita acessar outros servidores nele. Escolha a biblioteca oferecida por esse dispositivo; veja a [configuração da PWA](openhome.md#pwa).
 
 O áudio original tem preferência. Quando necessário para o destino, pode ser usado um fluxo convertido pelo servidor, cujo formato e qualidade podem diferir do arquivo armazenado. O EffeTune não adiciona codecs nem converte o áudio. Os formatos e a busca dentro da faixa dependem do servidor e do reprodutor.
 
 Para tocar faixas da Music Library em outro reprodutor, primeiro compartilhe sua pasta em **Configurações > Configuração... > Rede > Compartilhamento da biblioteca**. Os formatos e efeitos disponíveis dependem do destino; trechos CUE não estão disponíveis como faixas de rede separadas. Consulte [música em rede e controle remoto](openhome.md) para configurar, parear os efeitos e solucionar problemas de conexão.
 
-Para reproduzir arquivos locais individuais sem ativar o compartilhamento da biblioteca, escolha outro reprodutor e use **Open music files**. O EffeTune disponibiliza apenas os arquivos selecionados para esse reprodutor; mantenha o aplicativo aberto no computador de origem.
+Para reproduzir arquivos locais individuais sem ativar o compartilhamento da biblioteca, escolha outro reprodutor e use **Open music files**. O EffeTune disponibiliza apenas os arquivos selecionados para esse reprodutor; mantenha o aplicativo aberto no dispositivo de origem.
 
 ## Música compartilhada na PWA
 
-A PWA reproduz músicas compartilhadas de um computador EffeTune cadastrado e bibliotecas de rede autorizadas com os efeitos deste dispositivo, ou controla um reprodutor de rede autorizado. Também é possível conectar diretamente ao Subsonic. Arquivos locais da PWA não podem ser enviados a outro reprodutor. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para adicionar dispositivos e conhecer as permissões do navegador e os requisitos de conexão.
+Na PWA, você pode explorar a biblioteca compartilhada por um aplicativo EffeTune cadastrado, seja ele desktop ou Android, e os outros servidores de música aos quais esse aplicativo permite acesso. Você pode ouvir a música com os efeitos deste dispositivo ou reproduzi-la em um reprodutor de rede autorizado. Arquivos locais da PWA não podem ser enviados a outro reprodutor. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para adicionar dispositivos e conhecer as permissões do navegador e os requisitos de conexão.
 
 [← Voltar para o README](README.md)

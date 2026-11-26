@@ -264,7 +264,7 @@
                 <button type="button" class="preset-dialog-close" title="Close" aria-label="Close" popovertarget="networkOutputPicker" popovertargetaction="hide">✕</button>
             </div>
             <div class="preset-dialog-content">
-                <label class="network-output-enable"><input id="networkOutputPickerLocal" type="checkbox" disabled><span>This computer</span></label>
+                <label class="network-output-enable"><input id="networkOutputPickerLocal" type="checkbox" disabled><span>This device</span></label>
                 <div class="preset-dialog-section" id="networkOutputPickerTargets"></div>
                 <div class="network-output-note" id="networkOutputPickerMessage" role="status"></div>
             </div>
@@ -281,8 +281,8 @@
                 <div class="plugin-list-header">
                     <div class="tab-switcher" id="tabSwitcher">
                         <button class="tab-button active" id="effectsTab">Effects</button>
-                        <button class="tab-button" id="systemPresetsTab">S.Presets</button>
-                        <button class="tab-button" id="userPresetsTab">U.Preset</button>
+                        <button class="tab-button" id="systemPresetsTab">System</button>
+                        <button class="tab-button" id="userPresetsTab">User</button>
                     </div>
                     <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
                     <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
@@ -360,12 +360,16 @@
     <link rel="modulepreload" href="features/measurement/audio-utils/output-routing.js">
     <link rel="modulepreload" href="features/measurement/dataStorage.js">
     <link rel="modulepreload" href="features/measurement/measurement-model.js">
+    <link rel="modulepreload" href="features/measurement/return-to-effetune.js">
     <link rel="modulepreload" href="js/android/assets.js">
     <link rel="modulepreload" href="js/android/audio-manager.js">
     <link rel="modulepreload" href="js/android/bridge.js">
     <link rel="modulepreload" href="js/android/documents.js">
     <link rel="modulepreload" href="js/android/file-downloads.js">
+    <link rel="modulepreload" href="js/android/network-output.js">
+    <link rel="modulepreload" href="js/android/network.js">
     <link rel="modulepreload" href="js/android/pipeline.js">
+    <link rel="modulepreload" href="js/android/window-ui.js">
     <link rel="modulepreload" href="js/app-bootstrap.js">
     <link rel="modulepreload" href="js/app.js">
     <link rel="modulepreload" href="js/audio-manager.js">
@@ -456,6 +460,7 @@
     <link rel="modulepreload" href="js/native/engine-connection.js">
     <link rel="modulepreload" href="js/native/engine-endpoint.js">
     <link rel="modulepreload" href="js/native/file-playback.js">
+    <link rel="modulepreload" href="js/native/graph-capacity.generated.js">
     <link rel="modulepreload" href="js/native/input-adapter.js">
     <link rel="modulepreload" href="js/native/instrument-transport.js">
     <link rel="modulepreload" href="js/plugin-manager.js">
@@ -529,6 +534,7 @@
     <link rel="modulepreload" href="js/utils/classic-script-loader.js">
     <link rel="modulepreload" href="js/utils/clipboard-utils.js">
     <link rel="modulepreload" href="js/utils/measurement-dsp/analysis.js">
+    <link rel="modulepreload" href="js/utils/measurement-dsp/clock-drift.js">
     <link rel="modulepreload" href="js/utils/measurement-dsp/ess.js">
     <link rel="modulepreload" href="js/utils/measurement-dsp/fft.js">
     <link rel="modulepreload" href="js/utils/measurement-dsp/interface-calibration.js">

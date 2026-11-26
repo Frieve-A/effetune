@@ -14,10 +14,12 @@ function dialogFixture(host = {}) {
         node.click = () => node.dispatchEvent('click');
         return node;
     };
-    const win = { document: doc, ...host };
+    const timers = new Map();
+    const win = { document: doc, setInterval: callback => { timers.set(1, callback); return 1; },
+        clearInterval: id => timers.delete(id), ...host };
     const file = { name: 'effetune-diagnostics-20261122-110523.txt', text: '{\n  "example": "♪"\n}',
         summary: 'System\n  OS: Windows' };
-    return { win, file, open: async options => {
+    return { win, file, timers, open: async options => {
         let collections = 0;
         await openDiagnosticDialog({ win, collect: () => { collections++; return file; },
             translate: key => key, ...options });
@@ -29,6 +31,8 @@ function dialogFixture(host = {}) {
         assert.equal(preview.textContent, file.text);
         assert.equal(find(node => node.className === 'diagnostic-summary').textContent, file.summary);
         return { save: find(node => node.textContent === 'browser.save'),
+            close: find(node => node.textContent === 'backupRestore.action.close'),
+            overview: find(node => node.className === 'diagnostic-summary'),
             status: find(node => node.getAttribute('role') === 'status'), preview };
     } };
 }
@@ -91,4 +95,16 @@ test('Web download uses the preview bytes and reports that the download started'
     assert.equal(await blob.text(), preview.textContent);
     assert.equal(win.document.allElements.find(node => node.tagName === 'A').download, file.name);
     assert.equal(revoked.mock.calls[0].arguments[0], 'blob:diagnostic');
+});
+
+test('the overview follows the latest summary while open and the preview keeps the collected file', async () => {
+    const { file, timers, open } = dialogFixture();
+    const { overview, preview, close } = await open();
+    const latest = { ...file, text: '{}', summary: 'Input clock offset: +3.2 ppm' };
+    Object.assign(file, latest);
+    await timers.get(1)();
+    assert.equal(overview.textContent, latest.summary);
+    assert.notEqual(preview.textContent, latest.text);
+    close.click();
+    assert.equal(timers.size, 0);
 });

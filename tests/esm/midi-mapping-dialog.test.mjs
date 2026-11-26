@@ -41,6 +41,46 @@ function descendants(elementRef) {
   return elementRef.children.flatMap(child => [child, ...descendants(child)]);
 }
 
+test('dialog shares an in-flight open and closes before a failed service response', async t => {
+  const onOpen = Promise.withResolvers(), onClose = Promise.withResolvers();
+  const calls = [];
+  const errors = [];
+  const overlays = new Set();
+  t.mock.method(console, 'error', () => {});
+  const dialog = new MidiMappingDialog({
+    manager: {
+      setDialogOpen(open) {
+        calls.push(open);
+        return open ? onOpen.promise : onClose.promise;
+      },
+      onChange() { return () => calls.push('unsubscribe'); }
+    },
+    windowRef: {
+      document: {
+        body: { appendChild: overlay => overlays.add(overlay) },
+        createElement: () => Object.assign(element(), { remove() { overlays.delete(this); } }),
+        addEventListener() {},
+        removeEventListener() { calls.push('remove-keydown'); }
+      },
+      uiManager: { t: key => key, setError: message => errors.push(message) }
+    }
+  });
+  dialog.render = () => {};
+  const first = dialog.open();
+  assert.equal(dialog.open(), first);
+  assert.deepEqual(calls, [true]);
+  onOpen.resolve();
+  await first;
+  assert.equal(overlays.size, 1);
+  const closing = dialog.close();
+  assert.equal(overlays.size, 0);
+  assert.deepEqual(calls, [true, 'unsubscribe', 'remove-keydown', false]);
+  onClose.reject(new Error('service failed'));
+  await closing;
+  assert.equal(errors.length, 1);
+  assert.doesNotMatch(errors[0], /service failed/);
+});
+
 test('dialog numbers repeated parameter titles and offers Enabled', () => {
   const catalog = {
     TestPlugin: [
@@ -805,7 +845,7 @@ test('dialog explains a stalled MIDI system differently from a denied permission
     return devices.children[1].children[0]?.children[1]?.textContent ?? null;
   };
 
-  assert.equal(renderNote(null), null);
+  assert.equal(renderNote(null), 'No MIDI devices are connected.');
   assert.match(renderNote({ name: 'NotAllowedError' }), /MIDI access was not allowed/);
   assert.match(renderNote({ name: 'TimeoutError' }), /The MIDI system did not respond/);
 });

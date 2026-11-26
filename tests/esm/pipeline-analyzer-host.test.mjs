@@ -364,9 +364,3 @@ test('Electron main menu forwards the checkbox absolute value without persistent
     assert.match(source, /item\.type === 'checkbox' && typeof state\.checked === 'boolean'/);
     assert.doesNotMatch(source, /pipelineAnalyzer(?:Open|Checked)\s*=/);
 });
-
-test('UI audio initialization refreshes Analyzer format without starting a measurement', () => {
-    const source = fs.readFileSync(new URL('../../js/ui-manager.js', import.meta.url), 'utf8');
-    assert.match(source, /initAudio\(\)\s*\{[\s\S]*?if \(this\.audioManager\.audioContext\) \{\s*this\.pipelineAnalyzerController\?\.refreshAudioFormat\?\.\(\);/);
-    assert.doesNotMatch(source, /initAudio\(\)\s*\{[\s\S]{0,300}pipelineAnalyzerController\?\.invalidate/);
-});

@@ -72,6 +72,7 @@ public final class AndroidDocumentWorkflowTest {
                 execute(scenario, "window.__workflow.restoredLibraryLyrics()"); assertTrue(result(scenario).getBoolean("lyrics"));
             } finally { execute(scenario, "window.__workflow.cleanupLibraryLyrics()"); result(scenario); }
             DocumentStore documents = new DocumentStore(app.getContentResolver());
+            checkTagReplacement(documents, root);
             JSONObject video = documents.create(new JSONObject().put("uri", root.toString()).put("name", "tone.mp4").put("mimeType", "video/mp4"));
             try (InputStream input = test.getAssets().open("audio/tone.mp4"); java.io.OutputStream output = app.getContentResolver().openOutputStream(Uri.parse(video.getString("uri")), "wt")) {
                 byte[] buffer = new byte[8192]; int count; while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
@@ -164,5 +165,27 @@ public final class AndroidDocumentWorkflowTest {
         Uri target = Uri.parse(uri);
         if (!target.getPathSegments().contains("document")) target = DocumentsContract.buildDocumentUriUsingTree(target, DocumentsContract.getTreeDocumentId(target));
         assertTrue(DocumentsContract.deleteDocument(context.getContentResolver(), target));
+    }
+
+    private static void checkTagReplacement(DocumentStore store, Uri root) throws Exception {
+        String folder = store.create(new JSONObject().put("uri", root.toString()).put("name", "tags")
+                .put("mimeType", DocumentsContract.Document.MIME_TYPE_DIR)).getString("uri");
+        String name = "x".repeat(220) + ".flac";
+        String uri = store.create(new JSONObject().put("uri", folder).put("name", name)).getString("uri");
+        for (String tempName : new String[]{"refuse-install.tmp", "redirect-install.tmp", "verified.tmp"}) {
+            String temporary = store.create(new JSONObject().put("uri", folder).put("name", tempName)).getString("uri");
+            store.write(new JSONObject().put("uri", uri).put("data", "AQ=="));
+            store.write(new JSONObject().put("uri", temporary).put("data", "AgM="));
+            JSONObject source = store.metadata(Uri.parse(uri)), staged = store.metadata(Uri.parse(temporary));
+            JSONObject result = store.replace(new JSONObject().put("uri", uri).put("temporary", temporary)
+                    .put("expectSize", source.getLong("size")).put("expectLastModified", source.getLong("lastModified"))
+                    .put("temporarySize", staged.getLong("size")).put("temporaryLastModified", staged.getLong("lastModified")));
+            boolean written = tempName.equals("verified.tmp");
+            assertEquals(written ? "written" : tempName.equals("refuse-install.tmp") ? "failed" : "unavailable", result.getString("status"));
+            assertEquals(written ? "AgM=" : "AQ==", store.read(new JSONObject().put("uri", uri)).getString("data"));
+            JSONArray entries = store.list(new JSONObject().put("uri", folder)).getJSONArray("entries");
+            assertEquals(1, entries.length());
+            assertEquals(name, entries.getJSONObject(0).getString("name"));
+        }
     }
 }

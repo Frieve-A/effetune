@@ -114,10 +114,14 @@ jobs:
           mkdir -p dist
           cd out/desktop-sources
           zip -9 -r "$GITHUB_WORKSPACE/dist/EffeTune-${version}-ThirdParty-Source.zip" .
-      - name: Upload unified source release artifact
+          cd openhome/linux-x64
+          zip -9 -r "$GITHUB_WORKSPACE/dist/EffeTune-${version}-OpenHome-Linux-Source.zip" .
+      - name: Upload source release artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: third-party-source-release-artifacts
-          path: dist/*-ThirdParty-Source.zip
+          path: |
+            dist/*-ThirdParty-Source.zip
+            dist/*-OpenHome-Linux-Source.zip
           if-no-files-found: error
           compression-level: 0

@@ -191,6 +191,7 @@ export class PluginListManager {
 
         item.addEventListener('pointerdown', (e) => {
             if (!isMobileLayout()) return;
+            suppressNextClick = false;
             tapStart = {
                 pointerId: e.pointerId,
                 x: e.clientX,
@@ -210,8 +211,6 @@ export class PluginListManager {
             }
             e.preventDefault();
             e.stopPropagation();
-            suppressNextClick = true;
-            this.addPluginToPipeline(plugin, { mobile: true });
         });
 
         item.addEventListener('pointercancel', () => {
@@ -222,10 +221,9 @@ export class PluginListManager {
             if (!isMobileLayout()) return;
             e.preventDefault();
             e.stopPropagation();
-            if (suppressNextClick) {
-                suppressNextClick = false;
-                return;
-            }
+            const swiped = suppressNextClick && e.detail !== 0;
+            suppressNextClick = false;
+            if (swiped) return;
             this.addPluginToPipeline(plugin, { mobile: true });
         });
 

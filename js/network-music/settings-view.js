@@ -1,3 +1,5 @@
+import { isLocalNetworkPermissionError } from '../android/network.js';
+
 // Network configuration uses the same host boundary as browsing and playback.
 export class NetworkMusicSettings {
   constructor({ root, api, remoteSettings, translate, documentRef = globalThis.document }) {
@@ -51,8 +53,11 @@ export class NetworkMusicSettings {
       if (!this.closed) this.status.textContent = this.translate('networkMusic.settings.saved');
     } catch (error) {
       console.error('Network settings operation failed:', error);
-      if (!this.closed) this.status.textContent = this.translate(`networkMusic.settings.${
-        ['subsonicConnection', 'subsonicAuthentication', 'gatewayRequired'].includes(error.code) ? error.code : 'failed'}`);
+      let key = 'networkMusic.settings.failed';
+      if (['subsonicConnection', 'subsonicAuthentication', 'gatewayRequired', 'unreachable'].includes(error.code)) key = `networkMusic.settings.${error.code}`;
+      if (error.code === 'invalid-port' && this.remoteSettings?.api?.requiresUnprivilegedPort) key = 'networkMusic.settings.unprivilegedPort';
+      if (isLocalNetworkPermissionError(error)) key = 'dialog.config.localNetworkPermission';
+      if (!this.closed) this.status.textContent = this.translate(key);
     } finally { this.busy = false; }
   }
 
@@ -95,7 +100,7 @@ export class NetworkMusicSettings {
       }
     }
 
-    const settings = this.api.remoteV1?.settings;
+    const settings = this.api.remoteV1?.settings ?? this.remoteSettings?.api;
     if (settings?.setConnection) {
       const connection = this.section('https');
       this.element('p', 'networkMusic.settings.httpsHelp', connection);

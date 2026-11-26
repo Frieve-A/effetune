@@ -22,13 +22,11 @@ Open `.dsf` (DSF) or `.dff` (DSDIFF) files like other music files. Both uncompre
 
 Multichannel DSD reaches the effects in file channel order. If that order differs from your speaker outputs, place [**Matrix**](plugins/basics.md#matrix) first in the effect chain. For a five-channel DSF on a standard 5.1 output, route inputs 1–3 to their matching outputs and send inputs 4 and 5 only to outputs 5 and 6 respectively. This leaves output 4 (LFE) silent.
 
-Some DST encoding variants (segmented frames), files with more than six channels, DSD512, and 48 kHz-based DSD are not supported. If a file cannot be played, use an uncompressed DFF or a compatible PCM copy such as FLAC or WAV. DSD file playback is available in the desktop app and web/PWA player, but not the native Android app.
+Some DST encoding variants (segmented frames), files with more than six channels, DSD512, and 48 kHz-based DSD are not supported. If a file cannot be played, use an uncompressed DFF or a compatible PCM copy such as FLAC or WAV.
 
 High-rate DSD, especially at faster playback speeds, needs more processing power. If playback stutters or stops, lower the playback speed.
 
 ## MIDI files
-
-MIDI and MusicXML playback and library registration are available in the desktop app and web/PWA player. They are not supported in the Android app.
 
 Open `.mid`, `.midi`, or `.kar` files with the usual music file picker or drag and drop. MIDI contains notes and timing rather than recorded sound. Add [**SoundFont Player**](plugins/others.md#soundfont-player) from **Others** to the Effect Pipeline, then select an instrument with **SoundFont Library…**. Opening a MIDI file does not add an instrument automatically. MIDI files can also be added to the Music Library.
 To show lyrics in **Lyrics** in Visualizer, use lyrics embedded in the MIDI file or place a same-name `.wrd` file beside it. On the web, select or drop both files together unless the folder is accessible through Music Library. A `.wrd` file is an accompaniment, not a separate track; if it cannot be read, MIDI playback continues.
@@ -66,7 +64,7 @@ Notes, rests, chords, voices, ties, tempo changes, and standard repeats with alt
 - Click the playback speed button next to **Shuffle** to choose one of nine presets or set any speed from `0.25x` to `4x` in `0.01x` steps. **Preserve Pitch** is on by default so pitch stays constant as speed changes; turn it off to let pitch rise and fall with speed like a tape or record.
 - In the desktop app, choose **View > Mini Player** (`Ctrl/Cmd+Shift+M`) or click the player's mini-player button to switch to a compact window. Click the pin button to keep it always on top.
 
-The desktop Player also displays [network music and AirPlay](openhome.md). During AirPlay, track details, artwork, and time appear when supplied by the sender; hover over the title for more information. Control playback and volume on the sending device. Closing the Player with **×**, or using **Stop**, ends that AirPlay session while leaving the enabled receiver available for another connection.
+The Player also displays [network music](openhome.md) and, in the desktop app, AirPlay. During AirPlay, track details, artwork, and time appear when supplied by the sender; hover over the title for more information. Control playback and volume on the sending device. Closing the Player with **×**, or using **Stop**, ends that AirPlay session while leaving the enabled receiver available for another connection.
 
 Use the volume slider and mute button to adjust the Player’s sound before it enters the effect chain. Changes made by a remote controller also appear here, so you can check the current level and turn mute off locally.
 
@@ -74,9 +72,9 @@ When the built-in Player starts or resumes playback, including track changes and
 
 ## Resuming Where You Left Off
 
-When you reopen the desktop or web app, the Player restores your queue and pauses at the last saved position in the current track. Playback speed starts at 1x. The position is saved about every 10 seconds during playback, so recent changes just before you quit may be lost.
+When you reopen EffeTune, the Player restores your queue and pauses at the last saved position in the current track. In the desktop and web apps, playback speed starts at 1x. The position is saved about every 10 seconds during playback, so recent changes just before you quit may be lost.
 
-Library tracks are restored on both platforms, along with local files opened in the desktop app. On the web, your browser may ask you to select your music folder again when you press Play. Add any files opened directly on the web and any network tracks again.
+Library tracks are restored in all versions, along with local files opened in the desktop app. The Android app also restores opened files it can still read; it skips Subsonic tracks and files it can no longer open, and tells you how many were skipped. On the web, your browser may ask you to select your music folder again when you press Play. Add any files opened directly on the web and any network tracks again.
 
 To restore tracks from an archive, play them from the library. If you opened the archive directly, reopen it.
 
@@ -84,9 +82,9 @@ To discard the saved queue, close the Player with **×**. If a receiver or remot
 
 ## Gapless Playback
 
-**Gapless Playback** in **Audio Configuration** is on by default and plays compatible local tracks without a gap; support is limited by the file format and the browser or app environment. Unsupported formats and some mobile environments use a memory-safe fallback, so a short gap may remain. Turning it off prioritizes lower memory use and stability, at the cost of a possible short gap; the change does not interrupt the current track. Gapless playback works only at 1x speed; changing speed during gapless playback restarts the track from the same position with a brief interruption.
+**Gapless Playback** in **Audio Configuration** is on by default and plays compatible local tracks without a gap; support is limited by the file format and the browser or app environment. Unsupported formats and some mobile environments use a memory-safe fallback, so a short gap may remain. Turning it off prioritizes lower memory use and stability, at the cost of a possible short gap; the change does not interrupt the current track. In the desktop and web apps, gapless playback works only at 1x speed; changing speed during gapless playback restarts the track from the same position with a brief interruption.
 
-Multichannel WAV and FLAC files with up to six channels play gaplessly in the desktop app when **Driver** in **Audio Configuration** is set to anything other than **Standard**. Their channels reach the effects in file channel order. If that order differs from your speaker outputs, place [**Matrix**](plugins/basics.md#matrix) first in the effect chain, as with [multichannel DSD](#dsd-files).
+Multichannel WAV and FLAC files with up to six channels play gaplessly in the desktop app when **Driver** in **Audio Configuration** is set to anything other than **Standard**, and in the Android app. Their channels reach the effects in file channel order. If that order differs from your speaker outputs, place [**Matrix**](plugins/basics.md#matrix) first in the effect chain, as with [multichannel DSD](#dsd-files).
 
 ## ReplayGain
 
@@ -102,7 +100,7 @@ With **Target** set to **Manual** (default), the target is −18 LUFS. **ReplayG
 
 **Prevent Clipping** (on by default) reduces gain when the measured true peak or tagged peak would exceed **Peak Ceiling (dB)**. Lower the ceiling from its default of 0 dB to leave room for effects that boost the signal. Auto also uses the ceiling to choose its target when **Prevent Clipping** is off. Changes take effect during playback.
 
-The adjustment is applied to the Player's sound before it enters the effect chain; the volume slider position does not change. ReplayGain does not apply to MIDI or MusicXML playback, network music, AirPlay reception, playback on OpenHome or UPnP AV / DLNA players, or offline file processing. ReplayGain is available in the desktop app and web/PWA player, but not the Android app.
+The adjustment is applied to the Player's sound before it enters the effect chain; the volume slider position does not change. ReplayGain does not apply to MIDI or MusicXML playback, network music, AirPlay reception, playback on OpenHome or UPnP AV / DLNA players, or offline file processing.
 
 ## Video
 
@@ -119,8 +117,8 @@ Buttons and sliders keep their usual behavior.
 
 ## Playback on another device
 
-Choose an EffeTune, OpenHome, or UPnP AV / DLNA player in the device selector. Playback controls follow the selected player's capabilities, including **Volume** and **Mute** when supported. These controls change that player, not the computer's system volume or effect gain. Selecting another player does not stop the previous one or move its queue.
+Choose an EffeTune, OpenHome, or UPnP AV / DLNA player in the device selector. Playback controls follow the selected player's capabilities, including **Volume** and **Mute** when supported. These controls change that player, not this device's system volume or effect gain. Selecting another player does not stop the previous one or move its queue.
 
-Music sent to another player does not include this device's effects. An EffeTune destination applies its own effects. For connections, sources, and the computer that must stay running for a UPnP AV / DLNA sequence, see [network music and remote control](openhome.md#choose-a-library-and-a-player).
+Music sent to another player does not include this device's effects. An EffeTune destination applies its own effects. For connections, sources, and the device that must stay running for a UPnP AV / DLNA sequence, see [network music and remote control](openhome.md#choose-a-library-and-a-player).
 
 [← Back to README](../README.md)

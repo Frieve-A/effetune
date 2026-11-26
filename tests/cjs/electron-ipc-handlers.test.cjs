@@ -1483,11 +1483,15 @@ test('A cancelled Measurement Back keeps the menu hidden and the pipeline ready 
     const moduleStart = '<script type="module">';
     const navigationScript = html.slice(html.lastIndexOf(moduleStart) + moduleStart.length, html.lastIndexOf('</script>'));
     const confirmationImport = "import { confirmSpeakerDistortionLeave } from './ui/speaker-distortion-setup.js';";
+    const returnImport = "import { returnToEffeTune } from './return-to-effetune.js';";
+    const { returnToEffeTune } = await import('../../features/measurement/return-to-effetune.js');
     assert.ok(navigationScript.includes(confirmationImport));
-    runInNewContext(navigationScript.replace(confirmationImport, ''), {
+    assert.ok(navigationScript.includes(returnImport));
+    runInNewContext(navigationScript.replace(confirmationImport, '').replace(returnImport, ''), {
       window: renderer,
       document: { getElementById: () => backButton },
       confirmSpeakerDistortionLeave: () => confirmLeave(),
+      returnToEffeTune: mainPath => withPatchedPropertyAsync(globalThis, 'window', renderer, () => returnToEffeTune(mainPath)),
       console
     });
     renderer.dispatchEvent(new Event('load'));

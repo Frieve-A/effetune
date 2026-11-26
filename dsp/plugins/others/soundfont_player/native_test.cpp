@@ -271,7 +271,9 @@ struct Player {
         respond & 2u ? 1.0F : 0.0F,
         respond & 4u ? 1.0F : 0.0F,
         static_cast<float>(transpose),
-        static_cast<float>(channelMask < 0 ? 0 : 65535 ^ channelMask)};
+        static_cast<float>(channelMask < 0 ? 0 : 65535 ^ channelMask),
+        0.0F,
+        0.0F};
     CHECK(kernel->stageParameters(reinterpret_cast<const float *>(&params),
                                   descriptor->paramsFloatCount, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -3789,15 +3791,15 @@ void extendedVoiceCapacity() {
   }
 }
 void selectableSampleQuality() {
-  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 13u);
+  static_assert(generated::SoundFontPlayerPluginParams::kFloatCount == 15u);
   auto r = region();
   r[LoopStart] = r[Offset] = 37;
   r[LoopEnd] = 1006;
   r[KeyCenter] = 55;
   Player current({r}, false, false, {}, true);
-  CHECK(current.descriptor->paramsFloatCount == 13u);
+  CHECK(current.descriptor->paramsFloatCount == 15u);
   CHECK(current.descriptor->paramsHash == generated::SoundFontPlayerPluginParams::kHash);
-  const std::array<float, 13> defaults{0, 64, 0, 0, 1, -1, 0, 0, 1, 1, 1, 0, 0};
+  const std::array<float, 15> defaults{0, 64, 0, 0, 1, -1, 0, 0, 1, 1, 1, 0, 0, 0, 0};
   CHECK(current.kernel->stageParameters(defaults.data(), 3, current.descriptor->paramsHash) ==
         ET_ERR_ARGS);
   CHECK(current.kernel->setMidiClock(0, 1, ET_MIDI_CLOCK_RUNNING) == ET_OK);

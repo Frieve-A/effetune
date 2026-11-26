@@ -49,6 +49,8 @@ constexpr std::uint32_t kSignalLength = 1u << 15u;
 constexpr std::uint32_t kSignalMask = kSignalLength - 1u;
 constexpr std::uint32_t kRoughLength = 1u << 18u;
 constexpr std::uint32_t kRoughMask = kRoughLength - 1u;
+// Generator draws per roughness step: fine, mid and wave for both walls.
+constexpr std::uint32_t kRoughDraws = 6u;
 constexpr std::uint32_t kMaximumScanPoints = 25u;
 constexpr std::uint32_t kMaximumDust = 176u;
 constexpr std::uint32_t kDustTopPoints = 49u;
@@ -369,6 +371,17 @@ public:
 
     signal_.resize(kSignalLength);
     rough_.resize(kRoughLength);
+    rough_jump_.resize(8u * 256u);
+    // The generator is linear over GF(2), so kRoughDraws steps of a state are the XOR of the
+    // stepped bytes. The table lets the loop-carried state skip ahead in one short chain.
+    for (std::uint32_t byte = 0u; byte < 8u; ++byte) {
+      for (std::uint32_t value = 0u; value < 256u; ++value) {
+        std::uint64_t state = static_cast<std::uint64_t>(value) << (8u * byte);
+        for (std::uint32_t draw = 0u; draw < kRoughDraws; ++draw)
+          state = dsp::XorShiftRng::step(state);
+        rough_jump_[byte * 256u + value] = state;
+      }
+    }
     dry_left_.resize(static_cast<std::size_t>(latency_samples_) + 1u);
     dry_right_.resize(static_cast<std::size_t>(latency_samples_) + 1u);
     dust_.resize(kMaximumDust);
@@ -739,20 +752,32 @@ private:
     const double gain_fine = sigma * rough_gain_fine_unit_;
     const double gain_mid = sigma * rough_gain_mid_unit_;
     const double gain_wave = sigma * rough_gain_wave_unit_;
+    if (rough_index_ >= target) {
+      return;
+    }
+    std::uint64_t state = rough_random_.state();
     while (rough_index_ < target) {
       ++rough_index_;
+      // Draws 1..5 hang off the current state; only the table jump to draw 6 is loop-carried.
+      const std::uint64_t draw1 = dsp::XorShiftRng::step(state);
+      const std::uint64_t draw2 = dsp::XorShiftRng::step(draw1);
+      const std::uint64_t draw3 = dsp::XorShiftRng::step(draw2);
+      const std::uint64_t draw4 = dsp::XorShiftRng::step(draw3);
+      const std::uint64_t draw5 = dsp::XorShiftRng::step(draw4);
+      const std::uint64_t draw6 = jumpRoughState(state);
+      state = draw6;
       rough_fine_left_ = rough_a_fine_ * rough_fine_left_ +
-                         gain_fine * kSqrtThree * rough_random_.nextFloatSigned();
+                         gain_fine * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw1);
       rough_fine_right_ = rough_a_fine_ * rough_fine_right_ +
-                          gain_fine * kSqrtThree * rough_random_.nextFloatSigned();
-      rough_mid_left_ =
-          rough_a_mid_ * rough_mid_left_ + gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
-      rough_mid_right_ =
-          rough_a_mid_ * rough_mid_right_ + gain_mid * kSqrtThree * rough_random_.nextFloatSigned();
+                          gain_fine * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw2);
+      rough_mid_left_ = rough_a_mid_ * rough_mid_left_ +
+                        gain_mid * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw3);
+      rough_mid_right_ = rough_a_mid_ * rough_mid_right_ +
+                         gain_mid * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw4);
       rough_wave_left_ = rough_a_wave_ * rough_wave_left_ +
-                         gain_wave * kSqrtThree * rough_random_.nextFloatSigned();
+                         gain_wave * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw5);
       rough_wave_right_ = rough_a_wave_ * rough_wave_right_ +
-                          gain_wave * kSqrtThree * rough_random_.nextFloatSigned();
+                          gain_wave * kSqrtThree * dsp::XorShiftRng::toFloatSigned(draw6);
       const std::uint32_t position = static_cast<std::uint32_t>(rough_index_) & kRoughMask;
       rough_[position].left =
           static_cast<float>(rough_k_fine_ * rough_fine_left_ + rough_k_mid_ * rough_mid_left_ +
@@ -761,6 +786,15 @@ private:
           static_cast<float>(rough_k_fine_ * rough_fine_right_ + rough_k_mid_ * rough_mid_right_ +
                              rough_k_wave_ * rough_wave_right_);
     }
+    rough_random_.seed(state);
+  }
+
+  [[nodiscard]] std::uint64_t jumpRoughState(std::uint64_t state) const noexcept {
+    std::uint64_t result = 0u;
+    for (std::uint32_t byte = 0u; byte < 8u; ++byte)
+      result ^=
+          rough_jump_[byte * 256u + (static_cast<std::uint32_t>(state >> (8u * byte)) & 0xffu)];
+    return result;
   }
 
   double roughShift(std::uint32_t wall, double position) const noexcept {
@@ -1582,6 +1616,7 @@ private:
   std::array<std::uint16_t, kMaximumDust> active_dust_{};
   std::array<StaticPop, kMaximumStaticPops> static_pops_{};
   dsp::XorShiftRng rough_random_{};
+  std::vector<std::uint64_t> rough_jump_;
   dsp::XorShiftRng dust_random_{};
   dsp::XorShiftRng static_random_{};
   Biquad rumble_mid_;

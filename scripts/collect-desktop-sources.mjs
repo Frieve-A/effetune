@@ -38,7 +38,7 @@ export function verifyDesktopSources(directory) {
   }
   verifyLinuxSources(join(directory, 'openhome', 'linux-x64'));
   // Each producer verifies its exact source hashes before uploading. The final
-  // job requires all platform slices before making the single public archive.
+  // job requires all platform slices before creating the release archives.
   writeFileSync(join(directory, 'README.txt'), `EffeTune third-party corresponding source
 
 airplay/<platform>-<architecture>/ contains the matching runtime manifest,

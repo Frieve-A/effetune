@@ -2577,6 +2577,42 @@ test('AVTransport and local Player share the classified stream lifecycle', { tim
   assert.ok(routes.every((route, i) => i === 0 || route.generation > routes[i - 1].generation));
 });
 
+test('classified Android playback commits only after the native route activates', async () => {
+  const { createAndroidOpenHome } = await import('../../js/android/openhome.js');
+  let activate, activationStarted;
+  const activating = new Promise(resolve => { activationStarted = resolve; });
+  const android = createAndroidOpenHome({
+    on: () => () => {},
+    async request(command) {
+      if (command === 'live.start') return { connectionId: 'connection' };
+      if (command === 'live.activate') {
+        activationStarted();
+        return new Promise(resolve => { activate = resolve; });
+      }
+      return { value: null };
+    }
+  }, new EventTarget());
+  const h = createHarness({}, { bridge: android });
+  const manager = new EventTarget();
+  manager.setNetworkReceiveSession = (active, generation) => {
+    manager._networkReceiveSession = { active, generation };
+    manager.networkRoute = { receiveActive: active, generation };
+    manager.dispatchEvent(new Event('networkRoute'));
+  };
+  h.audioPlayer.audioManager = manager;
+  h.audioPlayer.contextManager.commitPlayerSourceOwnership = () => assert.fail('native playback attempted Web Audio ownership');
+  h.adapter.queue = [{ id: 1, uri: 'http://sender/stream', meta: {}, liveSessionId: 'session' }];
+  h.stateManager.updateState({ currentTrack: { sourceKey: 'openhome:1', meta: { openHomeQueueEntry: { liveSessionId: 'session' } } } });
+  try {
+    const playing = h.adapter.playClassifiedLive();
+    await Promise.race([activating, playing.then(() => assert.fail('play completed before native activation'))]);
+    assert.equal(h.stateManager.getStateSnapshot().isPlaying, false);
+    activate({ active: true });
+    assert.equal(await playing, true);
+    assert.equal(h.stateManager.getStateSnapshot().playbackMode, 'networkLive');
+  } finally { h.adapter.dispose(); }
+});
+
 test('classified playback stays silent until its receive generation is adopted', async () => {
   const h = createHarness();
   const listeners = new Set();

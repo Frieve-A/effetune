@@ -386,10 +386,20 @@ test('DLNA gateway grants select a real compatible resource before projecting me
   const chunks = []; const response = new Writable({ write(chunk, _encoding, done) { chunks.push(chunk); done(); } }); response.writeHead = () => {};
   await pwa.serveGatewayResource({ method: 'GET', headers: {} }, response, grant, 'media');
   assert.equal(upstream, resources[1].uri); assert.equal(Buffer.concat(chunks).toString(), 'MP3');
-  music.sources.set('subsonic', { resolve: async () => ({ ...track, uri: '', resources: [{ uri: '', protocolInfo: resources[1].protocolInfo }] }) });
+  const subsonicResolutions = [];
+  music.sources.set('subsonic', { resolve: async (trackId, { transcode = false } = {}) => {
+    assert.equal(trackId, 'song');
+    subsonicResolutions.push(transcode);
+    const { protocolInfo } = resources[transcode ? 1 : 0];
+    return { ...track, uri: '', resources: [{ uri: '', protocolInfo }] };
+  } });
   const privateSource = await pwa.gatewayTrack({ serverId: 'subsonic', trackId: 'song', audience: 'player', target }, {});
+  assert.deepEqual(subsonicResolutions, [false, true]);
   assert.equal(privateSource.resources[0].uri, privateSource.uri);
   assert.equal(privateSource.resources[0].protocolInfo, resources[1].protocolInfo);
+  assert.equal(parseDidl(privateSource.metadata)[0].resources[0].uri, privateSource.uri);
+  await assert.rejects(pwa.gatewayTrack({ serverId: 'subsonic', trackId: 'song', audience: 'player',
+    target: { ...target, protocolInfo: 'http-get:*:audio/aac:*' } }, {}), { code: 'unsupportedFormat' });
 });
 
 test('persistent player references retain no grant entries and revoke with their authorization and source owner', async t => {

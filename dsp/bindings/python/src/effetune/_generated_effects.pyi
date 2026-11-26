@@ -1371,6 +1371,8 @@ class SoundFontPlayer(Effect):
         respond_xg: bool = ...,
         transpose: int = ...,
         midi_channels_off: int = ...,
+        tuning: int = ...,
+        tuning_key: int = ...,
         id: str | None = ...,
         enabled: bool = ...,
         channel: EffectChannel = ...,

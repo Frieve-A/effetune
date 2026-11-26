@@ -28,6 +28,52 @@ test('original v1 peers receive only original operations and reconnect adopts th
     engine.onDisconnected();
 });
 
+test('legacy state adopts the host-reported slot and keeps A for peers that report none', () => {
+    let state = { pipeline: [], ids: [], masterBypass: false, slot: 'A' };
+    const slots = [];
+    const engine = new LegacySyncEngine({
+        adapter: { snapshot: () => structuredClone(state), apply: ops => { state = applyOps(state, ops).snapshot; }, setSlot: slot => slots.push(slot) },
+        send: () => Promise.resolve({ ok: true })
+    });
+    engine.onConnected();
+    engine.onState({ pipeline: [{ nm: 'Volume', en: true, vl: -3, ch: 'L', ib: 1, ob: 2 }], slot: 'B' });
+    assert.equal(engine.confirmed.snapshot.slot, 'B');
+    assert.deepEqual(state.pipeline, [{ nm: 'Volume', en: true, vl: -3, ch: 'L', ib: 1, ob: 2 }]);
+    engine.onState({ pipeline: [] });
+    assert.deepEqual(slots, ['B', 'A']);
+    engine.onDisconnected();
+});
+
+test('a pending legacy edit reaches its own slot and never overwrites the other slot', () => {
+    let state = { pipeline: [], ids: [], masterBypass: false, slot: 'A' };
+    const sent = [];
+    const engine = new LegacySyncEngine({
+        adapter: { snapshot: () => structuredClone(state), apply: ops => { state = applyOps(state, ops).snapshot; }, setSlot() {} },
+        send: message => { sent.push(message); return Promise.resolve({ ok: true }); }
+    });
+    const slotA = { pipeline: [{ nm: 'Volume', en: true, vl: -3 }], slot: 'A' };
+    const slotB = { pipeline: [{ nm: 'Mute', en: true }], slot: 'B' };
+    engine.onConnected();
+    engine.onState(slotA);
+    // The client commits the pending edit before it asks the host to switch.
+    engine.noteGesture();
+    state.pipeline[0].vl = -6;
+    engine.markDirty();
+    engine.flushNow();
+    engine.onState(slotB);
+    assert.deepEqual(sent, [{ op: 'chain', pipeline: [{ nm: 'Volume', en: true, vl: -6 }] }]);
+    assert.deepEqual(state.pipeline, slotB.pipeline);
+    // A host-side switch arrives while an edit of B is still pending.
+    engine.noteGesture();
+    state.pipeline[0].en = false;
+    engine.markDirty();
+    engine.onState(slotA);
+    assert.equal(engine.timer, null);
+    assert.equal(sent.length, 1, 'the edit made for B is not written to A');
+    assert.deepEqual(state.pipeline, slotA.pipeline);
+    engine.onDisconnected();
+});
+
 test('a rejected legacy edit is reported and reconnect adopts the host without resending it', async t => {
     let state = { pipeline: [], ids: [], masterBypass: false, slot: 'A' };
     const sent = [], errors = [];

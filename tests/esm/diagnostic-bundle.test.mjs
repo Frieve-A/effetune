@@ -251,10 +251,11 @@ test('history aligns capture decisions, visibility, worklet gaps, recovery attem
 
 test('the readable summary reports the native driver, sample rate conversion and buffer latency', async () => {
     const win = createWindow();
-    const native = { openSettings: { latency: 'balanced' },
+    // The input converter currently consumes 10 ppm more input per output frame than nominal.
+    const native = { openSettings: { latency: 'balanced' }, captureRatio: 44100 / 96000 * 1.00001,
         session: { sampleRate: 96000, deviceRate: 48000, captureRate: 44100, periodFrames: 480, inputChannels: 2 },
         latency: { outputLatencyFrames: 960, inputLatencyFrames: 441, outputConverterDelayFrames: 192,
-            captureTargetFrames: 882, feedFrames: 1024 } };
+            captureTargetFrames: 882, captureConverterDelayFrames: 441, feedFrames: 1024 } };
     win.audioManager = { getDiagnosticNativeState: () => native, getOutputChannelCount: () => 2,
         getTotalPipelineLatencySamples: () => 960, contextManager: { audioContext: { sampleRate: 96000 } } };
     win.electronAPI = { diagnostics: { collect: () => ({ events: [], environment: { platform: 'win32',
@@ -262,14 +263,41 @@ test('the readable summary reports the native driver, sample rate conversion and
     const lines = async () => (await collectDiagnosticFile(win)).summary.split('\n').map(line => line.trim());
     const running = await lines();
     for (const line of ['App: EffeTune 2.20.0', 'OS: Windows 10.0.26300 (x64)', 'Driver: WASAPI',
-        'Output device: System default (2 ch)', 'Output sample rate conversion: 96000 Hz → 48000 Hz',
-        'Input sample rate conversion: 44100 Hz → 96000 Hz', 'Latency setting: Mid', 'Device buffer: 480 samples (10.0 ms)',
+        'Output device: System default (2 ch)', 'Input device: System default (2 ch)', 'Output sample rate conversion: 96000 Hz → 48000 Hz',
+        'Input sample rate conversion: 44100 Hz → 96000 Hz, adjusted to follow the output device clock (current input rate adjustment: +10.0 ppm)', 'Latency setting: Mid', 'Device buffer: 480 samples (10.0 ms)',
         'Output latency: 22.0 ms (driver and device 20.0 ms + sample rate conversion 2.0 ms)',
-        'Input latency: 30.0 ms (driver and device 10.0 ms + input buffer 20.0 ms)',
+        'Input latency: 40.0 ms (driver and device 10.0 ms + input buffer 20.0 ms + sample rate conversion 10.0 ms)',
         'Transfer buffer from the app window to the driver: 10.7 ms', 'Total Delay (effect pipeline): 10.0 ms (960 samples)'
     ]) assert.ok(running.includes(line), line);
+    native.session.captureRate = 96000;
+    native.captureRatio = 1;
+    assert.ok((await lines()).includes('Input sample rate conversion: Fine adjustment only, to follow the output device clock (current input rate adjustment: 0.0 ppm)'));
     native.session = native.latency = null;
     const stopped = await lines();
     assert.ok(stopped.includes('The audio driver is not running.'));
     assert.ok(!stopped.includes('Sample rates'));
+});
+
+test('the Android summary reports the devices and rates that the native engine uses', async () => {
+    const win = createWindow();
+    const snapshot = { sampleRate: 48000, deviceSampleRate: 44100, outputHardwareSampleRate: 44100, inputDeviceId: 3, actualOutputDeviceId: 2,
+        outputBufferFrames: 441, outputXRuns: 4, inputUnderruns: 2, latencyHint: 'balanced' };
+    win.audioPreferences = { latencyHint: 'interactive' };
+    const devices = { inputs: [{ id: 3, label: 'USB microphone' }], outputs: [{ id: 2, label: 'Wired headphones' }] };
+    win.audioManager = { isAndroid: true, getOutputChannelCount: () => 2, getTotalPipelineLatencySamples: () => 480,
+        bridge: { request: command => command === 'snapshot.get' ? snapshot : devices } };
+    const { summary, text } = await collectDiagnosticFile(win);
+    const lines = summary.split('\n').map(line => line.trim());
+    for (const line of ['Output device: Wired headphones (2 ch)', 'Input device: USB microphone', 'Processing: 48000 Hz',
+        'Output device: 44100 Hz', 'Output sample rate conversion: 48000 Hz → 44100 Hz', 'Latency setting: Mid (Default)',
+        'Device buffer: 441 samples (10.0 ms)', 'Total Delay (effect pipeline): 10.0 ms (480 samples)'])assert.ok(lines.includes(line), line);
+    const file = JSON.parse(text);
+    assert.equal(file.audio.androidEngine.outputXRuns, 4);
+    assert.equal(file.audio.androidEngine.inputUnderruns, 2);
+    assert.equal(file.audio.settings.latencyHint, 'balanced');
+    assert.equal(file.audio.settings.inputSelection, 'explicit');
+    snapshot.outputHardwareSampleRate = 0;
+    const unknown = (await collectDiagnosticFile(win)).summary.split('\n').map(line => line.trim());
+    assert.ok(!unknown.some(line => line.startsWith('Output device: ') && line.endsWith('Hz')));
+    assert.ok(!unknown.some(line => line.includes('conversion')));
 });

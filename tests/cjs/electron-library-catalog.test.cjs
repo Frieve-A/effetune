@@ -1347,7 +1347,7 @@ test('CUE directory staging is paged, resolves claims, and is removed at scan te
   })).items, []);
 });
 
-test('startup scan recovery removes unfinished CUE directory staging', async t => {
+test('startup scan recovery removes pending traversal and CUE directory staging', async t => {
   const fixture = createTempCatalog(t);
   let host = await LibraryCatalogHost.open({ dbPath: fixture.dbPath });
   try {
@@ -1366,12 +1366,20 @@ test('startup scan recovery removes unfinished CUE directory staging', async t =
       scanId: scan.scanId,
       folderId: scan.folderId,
       generation: scan.generation,
-      expectedLifecycleVersion: scan.lifecycleVersion,
-      directoryPath: 'Album'
+      expectedLifecycleVersion: scan.lifecycleVersion
     };
-    await host.cueDirectoryStage({ ...base, action: 'reset' });
+    await host.scanTraversalQueue({ ...base, action: 'append', directories: ['First', 'Second'] });
+    await host.scanTraversalQueue({ ...base, action: 'append', directories: ['Third'] });
+    assert.deepEqual(await host.scanTraversalQueue({ ...base, action: 'take', limit: 2 }), {
+      directories: ['First', 'Second'], hasMore: true
+    });
+    await assert.rejects(host.finalizeScanEnumeration({
+      ...base, rootToEnd: true, continuityBroken: false, enumerationErrorCount: 0
+    }), { code: 'scanTraversalIncomplete' });
+    await host.cueDirectoryStage({ ...base, directoryPath: 'Album', action: 'reset' });
     await host.cueDirectoryStage({
       ...base,
+      directoryPath: 'Album',
       action: 'append-entries',
       entries: [{ relativePath: 'Album/interrupted.cue', path: null, kind: 'cue', sequence: 0 }]
     });
@@ -1379,9 +1387,15 @@ test('startup scan recovery removes unfinished CUE directory staging', async t =
     host = await LibraryCatalogHost.open({ dbPath: fixture.dbPath });
 
     const recovered = await host.cueDirectoryStage({
-      ...base, action: 'list-files', cursor: null, limit: 8
+      ...base, directoryPath: 'Album', action: 'list-files', cursor: null, limit: 8
     });
     assert.deepEqual(recovered.items, []);
+    const database = new DatabaseSync(fixture.dbPath, { readOnly: true });
+    try {
+      assert.equal(database.prepare('SELECT count(*) AS count FROM scan_traversal_queue').get().count, 0);
+    } finally {
+      database.close();
+    }
   } finally {
     await host.close();
   }

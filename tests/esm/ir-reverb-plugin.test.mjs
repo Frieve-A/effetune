@@ -583,23 +583,34 @@ test('native IR hydration resolves host PCM and a genuine control edit owns the 
     const offline = plugin.createOfflineDspState({ sampleRate: 48000, outputChannelCount: 2 })
       .then(state => { offlineComplete = true; return state; });
     await Promise.resolve(); assert.equal(offlineComplete, false);
-    plugin.setParameters({ dt: 75, dw: -6 });
+    plugin.setParameters({ dt: 75, dw: -6, channel: 'R' });
     // A native wet/routing edit still describes the old resident preparation.
     // Applying it must not overwrite the user's pending Decay value.
-    const references = { 'IRReverbPlugin:7:0': { id: 'resident.bin' } };
-    plugin.androidAssetSignature = JSON.stringify(Object.entries(references));
-    const manager = { pipelineA: [plugin], pipelineB: [], catalogPublished: true,
-      snapshot: { revision: 3, slot: 'A', pipeline: [{ id: 7, type: 'IRReverbPlugin', name: 'IR Reverb',
-        enabled: true, parameters: { ...parameters, dt: 100, dw: -3, inputBus: 2, outputBus: 3 } }],
-      assetRefs: references, assetDefinitions: { 'IRReverbPlugin:7:0': { id: 'resident.bin', ...definition } } },
-      nativeAssets: { synchronize() {}, adopt() {}, resident: new Map() }, pipelineProcessor: { setPipeline() {} } };
+    const key = 'IRReverbPlugin:7:0', residentId = 'resident.bin';
+    plugin.androidAssetSignature = JSON.stringify([[key, residentId]]);
+    const records = [{ id: 7, type: 'IRReverbPlugin', name: 'IR Reverb',
+      enabled: true, parameters: { ...parameters, dt: 100, dw: -3, inputBus: 2, outputBus: 3, channel: 'L' } }];
+    const snapshot = { revision: 3, slot: 'A', sampleRate: 48000, channelCount: 2,
+      assetRefs: { [key]: { id: residentId } }, assetDefinitions: { [key]: { id: residentId, ...definition } } };
+    const bridge = { async request(command, { slot, offset }, revision) {
+      assert.equal(command, 'pipeline.readSlot');
+      assert.equal(revision, snapshot.revision);
+      assert.equal(offset, 0);
+      return slot === 'A' ? { records, more: false } : { records: null };
+    } };
+    const manager = Object.assign(Object.create(AndroidAudioManager.prototype), {
+      snapshot, bridge, pipelineA: [plugin], pipelineB: null, catalogPublished: true,
+      nativeAssets: new AndroidAssets(bridge), pipelineProcessor: { setPipeline() {} }
+    });
     const previousWindow = globalThis.window;
     globalThis.window = window;
     const setEnabled = plugin.setEnabled;
     plugin.setEnabled = value => { plugin.enabled = value; };
     try {
-      await AndroidAudioManager.prototype.hydratePipeline.call(manager, { createPlugin() { throw new Error('Pending plugin replaced'); } });
+      await manager.hydratePipeline({ nextPluginId: 8, createPlugin() { throw new Error('Pending plugin replaced'); } });
       assert.equal(plugin._currentRequestedAssetDefinition().controls.dt, 75);
+      assert.equal(plugin._currentRequestedAssetDefinition().controls.channel, 'R');
+      assert.equal(plugin.channel, parameters.channel);
       assert.equal(plugin.dw, -3); assert.equal(plugin.inputBus, 2); assert.equal(plugin.outputBus, 3);
     } finally { globalThis.window = previousWindow; plugin.setEnabled = setEnabled; }
     decoded.resolve({ channels: [new Float32Array([1, 0.5, 0.25, 0])], sampleRate: 48000 });
@@ -627,11 +638,19 @@ test('parameter and routing commits after native hydration retain IR residency',
   try {
     await plugin.loadLibraryEntry(entry);
     const asset = plugin.getWasmAssets().get(0), key = 'IRReverbPlugin:7:0';
+    const records = prepareAndroidPipeline([plugin], { sampleRate: 48000 }).plugins;
     const snapshot = { revision: 4, sampleRate: 48000, channelCount: 2, slot: 'A',
-      pipeline: prepareAndroidPipeline([plugin], { sampleRate: 48000 }).plugins,
       assetRefs: { [key]: { id: 'original-ir.bin' } },
       assetDefinitions: { [key]: { id: 'original-ir.bin', externalAssetSignature: asset.externalAssetSignature } } };
-    const bridge = { async request(command, payload) { commands.push({ command, payload }); return snapshot; } };
+    const bridge = { async request(command, payload, revision) {
+      if (command === 'pipeline.readSlot') {
+        assert.equal(revision, snapshot.revision);
+        assert.equal(payload.offset, 0);
+        return payload.slot === 'A' ? { records, more: false } : { records: null };
+      }
+      commands.push({ command, payload });
+      return snapshot;
+    } };
     Object.assign(manager, { snapshot, bridge, pipelineA: [plugin], pipelineB: [], catalogPublished: true,
       pendingMutation: Promise.resolve(), nativeAssets: new AndroidAssets(bridge),
       pipelineProcessor: { setPipeline() {} }, acceptSnapshot() {} });

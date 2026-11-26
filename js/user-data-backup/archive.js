@@ -2,12 +2,30 @@ import { loadClassicScript } from '../utils/classic-script-loader.js';
 import { sha256IrBytes } from '../ir-library/ir-library-id.js';
 import { encodeIrAnalysisSidecar } from '../ir-library/ir-analysis-sidecar.js';
 import { IR_LIBRARY_MAX_ORIGINAL_BYTES, IR_LIBRARY_MAX_ANALYSIS_BYTES, requireBoundedIrBytes } from '../ir-library/ir-library-limits.js';
+import { MAX_ANALYSIS_WINDOW_SAMPLES } from '../utils/measurement-dsp/analysis.js';
 import { MAX_BACKUP_BYTES, MAX_ITEMS, MAX_JSON_BYTES, KINDS, clone, jsonBytes,
-    record, encodeFloat32, decodeFloat32, validateItemShape } from './portable.js';
+    record, encodeFloat32, decodeFloat32, measurementPayloads, packBlob, packMeasurement, validateItemShape } from './portable.js';
 
 const FORMAT = 'effetune-user-data-backup';
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const HASH = /^[a-f0-9]{64}$/;
+
+function decodeLegacyHarmonicSamples(value) {
+    const keys = record(value) ? Object.keys(value) : [];
+    if (keys.length < 2 || keys.length > MAX_ANALYSIS_WINDOW_SAMPLES) {
+        throw new Error('The backup contains invalid measurement samples.');
+    }
+    const samples = new Float32Array(keys.length);
+    for (let index = 0; index < keys.length; index++) {
+        const sample = value[index];
+        // The restored array must hash to the same numeric-key object as in v2.19.0.
+        if (keys[index] !== String(index) || !Number.isFinite(sample) || Math.fround(sample) !== sample) {
+            throw new Error('The backup contains invalid measurement samples.');
+        }
+        samples[index] = sample;
+    }
+    return samples;
+}
 
 export async function loadZipClass() {
     return globalThis.JSZip || loadClassicScript(new URL('../vendor/jszip-3.10.2.min.js', import.meta.url).href,
@@ -143,20 +161,23 @@ export async function createArchive(items, { appVersion = '', embedIr = true, em
     const payloads = [];
     const payloadNames = new Set();
     let total = 0;
-    const addPayload = async (path, bytes) => {
+    const addPayload = async (path, bytes, hash) => {
         if (payloadNames.has(path)) return;
         total += bytes.byteLength;
         if (total > MAX_BACKUP_BYTES) throw new Error('This selection exceeds 256 MB. Select fewer items and create separate backups.');
         zip.file(path, bytes, { createFolders: false });
-        payloads.push({ path, size: bytes.byteLength, sha256: await sha256IrBytes(bytes) });
+        payloads.push({ path, size: bytes.byteLength, sha256: hash ?? await sha256IrBytes(bytes) });
         payloadNames.add(path);
     };
-    const blob = async bytes => {
-        const hash = await sha256IrBytes(bytes);
-        const path = `blobs/${hash}.bin`;
-        await addPayload(path, bytes);
-        return { blob: path, size: bytes.byteLength };
+    let expandedBinaryBytes = 0;
+    const addBlob = (path, bytes, hash) => {
+        expandedBinaryBytes += bytes.byteLength;
+        if (expandedBinaryBytes > MAX_BACKUP_BYTES) {
+            throw new Error('This selection exceeds 256 MB. Select fewer items and create separate backups.');
+        }
+        return addPayload(path, bytes, hash);
     };
+    const blob = bytes => packBlob(bytes, addBlob);
     const manifestItems = [];
     for (const [index, item] of items.entries()) {
         checkCancelled(signal);
@@ -176,9 +197,7 @@ export async function createArchive(items, { appVersion = '', embedIr = true, em
                     }
                 }
             } else if (item.kind === 'measurement') {
-                const measurement = metadata.data.measurement;
-                if (measurement.speakerModel !== undefined) measurement.speakerModel = await blob(jsonBytes(measurement.speakerModel));
-                for (const response of metadata.data.impulseResponses) response.data = await blob(encodeFloat32(response.data));
+                await packMeasurement(metadata.data, addBlob);
             }
         }
         const path = metadataPath(item.kind, key);
@@ -261,6 +280,30 @@ export async function openArchive(file, { loadZip = loadZipClass, signal } = {})
         if (entry.embedded) validateItemShape(item);
         items.push(item);
     }
+    // Both formats use schemaVersion 1. Without an embedded IR to identify the
+    // encoding, verify the archive against both supported fingerprint formats.
+    const measurements = items.filter(item => item.embedded && item.kind === 'measurement');
+    const sampleReference = measurements.find(item => item.data.impulseResponses.length)
+        ?.data.impulseResponses[0]?.data;
+    let legacyMeasurementFingerprint = false;
+    if (record(sampleReference)) {
+        legacyMeasurementFingerprint = !Object.hasOwn(sampleReference, 'encoding');
+    } else if (items.some(item => item.kind === 'measurement')) {
+        legacyMeasurementFingerprint = null;
+    }
+    const measurementFormat = legacyMeasurementFingerprint ? 'legacy' : 'archive';
+    for (const item of measurements) {
+        const paths = new Set();
+        for (const { target, key } of measurementPayloads(item.data, measurementFormat)) paths.add(target[key]?.blob);
+        for (const path of paths) item.bytes += payloads.get(path)?.size ?? 0;
+    }
+    for (const item of items) {
+        if (!item.embedded || item.kind !== 'ir') continue;
+        item.bytes = item.data.originals.reduce((total, original) => total + original.bytes.size, 0);
+        for (const series of ['envelope', 'edc']) {
+            if (item.data.analysis?.[series]) item.bytes += item.data.analysis[series].size;
+        }
+    }
     for (const item of items) {
         for (const dependency of item.dependencies) {
             if (!record(dependency) || !keys.has(dependency.key) || typeof dependency.required !== 'boolean') {
@@ -293,12 +336,10 @@ export async function openArchive(file, { loadZip = loadZipClass, signal } = {})
             return result;
         }
         if (item.kind !== 'measurement') return [];
-        const result = item.data.impulseResponses.map(response => ({ reference: response.data, maxBytes: MAX_BACKUP_BYTES }));
-        const model = item.data.measurement.speakerModel;
-        if (model !== undefined) result.push({ reference: model, maxBytes: MAX_BACKUP_BYTES });
-        return result;
+        return Array.from(measurementPayloads(item.data, measurementFormat), ({ target, key }) =>
+            ({ reference: target[key], maxBytes: MAX_BACKUP_BYTES }));
     };
-    return { items, async hydrate(selected, selectedSignal) {
+    return { items, legacyMeasurementFingerprint, async hydrate(selected, selectedSignal) {
         let total = 0;
         for (const item of selected) {
             checkCancelled(selectedSignal);
@@ -323,11 +364,23 @@ export async function openArchive(file, { loadZip = loadZipClass, signal } = {})
                         IR_LIBRARY_MAX_ANALYSIS_BYTES, 'IR analysis');
                 }
             } else if (item.embedded && item.kind === 'measurement') {
-                const measurement = result.data.measurement;
-                if (measurement.speakerModel !== undefined) {
-                    measurement.speakerModel = JSON.parse(decoder.decode(await readBlob(measurement.speakerModel, MAX_BACKUP_BYTES, selectedSignal)));
+                for (const { target, key, model } of measurementPayloads(result.data, measurementFormat)) {
+                    const bytes = await readBlob(target[key], MAX_BACKUP_BYTES, selectedSignal);
+                    target[key] = model ? JSON.parse(decoder.decode(bytes)) : decodeFloat32(bytes);
                 }
-                for (const response of result.data.impulseResponses) response.data = decodeFloat32(await readBlob(response.data, MAX_BACKUP_BYTES, selectedSignal));
+                if (measurementFormat === 'legacy') {
+                    for (const response of result.data.impulseResponses) {
+                        const orders = response.harmonicAnalysis?.orders;
+                        if (!Array.isArray(orders)) continue;
+                        for (const order of orders) {
+                            for (const key of ['data', 'referenceData', 'harmonicReferenceData']) {
+                                if (order && Object.hasOwn(order, key)) {
+                                    order[key] = decodeLegacyHarmonicSamples(order[key]);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             hydrated.push(result);
         }

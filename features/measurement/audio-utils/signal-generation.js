@@ -297,15 +297,12 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
         return startNativeNoise(this, level, channel, minFreq, maxFreq, outputBands, outputChannelCount, pipeline);
     }
     if (isAndroidHost()) {
-        if (!['all', 'both', 'left', 'right', '0', '1'].includes(String(channel)) || outputChannelCount > 2) {
-            throw new MeasurementOutputError('Choose an available output channel.');
-        }
         const token = nextWhiteNoiseOperationToken(this);
         this.isWhiteNoisePending = true;
-        const buffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, 2);
+        const buffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, outputChannelCount || 2);
         try {
             const pending = (this.whiteNoiseRouteOperation || Promise.resolve()).catch(() => {}).then(() =>
-                startAndroidNoise(buffer, { levelDb: level, outputDeviceId, channel,
+                startAndroidNoise(buffer, { levelDb: level, outputDeviceId, channel, outputChannelCount, effectPipeline: Boolean(pipeline),
                     isCurrent: () => token === this.whiteNoiseOperationToken }));
             this.whiteNoiseRouteOperation = pending;
             await pending;

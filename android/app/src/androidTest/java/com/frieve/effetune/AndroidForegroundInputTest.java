@@ -38,14 +38,18 @@ public final class AndroidForegroundInputTest {
                     assertOwnInputActive(lease);
                     String uri = androidx.core.content.FileProvider.getUriForFile(lease.context, lease.context.getPackageName() + ".files", file).toString();
                     command(lease, "playback.setSource", new JSONObject().put("uri", uri));
-                    assertSilentInput(lease);
+                    assertSilentInput(lease, false);
                     command(lease, "playback.play", new JSONObject());
-                    assertSilentInput(lease);
+                    assertSilentInput(lease, true);
                     command(lease, "playback.pause", new JSONObject());
-                    assertSilentInput(lease);
+                    assertSilentInput(lease, false);
                     command(lease, "playback.stop", new JSONObject());
-                    assertSilentInput(lease);
-                    command(lease, "measurement.begin", new JSONObject().put("sampleRate", 48000)
+                    assertSilentInput(lease, false);
+                    // The measurement page acquires its own input first and sweeps at the engine's actual rate.
+                    // Devices without a common measurement rate (for example API 29 emulators) skip only this part.
+                    if (openMeasurementInput(lease)) {
+                    int sampleRate = command(lease, "measurement.options", new JSONObject()).getInt("sampleRate");
+                    command(lease, "measurement.begin", new JSONObject().put("sampleRate", sampleRate)
                             .put("excitationFrames", 128).put("captureFrames", 4800));
                     command(lease, "measurement.chunk", new JSONObject().put("offset", 0)
                             .put("data", android.util.Base64.encodeToString(new byte[128 * 8], android.util.Base64.NO_WRAP)));
@@ -57,7 +61,6 @@ public final class AndroidForegroundInputTest {
                         capture = command(lease, "measurement.status", new JSONObject());
                     } while (capture.getString("status").equals("running") && SystemClock.elapsedRealtime() < deadline);
                     assertEquals("complete", capture.getString("status"));
-                    assertSilentInput(lease);
                     int offset = 0;
                     while (offset < 4800 * 8) {
                         JSONObject chunk = command(lease, "measurement.read", new JSONObject().put("offset", offset).put("length", 4096));
@@ -66,14 +69,18 @@ public final class AndroidForegroundInputTest {
                     }
                     assertEquals(4800 * 8, offset);
                     command(lease, "measurement.cancel", new JSONObject());
+                    // Closing the measurement page releases its input; the player's selection returns silent.
+                    command(lease, "measurement.input", new JSONObject().put("deviceId", -1));
+                    }
+                    assertSilentInput(lease, false);
                     command(lease, "audio.configure", new JSONObject().put("useInputWithPlayer", true));
                     assertOwnInputActive(lease);
                     command(lease, "audio.configure", new JSONObject().put("useInputWithPlayer", false));
-                    assertSilentInput(lease);
+                    assertSilentInput(lease, false);
                     scenario.moveToState(Lifecycle.State.CREATED);
                     SystemClock.sleep(500);
                     command(lease, "playback.setQueue", new JSONObject().put("items", new JSONArray()));
-                    assertSilentInput(lease);
+                    assertSilentInput(lease, false);
                     scenario.moveToState(Lifecycle.State.RESUMED);
                     assertOwnInputActive(lease);
                 } finally {
@@ -86,14 +93,15 @@ public final class AndroidForegroundInputTest {
         }
     }
 
-    private static void assertSilentInput(AndroidHostTest.ServiceLease lease) throws Exception {
+    private static void assertSilentInput(AndroidHostTest.ServiceLease lease, boolean expectForeground) throws Exception {
         lease.onControl(() -> {
             NativeEngine engine = (NativeEngine) lease.field("engine");
             assertEquals("Player-only input releases microphone ownership", 0, engine.getInputSessionId());
             assertFalse((boolean) lease.field("microphone"));
             assertEquals("Selected input survives the ownership handoff", 0, lease.field("inputDevice"));
             assertTrue("Input handoff preserves the DSP output", (boolean) lease.field("running"));
-            assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, lease.service.getForegroundServiceType());
+            AndroidHostTest.assertForeground(lease, expectForeground);
+            if (expectForeground) assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, lease.service.getForegroundServiceType());
             return null;
         });
     }
@@ -160,6 +168,19 @@ public final class AndroidForegroundInputTest {
         assertNotNull("Own microphone recording was not active", state);
         assertFalse("Android silenced the microphone", state.silenced);
     }
+    /** Opens the measurement input; returns false when the devices share no measurement rate (the product's measurement-rate-unavailable). */
+    static boolean openMeasurementInput(AndroidHostTest.ServiceLease lease) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<AudioService.HostError> failure = new AtomicReference<>();
+        lease.service.command(new JSONObject().put("command", "measurement.input").put("payload", new JSONObject().put("deviceId", 0)),
+                (value, error) -> { failure.set(error); done.countDown(); }, true);
+        assertTrue(done.await(10, TimeUnit.SECONDS));
+        AudioService.HostError error = failure.get();
+        if (error == null) return true;
+        assertEquals(error.getMessage(), "measurement-rate-unavailable", error.code);
+        return false;
+    }
+
     private static JSONObject command(AndroidHostTest.ServiceLease lease, String name, JSONObject args) throws Exception {
         CountDownLatch done = new CountDownLatch(1); AtomicReference<JSONObject> result = new AtomicReference<>();
         AtomicReference<AudioService.HostError> failure = new AtomicReference<>();

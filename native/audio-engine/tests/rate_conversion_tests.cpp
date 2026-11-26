@@ -102,6 +102,59 @@ void checkFifoDrift(unsigned inputRate, unsigned outputRate) {
   require(maxError < .00001, "Drift modulated DC level");
 }
 
+void checkLiveInput() {
+  // Device input runs 20 ppm fast and starts with a burst of three packets.
+  // Its packets begin just before each read and drift across the read instant,
+  // so the order of arrival and read flips mid-run, and later the reader stalls.
+  // None of this may be taken for clock drift beyond the real 20 ppm.
+  ClockedFifo fifo(1, 4096);
+  constexpr std::size_t period = 480, target = 2 * period;
+  constexpr double drift = 20e-6, readNs = 1e7, packetNs = readNs / (1 + drift);
+  fifo.open(1, 48000, 48000, target, true);
+  std::vector<float> input(period, .5f), output(period);
+  std::uint64_t packet = 0;
+  auto arrival = [&](std::uint64_t n) {
+    // Small scheduling jitter on top of the clock; the first three arrive together.
+    const double jitter = ((n * 7919) % 11 - 5.) * 2e4;
+    return readNs - 2e5 + (n < 3 ? 0 : (n - 2) * packetNs) + jitter;
+  };
+  double worst = 0;
+  for (std::uint64_t block = 1; block <= 6000; ++block) {
+    const double now = block * readNs;
+    while (arrival(packet) <= now) {
+      require(fifo.write(input.data(), 1, period, 0, packet * period,
+                         static_cast<std::uint64_t>(arrival(packet))),
+              "Capture packet");
+      ++packet;
+    }
+    // A 50 ms reader stall leaves a backlog that must not stay as latency.
+    if (block > 3000 && block <= 3005)
+      continue;
+    fifo.read(output.data(), period, period, static_cast<std::uint64_t>(now));
+    if (block == 3006)
+      require(fifo.queued() < 2 * target, "Stall backlog was kept");
+    worst = std::max(worst, std::abs(fifo.inputPerOutput() - 1 - drift));
+  }
+  std::cout << "live input: worst ratio error " << worst * 1e6 << " ppm, queued " << fifo.queued()
+            << '\n';
+  require(worst < 40e-6 && !fifo.underruns(), "Packet timing was taken for clock drift");
+}
+
+void checkLivePacketAcrossSilence() {
+  ClockedFifo fifo(1, 64);
+  constexpr std::size_t target = 8;
+  constexpr std::uint64_t now = 1000000;
+  fifo.open(1, 48000, 48000, target, true);
+  std::vector<float> input(24, .5f);
+  require(fifo.write(input.data(), 1, input.size(), 0, 0, 1), "Write first live segment");
+  fifo.silence(0);
+  require(fifo.write(input.data(), 1, 12, 0, 48, now), "Write the next live packet");
+  float output = 0.f;
+  fifo.read(&output, 1, 1, now);
+  require(fifo.queued() <= target + 1 + 12,
+          "A new packet changed the backlog of an already ended segment");
+}
+
 void checkFifoTransitions() {
   ClockedFifo fifo(2, 512);
   fifo.open(2, 48000, 48000, 128);
@@ -148,6 +201,8 @@ int main() {
       checkQuality(44100, rate);
     }
     checkFifoTransitions();
+    checkLiveInput();
+    checkLivePacketAcrossSilence();
     checkFifoDrift(48000, 48000);
     checkFifoDrift(44100, 48000);
   } catch (const std::exception &error) {

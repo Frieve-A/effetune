@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { ANDROID_ORIGIN } from '../../js/android/bridge.js';
+import { requestAndroidDocument } from '../../js/android/library-io.js';
 
 import { WebCatalogRepositoryClient } from '../../js/library/repository/web-catalog-client.js';
 import {
@@ -39,6 +42,34 @@ test('Android lyric document DTO survives worker cloning and becomes readable at
   const browserFile = new File(['[00:00]Song'], 'song.lrc');
   client.request = async () => ({ file: browserFile, index: 0 });
   assert.equal((await WebCatalogRepositoryClient.prototype.resolveTrackSiblingFile.call(client, {})).file, browserFile);
+});
+
+test('Catalog worker preserves the missing-document code returned by Android SAF', async () => {
+  const scope = createWorkerScope();
+  const uninstall = installWebCatalogWorker(scope, {
+    repository: { close() {} },
+    serviceCoordinator: {
+      resolveSequenceEntrySource: () => requestAndroidDocument('documents.resolve', {}),
+      close() {}
+    }
+  });
+  try {
+    await withGlobals({
+      window: undefined, location: { origin: ANDROID_ORIGIN },
+      postMessage({ id }) {
+        scope.dispatch({ type: 'android-document-reply', id, ok: false, code: 'document-not-found' });
+      }
+    }, async () => {
+      scope.dispatch({
+        protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+        requestId: 'missing-document',
+        method: 'resolveSequenceEntrySource',
+        args: [{ trackUid: 'missing' }]
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(scope.messages.at(-1).error.code, 'document-not-found');
+    });
+  } finally { uninstall(); }
 });
 
 test('Worker protocol accepts only versioned bounded method requests and forwards invalidations', async () => {
@@ -256,6 +287,34 @@ test('Worker replaces an oversized repository response with a bounded typed erro
   });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(scope.messages.at(-1).error.code, 'responseTooLarge');
+  uninstall();
+});
+
+test('Worker returns the leading shared library rows that fit and later pages reach every row', async () => {
+  const scope = createWorkerScope();
+  const path = '曲'.repeat(350);
+  const rows = Array.from({ length: 600 }, (_, index) => ({ kind: 'track', trackUid: `t${index}`, displayPath: path, relativePath: path }));
+  const repository = {
+    async querySharedLibrary({ start, count }) { return { rows: rows.slice(start, start + count), total: rows.length }; },
+    close() {}
+  };
+  const uninstall = installWebCatalogWorker(scope, { repository });
+  const received = [];
+  while (received.length < rows.length) {
+    scope.dispatch({
+      protocolVersion: WEB_CATALOG_WORKER_PROTOCOL_VERSION,
+      requestId: `page-${received.length}`,
+      method: 'querySharedLibrary',
+      args: [{ start: received.length, count: 500 }]
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const { ok, result } = scope.messages.at(-1);
+    assert.equal(ok, true);
+    assert.equal(result.total, rows.length);
+    assert.ok(result.rows.length > 0 && result.rows.length < 500);
+    received.push(...result.rows.map(row => row.trackUid));
+  }
+  assert.deepEqual(received, rows.map(row => row.trackUid));
   uninstall();
 });
 

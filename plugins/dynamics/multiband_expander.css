@@ -105,23 +105,25 @@ body.layout-mobile .multiband-expander-band-graph {
 }
 
 body.layout-mobile .multiband-expander-band-tab {
-    flex: 1 1 56px;
+    min-width: 0;
+    padding-inline: 2px;
+    white-space: normal;
+}
+
+body.layout-mobile .multiband-expander-band-tabs {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 body.layout-mobile .multiband-expander-frequency-sliders {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
 }
 
-body.layout-mobile .multiband-expander-frequency-slider {
-    flex: 1 1 var(--et-mobile-effect-slider-basis);
-    min-width: var(--et-mobile-effect-slider-min-width);
-}
-
 body.layout-mobile .multiband-expander-frequency-slider-top {
-    flex-wrap: wrap;
+    display: grid;
     gap: 4px;
 }

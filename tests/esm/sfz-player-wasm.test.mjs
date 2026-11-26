@@ -7,14 +7,14 @@ import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { parseSfz } from '../../js/sfz/parser.js';
 import { packSfzAsset } from '../../js/sfz/asset.js';
 
-async function instrument(text, frames = 480) {
+async function instrument(text, frames = 480, sample = new Float32Array(frames).fill(0.25)) {
   const parsed = await parseSfz({ selectedPath: 'test.sfz', readText: async () => text, onDiagnostic: null });
   return packSfzAsset(parsed.regions, new Map([['tone.wav', {
-    sampleRate: 48000, channels: [new Float32Array(frames).fill(0.25)]
+    sampleRate: 48000, channels: [sample]
   }]]));
 }
 
-async function openPlayer(variant, definition, mc = 0) {
+async function openPlayer(variant, definition, mc = 0, sample = undefined) {
   const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
   const module = await WebAssembly.compile(fs.readFileSync(new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
   const control = await instantiateDspBinding(module);
@@ -23,15 +23,16 @@ async function openPlayer(variant, definition, mc = 0) {
   assert.equal(binding.prepare(48000, 2, 128, 262144), 0);
   const id = binding.createInstance('SoundFontPlayerPlugin');
   const packer = DSP_PARAM_PACKERS.get('SoundFontPlayerPlugin');
-  const asset = await instrument(definition);
+  const asset = await instrument(definition, sample?.length, sample);
   assert.equal(binding.instanceSetParams(id, packer.pack({ mc, pl: 64, og: 0 }), packer.hash), 0);
   const preparedAsset = await materializeAcceptanceAsset(control, asset, { playerKind: 'SoundFontPlayerPlugin' });
   assert.equal(binding.instanceSetAsset(id, 0, preparedAsset.payload,
     { ...preparedAsset, frames: preparedAsset.samples, topology: 0 }), 0);
   const result = {
     events(events, flags = 0) { assert.equal(binding.instanceSetMidiEvents(id, events, 1, flags), 0); },
-    channel(channel) {
-      assert.equal(binding.instanceSetParams(id, packer.pack({ mc: channel, pl: 64, og: 0 }), packer.hash), 0);
+    channel(channel) { result.parameters({ mc: channel }); },
+    parameters(values) {
+      assert.equal(binding.instanceSetParams(id, packer.pack({ mc, pl: 64, og: 0, ...values }), packer.hash), 0);
     },
     render() {
       const { combined, offsets } = binding.getArenaViews();
@@ -69,6 +70,39 @@ for (const variant of ['baseline', 'simd']) {
       for (let block = 0; block < 16; block++) player.render();
       assert.ok(player.render().every(sample => Math.abs(sample) < 1e-7),
         'only one newly selected identity was restored and its note-off releases it');
+    } finally { player.close(); }
+  });
+
+  test(`SFZ ${variant} tuning offsets follow the untransposed key`, async () => {
+    // A 64-frame-period sine plays 750 Hz at key 60.
+    const sine = Float32Array.from({ length: 4096 }, (_, frame) => 0.25 * Math.sin(2 * Math.PI * frame / 64));
+    const player = await openPlayer(variant, '<region> sample=tone.wav lokey=48 hikey=96 pitch_keycenter=60 ' +
+      'loop_mode=loop_continuous loop_start=0 loop_end=4095 amp_veltrack=0', 0, sine);
+    const frequency = (parameters, key) => {
+      player.parameters(parameters);
+      player.events([{ offsetFrames: 0, status: 0x90, data1: key, data2: 100, noteId: key }]);
+      const left = new Float32Array(80 * 128);
+      for (let block = 0; block < 80; block++) left.set(player.render().subarray(0, 128), block * 128);
+      player.events([{ offsetFrames: 0, status: 0x80, data1: key, data2: 0, noteId: key }]);
+      for (let block = 0; block < 16; block++) player.render();
+      let first = -1, last = -1, count = 0;
+      for (let i = 1024; i < left.length; i++) {
+        if (left[i - 1] <= 0 && left[i] > 0) {
+          const t = i - 1 + left[i - 1] / (left[i - 1] - left[i]);
+          if (first < 0) first = t;
+          last = t;
+          count++;
+        }
+      }
+      return (count - 1) * 48000 / (last - first);
+    };
+    const cents = (parameters, key) => 1200 * Math.log2(frequency(parameters, key) / frequency({ ...parameters, tu: 0, tk: 0 }, key));
+    try {
+      // Zero-crossing timing over 0.19 s resolves far below 0.001 cent; table values are rounded to 0.001 cent.
+      const tolerance = 0.01;
+      assert.ok(Math.abs(cents({ tu: 1, tk: 7 }, 71) + 13.686) < tolerance, 'Just G major lowers B');
+      assert.ok(Math.abs(cents({ tu: 2, tk: 12 }, 61) - 17.108) < tolerance, 'Meantone C minor raises Db');
+      assert.ok(Math.abs(cents({ tu: 1, tk: 0, tr: 5 }, 64) + 13.686) < tolerance, 'Transpose keeps the logical-key offset');
     } finally { player.close(); }
   });
 

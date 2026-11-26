@@ -1,17 +1,26 @@
 import { bytesToBase64 } from './bridge.js';
 import { getPluginExecutionChannelMode } from '../audio/plugin-execution-capabilities.js';
-import { getSfzMaxBytes } from '../sfz/limits.js';
 
 export class AndroidAssets {
-    constructor(bridge) {
+    constructor(bridge, branch = 0) {
         this.bridge = bridge;
+        this.branch = branch;
         this.resident = new Map();
         this.subscriptions = new Map();
         this.authoritative = new Map();
         this.nativeTypes = new Map();
         this.pendingClears = new Map();
         this.suppressed = false;
-        this.bridge.on?.('asset-state', (notice) => this.acceptAssetNotice(notice));
+        if (branch !== null) this.unsubscribe = this.bridge.on?.('asset-state', notice => this.acceptAssetNotice(notice));
+    }
+
+    dispose() {
+        this.closed = true;
+        this.unsubscribe?.();
+        this.synchronize([], () => {});
+        this.resident.clear();
+        this.authoritative.clear();
+        this.pendingClears.clear();
     }
 
     reconcilePipeline(pipeline) {
@@ -25,7 +34,8 @@ export class AndroidAssets {
         this.nativeTypes = types;
     }
 
-    acceptAssetNotice({ pluginId, slot, state, rejected, operationRevision }) {
+    acceptAssetNotice({ branch = 0, pluginId, slot, state, rejected, operationRevision, reason = 'prepare' }) {
+        if (branch !== this.branch || this.closed) return;
         const plugin = [...this.subscriptions.keys()].find(item => item.id === pluginId);
         if (!plugin) return;
         if (rejected) {
@@ -33,7 +43,7 @@ export class AndroidAssets {
             if (this.resident.get(key)?.operationRevision === operationRevision) {
                 this.resident.delete(key);
             }
-            plugin.onWasmAssetRejected?.(slot, 'prepare', operationRevision);
+            plugin.onWasmAssetRejected?.(slot, reason, operationRevision);
         } else {
             plugin.onWasmAssetState?.(slot, state, operationRevision);
         }
@@ -80,6 +90,7 @@ export class AndroidAssets {
                 const asset = plugin.getWasmAssets?.().get(slot);
                 if (asset && asset.externalAssetSignature === definitions[reference]?.externalAssetSignature) {
                     this.resident.set(key, asset);
+                    if (plugin.externalAssetInfo?.pending) plugin.onWasmAssetState?.(slot, 3, asset.operationRevision);
                 }
             }
         }
@@ -94,12 +105,24 @@ export class AndroidAssets {
         plugin.onWasmAssetState?.(slot, 3, asset.operationRevision);
     }
 
+    needsTransfer(pipeline) {
+        let count = 0;
+        for (const plugin of pipeline) for (const [slot, asset] of plugin.getWasmAssets?.() || []) {
+            if (this.resident.get(`${plugin.id}:${slot}`) !== asset) return true;
+            count++;
+        }
+        return count !== this.resident.size || this.pendingClears.size > 0;
+    }
+
     async transfer(pipeline, options, clears = [], expectedRevision) {
+        const routing = options?.inactiveSlot ? { inactiveSlot: options.inactiveSlot } : this.branch ? { branch: this.branch } : {};
         const batch = expectedRevision === undefined ? {} : { _assetBatch: crypto.randomUUID() };
         const remote = options?.remoteRequestId ? { _remoteRequestId: options.remoteRequestId } : {};
         const request = async (command, payload) => {
             await options?.beforeCommit?.();
-            const result = await this.bridge.request(command, { ...payload, ...batch, ...remote }, expectedRevision);
+            if (this.closed) throw new Error('Asset transfer cancelled');
+            const result = await this.bridge.request(command, { ...payload, ...batch, ...remote, ...routing }, expectedRevision);
+            if (this.closed) throw new Error('Asset transfer cancelled');
             if (expectedRevision !== undefined) {
                 if (!Number.isSafeInteger(result?.revision)) throw new Error('Invalid Android asset revision');
                 expectedRevision = result.revision;
@@ -113,20 +136,19 @@ export class AndroidAssets {
             this.authoritative.delete(key);
         }
         for (const plugin of pipeline) {
-            for (const [slot, asset] of plugin.getWasmAssets?.() || []) {
+            for (const [slot, asset] of options?.assetMaps?.get(plugin) ?? plugin.getWasmAssets?.() ?? []) {
                 const key = `${plugin.id}:${slot}`;
                 active.add(key);
                 if (this.resident.get(key) === asset) continue;
                 const { payload, ...metadata } = asset;
                 const bytes = new Uint8Array(payload);
                 try {
-                    if (['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(plugin.constructor.name)) {
-                        // Android's native pipeline has two output channels. Native CONTROL
-                        // computes the exact target-allocator footprint within this budget.
-                        const mode = getPluginExecutionChannelMode(plugin.channel, 2);
+                    if (!metadata.preparationContext && ['SFZNotePlayerPlugin', 'SoundFontPlayerPlugin'].includes(plugin.constructor.name)) {
+                        const width = options?.channelCount ?? 2;
+                        // Keep the bank for a selected pair or channel even while its effect is skipped on a narrower device.
+                        const mode = getPluginExecutionChannelMode(plugin.channel, 16);
                         if (!mode) throw new Error('Invalid Android instrument channel selection');
-                        metadata.processingChannels = mode === 'single' || mode === 'mono' ? 1 : 2;
-                        metadata.footprintBytes = getSfzMaxBytes(globalThis.window?.appConfig?.sfzMaxSizeMiB);
+                        metadata.processingChannels = mode === 'all' ? width : mode === 'stereo-pair' ? 2 : 1;
                     }
                     await request('pipeline.asset.begin', {
                         ...metadata, pluginId: plugin.id, slot, byteLength: bytes.byteLength
@@ -137,12 +159,12 @@ export class AndroidAssets {
                     }
                     const result = await request('pipeline.asset.commit', { pluginId: plugin.id, slot });
                     this.resident.set(key, asset);
-                    if (result?.state !== 'pending') {
+                    if (!this.branch && result?.state !== 'pending') {
                         plugin.onWasmAssetState?.(slot, 3, asset.operationRevision);
                     }
                 } catch (error) {
-                    await this.bridge.request('pipeline.asset.abort', { pluginId: plugin.id, slot, ...batch, ...remote }, expectedRevision).catch(() => {});
-                    plugin.onWasmAssetRejected?.(slot, 'prepare', asset.operationRevision);
+                    if (!this.closed) await this.bridge.request('pipeline.asset.abort', { pluginId: plugin.id, slot, ...batch, ...remote, ...routing }, expectedRevision).catch(() => {});
+                    if (!this.branch) plugin.onWasmAssetRejected?.(slot, 'prepare', asset.operationRevision);
                     throw error;
                 }
             }

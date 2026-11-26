@@ -3,6 +3,133 @@ import test from 'node:test';
 
 import { WebCatalogScanRuntime } from '../../js/library/scan/web-scan-runtime.js';
 
+test('an unresponsive saved handle requires reselection and an existing track verifies the replacement folder', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const folder = { id: 'folder-1', lifecycleVersion: 7, status: 'active' };
+  const file = new File(['audio'], 'song.mp3', { lastModified: 100 });
+  const track = { folderId: folder.id, lifecycleVersion: 7, relativePath: 'song.mp3', size: file.size, mtimeMs: 100 };
+  const staleHandle = {
+    kind: 'directory', name: 'Music',
+    async *values() {},
+    queryPermission: () => new Promise(() => {})
+  };
+  let handle = staleHandle;
+  let releasedContexts = 0;
+  const runtime = new WebCatalogScanRuntime({
+    repository: {
+      listFolderRecords: async () => [folder],
+      upsertFolders: async () => assert.fail('Recovery must not create a folder'),
+      setFolderAvailability: async ({ folderId, status }) => {
+        assert.equal(folderId, folder.id);
+        folder.status = status;
+        return folder;
+      },
+      tombstoneFolder: async () => assert.fail('Recovery must not delete a folder'),
+      runFolderDeletion: async () => assert.fail('Recovery must not delete tracks'),
+      getScanFolderTrackCount: async () => ({ trackCount: 1 }),
+      async queryTracks(request) {
+        assert.deepEqual(request.scope, { folderKey: folder.id });
+        return { rows: [{ trackUid: 'track-1' }], contextToken: 'context-1' };
+      },
+      async getTrackStorageIdentity(trackUid) {
+        assert.equal(trackUid, 'track-1');
+        return track;
+      },
+      async releaseContext(contextToken) {
+        assert.equal(contextToken, 'context-1');
+        releasedContexts += 1;
+      }
+    },
+    handleStore: {
+      get: async () => handle,
+      put: async record => { handle = record.handle; },
+      close() {}
+    }
+  });
+  t.after(() => runtime.close());
+
+  const unavailable = assert.rejects(runtime.resolveTrackFile(track), {
+    code: 'folderPermissionRequired',
+    details: { folderId: folder.id, lifecycleVersion: 7, reselectFolder: true }
+  });
+  await Promise.resolve();
+  t.mock.timers.tick(1_500);
+  await unavailable;
+  assert.equal(folder.status, 'needs-permission');
+
+  function selectFolder(selectedFile) {
+    return runtime.requestFolderAccess({
+      folderId: folder.id,
+      handle: {
+        kind: 'directory', name: 'Music',
+        queryPermission: async () => 'granted',
+        async *values() {},
+        async getFileHandle() { return { getFile: async () => selectedFile }; }
+      }
+    });
+  }
+  const wrongFolder = assert.rejects(selectFolder(new File(['other'], file.name, { lastModified: 200 })),
+    { code: 'folderRebindMismatch' });
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(1_500);
+  await wrongFolder;
+  assert.equal(handle, staleHandle);
+
+  const reconnected = selectFolder(file);
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(1_500);
+  assert.equal((await reconnected).folder.status, 'active');
+  assert.equal(await runtime.resolveTrackFile(track), file);
+  assert.equal(releasedContexts, 2);
+});
+
+test('an unresponsive saved folder does not prevent adding a different folder', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const saved = { id: 'saved', status: 'active' };
+  const staleHandle = {
+    kind: 'directory', name: 'Saved Music',
+    async *values() {},
+    queryPermission: () => new Promise(() => {})
+  };
+  const selected = {
+    kind: 'directory', name: 'New Music',
+    queryPermission: async () => 'granted',
+    async *values() {},
+    async isSameEntry() { assert.fail('The stale handle cannot be compared'); }
+  };
+  const registered = [];
+  const runtime = new WebCatalogScanRuntime({
+    repository: {
+      listFolderRecords: async () => [saved],
+      upsertFolders: async rows => registered.push(...rows),
+      setFolderAvailability: async ({ folderId, status }) => {
+        assert.equal(folderId, saved.id);
+        saved.status = status;
+      },
+      tombstoneFolder: async () => assert.fail('Adding a folder must not remove the saved folder'),
+      runFolderDeletion: async () => assert.fail('Adding a folder must not remove existing tracks'),
+      getScanFolderTrackCount: async () => ({ trackCount: 1 })
+    },
+    handleStore: {
+      list: async () => [{ folderId: saved.id, handle: staleHandle }],
+      put: async ({ handle }) => { assert.equal(handle, selected); },
+      close() {}
+    }
+  });
+  t.after(() => runtime.close());
+
+  const added = runtime.addFolder({ handle: selected, scan: false });
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(1_500);
+  const { folder } = await added;
+  assert.deepEqual(registered, [folder]);
+  assert.equal(folder.displayName, 'New Music');
+  assert.equal(saved.status, 'needs-permission');
+});
+
 test('Web folder and session scans include video formats only when enabled', async t => {
   const files = ['song.m4a', 'clip.mp4', 'clip.webm', 'clip.m4v', 'clip.mov', 'clip.mkv', 'clip.3gp']
     .map(name => ({ name, size: 1, lastModified: 1, slice() {} }));

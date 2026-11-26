@@ -174,8 +174,8 @@ test('Tonal Balance EQ greys only the correction controls at Amount 0, maps Aver
         const result = await page.evaluate(async () => {
             const plugin = new window.TonalBalanceEQPlugin();
             plugin.id = 1;
-            const posted = [];
-            window.workletNode = { port: { postMessage: message => posted.push(message) } };
+            const resets = [];
+            window.audioManager = { resetPluginState: pluginId => resets.push(pluginId) };
             const ui = plugin.createUI();
             document.getElementById('host').appendChild(ui);
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -268,7 +268,7 @@ test('Tonal Balance EQ greys only the correction controls at Amount 0, maps Aver
                 curveError(atFull.lift, atFull.height)
             ];
             ui.querySelector('.analog-meter-reset-button').click();
-            out.posted = posted.filter(message => message.type === 'resetPluginState');
+            out.resets = resets;
             out.readingAfterReset = plugin.reading;
             out.copyDisabled.push(copyPeq.disabled);
 
@@ -307,7 +307,7 @@ test('Tonal Balance EQ greys only the correction controls at Amount 0, maps Aver
         assert.ok(result.withheld.scaleError < 1e-9, `scale error ${result.withheld.scaleError}`);
         // Drawn curves: through every band value, never beyond the two neighbouring band values.
         for (const error of result.curveErrors) assert.ok(error < 1e-9, `curve error ${error}`);
-        assert.deepEqual(result.posted, [{ type: 'resetPluginState', pluginId: 1 }]);
+        assert.deepEqual(result.resets, [1]);
         assert.equal(result.readingAfterReset, null);
         // Copy as PEQ: no curve, curve, Amount 0, Amount back, after Reset.
         assert.deepEqual(result.copyDisabled, [true, false, true, false, true]);

@@ -1448,6 +1448,8 @@ export interface SoundFontPlayerOptions extends CommonEffectOptions {
   readonly respondXg?: boolean;
   readonly transpose?: number;
   readonly midiChannelsOff?: number;
+  readonly tuning?: number;
+  readonly tuningKey?: number;
   readonly assets: SoundFontPlayerAssets;
 }
 

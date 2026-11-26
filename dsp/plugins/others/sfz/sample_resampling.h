@@ -101,17 +101,36 @@ public:
     const auto magnitude = distance < 0 ? -distance : distance;
     if (magnitude >= kRadii[profile])
       return 0;
-    const auto at = magnitude * kResolution;
-    const auto index = static_cast<std::uint32_t>(at);
-    const auto fraction = static_cast<float>(at - index);
+    return prototype(prototypes_.data() + prototype_offsets_[profile], magnitude);
+  }
+  // coefficient() for the integer source frames first..first + count - 1 around
+  // position. Out-of-support taps select zero instead of branching, so the
+  // independent divisions and lookups vectorize; each value matches coefficient().
+  void coefficientSpan(std::uint32_t profile, std::int64_t first, double position, double scale,
+                       std::uint32_t count, float *out) const noexcept {
+    const double radius = kRadii[profile];
     const auto *values = prototypes_.data() + prototype_offsets_[profile];
-    return values[index] + fraction * (values[index + 1u] - values[index]);
+    const auto origin = static_cast<double>(first); // Frames stay far below 2^53: sums are exact.
+    for (auto tap = 0u; tap < count; ++tap) {
+      const auto distance = (origin + tap - position) / scale;
+      const auto magnitude = distance < 0 ? -distance : distance;
+      const auto inside = magnitude < radius;
+      const auto value = prototype(values, inside ? magnitude : 0.0);
+      out[tap] = inside ? value : 0.0F;
+    }
   }
   std::size_t storageBytes() const noexcept {
     return (prototypes_.size() + coefficients_.size()) * sizeof(float);
   }
 
 private:
+  // Linear interpolation of a prototype at magnitude < its radius; the index fits int32.
+  static float prototype(const float *values, double magnitude) noexcept {
+    const auto at = magnitude * kResolution;
+    const auto index = static_cast<std::int32_t>(at);
+    const auto fraction = static_cast<float>(at - index);
+    return values[index] + fraction * (values[index + 1] - values[index]);
+  }
   std::array<Kernel, kRadii.size() * kRows> kernels_{};
   std::array<std::uint32_t, kRadii.size()> prototype_offsets_{};
   NothrowStorage<float> prototypes_, coefficients_;

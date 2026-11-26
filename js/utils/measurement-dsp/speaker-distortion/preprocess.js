@@ -2,9 +2,10 @@
 // alignment, period averaging, linear response, bin classes and row weights. Pure JS, so the
 // level check can run outside the worker pool.
 import FFT from '../fft.js';
+import { clockRatio, correctClock } from '../clock-drift.js';
 import { resampleWindowedSinc } from '../resample.js';
 import { MIN_KEPT_SHARE } from '../recording-gaps.js';
-import { correlationPeak, segmentLag } from '../segment-lag.js';
+import { correlationPeak, fractionalLag, segmentLag } from '../segment-lag.js';
 import { BAND_EDGES, N_BANDS } from './constants.js';
 import { MAX_BIN, N, SPECTRUM_BINS, combLines } from './signals.js';
 
@@ -159,27 +160,39 @@ function averagePeriods(spectra) {
 /**
  * Latency from the chirp, then the period mean Y = mean of DFT/N over the K periods
  * after the faded-in one (interleaved Float32Array(16002)) and its noise Pn (Float32Array(8001)),
- * both accumulated in float64. With the call's `seed` and `bandwidth` the periods are realigned
- * against capture time slips first (see realignPeriods); `X` (the drive spectrum) and `reference` (the
+ * both accumulated in float64. With the call's `seed` and `bandwidth`, a capture whose periods drift
+ * apart by a steady step is first resampled onto the playback clock, and the periods are realigned
+ * against capture time slips (see realignPeriods); `X` (the drive spectrum) and `reference` (the
  * channel's reference peak, null for none) also align the whole capture.
  */
 export function analyzeCall(capture, { fsDev, K, chirp, seed = null, bandwidth = null, X = null, reference = null }) {
-    const latency = findLatency(capture, chirp, fsDev);
-    const blockStart = latency + Math.round(0.5 * fsDev);
-    const block48 = fsDev === N
-        ? capture.subarray(blockStart, blockStart + (K + 2) * N)
-        : resampleWindowedSinc(capture.subarray(blockStart, blockStart + Math.round((K + 2) * fsDev)), fsDev, N);
-    const block = new Float64Array((K + 2) * N);
-    block.set(block48.subarray(0, block.length));
-    const period = i => block.subarray(N * (1 + i), N * (2 + i));
-    const spectra = [];
-    for (let i = 0; i < K; i += 2) spectra.push(...periodSpectra(period(i), i + 1 < K ? period(i + 1) : null));
-    if (spectra.length > K) spectra.pop();
+    const periodsOf = source => {
+        const latency = findLatency(source, chirp, fsDev);
+        const blockStart = latency + Math.round(0.5 * fsDev);
+        const block48 = fsDev === N
+            ? source.subarray(blockStart, blockStart + (K + 2) * N)
+            : resampleWindowedSinc(source.subarray(blockStart, blockStart + Math.round((K + 2) * fsDev)), fsDev, N);
+        const block = new Float64Array((K + 2) * N);
+        block.set(block48.subarray(0, block.length));
+        const period = i => block.subarray(N * (1 + i), N * (2 + i));
+        const spectra = [];
+        for (let i = 0; i < K; i += 2) spectra.push(...periodSpectra(period(i), i + 1 < K ? period(i + 1) : null));
+        if (spectra.length > K) spectra.pop();
+        return { latency, spectra };
+    };
+    let { latency, spectra } = periodsOf(capture);
     if (seed === null) {
         const { mean, Pn } = averagePeriods(spectra);
         return { latency, Y: Float32Array.from(mean), Pn };
     }
-    const { mean, Pn, ...realigned } = realignPeriods(spectra, { fsDev, seed, bandwidth, X, reference });
+    const { lines, weights } = lagLines(seed, bandwidth);
+    // A recording clock that differs from the playback clock delays each period by the same step
+    // behind the one before it; resampling onto the playback clock from the chirp keeps them in place,
+    // and the chirp is located again since the mismatch also stretched it.
+    const steps = spectra.slice(1).map((S, i) => fractionalLag(S, spectra[i], lines, weights, fsDev));
+    const corrected = correctClock(capture, clockRatio(steps, fsDev), latency);
+    if (corrected) ({ latency, spectra } = periodsOf(corrected));
+    const { mean, Pn, ...realigned } = realignPeriods(spectra, { fsDev, lines, weights, X, reference });
     return { latency, Y: Float32Array.from(mean), Pn, ...realigned };
 }
 
@@ -208,6 +221,17 @@ function advanced(S, shift, fsDev) {
     return out;
 }
 
+// Lag lines of a call: its excited lines from 50 Hz without mains, weighted by 1/|X|² (the
+// correlation of the transfer functions).
+function lagLines(seed, bandwidth) {
+    const { excited, target } = combLines(seed, bandwidth);
+    const lines = [];
+    for (let f = LAG_LOW_HZ; f <= MAX_BIN; f++) if (excited[f] && !isMains(f)) lines.push(f);
+    const weights = new Float64Array(SPECTRUM_BINS);
+    for (const f of lines) weights[f] = 1 / (target[f] * target[f]);
+    return { lines, weights };
+}
+
 /**
  * Mean and noise of the K period spectra of a call, robust to capture time slips:
  * { mean, Pn, periods, gaps, peak, lags, dropped }.
@@ -226,13 +250,8 @@ function advanced(S, shift, fsDev) {
  *   'corrected' when periods were realigned or dropped, 'interrupted' when fewer than MIN_KEPT_SHARE of
  *   the periods remain. A capture without slips is averaged exactly as without this step.
  */
-function realignPeriods(spectra, { fsDev, seed, bandwidth, X, reference }) {
+function realignPeriods(spectra, { fsDev, lines, weights, X, reference }) {
     const K = spectra.length;
-    const { excited, target } = combLines(seed, bandwidth);
-    const lines = [];
-    for (let f = LAG_LOW_HZ; f <= MAX_BIN; f++) if (excited[f] && !isMains(f)) lines.push(f);
-    const weights = new Float64Array(SPECTRUM_BINS);
-    for (const f of lines) weights[f] = 1 / (target[f] * target[f]);
     const meanOf = indices => {
         const R = new Float64Array(2 * SPECTRUM_BINS);
         for (const i of indices) {

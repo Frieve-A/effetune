@@ -146,7 +146,7 @@ export class PowerPolicyController {
         // explicitly requested.
         const requestedEnabled = queryOverride ??
             (typeof configuredEnabled === 'boolean' ? configuredEnabled : true);
-        this.enabled = !readMasterKillSwitch(this.windowRef) &&
+        this.enabled = !audioManager.isAndroid && !readMasterKillSwitch(this.windowRef) &&
             requestedEnabled === true &&
             hasWebPowerProofCapabilities(this.windowRef);
         this.started = false;

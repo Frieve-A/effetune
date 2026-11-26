@@ -83,7 +83,23 @@ test('Web system playlists match the Electron lazy, bounded, and resurrection co
     playlistId: RECENTLY_PLAYED_ID, name: 'Renamed', expectedVersion: 0, updatedAt: 1
   }), { kind: 'systemPlaylist', playlistId: RECENTLY_PLAYED_ID });
 
-  for (let index = 1; index <= 101; index += 1) {
+  dispatch('createPlaylistWithItems', {
+    playlistId: 'regular', name: 'Regular', createdAt: 2, items: [{ trackUid: 'track-001' }]
+  });
+  const openPlaylist = playlistId => dispatch('createContext', { scope: { playlistId } }).contextToken;
+  const regularContext = openPlaylist('regular');
+  const recentContext = openPlaylist(RECENTLY_PLAYED_ID);
+  const collectionContext = dispatch('createContext', {
+    endpoint: 'entities', entityType: 'playlist', includeSystemPlaylists: true
+  }).contextToken;
+  const readPage = contextToken => dispatch('readContextPage', { contextToken });
+  const firstPlay = dispatch('recordRecentlyPlayed', { trackUid: 'track-001' });
+  assert.deepEqual(firstPlay.changedScopes, [`playlist:${RECENTLY_PLAYED_ID}`]);
+  assert.deepEqual(readPage(regularContext).rows.map(row => row.trackUid), ['track-001']);
+  assert.throws(() => readPage(recentContext), { code: 'STALE_CURSOR' });
+  assert.throws(() => readPage(collectionContext), { code: 'STALE_CURSOR' });
+
+  for (let index = 2; index <= 101; index += 1) {
     const trackUid = `track-${String(index).padStart(3, '0')}`;
     assert.equal(dispatch('recordRecentlyPlayed', { trackUid }).kind, 'recorded');
   }
@@ -109,9 +125,6 @@ test('Web system playlists match the Electron lazy, bounded, and resurrection co
   assert.equal(dispatch('setTrackFavorite', { trackUid: 'track-001', favorite: false }).kind, 'unfavorited');
   assert.deepEqual(dispatch('getFavoriteTrackUids'), { trackUids: ['track-002'], truncated: false });
 
-  dispatch('createPlaylist', {
-    playlistId: 'regular', name: 'Regular', operationId: null, createdAt: 2
-  });
   const playlistPage = dispatch('queryEntities', {
     type: 'playlist', query: '', sort: 'name', direction: 'asc', scope: null, limit: 50
   });

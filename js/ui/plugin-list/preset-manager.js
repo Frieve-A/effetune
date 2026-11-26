@@ -1,6 +1,10 @@
 import { applySerializedState } from '../../utils/serialization-utils.js';
 import { rememberDiagnosticNames } from '../../diagnostics/diagnostic-log.js';
 
+function userPresetDisplayName(name, isMobile) {
+    return !isMobile && name.length > 20 ? name.slice(0, 17) + '...' : name;
+}
+
 export class PresetManager {
     constructor(pluginListManager) {
         this.pluginListManager = pluginListManager;
@@ -106,6 +110,11 @@ export class PresetManager {
 
             // Add new content while preserving h2
             this.pluginList.appendChild(contentContainer);
+            this.unsubscribeUserPresetLayout ??= window.uiManager?.layoutMode?.onChange(mode => {
+                for (const item of this.pluginList.querySelectorAll('.plugin-item-long-preset')) {
+                    item.firstChild.textContent = userPresetDisplayName(item.title, mode === 'mobile');
+                }
+            });
 
             // Add preset count at the end of the list
             if (window.uiManager && window.uiManager.t) {
@@ -200,13 +209,9 @@ export class PresetManager {
         item.className = 'plugin-item';
         item.draggable = true;
         
-        // Truncate long preset names with ellipsis (accounting for the 3 dots)
-        const maxLength = 20;
-        const displayName = presetName.length > maxLength ? presetName.substring(0, maxLength - 3) + '...' : presetName;
-        item.textContent = displayName;
-        
-        // Add full name as title for tooltip
-        if (presetName.length > maxLength) {
+        item.textContent = userPresetDisplayName(presetName, window.uiManager?.layoutMode?.isMobile);
+        if (presetName.length > 20) {
+            item.className += ' plugin-item-long-preset';
             item.title = presetName;
         }
         

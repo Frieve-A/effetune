@@ -537,7 +537,39 @@ test('drag and drop handlers distinguish audio, preset, unsupported, and Electro
   });
 });
 
-test('progress, cancellation, names, base64, and single-file processing update state consistently', async () => {
+test('Android scrolls to visible file progress on first use and when reopening a running job', async () => {
+  await withFileProcessorGlobals({}, async ({ windowRef }) => {
+    windowRef.location = { origin: 'https://appassets.androidplatform.net' };
+    windowRef.effetuneAndroid = { postMessage() {} };
+    document.body.classList.add('layout-mobile');
+    const { processor } = createProcessorHarness();
+    const select = processor.dropArea.querySelector('.select-files');
+    const input = document.body.querySelector('input');
+    let scrolls = 0;
+    processor.dropArea.scrollIntoView = options => {
+      assert.equal(processor.dropArea.classList.contains('file-processing-active'), true);
+      assert.equal(processor.progressContainer.style.display, 'block');
+      assert.deepEqual(options, { block: 'center', behavior: 'instant' });
+      scrolls++;
+    };
+    await select.dispatch('click');
+    assert.equal(input.clicked, true);
+    assert.equal(scrolls, 0);
+    const job = Promise.withResolvers();
+    processor._processSingleFile = () => job.promise;
+    input.files = [createFile('one.wav')];
+    const processing = input.dispatch('change', { target: input });
+    assert.equal(scrolls, 1);
+    input.clicked = false;
+    await select.dispatch('click');
+    assert.equal(scrolls, 2);
+    assert.equal(input.clicked, false);
+    job.resolve();
+    await processing;
+  });
+});
+
+ test('progress, cancellation, names, base64, and single-file processing update state consistently', async () => {
   await withFileProcessorGlobals({}, async ({ calls }) => {
     const { processor, calls: harnessCalls } = createProcessorHarness();
     processor.showProgress();

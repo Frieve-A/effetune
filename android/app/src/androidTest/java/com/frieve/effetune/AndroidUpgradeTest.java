@@ -39,8 +39,10 @@ public final class AndroidUpgradeTest {
                 JSONObject restored = AndroidWebHostTest.result(scenario);
                 assertEquals(marker, restored.getString("marker"));
                 assertEquals("[7,29,37]", restored.getJSONArray("bytes").toString());
-                assertEquals(-7, restored.getJSONObject("state").getJSONArray("pipeline").getJSONObject(0).getJSONObject("parameters").getDouble("vl"), 0);
-                assertEquals("SUSPENDED", restored.getJSONObject("state").getString("powerState"));
+                JSONObject state = restored.getJSONObject("state");
+                assertEquals(-7, state.getJSONObject("pipelines").getJSONArray(state.getString("slot")).getJSONObject(0).getJSONObject("parameters").getDouble("vl"), 0);
+                // A new Service starts output once when the UI is ready.
+                assertEquals("ACTIVE", restored.getJSONObject("state").getString("powerState"));
                 AndroidWebHostTest.execute(scenario, "(async()=>{const {getAndroidBridge}=await import('https://appassets.androidplatform.net/assets/web/js/android/bridge.js');await getAndroidBridge().request('pipeline.set'," + evidence.getString("saved", "{}") + ");localStorage.removeItem('android-upgrade-test');await(await navigator.storage.getDirectory()).removeEntry('android-upgrade-test');return {};})()");
                 AndroidWebHostTest.result(scenario);
                 assertTrue(evidence.edit().clear().commit());

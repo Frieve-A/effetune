@@ -9,10 +9,11 @@ import { NativeAudioManager } from '../../js/native/audio-manager.js';
 import { NativeInputAdapter } from '../../js/native/input-adapter.js';
 import { packInstrumentMessage, packLiveMidi, unpackCheckpoints } from '../../js/native/instrument-transport.js';
 import { EnginePort, ENGINE_PORT_ROUTES } from '../../js/native/engine-endpoint.js';
+import { GRAPH_V1_CAPACITY } from '../../js/native/graph-capacity.generated.js';
 import { buildPipelineAnalyzerSnapshot, buildPipelineProcessingSnapshot } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
 import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
 import { midiPlaybackMethods } from '../../js/ui/audio-player/midi-playback.js';
-import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 test('native MIDI presentation excludes Chromium feed latency', () => {
   const native = Object.assign(Object.create(NativeAudioManager.prototype),{
@@ -276,6 +277,178 @@ test('a saved native input that fails to open falls back to the default input wi
   assert.equal(preferences.inputDeviceId,'missing');
 });
 
+test('over-capacity native edits preserve the running revision and execution reports', async () => {
+  const sent = [], errors = [], events = [];
+  const port = new EnginePort({
+    audioContext:{sampleRate:48000},getOutputChannelCount:() => 2,preferences:{},
+    send:message => sent.push(message)
+  },0);
+  port.onmessage = event => events.push(event.data);
+  await withGlobals({window:{uiManager:{setError:key => errors.push(key)}}},() => {
+    const chain = Array.from({length:48},(_,i) => ({id:i+1,type:'LevelMeterPlugin',enabled:true}));
+    assert.equal(port.configure(chain),true);
+    const revision = port.revision, eventCount = events.length;
+    assert.equal(port.configure([...chain,{id:49,type:'VolumePlugin',enabled:true}]),false);
+    assert.deepEqual(errors,['error.pipelineTooLarge']);
+    assert.equal(sent.length,1);
+    assert.equal(port.revision,revision);
+    assert.equal(port.types.has(49),false);
+    assert.equal(events.length,eventCount);
+    assert.equal(port.configure(chain.slice(1)),true);
+    assert.equal(sent.length,2);
+  });
+});
+
+test('native startup and device recovery keep gain gated until a playable pipeline is published', async () => {
+  const sent = [], errors = [];
+  const opened = {type:'sessionState',state:'open',width:2,inputChannels:0,outputChannels:2,
+    sampleRate:48000,deviceRate:48000,recoveryId:0};
+  const ready = {type:'dspReady',branch:0,endpointEpoch:1};
+  const reply = data => queueMicrotask(() => control.onmessage({data}));
+  const control = {postMessage(message) {
+    sent.push(message);
+    const {type,branch,revision,requestId,samples,recoveryId} = message;
+    if (type === 'openSession') { reply(opened); reply(ready); }
+    if (type === 'startStream' || type === 'stopStream')
+      reply({type:'sessionState',state:type === 'startStream' ? 'running' : 'stopped'});
+    if (type === 'configurePipeline') reply({type:'pipelineApplied',branch,revision});
+    if (type === 'setOutputDelay') reply({type:'outputDelaySet',branch,requestId,samples});
+    if (type === 'setNetworkOutputLocalDelay') reply({type:'networkDelayApplied',branch,requestId,localDelaySamples:0});
+    if (type === 'awaitOutputReady') reply({type:'outputReady',branch,requestId});
+    if (type === 'releaseRecovery') reply({type:'recoveryReleased',recoveryId,accepted:true});
+  }};
+  const window = Object.assign(new EventTarget(),{
+    electronAPI:{audioEngine:{async start(_driver,token) {
+      window.dispatchEvent(Object.assign(new Event('message'),{
+        source:window,data:{type:'effetune-audio-engine-ports',token,variant:'single'},ports:[control,{},{}]
+      }));
+      return {ok:true};
+    },async stop() {}}},
+    uiManager:{setError:key => errors.push(key)}
+  });
+  class Tap {
+    port = {postMessage() {}};
+    connect() {}
+  }
+  class VolumePlugin {
+    constructor(id) { this.id = id; }
+    enabled = true;
+    getParameters() { return {vl:-6}; }
+  }
+  await withGlobals({window,AudioWorkletNode:Tap},async () => {
+    const manager = new NativeAudioManager({});
+    const context = {sampleRate:48000,audioWorklet:{async addModule() {}},async suspend() {},async resume() {}};
+    manager.contextManager.initAudioContext = async () => { manager.contextManager.audioContext = context; };
+    const lastCommand = type => sent.findLast(message => message.type === type);
+    const recover = async recoveryId => {
+      const previous = manager.workletNode;
+      const done = manager.waitFor('recoveryReleased',data => data.recoveryId === recoveryId,5000);
+      manager.receive({type:'deviceReset',direction:'output'});
+      manager.receive({...opened,recoveryId});
+      manager.receive({...ready,recoveryId,endpointEpoch:recoveryId+1});
+      await done;
+      assert.equal(previous.port.closed,true);
+      assert.equal(manager.failed,false);
+      assert.equal(manager.audioContext,context);
+    };
+    try {
+      assert.equal(await manager.initAudio({audioDriver:'wasapi',inputDeviceId:NO_AUDIO_INPUT_DEVICE_ID}),'');
+      const oversized = Array.from({length:GRAPH_V1_CAPACITY.maxEffectiveInstances + 1},(_,i) => new VolumePlugin(i+1));
+      manager.updateCurrentPipeline(oversized);
+      assert.equal(await manager.waitForDspActivationBeforeOutput(),true);
+      await manager.fadeInOutputWhenReady();
+      assert.ok(errors.includes('error.pipelineTooLarge'));
+      assert.deepEqual(lastCommand('configurePipeline').plugins,[]);
+      assert.equal(lastCommand('fadeOutput').gain,0);
+
+      await manager.setMasterBypass(true);
+      await flushMicrotasks();
+      assert.equal(lastCommand('configurePipeline').masterBypass,true);
+      assert.equal(lastCommand('fadeOutput').gain,1);
+      await manager.setMasterBypass(false);
+      await recover(1);
+      assert.equal(lastCommand('fadeOutput').gain,0);
+
+      const owner = manager.fadeOutOutput(0);
+      manager.updateCurrentPipeline([oversized[0]]);
+      assert.equal(await manager.rebuildPipeline(false,{gate:true}),'');
+      await flushMicrotasks();
+      assert.equal(manager.capacityOutputHeld,false);
+      assert.equal(lastCommand('fadeOutput').gain,0);
+      assert.equal(manager.fadeInOutputForToken(owner,0),true);
+      assert.equal(lastCommand('fadeOutput').gain,1);
+
+      manager.updateCurrentPipeline(oversized);
+      assert.equal(await manager.rebuildPipeline(),'error.pipelineTooLarge');
+      await recover(2);
+      assert.equal(lastCommand('fadeOutput').gain,1);
+      assert.deepEqual(lastCommand('configurePipeline').plugins.map(plugin => plugin.id),[oversized[0].id]);
+      assert.equal(await manager.contextManager.suspendForPowerPolicy(),true);
+      assert.equal(await manager.contextManager.resumeForPowerPolicy(),true);
+    } finally {
+      manager.engineLifetime.abort();
+      manager._cancelPendingDspControlRequests();
+      manager.telemetryHub.setPort(null);
+    }
+  });
+});
+
+test('master bypass disconnects native note analysis without changing its allocation at capacity', () => {
+  const sent = [];
+  const port = new EnginePort({
+    audioContext:{sampleRate:48000}, getOutputChannelCount:() => 2, preferences:{},
+    send:message => sent.push(message)
+  },0);
+  const parameters = {mn:28,mx:91};
+  const graph = [
+    {id:1,type:'NoteSpectrogramPlugin',enabled:true,parameters},
+    {id:2,type:'SFZNotePlayerPlugin',enabled:true,parameters},
+    ...Array.from({length:GRAPH_V1_CAPACITY.maxEffectiveInstances - 2},(_,i) => ({
+      id:i + 3,type:'VolumePlugin',enabled:true
+    }))
+  ];
+  for (const bypass of [false,true,false]) assert.equal(port.configure(graph,bypass),true);
+  assert.deepEqual(sent.map(message => message.masterBypass),[false,true,false]);
+  assert.deepEqual(sent.map(message => message.plugins[0].displayOnly),[false,false,false]);
+  assert.deepEqual(sent.map(message => message.plugins[1].noteAnalysisSource),[1,0,1]);
+});
+
+test('native device recovery replays skipped assets without waiting for an inactive kernel', async () => {
+  class CrosstalkCancellationPlugin {
+    static executionCapabilities = {supportedChannelModes:['stereo-pair']};
+    id = 1;
+    enabled = true;
+    channel = 'L';
+    externalAssetInfo = {pending:true};
+    getParameters() { return {channel:this.channel}; }
+  }
+  const effect = new CrosstalkCancellationPlugin();
+  const descriptorWaits = [], replayed = [], activeWaits = [];
+  const audioContext = {sampleRate:48000};
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype), {
+    audioContext, contextManager:{audioContext,outputChannelCount:2}, preferences:{}, pipeline:[effect],
+    applyBranchPipeline:async () => true,
+    _syncWasmAssetMembership() {},
+    _prepareWasmAssetMapsForTarget:async () => ({assetMaps:new Map()}),
+    _waitForPendingExternalAssetDescriptors(plugins) { descriptorWaits.push(plugins); return true; },
+    _replayPipelineWasmAssets(_endpoint,plugins,options) {
+      replayed.push(plugins);
+      return new Set(options.assetReadinessPlugins.map(plugin => `${plugin.id}:0`));
+    },
+    _waitForWasmAssetsActive(_endpoint,expected) { activeWaits.push([...expected]); return true; }
+  });
+  const endpoint = manager.workletNode = {port:new EnginePort(manager,0)};
+
+  assert.equal(manager._createBlindBranchSnapshot([effect]).records[0].requiresAssetReadiness,false);
+  assert.equal(await manager.preparePrimary(endpoint),true);
+  effect.channel = null;
+  assert.equal(manager._createBlindBranchSnapshot([effect]).records[0].requiresAssetReadiness,true);
+  assert.equal(await manager.preparePrimary(endpoint),true);
+  assert.deepEqual(descriptorWaits,[[],[effect]]);
+  assert.deepEqual(replayed,[[effect],[effect]]);
+  assert.deepEqual(activeWaits,[[],['1:0']]);
+});
+
 test('native blind testing applies both effect chains while normal playback stays bypassed', () => {
   const sent = [];
   const manager = {
@@ -411,6 +584,56 @@ test('native input None preserves current preferences after a failed save and a 
     assert.equal(window.electronIntegration.audioPreferences,window.audioPreferences);
     assert.equal(manager.preferences,window.audioPreferences);
     assert.deepEqual(saved,[[silent,{applyInPlace:'silent-input'}],[silent,{applyInPlace:'silent-input'}]]);
+  });
+});
+
+test('native input replacement refreshes negotiated diagnostics without dropping the output clock', async () => {
+  const inputUpdates = [];
+  const manager = Object.assign(Object.create(NativeAudioManager.prototype), {
+    audioContext:{sampleRate:48000,currentTime:1},engineEvents:new EventTarget(),clockOffsets:[],inputRequest:2,
+    endpoints:[],preferences:{},ioManager:{setInput:state => inputUpdates.push(state)},
+    session:{sampleRate:48000,deviceRate:48000,outputChannels:2,outputLatencyFrames:256,
+      captureRate:48000,inputChannels:2,inputLatencyFrames:128,inputFailed:false}
+  });
+  const clock = {
+    type:'clock',pipelineFrame:1024,timeNs:1e9,outputLatencyFrames:300,outputConverterDelayFrames:32,
+    inputLatencyFrames:128,captureRatio:1,captureTargetFrames:256,captureConverterDelayFrames:16
+  };
+  const input = () => {
+    const {inputChannels,captureRate,inputLatencyFrames,inputFailed} = manager.getDiagnosticNativeState().session;
+    return {inputChannels,captureRate,inputLatencyFrames,inputFailed};
+  };
+  await withGlobals({window:{}},() => {
+    manager.receive(clock);
+    const presentation = manager.getEngineClock();
+    const latency = manager.getOutputLatencySeconds();
+    // This replacement reached the hardware while a newer request was pending.
+    manager.receive({type:'inputState',state:'acquired',requestId:1,inputChannels:1,
+      captureRate:44100,inputLatencyFrames:96});
+    const pending = manager.getDiagnosticNativeState();
+    assert.deepEqual(input(),{inputChannels:1,captureRate:44100,inputLatencyFrames:96,inputFailed:false});
+    assert.deepEqual(inputUpdates,[]);
+    assert.equal(pending.captureRatio,null);
+    assert.equal(pending.latency.inputLatencyFrames,undefined);
+    assert.equal(pending.latency.captureTargetFrames,undefined);
+    assert.equal(pending.latency.captureConverterDelayFrames,undefined);
+    assert.deepEqual(manager.getEngineClock(),presentation);
+    assert.equal(manager.getOutputLatencySeconds(),latency);
+
+    const captureRatio = 44100 / 48000;
+    manager.receive({...clock,pipelineFrame:2048,timeNs:2e9,inputLatencyFrames:96,
+      captureRatio,captureTargetFrames:220,captureConverterDelayFrames:32});
+    const current = manager.getDiagnosticNativeState();
+    assert.equal(current.captureRatio,captureRatio);
+    assert.equal(current.latency.captureTargetFrames,220);
+    assert.equal(current.latency.captureConverterDelayFrames,32);
+
+    manager.receive({type:'inputState',state:'none',requestId:2});
+    assert.deepEqual(input(),{inputChannels:0,captureRate:0,inputLatencyFrames:0,inputFailed:false});
+    assert.equal(manager.getDiagnosticNativeState().captureRatio,null);
+    manager.receive({type:'inputState',state:'failed',reason:'unavailable',reopened:true});
+    assert.deepEqual(input(),{inputChannels:0,captureRate:0,inputLatencyFrames:0,inputFailed:true});
+    assert.deepEqual(inputUpdates,['none','failed']);
   });
 });
 

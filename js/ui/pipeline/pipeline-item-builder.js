@@ -739,7 +739,7 @@ export class PipelineItemBuilder {
     }
 
     saveUIState() {
-        this.pipelineManager?.historyManager?.saveState();
+        this.pipelineManager?.historyManager?.saveState({ uiOnly: true });
         this.pipelineCore.updateURL();
     }
 
@@ -845,9 +845,7 @@ export class PipelineItemBuilder {
             const expand = !this.expandedPlugins.has(plugin);
             if (event.ctrlKey || event.metaKey) {
                 this.pipelineCore.handlePluginSelection(plugin, event);
-                for (const effect of this.audioManager.pipeline) {
-                    this.setPluginExpanded(effect, expand);
-                }
+                return this.setAllPluginsExpanded(expand);
             } else {
                 if (plugin.constructor.name === 'SectionPlugin') {
                     this.pipelineCore.handleSectionSelection(plugin, event);
@@ -887,6 +885,13 @@ export class PipelineItemBuilder {
                 plugin.updateResponse();
             });
         }
+    }
+
+    setAllPluginsExpanded(expand) {
+        for (const plugin of this.audioManager.pipeline) {
+            this.setPluginExpanded(plugin, expand);
+        }
+        this.saveUIState();
     }
 
     handleShiftClickExpansion(plugin) {

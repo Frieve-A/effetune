@@ -297,33 +297,57 @@ private:
     transition_remaining_ = transition_length_;
   }
 
-  static void filter(const float *input, float *output, std::uint32_t frame_count,
-                     FilterBank &bank) noexcept {
-    if (bank.count == 0u) {
-      if (input != output) {
-        std::memcpy(output, input, static_cast<std::size_t>(frame_count) * 2u * sizeof(float));
-      }
+  // Splits a stereo block into its low- and high-pass outputs. Both banks share the crossover's
+  // slope and therefore its section count. The outputs may alias the input.
+  static void split(const float *input, float *low_output, float *high_output,
+                    std::uint32_t frame_count, FilterBank &low, FilterBank &high) noexcept {
+    if (low.count == 0u) {
+      std::memmove(low_output, input, static_cast<std::size_t>(frame_count) * 2u * sizeof(float));
+      std::memmove(high_output, input, static_cast<std::size_t>(frame_count) * 2u * sizeof(float));
       return;
     }
-    for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
-      const std::size_t channel_offset = static_cast<std::size_t>(channel) * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        float value = input[channel_offset + frame];
-        for (std::uint32_t section = 0u; section < bank.count; ++section) {
-          const Coefficients &coefficients = bank.coefficients[section];
-          FilterState &state = bank.states[section][channel];
-          const double filtered = coefficients.b0 * value + coefficients.b1 * state.x1 +
-                                  coefficients.b2 * state.x2 - coefficients.a1 * state.y1 -
-                                  coefficients.a2 * state.y2;
-          state.x2 = state.x1;
-          state.x1 = value;
-          state.y2 = state.y1;
-          value = static_cast<float>(filtered);
-          state.y1 = value;
-        }
-        output[channel_offset + frame] = value;
+    for (std::uint32_t section = 0u; section < low.count; ++section) {
+      filterSection(section == 0u ? input : low_output, section == 0u ? input : high_output,
+                    low_output, high_output, frame_count, low.coefficients[section],
+                    high.coefficients[section], low.states[section], high.states[section]);
+    }
+  }
+
+  // Runs one low- and one high-pass section over a whole block with the state in locals. The
+  // four channel recursions are independent, so they overlap; each sample sees the same
+  // operations as filterSample.
+  static void filterSection(const float *low_input, const float *high_input, float *low_output,
+                            float *high_output, std::uint32_t frame_count,
+                            const Coefficients &low_coefficients,
+                            const Coefficients &high_coefficients,
+                            std::array<FilterState, 2> &low_states,
+                            std::array<FilterState, 2> &high_states) noexcept {
+    constexpr std::uint32_t kLanes = 4u;
+    const std::array<Coefficients, kLanes> c = {low_coefficients, low_coefficients,
+                                                high_coefficients, high_coefficients};
+    std::array<FilterState, kLanes> state = {low_states[0], low_states[1], high_states[0],
+                                             high_states[1]};
+    const std::array<const float *, kLanes> input = {low_input, low_input + frame_count, high_input,
+                                                     high_input + frame_count};
+    const std::array<float *, kLanes> output = {low_output, low_output + frame_count, high_output,
+                                                high_output + frame_count};
+    for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+      std::array<float, kLanes> value{};
+      for (std::uint32_t lane = 0u; lane < kLanes; ++lane)
+        value[lane] = input[lane][frame];
+      for (std::uint32_t lane = 0u; lane < kLanes; ++lane) {
+        FilterState &s = state[lane];
+        const double filtered = c[lane].b0 * value[lane] + c[lane].b1 * s.x1 + c[lane].b2 * s.x2 -
+                                c[lane].a1 * s.y1 - c[lane].a2 * s.y2;
+        s.x2 = s.x1;
+        s.x1 = value[lane];
+        s.y2 = s.y1;
+        s.y1 = static_cast<float>(filtered);
+        output[lane][frame] = s.y1;
       }
     }
+    low_states = {state[0], state[1]};
+    high_states = {state[2], state[3]};
   }
 
   static float filterSample(float input, std::uint32_t channel, FilterBank &bank) noexcept {
@@ -378,22 +402,19 @@ private:
                           std::array<FilterBank, kCrossoverCount> &high_pass, float *temporary_one,
                           float *temporary_two) noexcept {
     std::memset(output, 0, static_cast<std::size_t>(channel_count) * frame_count * sizeof(float));
-    filter(input, temporary_one, frame_count, low_pass[0]);
-    filter(input, temporary_two, frame_count, high_pass[0]);
+    split(input, temporary_one, temporary_two, frame_count, low_pass[0], high_pass[0]);
     copyBand(output, temporary_one, 0u, frame_count);
     if (band_count == 2u) {
       copyBand(output, temporary_two, 2u, frame_count);
       return;
     }
-    filter(temporary_two, temporary_one, frame_count, low_pass[1]);
-    filter(temporary_two, temporary_two, frame_count, high_pass[1]);
+    split(temporary_two, temporary_one, temporary_two, frame_count, low_pass[1], high_pass[1]);
     copyBand(output, temporary_one, 2u, frame_count);
     if (band_count == 3u) {
       copyBand(output, temporary_two, 4u, frame_count);
       return;
     }
-    filter(temporary_two, temporary_one, frame_count, low_pass[2]);
-    filter(temporary_two, temporary_two, frame_count, high_pass[2]);
+    split(temporary_two, temporary_one, temporary_two, frame_count, low_pass[2], high_pass[2]);
     copyBand(output, temporary_one, 4u, frame_count);
     copyBand(output, temporary_two, 6u, frame_count);
   }

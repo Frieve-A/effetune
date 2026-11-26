@@ -3,22 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { normalizeMtimeMs } from '../js/library/scan/file-signature.js';
+import { checkReplayGainTags, TAG_EXTENSIONS, tagValues } from '../js/library/loudness/tag-formats.js';
 import { readBytes, readTagLayout } from './loudness-tag-formats.mjs';
 
 const CHUNK = 1024 * 1024;
-
-function tagValues(track) {
-  const result = {};
-  for (const [prefix, loudness, peak] of [
-    ['TRACK', track.integrated, track.truePeak], ['ALBUM', track.albumIntegrated, track.albumTruePeak]
-  ]) {
-    if (!Number.isFinite(loudness) || !Number.isFinite(peak)) continue;
-    const gain = -18 - loudness;
-    result[`REPLAYGAIN_${prefix}_GAIN`] = `${gain >= 0 ? '+' : ''}${gain.toFixed(2)} dB`;
-    result[`REPLAYGAIN_${prefix}_PEAK`] = (10 ** (peak / 20)).toFixed(9);
-  }
-  return result;
-}
 
 async function append(file, bytes) {
   let i = 0;
@@ -51,16 +39,7 @@ async function verifyMedia(file, temporary, source, output) {
 
 async function verifyTags(filename, tags) {
   const { native } = await parseFile(filename, { skipCovers: true, duration: false });
-  const found = new Set();
-  for (const group of Object.values(native)) {
-    for (const { id, value } of group) {
-      const key = id.toUpperCase().replace(/^(?:TXXX:|----:COM\.APPLE\.ITUNES:)/, '');
-      if (!/^REPLAYGAIN_(?:TRACK|ALBUM)_(?:GAIN|PEAK)$/.test(key)) continue;
-      if (found.has(key) || value !== tags[key]) throw new Error('ReplayGain tag verification failed');
-      found.add(key);
-    }
-  }
-  if (found.size !== Object.keys(tags).length) throw new Error('ReplayGain tags missing');
+  checkReplayGainTags(native, tags);
 }
 
 function sameSignature(stats, size, mtimeMs) {
@@ -78,7 +57,7 @@ function sameRevision(current, opened) {
 export async function writeLoudnessTagsToFile(filename, track, { filesystem = fs, beforeVerify, beforeReplace } = {}) {
   const extension = path.extname(filename).toLowerCase();
   const tags = tagValues(track);
-  if (track.sourceKind !== 'file' || !tags.REPLAYGAIN_TRACK_GAIN || !['.flac', '.mp3', '.m4a'].includes(extension)) {
+  if (track.sourceKind !== 'file' || !tags.REPLAYGAIN_TRACK_GAIN || !TAG_EXTENSIONS.includes(extension)) {
     return { status: 'unsupported' };
   }
   let file, temporary, temporaryPath, temporaryIdentity;

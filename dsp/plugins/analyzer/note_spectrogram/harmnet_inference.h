@@ -250,38 +250,67 @@ private:
     const auto in_stride = harmnet_detail::stem::ringStride(layer),
                in_padding = harmnet_detail::stem::ringPadding(layer),
                dil = harmnet_detail::stem::ringDilation(layer);
+    // All 3 taps are summed in one pass, in the same bias, tap, kernel order as separate rows.
+    const auto step = static_cast<int>(dil);
     for (auto c = 0u; c < kChannels; ++c) {
       auto *dest = depthwise_.data() + c * kBins;
-      for (auto f = begin; f < end; ++f)
-        dest[f] = dw_bias[c];
+      const auto *w = dw + c * 21u;
+      const auto bias = dw_bias[c];
+      const float *rows[3];
       for (auto tap = 0u; tap < 3u; ++tap)
-        convolveRow<7u>(dest, slot(layer, 2u - tap) + c * in_stride + in_padding,
-                        dw + (c * 3u + tap) * 7u, dil, begin, end);
+        rows[tap] = slot(layer, 2u - tap) + c * in_stride + in_padding;
+      for (auto f = begin; f < end; ++f) {
+        auto value = bias;
+        for (auto tap = 0u; tap < 3u; ++tap) {
+          const auto *source = rows[tap] + static_cast<int>(f);
+          for (auto k = 0u; k < 7u; ++k)
+            value += w[tap * 7u + k] * source[step * (static_cast<int>(k) - 3)];
+        }
+        dest[f] = value;
+      }
     }
 
+    // Output channels are accumulated kPointwiseBlock at a time so each depthwise row is loaded
+    // once per block; every output keeps the bias-then-ci summation order.
     const auto *input = slot(layer, 0u) + in_padding;
-    for (auto co = 0u; co < kChannels; ++co) {
-      auto *acc = pointwise_.data();
-      for (auto f = begin; f < end; ++f)
-        acc[f] = pw_bias[co];
-      for (auto ci = 0u; ci < kChannels; ++ci) {
-        const auto w = pw[co * kChannels + ci];
-        const auto *x = depthwise_.data() + ci * kBins;
+    for (auto first = 0u; first < kChannels; first += kPointwiseBlock) {
+      for (auto b = 0u; b < kPointwiseBlock; ++b) {
+        auto *acc = pointwise_.data() + b * kBins;
         for (auto f = begin; f < end; ++f)
-          acc[f] += w * x[f];
+          acc[f] = pw_bias[first + b];
       }
-      const auto *residual = input + co * in_stride;
-      if (layer + 1u < kLayers) {
-        auto *dest = slot(layer + 1u, 0u) + co * harmnet_detail::stem::ringStride(layer + 1u) +
-                     harmnet_detail::stem::ringPadding(layer + 1u);
-        for (auto f = begin; f < end; ++f)
-          dest[f] = residual[f] + (acc[f] > 0.0F ? acc[f] : 0.0F);
-      } else {
-        for (auto f = begin; f < end; ++f)
-          stem_[f * kChannels + co] = residual[f] + (acc[f] > 0.0F ? acc[f] : 0.0F);
+      for (auto ci = 0u; ci < kChannels; ++ci) {
+        const auto *x = depthwise_.data() + ci * kBins;
+        const auto *w = pw + first * kChannels + ci;
+        const auto w0 = w[0], w1 = w[kChannels], w2 = w[2u * kChannels], w3 = w[3u * kChannels];
+        auto *acc0 = pointwise_.data(), *acc1 = acc0 + kBins, *acc2 = acc1 + kBins,
+             *acc3 = acc2 + kBins;
+        for (auto f = begin; f < end; ++f) {
+          const auto v = x[f];
+          acc0[f] += w0 * v;
+          acc1[f] += w1 * v;
+          acc2[f] += w2 * v;
+          acc3[f] += w3 * v;
+        }
+      }
+      for (auto b = 0u; b < kPointwiseBlock; ++b) {
+        const auto co = first + b;
+        const auto *acc = pointwise_.data() + b * kBins;
+        const auto *residual = input + co * in_stride;
+        if (layer + 1u < kLayers) {
+          auto *dest = slot(layer + 1u, 0u) + co * harmnet_detail::stem::ringStride(layer + 1u) +
+                       harmnet_detail::stem::ringPadding(layer + 1u);
+          for (auto f = begin; f < end; ++f)
+            dest[f] = residual[f] + (acc[f] > 0.0F ? acc[f] : 0.0F);
+        } else {
+          for (auto f = begin; f < end; ++f)
+            stem_[f * kChannels + co] = residual[f] + (acc[f] > 0.0F ? acc[f] : 0.0F);
+        }
       }
     }
   }
+  static constexpr std::uint32_t kPointwiseBlock = 4u;
+  static_assert(kChannels % kPointwiseBlock == 0u);
   static float sigmoid(float x) noexcept { return 1.0F / (1.0F + std::exp(-x)); }
   template <std::uint32_t Kernel>
   static void convolveRow(float *dest, const float *source, const float *w, std::uint32_t dilation,
@@ -300,7 +329,7 @@ private:
   std::uint32_t position_ = 0u;
   std::array<float, harmnet_detail::stem::kHistoryFloats> history_{};
   std::array<float, kChannels * kBins> depthwise_{};
-  std::array<float, kBins> pointwise_{};
+  std::array<float, kPointwiseBlock * kBins> pointwise_{};
   std::array<float, kBins * kChannels> stem_{};
   std::array<float, kPitches * kHidden> gathered_{}, normalized_{}, hidden_{};
   std::array<float, kPitches * kHeads> logits_{};

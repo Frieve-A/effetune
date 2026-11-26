@@ -11,6 +11,7 @@ import {
   readGoldenSet
 } from '../../tools/dsp-parity/golden-io.mjs';
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
+import { getCurrentJsEngineHash } from './js-engine-hash-helper.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginDirectory = path.join(
@@ -78,6 +79,7 @@ test('Digital Error Emulator goldens load every mode within the storage budget',
   const goldenDirectory = path.join(pluginDirectory, 'golden');
   assert.ok(await directoryBytes(goldenDirectory) <= DEFAULT_GOLDEN_BUDGET_BYTES);
   const goldens = await readGoldenSet(goldenDirectory);
+  const jsEngineHash = await getCurrentJsEngineHash('DigitalErrorEmulatorPlugin', repoRoot);
   assert.equal(goldens.length, 9);
 
   const coveredModes = new Set();
@@ -87,10 +89,7 @@ test('Digital Error Emulator goldens load every mode within the storage budget',
       if (event.params.md !== undefined) coveredModes.add(event.params.md);
     }
     assert.equal(golden.metadata.type, 'DigitalErrorEmulatorPlugin');
-    assert.equal(
-      golden.metadata.jsEngineHash,
-      '42f1a9d6f4ee479374c1596861096c7ed0b2701e0a29d3343c78a65e84bf3bbd'
-    );
+    assert.equal(golden.metadata.jsEngineHash, jsEngineHash);
     assert.ok(golden.expected.every(Number.isFinite));
   }
   assert.deepEqual(coveredModes, new Set(modeOrder));

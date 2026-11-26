@@ -24,17 +24,20 @@ export class LegacySyncEngine {
     }
     onState(message) {
         if (!this.connected) return;
-        this.flushNow();
+        // Hosts with history1 report their active slot; older v1 peers only expose A.
+        const slot = message.slot === 'B' ? 'B' : 'A';
+        // A chain write lands on the host's active slot, so an edit made for another slot is dropped.
+        if (this.confirmed?.snapshot.slot === slot) this.flushNow();
         clearTimeout(this.timer);
         this.timer = null;
         const pipeline = message.pipeline || [];
         const snapshot = {
             pipeline, ids: pipeline.map((_, index) => `legacy.${index}`),
-            masterBypass: !!message.masterBypass, slot: 'A'
+            masterBypass: !!message.masterBypass, slot
         };
         this.confirmed = { snapshot };
         this.adapter.apply(diff(this.adapter.snapshot(), snapshot), { recycle: true });
-        this.adapter.setSlot?.('A');
+        this.adapter.setSlot?.(slot);
     }
     markDirty() {
         if (!this.connected || !this.confirmed || this.timer !== null) return;

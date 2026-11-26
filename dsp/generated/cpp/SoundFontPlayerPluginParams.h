@@ -20,10 +20,12 @@ struct SoundFontPlayerPluginParams {
   float respondXg;
   float transpose;
   float midiChannelsOff;
-  static constexpr std::uint32_t kHash = 0x25427170u;
-  static constexpr std::uint32_t kFloatCount = 13u;
+  float tuning;
+  float tuningKey;
+  static constexpr std::uint32_t kHash = 0x98b0761bu;
+  static constexpr std::uint32_t kFloatCount = 15u;
 };
-static_assert(13u == 0u || sizeof(SoundFontPlayerPluginParams) == sizeof(float) * 13u);
+static_assert(15u == 0u || sizeof(SoundFontPlayerPluginParams) == sizeof(float) * 15u);
 
 } // namespace effetune::generated
 

@@ -705,8 +705,10 @@ test('note range readouts match numeric field widths and stay at the right edge'
                   const bounds = field.getBoundingClientRect();
                   const rowBounds = row.getBoundingClientRect();
                   const slider = row.querySelector('input[type="range"]').getBoundingClientRect();
+                  const label = row.querySelector('label');
                   return {
-                    label: row.querySelector('label').textContent,
+                    label: label.textContent,
+                    stacked: label.getBoundingClientRect().bottom <= slider.top,
                     width: bounds.width,
                     height: rowBounds.height,
                     rightOffset: rowBounds.right - bounds.right,
@@ -717,13 +719,15 @@ test('note range readouts match numeric field widths and stay at the right edge'
               };
             });
           });
+          const mobile = width < 1159;
           for (const { name, numericWidth, editableWidth, rows } of results) {
-            assert.equal(numericWidth, 80, `${width}px ${name} standard numeric width`);
+            assert.equal(numericWidth, mobile ? 96 : 80, `${width}px ${name} standard numeric width`);
             assert.ok(editableWidth > numericWidth, `${width}px ${name} editable text still expands`);
             for (const row of rows) {
               const context = `${width}px ${name} ${row.label}`;
               assert.equal(row.width, numericWidth, `${context} matches the numeric field width`);
-              assert.equal(row.height, width < 1159 ? 40 : 26, `${context} stays on one line`);
+              if (mobile) assert.equal(row.stacked, true, `${context} places its label above the slider`);
+              else assert.equal(row.height, 26, `${context} stays on one line`);
               assert.ok(Math.abs(row.rightOffset) < 0.1, `${context} aligns to the row's right edge`);
               assert.ok(Math.abs(row.centerOffset) < 0.1, `${context} aligns with its slider`);
               assert.equal(row.readOnly, true, `${context} remains read-only`);
@@ -765,7 +769,8 @@ test('effect rows keep equal heights with wrapped labels and tabs retain the lar
           await loadCssInApplicationOrder(page);
           for (const content of scripts) await page.addScriptTag({ content });
 
-          const expectedHeight = width === 1280 ? 26 : 40;
+          const mobile = width < 1159;
+          const expectedHeight = mobile ? 40 : 26;
           const shared = await page.evaluate(() => {
             const plugin = new PluginBase('Layout', 'Single-line controls');
             const container = document.createElement('div');
@@ -783,29 +788,38 @@ test('effect rows keep equal heights with wrapped labels and tabs retain the lar
             document.querySelector('.plugin-ui').replaceChildren(container);
             return {
               rows: [...container.children].map(element => element.getBoundingClientRect().height),
+              stacked: [...container.children].slice(0, 2).map(row =>
+                row.querySelector('label').getBoundingClientRect().bottom <=
+                  row.querySelector('input[type="range"], select').getBoundingClientRect().top),
               fields: [...container.querySelectorAll('input[type="number"], input[type="text"], select')]
                 .map(element => element.getBoundingClientRect().height),
               glyphs: [...container.querySelectorAll('input[type="checkbox"], input[type="radio"]')]
                 .map(element => element.getBoundingClientRect().height)
             };
           });
-          assert.deepEqual(shared.rows, Array(5).fill(expectedHeight), `${width}px shared row heights`);
+          if (mobile) {
+            assert.deepEqual(shared.stacked, [true, true], `${width}px stack slider and select labels above their fields`);
+            assert.deepEqual(shared.rows.slice(2), Array(3).fill(expectedHeight), `${width}px compact rows`);
+          } else {
+            assert.deepEqual(shared.rows, Array(5).fill(expectedHeight), `${width}px shared row heights`);
+          }
           assert.deepEqual(shared.fields, Array(3).fill(expectedHeight), `${width}px shared field heights`);
           assert.ok(shared.glyphs.every(height => height < expectedHeight), 'choice glyphs retain their compact size');
 
           for (const control of ['number', 'select']) {
-            const rows = await page.evaluate(control => {
+            const rows = await page.evaluate(({ control, mobile }) => {
               const plugin = new PluginBase('Layout', 'Wrapped labels');
               const container = document.createElement('div');
               container.className = 'plugin-parameter-ui';
-              for (const label of ['Highest Note', 'Highest Note (gypq)', 'Gain', 'Release Time (ms)']) {
+              const labels = ['Highest Note', 'Highest Note (gypq)', 'Gain', 'Release Time (ms)'];
+              if (mobile) {
+                labels[1] = Array(5).fill(labels[1]).join(' ');
+                labels[3] = Array(5).fill(labels[3]).join(' ');
+              }
+              for (const label of labels) {
                 const row = control === 'number'
                   ? plugin.createParameterControl(label, 1, 10000, 1, 3000, () => {})
                   : plugin.createSelectControl(label, ['A', 'B'], 'A', () => {});
-                // Mobile labels normally size to their text; constrain the column to exercise wrapping.
-                if (document.body.classList.contains('layout-mobile')) {
-                  row.querySelector('label').style.width = '120px';
-                }
                 container.append(row);
               }
               document.querySelector('.plugin-ui').replaceChildren(container);
@@ -814,23 +828,28 @@ test('effect rows keep equal heights with wrapped labels and tabs retain the lar
                 const text = document.createRange();
                 text.selectNodeContents(label);
                 const field = row.querySelector('input[type="number"], select').getBoundingClientRect();
+                const firstField = row.querySelector('input[type="range"], select').getBoundingClientRect();
                 return {
                   label: label.textContent,
                   lineCount: new Set([...text.getClientRects()].map(rect => rect.top)).size,
+                  stacked: label.getBoundingClientRect().bottom <= firstField.top,
                   height: row.getBoundingClientRect().height,
                   fieldHeight: field.height,
                   fieldTop: field.top
                 };
               });
-            }, control);
+            }, { control, mobile });
             for (const [index, row] of rows.entries()) {
               const context = `${width}px ${control} ${row.label}`;
-              assert.equal(row.lineCount, index % 2 === 0 ? 1 : 2,
-                `${context} renders the expected number of text lines`);
-              assert.equal(row.height, expectedHeight, `${context} preserves the standard row height`);
               assert.equal(row.fieldHeight, expectedHeight, `${context} preserves the standard field height`);
-              if (index > 0) {
-                assert.equal(row.fieldTop - rows[index - 1].fieldTop, expectedHeight + 4,
+              if (mobile) {
+                assert.equal(row.lineCount > 1, index % 2 === 1, `${context} wraps only the long labels`);
+                assert.equal(row.stacked, true, `${context} keeps the label above the controls`);
+              } else {
+                assert.equal(row.lineCount, index % 2 === 0 ? 1 : 2,
+                  `${context} renders the expected number of text lines`);
+                assert.equal(row.height, expectedHeight, `${context} preserves the standard row height`);
+                if (index > 0) assert.equal(row.fieldTop - rows[index - 1].fieldTop, expectedHeight + 4,
                   `${context} preserves equal field spacing`);
               }
             }

@@ -142,14 +142,12 @@ test('mobile controls use 40px border-box height and 80px field width', () => {
   }
 });
 
-test('mobile effect list keeps effect items at the fixed minimum column width', () => {
+test('mobile effect list distributes available width evenly across its columns', () => {
   const css = readCss('../../css/effetune-mobile.css');
   const rule = getLastRule(css, 'body.layout-mobile .plugin-category-items');
 
   assert.match(rule, /display:\s*grid\s*!important;/);
-  assert.match(rule, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(150px,\s*150px\)\);/);
-  assert.match(rule, /justify-content:\s*start;/);
-  assert.doesNotMatch(rule, /1fr/, 'mobile effect items should not stretch to fill leftover row width');
+  assert.match(rule, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*140px\),\s*1fr\)\);/);
 });
 
 test('Multiband Transient keeps all three graphs on one desktop row', () => {
@@ -316,6 +314,21 @@ test('mobile player places the queue list below the primary play pause control',
   assert.match(playlistRule, /overflow-y:\s*auto;/);
   assert.match(playlistRule, /box-sizing:\s*border-box;/);
   assert.doesNotMatch(playlistRule, /margin-top:/);
+});
+
+test('narrow landscape player keeps transport buttons in two rows', () => {
+  const css = readCss('../../css/effetune-mobile.css');
+  const landscape = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 500px)'));
+  const narrow = landscape.slice(landscape.indexOf('@media (max-width: 499px)'));
+  const controls = getRule(narrow, 'body.layout-mobile .player-controls,');
+  const volume = getRule(narrow.slice(narrow.indexOf('    }') + 5),
+    'body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden]))');
+  assert.match(controls, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/);
+  for (const rule of [controls, volume]) {
+    assert.match(rule, /"shuffle speed previous stop"\s*"play next repeat close"/);
+    assert.match(rule, /"playlist playlist playlist playlist"/);
+  }
+  assert.match(volume, /"volume volume volume volume"/);
 });
 
 test('mobile motion tokens honor reduced motion preferences', () => {

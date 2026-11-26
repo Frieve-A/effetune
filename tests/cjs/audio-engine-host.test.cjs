@@ -41,9 +41,12 @@ test('native host splits framed control, feed, network and telemetry and reports
   const read = frameReader(child.stdin);
   await host.start('wasapi',control,feed);
   assert.equal((await read()).message.type,'hello');
+  const ready = once(control,'sent');
+  child.stdout.write(encodeFrame(kinds.control,{type:'dspReady',endpointEpoch:41}));
+  await ready;
   const network = host.attachNetwork();
   network.start();
-  assert.equal((await read()).message.type,'setNetworkOutputPort');
+  assert.deepEqual((await read()).message,{type:'setNetworkOutputPort',attached:true,endpointEpoch:41});
   feed.emit('message',{data:{type:'feed',attachment:Uint8Array.of(1,2).buffer}});
   assert.deepEqual((await read()).attachment,Buffer.from([1,2]));
   feed.emit('message',{data:{type:'feedSilence'}});
@@ -51,6 +54,14 @@ test('native host splits framed control, feed, network and telemetry and reports
   const packet = once(network,'message');
   child.stdout.write(encodeFrame(kinds.network,{type:'networkOutputPacket'},Buffer.from([7])));
   assert.deepEqual(new Uint8Array((await packet)[0].data.data),Uint8Array.of(7));
+  network.postMessage({type:'pcm-ack',sourceEpoch:2,sourceFrame:512});
+  assert.deepEqual((await read()).message,{type:'pcm-ack',sourceEpoch:2,sourceFrame:512,endpointEpoch:41});
+  const replacement = host.attachNetwork();
+  replacement.start();
+  assert.equal((await read()).message.type,'setNetworkOutputPort');
+  network.postMessage({type:'pcm-ack',sourceEpoch:2,sourceFrame:1024});
+  replacement.postMessage({type:'pcm-ack',sourceEpoch:3,sourceFrame:0});
+  assert.deepEqual((await read()).message,{type:'pcm-ack',sourceEpoch:3,sourceFrame:0,endpointEpoch:41});
   const telemetry = once(control,'sent');
   child.stdout.write(encodeFrame(kinds.telemetry,{type:'dspTelemetry'},Buffer.from([3])));
   const [message] = await telemetry;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { MobileNav } from '../../js/ui/mobile-nav.js';
+import { returnToEffeTune, saveFeatureReturnTab } from '../../features/measurement/return-to-effetune.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeElement {
@@ -133,6 +134,67 @@ function createDocument() {
     }
   };
 }
+
+test('Android player prompt follows the service and resumes without a track or AudioContext', async () => {
+  const documentRef = createDocument();
+  const listeners = new Map();
+  let starts = 0;
+  const manager = {
+    isAndroid: true, snapshot: {},
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); },
+    resumeStoppedOutput() { starts++; }
+  };
+  await withGlobals({ document: documentRef, window: { location: { search: '' } } }, () => {
+    const nav = new MobileNav({
+      layoutMode: { mode: 'mobile', isMobile: true, onChange: () => () => {} },
+      audioManager: manager
+    });
+    assert.equal(nav.resumePrompt.hidden, true);
+    for (const reason of ['noisy', 'feature-page']) {
+      manager.snapshot = { outputStopReason: reason };
+      listeners.get('nativeSnapshot')();
+      assert.equal(nav.resumePrompt.hidden, false);
+      nav.resumeAudioContext();
+      manager.snapshot = {};
+      listeners.get('nativeSnapshot')();
+      assert.equal(nav.resumePrompt.hidden, true);
+    }
+    assert.equal(starts, 2);
+    nav.dispose();
+    assert.equal(listeners.size, 0);
+  });
+});
+
+test('wide Android layout offers service resume in the settings menu', async () => {
+  const documentRef = createDocument();
+  const menu = new FakeElement('div');
+  const existing = new FakeElement('button');
+  menu.appendChild(existing);
+  const query = documentRef.querySelector;
+  documentRef.querySelector = selector => selector === '.settings-menu [data-power-resume-action]' ? existing : query(selector);
+  const listeners = new Map();
+  let starts = 0;
+  const manager = {
+    isAndroid: true, snapshot: { outputStopReason: 'feature-page' },
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); },
+    resumeStoppedOutput() { starts++; }
+  };
+  await withGlobals({ document: documentRef, window: { location: { search: '' } } }, () => {
+    const nav = new MobileNav({ layoutMode: { mode: 'desktop', isMobile: false, onChange: () => () => {} }, audioManager: manager });
+    const action = nav.desktopResumeAction;
+    assert.equal(action.hidden, false);
+    action.eventListeners.get('click')[0]();
+    assert.equal(starts, 1);
+    manager.snapshot = {};
+    listeners.get('nativeSnapshot')();
+    assert.equal(action.hidden, true);
+    nav.dispose();
+    assert.equal(listeners.size, 0);
+    assert.equal(action.parentNode, null);
+  });
+});
 
 test('MobileNav updates the resume prompt on AudioContext statechange', async () => {
   const documentRef = createDocument();
@@ -383,6 +445,70 @@ test('MobileNav marks the active bottom tab as current', async () => {
       null,
       'page'
     ]);
+  });
+});
+
+test('Android feature returns traverse the main entry and the saved tab takes precedence over the pipeline URL', async () => {
+  const state = new Map();
+  const origin = 'https://appassets.androidplatform.net';
+  const main = `${origin}/app/effetune.html`;
+  const calls = [];
+  const win = {
+    effetuneAndroid: { postMessage() {} },
+    localStorage: { getItem: () => null },
+    history: { length: 2, back() { calls.push('back'); } },
+    location: { origin, href: new URL('features/effetune_bench.html', main).href, search: '?p=local',
+      replace(url) { calls.push(url); } },
+    sessionStorage: { getItem: key => state.get(key), setItem: (key, value) => state.set(key, value) },
+    navigation: { currentEntry: { index: 1 }, entries: () => [{ url: main + '?p=local' }, {}] }
+  };
+  const nav = Object.assign(Object.create(MobileNav.prototype), {
+    ensureElements() {}, mountAudioPlayer() {}, attachPlayerState() {}, updateMiniPlayer() {},
+    updatePlayerPlaceholder() {}, updateAudioResumePrompt() {}, setView(view) { calls.push(view); }
+  });
+  await withGlobals({ window: win, document: createDocument() }, async () => {
+    for (const tab of ['player', 'effects', 'library']) {
+      saveFeatureReturnTab(tab);
+      await returnToEffeTune('../effetune.html');
+      nav.applyMode('mobile');
+      assert.deepEqual(calls.splice(0), ['back', tab]);
+    }
+    state.clear();
+    win.navigation.entries = () => [{ url: 'https://other.test/app/effetune.html' }, {}];
+    await returnToEffeTune('../effetune.html');
+    nav.applyMode('mobile');
+    assert.deepEqual(calls, [main, 'effects']);
+    win.electronAPI = { async navigateToMain() { calls.push('ipc'); return { success: true }; } };
+    await returnToEffeTune('../effetune.html');
+    assert.deepEqual(calls, [main, 'effects', 'ipc']);
+  });
+});
+
+test('Android MobileNav restores the selected tab in a fresh document', async () => {
+  const window = {
+    location: { origin: 'https://appassets.androidplatform.net', search: '' },
+    effetuneAndroid: { postMessage() {} },
+    localStorage: new Map()
+  };
+  window.localStorage.getItem = window.localStorage.get.bind(window.localStorage);
+  window.localStorage.setItem = window.localStorage.set.bind(window.localStorage);
+  const makeNav = () => Object.assign(Object.create(MobileNav.prototype), {
+    uiManager: { showLibraryView: async () => true },
+    ensureElements() { this.nav = createBottomNav().nav; },
+    mountAudioPlayer() {}, attachPlayerState() {}, updateMiniPlayer() {},
+    updatePlayerPlaceholder() {}, updateAudioResumePrompt() {}, closePluginList() {}
+  });
+  await withGlobals({ document: createDocument(), window }, async () => {
+    const nav = makeNav();
+    nav.applyMode('mobile');
+    await nav.setView('library');
+    assert.equal(nav.getCurrentView(), 'library');
+  });
+  await withGlobals({ document: createDocument(), window }, async () => {
+    const nav = makeNav();
+    nav.applyMode('mobile');
+    await Promise.resolve();
+    assert.equal(nav.getCurrentView(), 'library');
   });
 });
 

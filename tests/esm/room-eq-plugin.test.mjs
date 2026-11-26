@@ -47,6 +47,7 @@ class PluginBase {
         this.outputBus = null;
         this.channel = null;
         this._wasmAssetOperationRevisions = new Map();
+        this._wasmAssetSnapshotChangeListeners = new Set();
     }
 
     registerProcessor(source) {
@@ -120,6 +121,15 @@ class PluginBase {
     clearWasmAsset(slot) {
         this.asset = null;
         return this._nextWasmAssetOperationRevision(slot);
+    }
+
+    addWasmAssetSnapshotChangeListener(listener) {
+        this._wasmAssetSnapshotChangeListeners.add(listener);
+        return () => this._wasmAssetSnapshotChangeListeners.delete(listener);
+    }
+
+    _notifyWasmAssetSnapshotChange() {
+        for (const listener of this._wasmAssetSnapshotChangeListeners) listener();
     }
 
     isHeldByUser() {
@@ -1510,7 +1520,7 @@ test('restored Room EQ measurement reaches a missing terminal state when no stor
     plugin.cleanup();
 });
 
-test('offline Room EQ provisionally requires any selected measurement', async () => {
+test('offline Room EQ requires an asset only after resolving the measurement', async () => {
     const { Plugin } = loadPlugin();
     const plugin = new Plugin();
     assert.equal(plugin.offlineDspAssetRequired, false);
@@ -1520,6 +1530,8 @@ test('offline Room EQ provisionally requires any selected measurement', async ()
     });
     assert.equal(unselected.offlineDspAssetRequired, false);
     plugin.measurementId = 'listening-seat';
+    assert.equal(plugin.offlineDspAssetRequired, false);
+    plugin.measurementResolved = true;
     assert.equal(plugin.offlineDspAssetRequired, true);
     assert.equal(plugin.isOfflineDspAssetRequired({ outputChannelCount: 8 }), true);
     assert.equal(plugin.offlineDspAssetErrorMessageKey, 'roomEq.error.design');
@@ -1572,7 +1584,7 @@ test('offline Room EQ bypasses missing measurements without designing a unit FIR
         assert.equal(requirement.required, false, scenario.name);
         assert.equal(state.assets.size, 0, scenario.name);
         assert.equal(state.offlineDspAssetRequired, false, scenario.name);
-        assert.equal(plugin.offlineDspAssetRequired, true, scenario.name);
+        assert.equal(plugin.offlineDspAssetRequired, false, scenario.name);
         assert.equal(designCalls, 0, scenario.name);
         assert.equal(sourceCalls, scenario.store ? 1 : 0, scenario.name);
         plugin.cleanup();
@@ -2855,6 +2867,10 @@ test('Room EQ shows one measurement selector per selected IR channel', async () 
         selectedIrChannelCount: () => channelCount,
         openMeasurementStore: async () => ({
             listMeasurements: () => measurements,
+            async getMeasurement(id) {
+                return id === 'left' ? { ...measurements[0], averageFrequencyResponse: [[1000, -2]] } : null;
+            },
+            async getImpulseResponses() { return []; },
             async refresh() {},
             async close() {}
         })
@@ -2892,11 +2908,15 @@ test('Room EQ shows one measurement selector per selected IR channel', async () 
     // fails with "Measurement not found".
     plugin.channelMeasurementIds[0] = 'deleted';
     plugin.channelMeasurementNames[0] = 'Deleted seat';
+    plugin._scheduleDesign(0);
+    const staging = plugin.waitForOfflineDspAssetStaging(1000);
     await plugin._renderChannelMeasurements(measurements);
     const deletedSelect = container.children[0].children[1];
-    const deletedOption = deletedSelect.children[deletedSelect.children.length - 1];
-    assert.equal(deletedOption.textContent, 'Measurement not found: Deleted seat');
-    assert.equal(deletedOption.value, 'deleted');
+    assert.equal(deletedSelect.children.at(-1).textContent, 'Deleted seat');
+    assert.equal(await staging, true);
+    await plugin._renderChannelMeasurements(measurements);
+    assert.equal(deletedSelect.children.at(-1).textContent, 'Measurement not found: Deleted seat');
+    assert.equal(deletedSelect.children.at(-1).value, 'deleted');
     assert.equal(deletedSelect.value, 'deleted');
     plugin.channelMeasurementIds[0] = '';
     plugin.channelMeasurementNames[0] = '';
@@ -2995,6 +3015,73 @@ function twoSeatStore() {
         left: [{ pointId: 1, data: new Float32Array([1]) }]
     });
 }
+
+test('Room EQ adopts a native correction and skips unchanged foreground refreshes', async () => {
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin.measurementId = 'shared';
+    plugin.tp = 8192;
+    plugin._irChannelCountCache = 2;
+    const signature = plugin.externalAssetInfo.assetSignature;
+    plugin._irChannelCountCache = null;
+    const store = twoSeatStore();
+    let measurements = [{ id: 'shared', pointCount: 1, hasFr: true }];
+    store.listMeasurements = () => measurements;
+    plugin._getMeasurementStore = async () => store;
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    const nativeHydration = { plugin, slot: 0, id: 'native', signature };
+    let adopted = 0;
+    context.window.audioManager = {
+        withMutationOptions(options, commit) {
+            assert.equal(options.nativeHydration, nativeHydration);
+            const result = commit();
+            adopted++;
+            plugin.onWasmAssetState(0, 3, plugin._candidateAssetRevision);
+            return result;
+        }
+    };
+    assert.equal(await plugin.hydrateExternalAsset({ externalAssetSignature: signature },
+        { nativeHydration, isCurrent: () => true }), true);
+    assert.equal(adopted, 1);
+    assert.equal(plugin.asset.descriptor.externalAssetSignature, signature);
+    assert.equal(plugin.externalAssetInfo.missing, false);
+    assert.equal(plugin.externalAssetInfo.pending, false);
+    assert.equal(plugin._designStaged, true);
+    const generation = plugin._designGeneration;
+    await plugin._refreshMeasurements(true, { force: false });
+    assert.equal(plugin._designGeneration, generation);
+    measurements = [];
+    await plugin._refreshMeasurements(true, { force: false });
+    assert.equal(plugin._designGeneration, generation + 1);
+    plugin.cleanup();
+});
+
+test('Room EQ distinguishes a pending measurement from a missing measurement', async () => {
+    const { Plugin, context } = loadPlugin();
+    const plugin = new Plugin();
+    plugin._getRuntime = async () => channelDesignRuntime(context);
+    try {
+        for (const [id, found] of [['shared', true], ['removed', false]]) {
+            let finishRead;
+            const read = new Promise(resolve => { finishRead = resolve; });
+            plugin._getMeasurementStore = () => read;
+            plugin.measurementId = id;
+            plugin._scheduleDesign(0);
+            const staging = plugin.waitForOfflineDspAssetStaging(1000);
+            assert.equal(plugin.externalAssetInfo.pending, true);
+            assert.equal(plugin.externalAssetInfo.missing, false);
+            assert.equal(plugin.isOfflineDspAssetRequired(), true);
+            finishRead(twoSeatStore());
+            assert.equal(await staging, true);
+            assert.equal(plugin.externalAssetInfo.missing, !found);
+            assert.equal(plugin.isOfflineDspAssetRequired(), found);
+            if (found) plugin.onWasmAssetState(0, 3, plugin._candidateAssetRevision);
+            assert.equal(plugin.externalAssetInfo.pending, false);
+        }
+    } finally {
+        plugin.cleanup();
+    }
+});
 
 test('F-1: offline Room EQ designs for the render width, never the live device width',
     async () => {
@@ -3351,11 +3438,10 @@ test('R2-1: a selection that routes no channel resolves to zero, not to "unresol
                 (channel === '34' ? (engineChannels >= 4 ? 2 : 0) : engineChannels)
         });
 
-        // Unresolved: the effective width is unknown, so the offline asset gates stay
-        // inclusive rather than dropping an assignment that may well be in effect.
+        // Keep the assignment while the effective width is unknown.
         assert.equal(plugin._irChannelCountCache, null);
         assert.equal(plugin._hasChannelMeasurements(), true);
-        assert.equal(plugin.isOfflineDspAssetRequired(), true);
+        assert.equal(plugin.isOfflineDspAssetRequired(), false);
 
         assert.equal(await plugin._resolveIrChannelCount(), 0);
         assert.equal(plugin._irChannelCountCache, 0);

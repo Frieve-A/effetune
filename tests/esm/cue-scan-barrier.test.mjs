@@ -17,6 +17,7 @@ function createRepository() {
       committedBatches: 0, metadataCursor: null
     }),
     preflightScanBatch: async () => ({ ok: true }),
+    scanTraversalQueue: async () => assert.fail('unexpected traversal spill'),
     commitScanSeenBatch: async request => {
       state.batches.push(request.observations);
       state.observations.push(...request.observations);

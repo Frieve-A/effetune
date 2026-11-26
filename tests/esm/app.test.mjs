@@ -278,22 +278,33 @@ function createPlugin(name) {
   };
 }
 
-test('Android startup keeps Controller Mapping and ignores the saved performance MIDI input', async () => {
+test('Android startup keeps Controller Mapping, restores the saved MIDI input, and shows the Service MIDI output', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.location.origin = 'https://appassets.androidplatform.net';
     window.effetuneAndroid = { postMessage() {} };
     window.audioPreferences = { midiInputDeviceKey: 'Saved keyboard' };
     const app = new mod.App(createDependencies(calls));
+    app.networkOutputIntegration.dispose();
     app.startupConfig = { midiController: { mappings: [{}] } };
     let controllerStarts = 0;
+    const restored = [];
+    const requests = [];
+    const outputs = [];
+    app.audioManager.bridge = {
+      async request(command) {
+        requests.push(command);
+        return { selectedOutputKey: 'Service synth' };
+      }
+    };
     app.ensureMidiControllerManager = async () => { controllerStarts++; };
-    await app.applyMidiInputPreference('Saved keyboard');
-    assert.equal(controllerStarts, 0);
-    assert.equal(app.midiLiveInputPromise, undefined);
-    app.applyMidiInputPreference = () => assert.fail('Android must not restore performance input');
+    app.applyMidiInputPreference = async key => { restored.push(key); };
+    app.applyMidiOutputPreference = async key => { outputs.push(key); };
     app.runDeferredStartupTasks();
     await flushMicrotasks();
     assert.equal(controllerStarts, 1);
+    assert.deepEqual(restored, ['Saved keyboard']);
+    assert.deepEqual(requests, ['midi.list']);
+    assert.deepEqual(outputs, ['Service synth']);
     assert.equal(window.audioPreferences.midiInputDeviceKey, 'Saved keyboard');
   });
 });
@@ -1436,6 +1447,22 @@ test('a failed pipeline-preserving reload restores audio and replaces the reload
   });
 });
 
+test('feature return consumes the restore marker when the host already has the pipeline', async () => {
+  await withAppModule({
+    search: '?mode=compact&restorePipeline=transient',
+    sessionStorage: { effetune_transient_pipeline_state: '{}' }
+  }, async ({ calls, mod, window }) => {
+    const deps = createDependencies(calls);
+    deps.audioManager.hydratePipeline = async () => true;
+    const app = new mod.App(deps);
+    assert.equal(await app.initializeAndBuildPipeline(), true);
+    assert.equal(app.restoringTransientPipeline, true);
+    assert.equal(window.sessionStorage.getItem('effetune_transient_pipeline_state'), null);
+    assert.deepEqual(calls.find(entry => entry[0] === 'history.replaceState'),
+      ['history.replaceState', {}, '', '/effetune.html?mode=compact']);
+  });
+});
+
 test('feature navigation snapshots and restores both pipelines before startup policy is applied', async () => {
   await withAppModule({
     search: '?mode=compact&restorePipeline=stale',
@@ -1449,8 +1476,11 @@ test('feature navigation snapshots and restores both pipelines before startup po
     dependencies.audioManager.currentPipeline = 'B';
     const app = new mod.App(dependencies);
 
+    dependencies.uiManager.layoutMode = { isMobile: true };
+    dependencies.uiManager.mobileNav = { getCurrentView: () => 'library' };
     await app.openFeaturePage('features/measurement/measurement.html');
 
+    assert.equal(window.sessionStorage.getItem('effetune_feature_return_tab'), 'library');
     assert.equal(window.location.href, 'features/measurement/measurement.html');
     assert.deepEqual(JSON.parse(window.sessionStorage.getItem('effetune_transient_pipeline_state')), {
       pipelineA: [{ name: 'Route A' }],

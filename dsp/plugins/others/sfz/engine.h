@@ -45,6 +45,28 @@ float bounded(float v, float lo, float hi, float fallback) noexcept {
     return fallback;
   return v < lo ? lo : v > hi ? hi : v;
 }
+// Offsets from 12-TET in cents by [tuning][minor][semitones above the tonic].
+// Just major: 1, 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 16/9, 15/8; minor uses 9/5
+// for the minor seventh. Meantone: chains of quarter-comma fifths (1200 log2(5) / 4 cents) from
+// the tonic, -3 to +8 fifths (Eb to G# from C) in major and -6 to +5 fifths in minor.
+constexpr std::array<std::array<std::array<double, 12>, 2>, 2> kTuningCents{{
+    {{
+        {0.0, 11.7312852698, 3.91000173077, 15.6412870006, -13.6862861352, -1.95500086539,
+         -9.77628440439, 1.95500086539, 13.6862861352, -15.6412870006, -3.91000173077,
+         -11.7312852698},
+        {0.0, 11.7312852698, 3.91000173077, 15.6412870006, -13.6862861352, -1.95500086539,
+         -9.77628440439, 1.95500086539, 13.6862861352, -15.6412870006, 17.5962878659,
+         -11.7312852698},
+    }},
+    {{
+        {0.0, -23.9510007365, -6.84314306758, 10.2647146014, -13.6862861352, 3.42157153379,
+         -20.5294292027, -3.42157153379, -27.3725722703, -10.2647146014, 6.84314306758,
+         -17.1078576690},
+        {0.0, 17.1078576690, -6.84314306758, 10.2647146014, -13.6862861352, 3.42157153379,
+         20.5294292027, -3.42157153379, 13.6862861352, -10.2647146014, 6.84314306758,
+         -17.1078576690},
+    }},
+}};
 struct MidiChannel {
   std::array<std::uint8_t, 128> cc{}, inputCC{}, pressure{}, velocity{};
   std::array<float, 128> normalizedCC{};
@@ -150,6 +172,8 @@ struct Voice {
   bool keyDown = false, sostenuto = false, historyOnly = false, retired = false;
   bool scriptWholeSample = false;
   double baseStep = 1.0, controllerStep = 1.0;
+  // Tuning offset from 12-TET in cents, fixed at note-on like Transpose.
+  double tuningCents = 0.0;
   std::uint32_t loopRepeats = 0u, releaseElapsed = 0u;
   float pitchReleaseStart = 0.0F, filterReleaseStart = 0.0F, filterModulation = 0.0F;
   std::uint32_t modulationRevision = 0u, delayFrames = 0u;
@@ -229,7 +253,7 @@ struct RenderState {
   std::array<int, 16> sf2_override_cache_{};
   bool sf2_fallback_cache_ = true;
   std::uint32_t respond_cache_ = 7u;
-  int transpose_cache_ = 0;
+  int transpose_cache_ = 0, tuning_cache_ = 0;
   // Compatibility mode applied to sounding voices; a change refreshes their modulation.
   bool sf2_strict_applied_ = false;
   std::uint32_t sf2_frame_ = 0, sf2_block_frames_ = 0, sf2_fx_position_ = 0,
@@ -1362,13 +1386,26 @@ private:
     return {section + records + first * sf2::kRouteWords,
             std::bit_cast<std::uint32_t>(section[directory + index * 4u + 1u])};
   }
+  // Fractional key offset of the tuning a new note sounding on this key would get now. The
+  // table follows the key before Transpose; a drum part is neither transposed nor tuned.
+  double forecastKeyOffset(const MidiChannel &channel, std::uint32_t musicalKey) const noexcept {
+    return tuningCents(static_cast<int>(musicalKey) - transposeSemitones(true), channel, true) *
+           .01;
+  }
   bool resolveSf2Forecast(std::uint32_t index, const MidiChannel &channel,
                           std::uint32_t physicalKey, std::uint32_t musicalKey,
-                          std::uint32_t velocity, sf2::Resolved &resolved) noexcept {
+                          std::uint32_t velocity, double keyOffset,
+                          sf2::Resolved &resolved) noexcept {
     const auto *r = bank()->region(index);
-    const sf2::Inputs input{
-        channel.cc.data(),  musicalKey,   velocity,          channel.pressure[physicalKey],
-        channel.aftertouch, channel.bend, channel.bendRange, sf2StrictSpec()};
+    const sf2::Inputs input{channel.cc.data(),
+                            musicalKey,
+                            velocity,
+                            channel.pressure[physicalKey],
+                            channel.aftertouch,
+                            channel.bend,
+                            channel.bendRange,
+                            sf2StrictSpec(),
+                            static_cast<float>(keyOffset)};
     return sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(index), 61),
                          sf2ForecastRoutes(index), input,
                          {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -1376,9 +1413,9 @@ private:
   }
   double forecastMaximumStep(std::uint32_t index, const MidiChannel &channel,
                              std::uint32_t physicalKey, std::uint32_t musicalKey,
-                             std::uint32_t velocity) noexcept {
+                             std::uint32_t velocity, double keyOffset) noexcept {
     sf2::Resolved resolved;
-    if (!resolveSf2Forecast(index, channel, physicalKey, musicalKey, velocity, resolved))
+    if (!resolveSf2Forecast(index, channel, physicalKey, musicalKey, velocity, keyOffset, resolved))
       return 0;
     const auto &g = resolved.generators;
     return bank()->region(index)[Rate] / rate_ *
@@ -1426,8 +1463,13 @@ private:
                          const Voice *voice = nullptr, bool prefix = false) noexcept {
     const auto *r = bank()->region(region);
     const auto position = voice ? voice->position : static_cast<double>(indexValue(r, Offset));
-    const auto step = forecastMaximumStep(region, (*forecast_channels_)[channel], physicalKey,
-                                          musicalKey, velocity);
+    // A sounding voice keeps the tuning it started with; a new note gets the current one and
+    // keeps it while it sounds, so both raise the channel's largest held offset.
+    const auto &state = (*forecast_channels_)[channel];
+    const auto keyOffset = voice ? voice->tuningCents * .01 : forecastKeyOffset(state, musicalKey);
+    forecast_voice_tuning_[channel] = std::max(forecast_voice_tuning_[channel], keyOffset);
+    const auto step =
+        forecastMaximumStep(region, state, physicalKey, musicalKey, velocity, keyOffset);
     if (!std::isfinite(step) || step <= 0)
       return;
     const auto sourceFlags =
@@ -1486,11 +1528,16 @@ private:
           (kind == 0xa0u && source.physicalKey == key && (source.pitchFacts & 1u)) ||
           (kind == 0xd0u && (source.pitchFacts & 2u)) ||
           (kind == 0xe0u && (source.pitchFacts & 4u)) || (rangeChanged && (source.pitchFacts & 8u));
+      // A source keeps the tuning it started with, which the current table may no longer
+      // give, so cover the largest offset any source on this channel holds as well.
       if (affected || resetInputs)
         source.maximumStep =
             std::max(source.maximumStep,
                      forecastMaximumStep(source.region, (*forecast_channels_)[channel],
-                                         source.physicalKey, source.musicalKey, source.velocity));
+                                         source.physicalKey, source.musicalKey, source.velocity,
+                                         std::max(forecastKeyOffset((*forecast_channels_)[channel],
+                                                                    source.musicalKey),
+                                                  forecast_voice_tuning_[channel])));
     }
   }
   et_status prefetchAdmittedEvents(const et_midi_event *events, std::uint32_t count,
@@ -1509,6 +1556,8 @@ private:
         readiness_acknowledged_ = false;
       }
       *forecast_channels_ = *midi_channels_;
+      // Below every tuning offset, so a channel without sources gets no extra coverage.
+      forecast_voice_tuning_.fill(-1.0);
       forecast_valid_ = false;
       forecast_admission_ = true;
       forecast_applied_ = false;
@@ -1727,9 +1776,15 @@ private:
       const auto first = std::bit_cast<std::uint32_t>(section[directory + index * 4u]);
       const auto count = std::bit_cast<std::uint32_t>(section[directory + index * 4u + 1u]);
       sf2::Resolved resolved;
-      const sf2::Inputs input{
-          channel.cc.data(),  musicalKey,   velocity,          channel.pressure[physicalKey],
-          channel.aftertouch, channel.bend, channel.bendRange, sf2StrictSpec()};
+      const sf2::Inputs input{channel.cc.data(),
+                              musicalKey,
+                              velocity,
+                              channel.pressure[physicalKey],
+                              channel.aftertouch,
+                              channel.bend,
+                              channel.bendRange,
+                              sf2StrictSpec(),
+                              static_cast<float>(forecastKeyOffset(channel, musicalKey))};
       if (!sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(index), 61),
                          {section + records + first * 10u, count}, input,
                          {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -1741,8 +1796,10 @@ private:
           std::exp2((resolved.pitchCents + std::abs(g[5]) + std::abs(g[6]) + std::max(0.0F, g[7])) /
                     1200.0);
     } else {
-      double cents = (musicalKey - r[KeyCenter]) * r[KeyTrack] + 100.0 * r[Transpose] + r[Tune] +
-                     r[PitchVelocityTrack] * velocity / 127.0 + std::abs(r[PitchRandom]) +
+      // The tuning term stays separate so equal temperament keeps the untuned arithmetic.
+      double cents = (musicalKey - r[KeyCenter]) * r[KeyTrack] +
+                     forecastKeyOffset(channel, musicalKey) * r[KeyTrack] + 100.0 * r[Transpose] +
+                     r[Tune] + r[PitchVelocityTrack] * velocity / 127.0 + std::abs(r[PitchRandom]) +
                      std::abs(r[PitchEGDepth]) + std::abs(r[PitchLFODepth]);
       const auto controls = indexValue(r, ControlCount), offset = indexValue(r, ControlOffset);
       for (auto control = 0u; control < controls; ++control) {
@@ -1993,7 +2050,7 @@ private:
     if (!bank() || bank()->state_ != ET_ASSET_STATE_ACTIVE)
       return 0;
     const std::uint64_t bytes =
-        200u + 131u * 8u + 16u * 7744u + kVoices * 180u +
+        200u + 131u * 8u + 16u * 7744u + kVoices * 188u +
         static_cast<std::uint64_t>(bank()->group_count_) * 8u + bank()->timer_frames_.size() * 8u +
         (script_session_ ? ScriptSession::checkpointBytes() + script::VM::checkpointBytes() : 0u);
     return bytes <= 32u * 1024u * 1024u ? static_cast<std::uint32_t>(bytes) : 0u;
@@ -2184,6 +2241,7 @@ private:
       floatField(voice.gainLeft);
       floatField(voice.gainRight);
       io.field(voice.baseStep);
+      io.field(voice.tuningCents);
       io.field(voice.delayFrames);
       floatField(voice.modulationRandom);
       io.field(voice.playbackEnabled);
@@ -2205,7 +2263,8 @@ private:
           return false;
         if (voice.channel > 15 || voice.midi > 127 || voice.outputMidi > 127 ||
             voice.velocity > 127 || !std::isfinite(voice.baseStep) || voice.baseStep <= 0 ||
-            voice.modulationRandom < 0 || voice.modulationRandom > 1)
+            !(std::abs(voice.tuningCents) < 50) || voice.modulationRandom < 0 ||
+            voice.modulationRandom > 1)
           io.ok = false;
         voice.region = index == UINT32_MAX ? nullptr : bank()->region(index);
         voice.preset = voice.region && bank()->sf2_ ? bank()->presetForRegion(index) : UINT32_MAX;
@@ -3105,8 +3164,10 @@ private:
         midi_channel_mask_ = channels;
       }
       const auto transpose = transposeSemitones();
-      if (transpose != transpose_cache_) {
+      const auto tuning = tuningSetting();
+      if (transpose != transpose_cache_ || tuning != tuning_cache_) {
         transpose_cache_ = transpose;
+        tuning_cache_ = tuning;
         clearSampleForecast();
       }
       const auto respond = respondMask();
@@ -3164,6 +3225,26 @@ private:
   // Transpose moves melodic parts only; a drum part keeps every key on its own instrument.
   int transposedKey(int key, const MidiChannel &state, bool staged = false) const noexcept {
     return key < 0 || state.bank == 128u ? key : key + transposeSemitones(staged);
+  }
+  // Tuning (0 = equal temperament) and key (0-11 major, 12-23 minor), as tuning * 24 + key.
+  int tuningSetting(bool staged = false) const noexcept {
+    if constexpr (Midi) {
+      const auto &parameters = staged && params_pending_ ? staged_params_ : params_;
+      return 24 * static_cast<int>(std::round(bounded(parameters.tuning, 0, 2, 0))) +
+             static_cast<int>(std::round(bounded(parameters.tuningKey, 0, 23, 0)));
+    } else {
+      return 0;
+    }
+  }
+  // Cents from 12-TET for a key before Transpose; a drum part stays in equal temperament.
+  double tuningCents(int key, const MidiChannel &state, bool staged = false) const noexcept {
+    const auto setting = tuningSetting(staged);
+    const auto tuning = setting / 24, tuningKey = setting % 24;
+    if (key < 0 || state.bank == 128u || tuning == 0)
+      return 0;
+    const auto tonic = tuningKey % 12;
+    return kTuningCents[static_cast<std::size_t>(tuning - 1)][tuningKey >= 12 ? 1u : 0u]
+                       [static_cast<std::size_t>((key - tonic + 12) % 12)];
   }
   // Bit n is set when notes sound while the standard ET_MIDI_SYSTEM_GM + n is current.
   std::uint32_t respondMask(bool staged = false) const noexcept {
@@ -5058,6 +5139,8 @@ private:
             } else
               release(v, preview);
           }
+    // Tuning reads the key before Transpose, so Transpose shifts the tuned result as a whole.
+    const auto tuning_cents = tuningCents(target_key, (*midi_channels_)[midi_channel_]);
     target_key = transposedKey(target_key, (*midi_channels_)[midi_channel_]);
     if (target_key < 0 || target_key > 127)
       return;
@@ -5253,6 +5336,7 @@ private:
       chosen->keyDown = midi_trigger_ == 0u && midi_controller_ < 0;
       chosen->midi = midi;
       chosen->outputMidi = static_cast<std::uint32_t>(target_key);
+      chosen->tuningCents = tuning_cents;
       chosen->velocity = velocity;
       chosen->preview = preview;
       chosen->position = r[Direction] == 1.0F ? indexValue(r, End) : indexValue(r, Offset);
@@ -5270,7 +5354,8 @@ private:
           static_cast<std::uint32_t>((r[Delay] + r[DelayRandom] * random) * rate_);
       chosen->envelope = r[Attack] > 0.0F ? 0.0F : 1.0F;
       chosen->step =
-          std::exp2(((static_cast<double>(target_key) - r[KeyCenter]) * r[KeyTrack] * .01 +
+          std::exp2(((static_cast<double>(target_key) + tuning_cents * .01 - r[KeyCenter]) *
+                         r[KeyTrack] * .01 +
                      r[Transpose] + (bank()->modulation_ ? 0 : r[Tune] * .01)) /
                     12.0) *
           r[Rate] / rate_;
@@ -5779,12 +5864,23 @@ private:
     if (count <= kCachedFilterTaps && !samples)
       return crossfadeSample(v, 0, channel);
     double value = 0, weight = 0;
-    for (auto tap = 0ull; tap < count; ++tap) {
-      const auto source = first + static_cast<std::int64_t>(tap);
-      const auto coefficient =
-          resampling_tables_->coefficient(profile, (source - v.position) / filterStep);
-      weight += coefficient;
-      value += coefficient * (samples ? samples[tap] : sample(v, source, channel, view));
+    if (samples) {
+      // Independent coefficient lookups run first so only the ordered sums stay serial.
+      std::array<float, kCachedFilterTaps> coefficients;
+      resampling_tables_->coefficientSpan(profile, first, v.position, filterStep,
+                                          static_cast<std::uint32_t>(count), coefficients.data());
+      for (auto tap = 0u; tap < count; ++tap) {
+        weight += coefficients[tap];
+        value += coefficients[tap] * samples[tap];
+      }
+    } else {
+      for (auto tap = 0ull; tap < count; ++tap) {
+        const auto source = first + static_cast<std::int64_t>(tap);
+        const auto coefficient =
+            resampling_tables_->coefficient(profile, (source - v.position) / filterStep);
+        weight += coefficient;
+        value += coefficient * sample(v, source, channel, view);
+      }
     }
     // Outside-file input remains zero instead of renormalizing a truncated
     // filter. Extreme finite samples traverse their extent, not huge zero tails.
@@ -5929,9 +6025,15 @@ private:
     const auto first = std::bit_cast<std::uint32_t>(section[directory + regionIndex * 4u]);
     const auto count = std::bit_cast<std::uint32_t>(section[directory + regionIndex * 4u + 1u]);
     const auto &channel = (*midi_channels_)[voice.channel];
-    const sf2::Inputs input{
-        channel.cc.data(),  voice.outputMidi, voice.velocity,    channel.pressure[voice.midi],
-        channel.aftertouch, channel.bend,     channel.bendRange, sf2StrictSpec()};
+    const sf2::Inputs input{channel.cc.data(),
+                            voice.outputMidi,
+                            voice.velocity,
+                            channel.pressure[voice.midi],
+                            channel.aftertouch,
+                            channel.bend,
+                            channel.bendRange,
+                            sf2StrictSpec(),
+                            static_cast<float>(voice.tuningCents * .01)};
     if (!sf2::evaluate(std::span<const float, 61>(bank()->sf2Generators(regionIndex), 61),
                        {section + records + first * sf2::kRouteWords, count}, input,
                        {bank()->sf2_scratch_.data(), bank()->sf2_scratch_.size()}, r[KeyCenter],
@@ -6789,9 +6891,10 @@ private:
             (pitch == 0 ? 1 : bank()->modulation_->pitchRatio(modulationRegionIndex(v), pitch)) *
             automation.tuneRelative;
         if (automation.tuneAbsolute != 0) {
-          const auto nominalStep =
-              region[Rate] / rate_ *
-              std::exp2((static_cast<double>(v.outputMidi) - region[KeyCenter]) / 12.0);
+          const auto nominalStep = region[Rate] / rate_ *
+                                   std::exp2((static_cast<double>(v.outputMidi) +
+                                              v.tuningCents * .01 - region[KeyCenter]) /
+                                             12.0);
           v.step += nominalStep * automation.tuneAbsolute;
         }
       } else {
@@ -6805,9 +6908,10 @@ private:
           const auto pitch =
               voiceEnvelope(v, PitchEGDelay, v.pitchReleaseStart) * region[PitchEGDepth] +
               voiceLFO(v, PitchLFODelay);
-          const auto nominalStep =
-              region[Rate] / rate_ *
-              std::exp2((static_cast<double>(v.outputMidi) - region[KeyCenter]) / 12.0);
+          const auto nominalStep = region[Rate] / rate_ *
+                                   std::exp2((static_cast<double>(v.outputMidi) +
+                                              v.tuningCents * .01 - region[KeyCenter]) /
+                                             12.0);
           v.step = v.controllerStep * std::exp2(pitch / 1200.0F) * automation.tuneRelative +
                    nominalStep * automation.tuneAbsolute;
           if (region[FilterEGDepth] != 0.0F || region[FilterLFODepth] != 0.0F) {
@@ -6969,6 +7073,8 @@ private:
   std::unique_ptr<std::array<Voice, kVoices>> paused_voices_;
   std::unique_ptr<std::array<MidiChannel, 16>> midi_channels_;
   std::unique_ptr<std::array<MidiChannel, 16>> forecast_channels_;
+  // Largest tuning offset, in keys, that a forecast source on each channel holds.
+  std::array<double, 16> forecast_voice_tuning_{};
   bool forecast_valid_ = false;
   bool forecast_admission_ = false, forecast_applied_ = false, readiness_acknowledged_ = false;
   bool forecast_input_invalidated_ = false;

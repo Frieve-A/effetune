@@ -69,7 +69,7 @@ public:
   const DeviceStreamFormat &inputFormat() const noexcept { return input_; }
   struct ClockSnapshot {
     std::uint64_t timeNs, pipelineFrame, feedDelay, feedUnderruns, captureUnderruns;
-    double converterDelay, captureRatio;
+    double converterDelay, captureRatio, captureConverterDelay;
     unsigned captureState, feedTarget, captureTarget;
   };
   bool clock(ClockSnapshot &out) const noexcept;
@@ -120,7 +120,7 @@ private:
   std::uint64_t reclaimed_ = 0;
   std::atomic<std::uint64_t> clockSequence_{0}, timeNs_{0}, position_{0}, feedDelay_{0},
       feedUnderruns_{0}, captureUnderruns_{0}, discontinuities_{0}, overruns_{0};
-  std::atomic<double> converterDelay_{0}, captureRatio_{1};
+  std::atomic<double> converterDelay_{0}, captureRatio_{1}, captureConverterDelay_{0};
   std::atomic<unsigned> captureState_{0}, feedTarget_{0}, captureTarget_{0};
   bool running_ = false, resumeAfterStall_ = false;
   const bool muteOutput_;

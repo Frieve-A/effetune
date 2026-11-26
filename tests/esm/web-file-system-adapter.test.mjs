@@ -178,6 +178,16 @@ test('folder containment distinguishes same, ancestor, descendant, and unrelated
     { code: 'folderContainmentUnavailable' });
 });
 
+test('one resolved path establishes folder containment even when another comparison fails', async () => {
+  const unavailable = async () => { throw new DOMException('Unavailable', 'InvalidStateError'); };
+  const parent = directory([], { isSameEntry: unavailable, resolve: async () => ['Disc'] });
+  const child = directory([], { isSameEntry: unavailable, resolve: unavailable });
+  assert.equal(await compareFolderRoots(parent, child), 'ancestor');
+  assert.equal(await compareFolderRoots(child, parent), 'descendant');
+  await assert.rejects(compareFolderRoots(child, directory([], { resolve: async () => null })),
+    { code: 'folderContainmentUnavailable' });
+});
+
 test('folder permission checks remain read-only and treat denied or failed queries as needing permission', async () => {
   assert.equal(await queryFolderPermission(directory()), 'granted');
   for (const permission of ['granted', 'prompt', 'denied']) {

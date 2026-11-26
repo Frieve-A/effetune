@@ -147,18 +147,36 @@ bool Pipeline::configure(std::vector<PluginSettings> plugins,
   }
   std::erase_if(slots_, [&](auto &item) {
     auto found = desired.find(item.first);
-    if (found != desired.end() && found->second->type == item.second.settings.type)
+    auto &slot = item.second;
+    const bool retained = found != desired.end() && found->second->type == slot.settings.type;
+    if (retained && !found->second->skip && !found->second->displayOnly && slot.passthrough) {
+      engine_.destroyInstance(slot.passthrough);
+      slot.passthrough = 0;
+    }
+    if (retained && (!found->second->skip || !slot.kernel))
       return false;
-    if (item.second.settings.type == "SoundFontPlayerPlugin" ||
-        item.second.settings.type == "SFZNotePlayerPlugin")
+    if (slot.settings.type == "SoundFontPlayerPlugin" ||
+        slot.settings.type == "SFZNotePlayerPlugin")
       ++runtimeRevision_;
     cancelBanks(item.first);
-    if (item.second.kernel)
-      engine_.destroyInstance(item.second.kernel);
-    if (item.second.passthrough)
-      engine_.destroyInstance(item.second.passthrough);
+    if (slot.kernel)
+      engine_.destroyInstance(slot.kernel);
     streams_.erase(item.first);
     pendingStreams_.erase(item.first);
+    if (retained) {
+      // Keep the asset descriptors for rebuilding the effect when it is supported again.
+      Slot skipped;
+      skipped.settings = std::move(slot.settings);
+      skipped.passthrough = slot.passthrough;
+      slot = std::move(skipped);
+      for (auto it = assets_.lower_bound({item.first, 0});
+           it != assets_.end() && it->first.first == item.first; ++it) {
+        it->second.reportedState = UINT32_MAX;
+      }
+      return false;
+    }
+    if (slot.passthrough)
+      engine_.destroyInstance(slot.passthrough);
     std::erase_if(assets_, [&](const auto &asset) { return asset.first.first == item.first; });
     return true;
   });
@@ -203,9 +221,6 @@ bool Pipeline::configure(std::vector<PluginSettings> plugins,
       }
       if (settings.skip || !target)
         target = slot.passthrough;
-    } else if (slot.passthrough) {
-      engine_.destroyInstance(slot.passthrough);
-      slot.passthrough = 0;
     }
     std::memcpy(descriptor.data() + offset, &target, sizeof(target));
     if (!settings.assetPending)
@@ -500,6 +515,8 @@ bool Pipeline::assetPending() const noexcept {
   if (hasPendingAssets_.load(std::memory_order_relaxed))
     return true;
   for (const auto &[id, slot] : slots_) {
+    if (slot.settings.skip)
+      continue;
     const auto state = assetState(id, 0) & 255u;
     if ((state == ET_ASSET_STATE_NONE && slot.settings.assetPending.value_or(false)) ||
         state == ET_ASSET_STATE_STAGED || state == ET_ASSET_STATE_PREPARING ||

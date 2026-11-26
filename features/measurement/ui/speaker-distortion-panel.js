@@ -861,7 +861,8 @@ export class SpeakerDistortionPanel {
                 check.message = message('message:checkCancelled');
             } else {
                 console.error('Check again failed:', error);
-                check.message = message(error?.kind === 'analysis' ? 'error:speakerDistortionAnalysisFailed'
+                check.message = message(error?.code === 'measurement-rate-unavailable' ? 'error:measurementRateUnavailable'
+                    : error?.kind === 'analysis' ? 'error:speakerDistortionAnalysisFailed'
                     : 'error:speakerDistortionPlaybackFailed', 'speaker-distortion-error');
             }
         } finally {

@@ -101,7 +101,7 @@ class AudioUtils {
     async initializeResources(preferredSampleRate = null) {
         if (isAndroidHost()) {
             const snapshot = await getAndroidBridge().request('snapshot.get');
-            this.audioContext = new OfflineAudioContext(2, 1, snapshot.sampleRate);
+            this.audioContext = new OfflineAudioContext(2, 1, preferredSampleRate || snapshot.sampleRate);
             this.detachNativeLevel?.();
             this.detachNativeLevel = getAndroidBridge().on('measurement.level', level => {
                 this.currentInputLevel = level.inputLevelDb;

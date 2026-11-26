@@ -2,6 +2,8 @@ import { AndroidDocuments } from '../android/documents.js';
 import { isAndroidHost } from '../android/bridge.js';
 import { collectDiagnosticFile } from './diagnostic-bundle.js';
 
+const SUMMARY_REFRESH_MS = 1000;
+
 async function saveFile(win, file, androidDocuments) {
     if (win.electronAPI) {
         const result = await win.electronAPI.showSaveDialog({
@@ -81,7 +83,9 @@ export async function openDiagnosticDialog({
     fileSection.appendChild(details);
     dialog.append(header, overview, fileSection, status, actions);
     overlay.appendChild(dialog);
+    let refreshTimer;
     const dismiss = () => {
+        win.clearInterval(refreshTimer);
         overlay.remove();
         previousFocus?.focus?.();
     };
@@ -105,6 +109,18 @@ export async function openDiagnosticDialog({
         overview.textContent = file.summary;
         preview.textContent = file.text;
         save.disabled = false;
+        // Clock offsets and running latencies keep changing, so the overview follows them while the dialog is open.
+        // The file preview stays as collected so that it matches the saved file.
+        let refreshing = false;
+        refreshTimer = win.setInterval(async () => {
+            if (refreshing) return;
+            refreshing = true;
+            try {
+                const { summary } = await collect(win, translate);
+                if (overview.textContent !== summary) overview.textContent = summary;
+            } catch (error) { console.warn('Diagnostic summary refresh:', error); }
+            finally { refreshing = false; }
+        }, SUMMARY_REFRESH_MS);
         save.addEventListener('click', async () => {
             save.disabled = true;
             status.textContent = '';

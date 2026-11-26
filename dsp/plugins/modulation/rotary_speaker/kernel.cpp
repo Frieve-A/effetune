@@ -109,6 +109,7 @@ public:
     horn_speed_ = 0.0;
     coefficients_ready_ = false;
     smoothers_ready_ = false;
+    weights_ready_ = false;
   }
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
@@ -189,8 +190,15 @@ public:
       horn_speed_ = moveTowards(horn_speed_, target_horn_speed, horn_step);
 
       const double balance_angle = (balance_ + 1.0) * 0.125 * kTwoPi;
-      const double low_weight = std::cos(balance_angle) * kSqrtTwo;
-      const double high_weight = std::sin(balance_angle) * kSqrtTwo;
+      // The balance settles quickly, so the weights are recomputed only when its angle changes.
+      if (!weights_ready_ || balance_angle != weight_angle_) {
+        weights_ready_ = true;
+        weight_angle_ = balance_angle;
+        low_weight_ = std::cos(balance_angle) * kSqrtTwo;
+        high_weight_ = std::sin(balance_angle) * kSqrtTwo;
+      }
+      const double low_weight = low_weight_;
+      const double high_weight = high_weight_;
       const double base_delay = sample_rate_ * 0.002;
       const double delay_excursion = sample_rate_ * 0.001 * doppler_;
 
@@ -229,16 +237,18 @@ public:
             (channel & 1u) == 0u ? -pair_width * kHalfPi : pair_width * kHalfPi;
         const double drum_angle = drum_phase_ + microphone_offset;
         const double horn_angle = horn_phase_ - microphone_offset;
-        const double drum_delay_samples = base_delay + delay_excursion * std::sin(drum_angle);
-        const double horn_delay_samples = base_delay + delay_excursion * std::sin(horn_angle);
+        const double drum_sine = std::sin(drum_angle);
+        const double horn_sine = std::sin(horn_angle);
+        const double drum_delay_samples = base_delay + delay_excursion * drum_sine;
+        const double horn_delay_samples = base_delay + delay_excursion * horn_sine;
         const double delayed_low =
             readCubic(low_delay_, delay_base, buffer_length_, write_position_, drum_delay_samples);
         const double delayed_high =
             readCubic(high_delay_, delay_base, buffer_length_, write_position_, horn_delay_samples);
         const double drum_gain = 1.0 + 0.5 * amplitude_ * std::cos(drum_angle);
         const double horn_gain = 1.0 + 0.5 * amplitude_ * std::cos(horn_angle);
-        const double drum_spatial = 1.0 + 0.25 * pair_width * std::sin(drum_angle);
-        const double horn_spatial = 1.0 + 0.25 * pair_width * std::sin(horn_angle);
+        const double drum_spatial = 1.0 + 0.25 * pair_width * drum_sine;
+        const double horn_spatial = 1.0 + 0.25 * pair_width * horn_sine;
         const double wet = low_weight * delayed_low * drum_gain * drum_spatial +
                            high_weight * delayed_high * horn_gain * horn_spatial;
         const double output = dry * (1.0 - mix_) + wet * mix_;
@@ -306,6 +316,10 @@ private:
   double horn_speed_ = 0.0;
   double acceleration_ = 2.0;
   double balance_ = 0.0;
+  bool weights_ready_ = false;
+  double weight_angle_ = 0.0;
+  double low_weight_ = 0.0;
+  double high_weight_ = 0.0;
   double width_ = 0.0;
   double doppler_ = 0.0;
   double amplitude_ = 0.0;

@@ -1955,7 +1955,7 @@ test('LibraryView keeps paged nav buttons mounted when a nav item is clicked', a
   assert.equal(artistsButton.querySelector('.library-count').hidden, false);
 });
 
-test('LibraryView reveals a newly active mobile nav item once it is visible', async () => {
+test('LibraryView reveals the active mobile nav item again when counts first arrive', async () => {
   const nav = createLibraryNavElement();
   const documentRef = createDocument();
   documentRef.body.classList.add('layout-mobile', 'view-library');
@@ -1984,6 +1984,11 @@ test('LibraryView reveals a newly active mobile nav item once it is visible', as
       { block: 'nearest', inline: 'nearest' }
     ]]);
 
+    view.updateNav({ subfolders: 48 });
+    view.updateNav({ subfolders: 48 });
+    assert.equal(scrollCalls.length, 2);
+    assert.deepEqual(scrollCalls[1], ['subfolders', { block: 'nearest', inline: 'nearest' }]);
+
     view.currentView = 'genres';
     view.updateNav();
     assert.equal(scrollCalls.at(-1)[0], 'genres');
@@ -1991,13 +1996,13 @@ test('LibraryView reveals a newly active mobile nav item once it is visible', as
     documentRef.body.classList.remove('layout-mobile');
     view.currentView = 'artists';
     view.updateNav();
-    assert.equal(scrollCalls.length, 2);
+    assert.equal(scrollCalls.length, 3);
 
     documentRef.body.classList.add('layout-mobile');
     view.isViewShown = false;
     view.currentView = 'tracks';
     view.updateNav();
-    assert.equal(scrollCalls.length, 2);
+    assert.equal(scrollCalls.length, 3);
   });
 });
 

@@ -2345,6 +2345,31 @@ test('desktop remount cancels pending mobile presentation and shows current trac
   });
 });
 
+test('touch seek commits on release and cancels when scrolling', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createAudioPlayer(calls, {
+      contextManager: {
+        getCurrentState: () => ({ currentTrackDuration: 100 }),
+        seek: value => calls.push(['seek', value])
+      },
+      state: { seekBarEnabled: true, currentTrackPosition: 0, currentTrackDuration: 100 }
+    });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    ui.seekBar.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    ui.seekBar.value = '50';
+    ui.seekBar.dispatchEvent('input');
+    ui.seekBar.dispatchEvent('pointercancel');
+    assert.deepEqual(calls.filter(call => call[0] === 'seek'), []);
+    ui.seekBar.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    ui.seekBar.value = '75';
+    ui.seekBar.dispatchEvent('input');
+    ui.seekBar.dispatchEvent('change');
+    ui.seekBar.dispatchEvent('pointerup');
+    assert.deepEqual(calls.filter(call => call[0] === 'seek'), [['seek', 75]]);
+  });
+});
+
 test('seek bar input respects disabled state and context manager duration validity', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const contextState = { currentTrackDuration: 100 };
@@ -2943,6 +2968,27 @@ test('player playlist picker pages past 500 rows and starts versioned descriptor
     { expectedTargetVersion: 501 }
   ]]);
   assert.deepEqual(released, ['playlist-list', 'track-context']);
+});
+
+test('Save Queue reads library IDs from every native page in order', async () => {
+  const { AndroidPlaybackQueue } = await import('../../js/android/playback-queue.js');
+  const offsets = [], saves = [];
+  const queue = new AndroidPlaybackQueue({ async request(command, { offset, limit }) {
+    assert.equal(command, 'playback.queue.read');
+    offsets.push(offset);
+    const items = Array.from({ length: limit }, (_, i) => i + offset === 64 ? {} : { libraryTrackId: String((i + offset) % 3) });
+    return { total: 67, revision: 3, items };
+  } });
+  queue.accept({ queueLength: 67, queueRevision: 3 });
+  const ui = Object.create(AudioPlayerUI.prototype);
+  ui.audioPlayer = { playbackManager: { catalogSequence: queue, getActiveSequenceDescriptor: () => ({ kind: 'catalog' }) } };
+  ui.getLibraryManager = async () => ({ playlists: { create: (...args) => saves.push(args) } });
+  ui.t = key => key;
+  ui.promptText = async () => 'Queue';
+  await ui.saveQueueAsPlaylist();
+  assert.deepEqual(offsets, [0, 64]);
+  const ids = Array.from({ length: 67 }, (_, i) => i).filter(i => i !== 64).map(i => String(i % 3));
+  assert.deepEqual(saves, [['Queue', ids]]);
 });
 
 test('Save Queue passes the active disk-backed sequence descriptor without materializing rows', async () => {

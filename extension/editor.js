@@ -260,6 +260,8 @@ export class ExtensionAudioManager {
     this.request('workletMessage', { message });
   }
 
+  resetPluginState(pluginId) { this.forwardPluginMessage({ type: 'resetPluginState', pluginId }); }
+
   recordPluginSettings(plugin) {
     const settings = stableStringify(getSerializablePluginStateShort(plugin));
     if (this.lastPluginSettings.get(plugin) === settings) return false;

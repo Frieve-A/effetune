@@ -38,6 +38,15 @@ function frequency(values) {
   for (let index = 1; index < values.length; index++) if (values[index - 1] <= 0 && values[index] > 0) crossings++;
   return crossings * RATE / values.length;
 }
+// Rising zero crossings with linear interpolation, skipping the attack.
+function interpolatedFrequency(values, from = 1024) {
+  let first = -1, last = -1, crossings = 0;
+  for (let index = from + 1; index < values.length; index++) {
+    const a = values[index - 1], b = values[index];
+    if (a <= 0 && b > 0) { last = index - 1 + a / (a - b); if (first < 0) first = last; crossings++; }
+  }
+  return (crossings - 1) * RATE / (last - first);
+}
 
 async function start(h, timeline, generation) {
   await h.send({ type: 'midiTransport', timeline, generation, position: 0, playing: false,
@@ -232,6 +241,50 @@ for (const variant of ['baseline', 'simd']) {
       } finally { await h.close(); await fixture.close(); }
     }
     assert.deepEqual(outputs[0], outputs[1]);
+  });
+
+  test(`SF2 ${variant} tuning follows the untransposed key while drums and Equal stay bit-exact`, async () => {
+    // A 64-frame-aligned loop inside the first page keeps the 750 Hz root continuous.
+    const fixture = await createSf2RuntimeFixture({ resident: true, loopStart: 1024, loopEnd: 3072, sampleFrames: 4096 });
+    const h = await createNativeSamplerWorklet({ variant });
+    try {
+      const defaults = await h.initialize(MAIN, fixture.descriptor);
+      await h.waitForJoinReady();
+      const binding = h.binding, instance = h.processor.wasmInstances.get(7).id, packer = DSP_PARAM_PACKERS.get(MAIN);
+      const message = (status, data1, data2) => ({ offsetFrames: 0, status, data1, data2, noteId: 1 });
+      assert.equal(binding.instanceSetMidiEvents(instance, [], 1, 1), 0);
+      assert.equal(binding.instanceSetMidiClock(instance, 0, 1, 1), 0);
+      // Reverb and chorus sends stay off so no tail reaches a later note.
+      let events = [0xb0, 0xb9].flatMap(status => [message(status, 91, 0), message(status, 93, 0)]);
+      const note = (parameters, channel, key) => {
+        assert.equal(binding.instanceSetParams(instance, packer.pack({ ...defaults, ...parameters }), packer.hash), 0);
+        const output = new Float32Array(90 * 128);
+        for (let block = 0; block < 100; block++) {
+          if (block === 2) events.push(message(0x90 | channel, key, 100));
+          if (block === 92) events.push(message(0x80 | channel, key, 0));
+          assert.equal(binding.instanceSetMidiEvents(instance, events, 1, 0), 0);
+          events = [];
+          const arena = binding.getArenaViews();
+          arena.combined.fill(0);
+          assert.equal(binding.instanceProcess(instance, arena.offsets.combined, 2, 128, 0), 0);
+          if (block >= 2 && block < 92) output.set(arena.combined.subarray(0, 128), (block - 2) * 128);
+        }
+        return output;
+      };
+      const equal = note({ tu: 0, tk: 0 }, 0, 64);
+      assert.deepEqual(note({ tu: 0, tk: 7 }, 0, 64), equal, 'Equal ignores Tuning Key');
+      const drums = note({ tu: 0, tk: 0 }, 9, 64);
+      assert.ok(drums.some(value => value > .1));
+      assert.deepEqual(note({ tu: 1, tk: 0 }, 9, 64), drums, 'bank 128 keeps its equal-tempered pitch');
+      assert.deepEqual(note({ tu: 2, tk: 21 }, 9, 64), drums);
+      for (const [parameters, key, expected] of [[{ tu: 1, tk: 7 }, 71, -13.686], [{ tu: 1, tk: 12 }, 70, 17.596],
+        [{ tu: 2, tk: 12 }, 61, 17.108], [{ tu: 2, tk: 0 }, 68, -27.373], [{ tu: 1, tk: 0, tr: 5 }, 64, -13.686]]) {
+        const measured = 1200 * Math.log2(interpolatedFrequency(note(parameters, 0, key)) /
+          interpolatedFrequency(note({ tr: parameters.tr }, 0, key)));
+        // Zero-crossing timing over 0.2 s resolves below 0.001 cent; table values are rounded to 0.001 cent.
+        assert.ok(Math.abs(measured - expected) < .01, `${JSON.stringify(parameters)} key ${key}: ${measured} cents`);
+      }
+    } finally { await h.close(); await fixture.close(); }
   });
 
   test(`SF2 ${variant} the production owner preserves a paged held voice across pause, resume and a running seek`, async () => {

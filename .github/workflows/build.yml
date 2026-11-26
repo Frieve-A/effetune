@@ -564,6 +564,8 @@ jobs:
             app_dir=dist/mac-arm64
           fi
           node scripts/pack-ecs.mjs --prepackaged "$app_dir/EffeTune.app" --output dist
+          expected_floor="$(node -p "require('./package.json').build.mac.minimumSystemVersion")"
+          test "$(plutil -extract LSMinimumSystemVersion raw -o - "$app_dir/EffeTune.app/Contents/Info.plist")" = "$expected_floor"
           python -m castlabs_evs.vmp --no-ask verify-pkg --streaming "$app_dir"
 
       - name: Verify packaged DSP artifacts

@@ -1,9 +1,10 @@
 EffeTune OpenHome sidecar third-party notices
 ================================================
 
-This file covers the pinned source components linked into
-effetune-openhome-sidecar executable (with .exe on Windows). Exact source revisions and archive hashes are
-recorded in dependencies.lock.json.
+This file covers the pinned source components linked into the
+effetune-openhome-sidecar executable (with .exe on Windows) and into the
+EffeTune Android app's OpenHome library. Exact source revisions and archive
+hashes are recorded in dependencies.lock.json.
 
 The Linux build disables ohNet's bundled static libnl objects and dynamically
 links the build environment's libnl-3 and libnl-genl-3 shared libraries. Linux

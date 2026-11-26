@@ -50,6 +50,22 @@ test('touching a number input allows scrolling and opens the keypad only after a
   await input.click();
   assert.equal(await isOpen(), true, 'mouse activation must also work on release');
 
+  const nine = page.locator('.mobile-number-keypad-button[data-key="9"]');
+  const key = await nine.boundingBox();
+  await page.evaluate(() => window.keypad.cancel());
+  await input.evaluate((element, rect) => {
+    Object.assign(element.style, { position: 'fixed', left: rect.x + 'px', top: rect.y + 'px',
+      width: rect.width + 'px', height: rect.height + 'px', boxSizing: 'border-box' });
+  }, key);
+  const keyX = Math.round(key.x + key.width / 2);
+  const keyY = Math.round(key.y + key.height / 2);
+  await page.touchscreen.tap(keyX, keyY);
+  const display = page.locator('.mobile-number-keypad-display');
+  assert.equal(await display.textContent(), '3', 'opening over a key must preserve the preset value');
+  await page.touchscreen.tap(keyX, keyY);
+  assert.equal(await display.textContent(), '9', 'the next intentional tap must work');
+  await input.evaluate(element => element.removeAttribute('style'));
+
   // Check native scrolling last so momentum cannot affect another gesture.
   await page.evaluate(() => window.keypad.cancel());
   await touch('touchStart', [y]);

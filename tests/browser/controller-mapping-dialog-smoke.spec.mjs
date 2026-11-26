@@ -69,7 +69,9 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
       styleProbe.remove();
       const findMaxHeight = (rules, selector) => {
         for (const rule of rules) {
-          if (rule.selectorText === selector) return rule.style.maxHeight;
+          if (rule.selectorText?.split(',').some(part => part.trim() === selector)) {
+            return rule.style.maxHeight;
+          }
           if (rule.cssRules) {
             const nested = findMaxHeight(rule.cssRules, selector);
             if (nested) return nested;

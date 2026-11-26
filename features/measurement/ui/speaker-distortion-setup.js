@@ -13,7 +13,7 @@ import { bandLimitedSettings, levelCheckLowerDb, perChannelSeconds, runSpeakerDi
     savedMessageKey, SpeakerDistortionStepError } from '../measurement-controller/speaker-distortion-measurement.js';
 import * as speakerDistortion from '../../../js/utils/measurement-dsp/speaker-distortion/index.js';
 import { isAndroidHost } from '../../../js/android/bridge.js';
-import { ANDROID_MEASUREMENT_OUTPUT_CHANNELS, configureAndroidMeasurementOutput, validateAndroidMeasurementChannels }
+import { configureAndroidMeasurementOutput, validateAndroidMeasurementChannels }
     from '../../../js/android/measurement.js';
 import { button, cancelCheckAgain, element, listText, lowerInputText, showToast, uiLanguage, uiText }
     from './speaker-distortion-panel.js';
@@ -68,10 +68,8 @@ function storeChoice(key, value) {
     dataStorage.saveUserSettings({ ...dataStorage.loadUserSettings(), [key]: value });
 }
 
-const outputTokens = () => INDIVIDUAL_CHANNELS.slice(0, isAndroidHost()
-    ? ANDROID_MEASUREMENT_OUTPUT_CHANNELS : Number(byId('outputChannelCount').value) || 2);
-const selectedRate = () => isAndroidHost() && audioUtils.audioContext
-    ? audioUtils.audioContext.sampleRate : Number(byId('sampleRate').value);
+const outputTokens = () => INDIVIDUAL_CHANNELS.slice(0, Number(byId('outputChannelCount').value) || 2);
+const selectedRate = () => Number(byId('sampleRate').value);
 
 function selectedChannels() {
     const stored = storedChoices().channels;
@@ -97,9 +95,10 @@ export const speakerDistortionAudio = {
         await audioRelease;
         signal?.throwIfAborted();
         const android = isAndroidHost();
-        if (android) validateAndroidMeasurementChannels(channels);
-        if (!audioUtils.audioContext) await audioUtils.initialize(android ? null : rateHz);
-        else if (!android && audioUtils.audioContext.sampleRate !== rateHz) await audioUtils.reinitialize(rateHz);
+        const width = android ? outputTokens().length : null;
+        if (android) validateAndroidMeasurementChannels(channels, width);
+        if (!audioUtils.audioContext) await audioUtils.initialize(rateHz);
+        else if (audioUtils.audioContext.sampleRate !== rateHz) await audioUtils.reinitialize(rateHz);
         signal?.throwIfAborted();
         await audioUtils.ensureAudioContextRunning();
         signal?.throwIfAborted();
@@ -112,7 +111,7 @@ export const speakerDistortionAudio = {
             audioInputId: settings.audioInputId,
             inputChannel: settings.inputChannel,
             audioOutputId: settings.audioOutputId,
-            outputChannelCount: android ? ANDROID_MEASUREMENT_OUTPUT_CHANNELS : Number(settings.outputChannelCount) || 2
+            outputChannelCount: width ?? (Number(settings.outputChannelCount) || 2)
         };
         if (android) await configureAndroidMeasurementOutput(config);
         signal?.throwIfAborted();
@@ -138,11 +137,9 @@ export const isSpeakerDistortionRunActive = () => run !== null;
 
 function moveBorrowedControls() {
     if (borrowedPlaceholders.length) return;
-    const android = isAndroidHost();
     for (const [slotId, controls] of BORROWED_CONTROLS) {
         const slot = byId(slotId);
         for (const [id, withHelp] of controls) {
-            if (android && (id === 'outputChannelCount' || id === 'sampleRate')) continue;
             const row = byId(id).closest('.form-group, .sweep-band-inputs');
             for (const node of withHelp ? [row, row.nextElementSibling] : [row]) {
                 const placeholder = document.createComment(id);
@@ -198,7 +195,7 @@ export async function openSpeakerDistortionSetup({ openedBySetupRequest = false 
         window.app.selectSavedAudioDevices();
     } catch (error) {
         console.error('Could not open the speaker distortion setup due to audio initialization failure:', error);
-        uiManager.showNotification(uiText('error:audioInitFailed'), 'error');
+        uiManager.showAudioInitError(error);
         return;
     }
     if (uiManager.currentScreen === sourceScreen) showSetupScreen();
@@ -229,6 +226,12 @@ function renderChannelBoxes() {
         label.append(box, element('span', '', channelDisplayLabel(token)));
         return label;
     }));
+}
+
+export function refreshSpeakerDistortionChannels() {
+    if (uiManager?.currentScreen !== 'speakerDistortionSetupScreen') return;
+    renderChannelBoxes();
+    updateSetup();
 }
 
 function updateSetup() {
@@ -290,11 +293,6 @@ function bindSetup() {
     signalLevel.addEventListener('change', () => storeChoice('speakerDistortionSignalLevel', Number(signalLevel.value)));
     document.querySelectorAll('input[name="speakerDistortionNoiseRetry"]').forEach(radio =>
         radio.addEventListener('change', () => storeChoice('speakerDistortionNoiseRetry', radio.value === 'on')));
-    byId('outputChannelCount').addEventListener('change', () => {
-        if (uiManager.currentScreen !== 'speakerDistortionSetupScreen') return;
-        renderChannelBoxes();
-        updateSetup();
-    });
     byId('sampleRate').addEventListener('change', () => {
         if (uiManager.currentScreen === 'speakerDistortionSetupScreen') updateSetup();
     });
@@ -378,7 +376,8 @@ function openCheckAudio() {
         if (checkAudio === opened) {
             checkAudio = null;
             console.error('Could not open the microphone for the speaker distortion level check:', error);
-            if (onCheckScreen()) showCheckResult({ warning: true, text: uiText('error:audioInitFailed') });
+            if (onCheckScreen()) showCheckResult({ warning: true, text: uiText(error.code === 'measurement-rate-unavailable'
+                ? 'error:measurementRateUnavailable' : 'error:audioInitFailed') });
         }
         throw error;
     });
@@ -648,7 +647,8 @@ async function performRun(current, { plan, judged }, deps) {
     } catch (error) {
         if (!signal.aborted) {
             console.error('Speaker distortion measurement failed:', error.cause ?? error);
-            messageKey = error instanceof SpeakerDistortionStepError && error.kind === 'analysis'
+            messageKey = error.code === 'measurement-rate-unavailable' ? 'error:measurementRateUnavailable'
+                : error instanceof SpeakerDistortionStepError && error.kind === 'analysis'
                 ? 'error:speakerDistortionAnalysisFailed' : 'error:speakerDistortionPlaybackFailed';
         }
     } finally {
@@ -732,11 +732,14 @@ export function askDialog(titleKey, message, buttons) {
     byId('speakerDistortionDialogTitle').textContent = uiText(titleKey);
     byId('speakerDistortionDialogMessage').textContent = message;
     return new Promise(resolve => {
-        byId('speakerDistortionDialogButtons').replaceChildren(...buttons.map(({ key, params, value, primary }) =>
-            button(uiText(key, params), () => {
+        byId('speakerDistortionDialogButtons').replaceChildren(...buttons.map(({ key, params, value, primary }) => {
+            const choice = button(uiText(key, params), () => {
                 dialog.style.display = 'none';
                 resolve(value);
-            }, primary ? 'primary-btn' : 'secondary-btn')));
+            }, primary ? 'primary-btn' : 'secondary-btn');
+            if (value === false || value === 'stay') choice.dataset.dialogDismiss = '';
+            return choice;
+        }));
         dialog.style.display = 'flex';
     });
 }

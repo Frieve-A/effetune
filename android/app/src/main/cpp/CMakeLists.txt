@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 get_filename_component(EFFETUNE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+# Realtime audio must meet its deadline in Debug too; Debug keeps its debug info and the
+# DSP allocation guard that the Debug native acceptance relies on.
+add_compile_options("$<$<CONFIG:Debug>:-O2>")
+# Match the desktop native engine's shipped DSP configuration.
+set(ET_SIMD ON CACHE BOOL "" FORCE)
 add_subdirectory("${EFFETUNE_ROOT}/dsp" "${CMAKE_CURRENT_BINARY_DIR}/dsp")
 set(ET_AUDIO_ENGINE_HOST_ONLY ON)
 set(ET_AUDIO_ENGINE_OPTIMIZE_FP OFF)
@@ -12,6 +17,9 @@ add_subdirectory("${EFFETUNE_ROOT}/native/audio-engine" "${CMAKE_CURRENT_BINARY_
 find_package(oboe REQUIRED CONFIG)
 add_library(effetune_android SHARED native_engine.cpp jni_bridge.cpp finite_capture.cpp pcm_resampler.cpp pcm_resampler_jni.cpp)
 target_include_directories(effetune_android PRIVATE "${EFFETUNE_ROOT}/dsp/core")
+add_library(effetune_android_dsd SHARED dsd_decoder_jni.cpp "${EFFETUNE_ROOT}/js/audio/dsd/dsd-kernels.c" "${EFFETUNE_ROOT}/js/audio/dsd/dst-decoder.c")
+target_include_directories(effetune_android_dsd PRIVATE dsd)
+add_subdirectory(openhome)
 target_link_libraries(effetune_android PRIVATE audio_engine_host oboe::oboe android log aaudio)
 target_compile_options(effetune_android PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_options(effetune_android PRIVATE "-Wl,-z,max-page-size=16384")

@@ -75,7 +75,7 @@ test('Connect effects explains unavailable requests and keeps approval and conne
           });
           window.ready = effects.selectPlayer({ id: 'uuid:bedroom', name: 'Bedroom PC' });
         `
-      }, bundle: true, write: false, format: 'esm', platform: 'browser'
+      }, external: ['./remote-music-protocol.js'], bundle: true, write: false, format: 'esm', platform: 'browser'
     });
     browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
     const page = await browser.newPage();

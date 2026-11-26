@@ -256,7 +256,8 @@ public:
       taps_per_phase_ = 2u;
     }
     coefficients_.assign(static_cast<std::size_t>(interpolation_) * taps_per_phase_, 0.0F);
-    rings_.assign(Channels, std::vector<float>(taps_per_phase_, 0.0F));
+    // Each ring holds two copies of its history so one phase reads it without wrapping.
+    rings_.assign(Channels, std::vector<float>(2u * taps_per_phase_, 0.0F));
     // The windowed-sinc -6 dB point must sit at the middle of the designed
     // transition band, not at the audio pass edge. The family stop edge is the
     // first image/fold boundary, lower_rate - pass_hz, so the midpoint is
@@ -333,6 +334,7 @@ public:
     for (std::uint32_t input = 0u; input < input_count; ++input) {
       for (std::size_t channel = 0u; channel < Channels; ++channel) {
         rings_[channel][ring_position_] = inputs[channel][input];
+        rings_[channel][ring_position_ + taps_per_phase_] = inputs[channel][input];
       }
       while ((output_index_ * decimation_) / interpolation_ == input_index_) {
         if (produced >= output_capacity) {
@@ -342,14 +344,21 @@ public:
             static_cast<std::uint32_t>((output_index_ * decimation_) % interpolation_);
         const float *phase_coefficients =
             coefficients_.data() + static_cast<std::size_t>(phase) * taps_per_phase_;
+        // history[c][-tap] is the sample tap inputs before the newest one.
+        std::array<const float *, Channels> history{};
         for (std::size_t channel = 0u; channel < Channels; ++channel) {
-          float sum = 0.0F;
-          std::uint32_t read_position = ring_position_;
-          for (std::uint32_t tap = 0u; tap < taps_per_phase_; ++tap) {
-            sum += rings_[channel][read_position] * phase_coefficients[tap];
-            read_position = read_position == 0u ? taps_per_phase_ - 1u : read_position - 1u;
+          history[channel] = rings_[channel].data() + ring_position_ + taps_per_phase_;
+        }
+        // The channels share one tap loop so their accumulations overlap; each keeps its order.
+        std::array<float, Channels> sums{};
+        for (std::uint32_t tap = 0u; tap < taps_per_phase_; ++tap) {
+          const std::ptrdiff_t offset = -static_cast<std::ptrdiff_t>(tap);
+          for (std::size_t channel = 0u; channel < Channels; ++channel) {
+            sums[channel] += history[channel][offset] * phase_coefficients[tap];
           }
-          outputs[channel][produced] = sum;
+        }
+        for (std::size_t channel = 0u; channel < Channels; ++channel) {
+          outputs[channel][produced] = sums[channel];
         }
         ++produced;
         ++output_index_;

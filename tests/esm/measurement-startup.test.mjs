@@ -69,3 +69,22 @@ test('measurement initialization failure reveals the error notification', async 
   await initialize();
   assert.deepEqual(events, ['notification', 'reveal']);
 });
+
+test('Android microphone denial stops measurement setup before the sample rate is used', async () => {
+  const initializeAudio = source.match(/async function initializeAudio\(\) \{[\s\S]*?\n\}/)[0];
+  const calls = [];
+  const initialize = runInNewContext(initializeAudio + '\ninitializeAudio', {
+    isAudioInitialized: false,
+    audioInitializationPromise: null,
+    isAndroidHost: () => true,
+    getAndroidBridge: () => ({ async request(command) {
+      calls.push(command);
+      throw Object.assign(new Error(), { code: 'permission-denied' });
+    } }),
+    measurementController: { initialize() { calls.push('initialize'); } },
+    showAndroidMeasurementRates() { calls.push('rates'); },
+    console: { error() {} }
+  });
+  await assert.rejects(initialize(), { code: 'permission-denied' });
+  assert.deepEqual(calls, ['measurement.options']);
+});

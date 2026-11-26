@@ -283,6 +283,7 @@ body:has(.main-container > .pipeline-analyzer-panel:not([hidden])) {
 
 .pipeline-analyzer-graph-shell {
     position: relative;
+    direction: ltr;
     overflow: hidden;
     width: 100%;
     max-width: 1024px;

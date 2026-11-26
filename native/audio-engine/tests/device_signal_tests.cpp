@@ -28,11 +28,22 @@ void testMix() {
   require(session.renderDevice(output, 173, sync) &&
               std::equal(output.begin(), output.end(), sync.begin()),
           "Synchronous input lost sample identity");
-  std::vector<float> capture(3072 * 4, .25f), feed(3072 * 2, .5f);
-  require(session.capture().write(capture.data(), 4, 3072, 1, 100), "Capture write");
+  auto &capture = session.capture();
+  std::uint64_t captureFrame = 100;
+  const auto prime = capture.target();
+  std::vector<float> capturePreroll(prime * 4, .25f), feed(3072 * 2, .5f);
+  require(capture.write(capturePreroll.data(), 4, prime, 1, captureFrame), "Prime capture");
+  captureFrame += prime;
   require(session.feed().write(feed.data(), 2, 3072, 1, 50), "Feed write");
-  for (unsigned i = 0; i < 4; ++i)
+  std::array<float, 4 * 173> capturePacket;
+  capturePacket.fill(.25f);
+  for (unsigned i = 0; i < 4; ++i) {
+    if (i) {
+      require(capture.write(capturePacket.data(), 4, 173, 1, captureFrame), "Capture write");
+      captureFrame += 173;
+    }
     require(session.renderDevice(output, 173), "Mix callback");
+  }
   require(std::abs(output[0] - .75f) < .00001f, "Feed and capture were not mixed");
   const auto queued = session.capture().queued();
   session.io()->inputEnabled = false;

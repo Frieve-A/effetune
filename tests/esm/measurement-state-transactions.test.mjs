@@ -784,6 +784,42 @@ test('internal sweep errors reach the measurement failure path during cancellati
     assert.equal(notifications[0][1], 'error');
 });
 
+test('a cancelled sweep finishing after a new sweep starts leaves its graph running', async t => {
+    const elements = createSweepTestElements();
+    t.mock.method(globalThis, 'clearInterval', () => {});
+    const previous = { document: globalThis.document, audioContext: audioUtils.audioContext, microphone: audioUtils.microphone };
+    t.after(() => {
+        globalThis.document = previous.document;
+        audioUtils.audioContext = previous.audioContext;
+        audioUtils.microphone = previous.microphone;
+    });
+    globalThis.document = { getElementById: id => elements.get(id) ?? null };
+    audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
+    audioUtils.microphone = {};
+    const captures = [];
+    const controller = {
+        ...SweepMeasurement,
+        measurementConfig: measurementConfig(),
+        currentMeasurement: { points: [] },
+        isRunningMeasurement: true,
+        recordChannelSweep() {
+            return new Promise((_, reject) => {
+                captures.push(reject);
+                this.levelGraphInterval = captures.length;
+            });
+        }
+    };
+    const cancelled = controller.performSweepMeasurement();
+    const latest = controller.performSweepMeasurement();
+    captures[0](new SweepCancelledError());
+    await cancelled;
+    assert.equal(controller.isRunningMeasurement, true);
+    assert.deepEqual(globalThis.clearInterval.mock.calls, []);
+    captures[1](new SweepCancelledError());
+    await latest;
+    assert.deepEqual(globalThis.clearInterval.mock.calls.map(call => call.arguments), [[2]]);
+});
+
 test('channel redo commits one replacement and preserves prior state for failure and cancellation', async t => {
     const originals = {
         document: globalThis.document,
@@ -1461,6 +1497,17 @@ test('level preparation failure cleans up, restores state, and releases start gu
     const measurement = await controller.startNewMeasurement(config);
     assert.equal(measurement.id, 'measurement-new');
     assert.equal(attempts, 2);
+});
+
+test('losing the Android meter devices returns level adjustment to device selection', t => {
+    const previous = uiManager.currentScreen;
+    t.after(() => { uiManager.currentScreen = previous; });
+    uiManager.currentScreen = 'levelAdjustmentScreen';
+    const screen = t.mock.method(uiManager, 'showScreen', () => {});
+    const notice = t.mock.method(uiManager, 'showNotification', () => {});
+    LevelAdjustment.handleNativeMeasurementInvalidated('devices-unavailable');
+    assert.deepEqual(screen.mock.calls[0].arguments, ['measurementConfigScreen']);
+    assert.equal(notice.mock.calls[0].arguments[1], 'error');
 });
 
 test('level adjustment preparation stops partial input and propagates failure', async t => {

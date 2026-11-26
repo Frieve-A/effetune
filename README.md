@@ -45,11 +45,11 @@ No audiophile myths, Just pure science.
 
 ### Android app
 
-Use Android 10 or later with an up-to-date Android System WebView. Open music files or select a folder in Music Library; Android asks which files and folders EffeTune may use. If a folder becomes unavailable, select it again in the library. Playback continues with the screen off, and notification and lock-screen controls operate the same player.
+Use Android 10 or later with an up-to-date Android System WebView. Open music files or select a folder in Music Library; Android asks which files and folders EffeTune may use. If a folder becomes unavailable, select it again in the library. Playback continues with the screen off, and notification and lock-screen controls operate the same player. Swiping EffeTune away from the recent apps screen quits it and stops playback, library sharing, and remote control.
 
 Save or share exported files through Android's file and sharing screens. Batch audio export asks for an output folder and runs while the app is open. The Android app and the web app keep separate data. Use Backup / Restore to exchange presets, impulse responses, measurements, and visualizer data (up to 256 MB); music files, the music catalog, connection credentials, and settings are not included. Effects process audio played or received by EffeTune; they do not replace the sound of other Android apps.
 
-MIDI parameter mappings and scheduled parameter changes continue with the screen off. Keyboard and gamepad controls require the app to be open. Android supports MIDI input; motor-fader and LED feedback are not sent. Tap the **Remote Control** toolbar icon to allow incoming control and copy a pairing link. Keep that link private.
+MIDI parameter mappings and scheduled parameter changes continue with the screen off. Keyboard and gamepad controls require the app to be open. Android supports MIDI input and output; motor-fader and LED feedback are not sent. Tap the **Remote Control** toolbar icon to allow incoming control and copy a pairing link. Keep that link private. To control another EffeTune, paste its pairing link into the **Join another EffeTune** field and tap **Join**.
 
 Choose the setup below that matches the audio source you want to listen to.
 
@@ -168,6 +168,7 @@ On your first launch, a short tour shows you where to play music, add effects, a
    - Shift+click on a Section effect to collapse/expand all effects within that section
    - Shift+click on other effects to collapse/expand all effects except for the Analyzer category
    - Ctrl+click to collapse/expand all effects
+   - On mobile, open the Effects tab and choose **Collapse all** or **Expand all** from the menu button
 6. Use the ON button to bypass individual effects
 7. Click the ? button to open its detailed documentation in a new tab
 8. Remove effects using the × button
@@ -319,7 +320,7 @@ You can apply the effect chain to music files and save the processed audio as ne
 
 You can share your effect chain configuration with other users.
 1. After setting up your desired effect chain, click the "Share" button in the top-right corner of the Effect Pipeline area
-2. The web app URL will be automatically copied to your clipboard
+2. The web app URL will be automatically copied to your clipboard. In the Android app, Android's sharing screen opens instead so you can choose where to send it
 3. Share the copied URL with others - they can recreate your exact effect chain by opening it
 4. Shared URLs store the effect settings needed for reproduction; the web app also restores your normal working state from browser storage
 5. In the desktop app version, export the settings to an `.effetune_preset` file from the File menu
@@ -365,9 +366,9 @@ If you experience audio issues (dropouts, glitches):
 
 ### Network Music and Remote Control
 
-**Desktop app:** Browse network music servers, including Subsonic / OpenSubsonic, share selected music folders, and choose this device, an OpenHome player, or a UPnP AV / DLNA player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md). UPnP AV / DLNA and AirPlay reception can also be enabled to listen to music sent from other devices through this computer’s effects.
+**Desktop and Android apps:** Browse network music servers, including Subsonic / OpenSubsonic, share selected music folders, and choose this device, an OpenHome player, or a UPnP AV / DLNA player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md). UPnP AV / DLNA reception (and AirPlay in the desktop app) can also be enabled to listen to music sent from other devices through this device’s effects.
 
-The PWA can play a registered EffeTune computer’s shared music and permitted network libraries through this device’s effects, or control a permitted network player. Direct Subsonic connections are also available. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
+The PWA can play a registered EffeTune desktop or Android app’s shared music and permitted network libraries through this device’s effects, or control a permitted network player. Direct Subsonic connections are also available. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
 
 ### Control EffeTune with an AI Assistant (MCP)
 
@@ -384,7 +385,7 @@ Pairing link: <paste the copied link here>
 
 After setup, follow any restart instructions, then try asking, "Show my current effects." Keep the pairing link private; if you select **New token** or change the port, repeat setup with the new link.
 
-Add songs to the paired EffeTune app's Music Library, then ask, "Play [song]." The assistant checks that app's library first and plays through its player by default; you do not need to share its music folder. To use another library or player, name it in your request: "Find [song] in [library] and play it on [player]." If another EffeTune computer supplies the music, share its folder there first.
+Add songs to the paired EffeTune app's Music Library, then ask, "Play [song]." The assistant checks that app's library first and plays through its player by default; you do not need to share its music folder. To use another library or player, name it in your request: "Find [song] in [library] and play it on [player]." If another EffeTune device supplies the music, share its folder there first.
 
 ## Common Effect Combinations
 

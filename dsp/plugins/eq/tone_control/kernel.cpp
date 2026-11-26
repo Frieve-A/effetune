@@ -1,10 +1,12 @@
 #include "effetune/kernel.h"
 #include "ToneControlPluginParams.h"
 #include "effetune/dsp/biquad.h"
+#include "effetune/dsp/channel_lanes.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -133,17 +135,15 @@ public:
 
     retargetCoefficients();
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      ToneState &state = states_[channel];
-      const std::uint32_t offset = channel * frame_count;
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-        const auto coefficients = coefficientsAt(frame);
-        double sample = static_cast<double>(audio[offset + frame]);
-        sample = dsp::processBiquadDf1Sample(sample, coefficients[0], state.bass);
-        sample = dsp::processBiquadDf1Sample(sample, coefficients[1], state.mid);
-        sample = dsp::processBiquadDf1Sample(sample, coefficients[2], state.treble);
-        audio[offset + frame] = static_cast<float>(sample);
-      }
+    // Without a pending ramp the interpolation offset is zero, so the current coefficients are
+    // used directly.
+    if (ramp_remaining_ == 0u) {
+      const std::array<Coefficients, 3u> coefficients = current_coefficients_;
+      filterChannels(audio, channel_count, frame_count,
+                     [&coefficients](std::uint32_t) noexcept { return coefficients; });
+    } else {
+      filterChannels(audio, channel_count, frame_count,
+                     [this](std::uint32_t frame) noexcept { return coefficientsAt(frame); });
     }
     advanceCoefficients(frame_count);
   }
@@ -187,6 +187,23 @@ private:
                                    (to.a2 - from.a2) * inverse};
     }
     ramp_remaining_ = ramp_frames_;
+  }
+
+  // Runs bass, mid and treble in series on channel pairs that share one frame loop.
+  template <typename CoefficientsAt>
+  void filterChannels(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                      CoefficientsAt coefficients_at) noexcept {
+    dsp::forEachChannelPair(channel_count, [&](std::uint32_t channel, auto lanes) noexcept {
+      dsp::processChannelLanes<decltype(lanes)::value>(
+          audio + static_cast<std::size_t>(channel) * frame_count, frame_count, frame_count,
+          states_.data() + channel,
+          [&coefficients_at](double sample, ToneState &state, std::uint32_t frame) noexcept {
+            const std::array<Coefficients, 3u> coefficients = coefficients_at(frame);
+            sample = dsp::processBiquadDf1Sample(sample, coefficients[0], state.bass);
+            sample = dsp::processBiquadDf1Sample(sample, coefficients[1], state.mid);
+            return dsp::processBiquadDf1Sample(sample, coefficients[2], state.treble);
+          });
+    });
   }
 
   [[nodiscard]] std::array<Coefficients, 3u> coefficientsAt(std::uint32_t frame) const noexcept {

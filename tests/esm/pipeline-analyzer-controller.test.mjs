@@ -1091,6 +1091,68 @@ test('Auto off suppresses pipeline-triggered measurements while manual refresh s
     controller.dispose();
 });
 
+test('Auto off keeps a requested run through asset preparation while settings edits supersede it', async t => {
+    for (const changedSettings of [false, true]) {
+        await t.test(changedSettings ? 'effect settings change' : 'asset becomes ready', async () => {
+            const audioManager = new FakeAudioManager(2);
+            const listeners = new Set();
+            const plugin = {
+                id: 2,
+                gain: 0,
+                externalAssetInfo: { pending: false },
+                waitForOfflineDspAssetStaging() {},
+                getSerializableParameters() { return { gain: this.gain }; },
+                addWasmAssetSnapshotChangeListener(listener) {
+                    listeners.add(listener);
+                    return () => listeners.delete(listener);
+                }
+            };
+            audioManager.pipeline = [plugin];
+            const entered = deferred();
+            const asset = deferred();
+            const ui = new FakeUi();
+            const controller = new PipelineAnalyzerController({
+                audioManager,
+                workletSync: { preparePluginData: () => ({}) },
+                ui,
+                storage: null,
+                openMeasurementStore: () => new Promise(() => {}),
+                snapshotBuilder: async () => {
+                    if (plugin.externalAssetInfo.pending) {
+                        entered.resolve();
+                        await asset.promise;
+                    }
+                    return builtSnapshot();
+                },
+                createWorker: () => new FakeWorker(true)
+            });
+            try {
+                controller.setConfiguration({ autoRefresh: false });
+                controller.setOpen(true);
+                await nextTask();
+                plugin.externalAssetInfo.pending = true;
+                assert.equal(await controller.refreshMeasurements(), true);
+                await entered.promise;
+                const baseline = ui.results.length;
+
+                if (changedSettings) plugin.gain = -1;
+                plugin.externalAssetInfo.pending = false;
+                for (const listener of listeners) listener();
+                audioManager.getDspExecutionStateSnapshot = () => ({ states: [{ pluginId: 2, state: 'active' }] });
+                audioManager.dispatchEvent('dspExecutionState');
+                asset.resolve();
+                await nextTask();
+                assert.equal(ui.results.length, baseline + (changedSettings ? 0 : 1));
+                if (changedSettings) assert.equal(ui.measuringStates.at(-1), false);
+                else assert.equal(ui.resultOptions.stale, false);
+            } finally {
+                asset.resolve();
+                controller.dispose();
+            }
+        });
+    }
+});
+
 test('Auto off still allows manual analysis when the Measurement Store is unavailable', async () => {
     const audioManager = new FakeAudioManager(2);
     const ui = new FakeUi();

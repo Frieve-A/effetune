@@ -675,7 +675,7 @@ class IRReverbPlugin extends PluginBase {
         this.updateParameters();
         this._updateMetadata();
         this._drawEdcGraph();
-        if (window.workletNode?.port) {
+        if (window.workletNode?.port || window.audioManager?.isAndroid) {
             this._setStatus(this._t('irReverb.status.loading', 'Loading {name}…', {
                 name: this._irFileLabel || this._t('irReverb.name.theImpulseResponse', 'the impulse response')
             }), 'preparing');

@@ -1239,11 +1239,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
         return container;
     }
 
-    // Sends the worklet-side reset over the same port that carries parameter updates.
+    // Resets this instance's processing state in the live audio host.
     resetAnalysis() {
-        if (this.audioHostActive !== false) {
-            window.workletNode?.port?.postMessage({ type: 'resetPluginState', pluginId: this.id });
-        }
+        if (this.audioHostActive !== false) window.audioManager?.resetPluginState?.(this.id);
         this.beginTelemetryEpoch();
         this.drawGraph();
     }

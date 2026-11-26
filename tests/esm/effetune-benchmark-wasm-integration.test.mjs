@@ -8,6 +8,7 @@ import {
   configureFirBenchmarkWorkload,
   createIrReverbBenchmarkAssets,
   createRoomEqBenchmarkAssets,
+  createSoundFontBenchmarkAssets,
   createDspBenchmarkRuntime
 } from '../../features/effetune-benchmark.js';
 import {
@@ -99,6 +100,22 @@ class RoomEqPlugin {
       gn: 0,
       enabled: this.enabled
     };
+  }
+}
+
+class SoundFontPlayerPlugin {
+  constructor() {
+    this.id = 90;
+    this.enabled = false;
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+
+  getParameters() {
+    return { type: this.constructor.name, mco: 0, pl: 256, og: 0, sq: 1, sc: 0, af: true,
+      rg: true, rs: true, rx: true, tr: 0, tu: 0, tk: 0, enabled: this.enabled };
   }
 }
 
@@ -644,6 +661,57 @@ for (const variant of variants) {
     } finally {
       session?.close();
       runtime.close();
+    }
+  });
+
+  test(`WebAssembly benchmark ${variant.variant} artifact sustains the dummy SoundFont voices`, async () => {
+    const warnings = [];
+    const loadModule = options => loadDspModule({
+      ...options,
+      basePath: '',
+      fetchImpl: fetchRepositoryAsset,
+      webAssembly: variant.webAssembly,
+      publishTarget: null,
+      cache: false
+    });
+    const runtime = await createDspBenchmarkRuntime({
+      mode: BENCHMARK_DSP_MODES.WEBASSEMBLY,
+      sampleRate: SAMPLE_RATE,
+      blockSize: BLOCK_SIZE,
+      preference: { useWasmDsp: true },
+      location: '',
+      basePath: '',
+      dependencies: { warning(message) { warnings.push(message); }, loadDspModule: loadModule }
+    });
+    const moduleInfo = await loadModule({});
+    const controlBinding = await instantiateDsp(moduleInfo.module || moduleInfo.bytes);
+    let session = null;
+    try {
+      const assets = await createSoundFontBenchmarkAssets({
+        sampleRate: SAMPLE_RATE,
+        channelCount: CHANNEL_COUNT,
+        blockSize: BLOCK_SIZE,
+        controlBinding
+      });
+      const plugin = new SoundFontPlayerPlugin();
+      session = runtime.createPluginSession(plugin, { channelCount: CHANNEL_COUNT, assets });
+      session.prepareAssets();
+
+      const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);
+      const blocks = Math.ceil(SAMPLE_RATE / BLOCK_SIZE);
+      let lastPower = 0;
+      for (let block = 0; block < blocks; block++) {
+        const output = session.process(input, block * BLOCK_SIZE / SAMPLE_RATE);
+        assert.equal(output.every(Number.isFinite), true);
+        lastPower = output.reduce((sum, value) => sum + value * value, 0);
+      }
+      // The notes are held, so the voices still sound after one second.
+      assert.ok(lastPower > 1e-3, `Output power after one second: ${lastPower}`);
+      assert.deepEqual(warnings, []);
+    } finally {
+      session?.close();
+      runtime.close();
+      controlBinding.close();
     }
   });
 }

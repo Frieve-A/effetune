@@ -970,6 +970,7 @@ class RoomEqPlugin extends PluginBase {
         this._effectiveAssetRevision = null;
         this._candidateWarning = null;
         this._lastDesign = null;
+        this._lastDesignInputSignature = null;
         this._assetState = 0;
         this._disposed = false;
         this.executionState = { state: 'pending', reason: null };
@@ -998,10 +999,18 @@ class RoomEqPlugin extends PluginBase {
         this._impulseTimeAxis = null;
         this._visibilityHandler = () => {
             if (!this._disposed && document.visibilityState === 'visible') {
-                this._refreshMeasurements(true);
+                this._refreshMeasurements(true, { force: false });
+            }
+        };
+        this._measurementAddedHandler = event => {
+            const measurementId = event.detail?.measurement?.id;
+            if (!this._disposed && this.measurementResolved === false &&
+                this._assignedMeasurementIds().includes(measurementId)) {
+                this._refreshMeasurements(true, { force: false });
             }
         };
         globalThis.document?.addEventListener?.('visibilitychange', this._visibilityHandler);
+        globalThis.document?.addEventListener?.('measurement-added', this._measurementAddedHandler);
         this.registerProcessor(`
             const processAutomation = ${processRoomEqAutomation.toString()};
             return processAutomation(context, data, parameters);
@@ -1288,9 +1297,8 @@ class RoomEqPlugin extends PluginBase {
     }
 
     // The dependency view of the same slots. While the effective width is still
-    // unresolved no slot can be placed yet, so every assignment is reported: the
-    // offline asset gates must stay inclusive, whereas the identity consumers above
-    // stay empty so no phantom row, source or signature entry is ever produced.
+    // unresolved no slot can be placed yet, so report every assignment as a possible
+    // dependency. The render and design paths use the effective slots.
     _dependencyChannelMeasurementIds() {
         return Number.isInteger(this._irChannelCountCache)
             ? this._activeChannelMeasurementIds()
@@ -1776,6 +1784,7 @@ class RoomEqPlugin extends PluginBase {
         if (this._disposed || this.hasLocalAudio === false) return;
         if (this._designTimer !== null) clearTimeout(this._designTimer);
         const generation = ++this._designGeneration;
+        this.measurementResolved = this._assignedMeasurementIds().length ? null : false;
         this._designPending = true;
         this._designStaged = false;
         this._candidateAssetRevision = null;
@@ -1788,6 +1797,7 @@ class RoomEqPlugin extends PluginBase {
             this._designTimer = null;
             this._designAndStage(generation);
         }, delay);
+        this._notifyWasmAssetSnapshotChange();
     }
 
     _settleMissingMeasurement(generation) {
@@ -1818,11 +1828,13 @@ class RoomEqPlugin extends PluginBase {
         return false;
     }
 
-    async _designAndStage(generation) {
+    async _designAndStage(generation, mutationOptions) {
+        const isCurrent = () => !this._disposed && generation === this._designGeneration &&
+            mutationOptions?.isCurrent?.() !== false;
         try {
-            if (this._disposed || generation !== this._designGeneration) return false;
+            if (!isCurrent()) return false;
+            if (mutationOptions?.signature && this._externalAssetSignature() !== mutationOptions.signature) return false;
             if (!this.measurementId && !this._hasChannelMeasurements()) {
-                if (this._disposed || generation !== this._designGeneration) return false;
                 this.measurementResolved = false;
                 this._designPending = false;
                 this._designStaged = false;
@@ -1838,17 +1850,14 @@ class RoomEqPlugin extends PluginBase {
                 return true;
             }
             const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration) return false;
+            if (!isCurrent()) return false;
             const store = await this._getMeasurementStore(true);
-            if (this._disposed || generation !== this._designGeneration) return false;
-            if (!store) return this._settleMissingMeasurement(generation);
-            const sourceState = await this._sourcesFor(
-                store,
-                () => !this._disposed && generation === this._designGeneration
-            );
-            if (this._disposed || generation !== this._designGeneration || !sourceState) return false;
+            if (!isCurrent()) return false;
+            const sourceState = store && await this._sourcesFor(store, isCurrent);
+            if (!isCurrent()) return false;
+            this._lastDesignInputSignature = this._designInputSignature(store);
+            if (!sourceState?.resolved) return this._settleMissingMeasurement(generation);
             const { sources, resolved, supportsFullPhase } = sourceState;
-            if (!resolved) return this._settleMissingMeasurement(generation);
             this.measurementResolved = resolved;
             if (this.pm === 'full' && supportsFullPhase !== true) {
                 return this._rejectUnavailableFullPhase(resolved);
@@ -1863,7 +1872,7 @@ class RoomEqPlugin extends PluginBase {
             }
             const designer = this._designer;
             const result = await designer.design(this._designConfig(), sources);
-            if (this._disposed || generation !== this._designGeneration || designer !== this._designer) {
+            if (!isCurrent() || designer !== this._designer) {
                 return false;
             }
             if (this.pm === 'full' && result.supportsFullPhase !== true) {
@@ -1871,41 +1880,37 @@ class RoomEqPlugin extends PluginBase {
             }
             this._lastDesign = result;
             this._syncCorrectionPreview();
-            if (!await this._stageDesign(result, generation)) return false;
-            if (this._disposed || generation !== this._designGeneration) return false;
+            if (!await this._stageDesign(result, generation, mutationOptions) || !isCurrent()) return false;
             this._renderMeasurement();
-            const warning = this._qualityWarningForDesign(result);
-            this._candidateWarning = warning ? this._qualityWarningMessage(warning) : null;
-            this._setStatus(this._t('roomEq.status.designing', 'Designing correction filters…'),
-                'preparing');
             return true;
         } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
+            if (!isCurrent()) return false;
             console.error('Room EQ design failed:', error);
             this._designPending = false;
             this._designStaged = false;
-            this.updateParameters();
+            if (!mutationOptions?.nativeHydration) this.updateParameters();
             this._setStatus(this._t('roomEq.error.design',
                 'The Room EQ filters could not be designed. Try fewer taps or reselect the measurements.'), 'error');
             return false;
+        } finally {
+            this._notifyWasmAssetSnapshotChange();
         }
     }
 
-    async _stageDesign(result, generation = this._designGeneration) {
+    async _stageDesign(result, generation = this._designGeneration, mutationOptions) {
+        const isCurrent = () => !this._disposed && generation === this._designGeneration &&
+            result === this._lastDesign && mutationOptions?.isCurrent?.() !== false;
         try {
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
+            if (!isCurrent()) return false;
             this._designPending = true;
             this._designStaged = false;
             this._candidateAssetRevision = null;
             this._effectiveAssetRevision = null;
             this._assetState = 1;
-            this.updateParameters();
+            if (!mutationOptions?.nativeHydration) this.updateParameters();
             const runtime = await this._getRuntime();
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
+            await mutationOptions?.beforeCommit?.();
+            if (!isCurrent()) return false;
             const channels = runtime.selectedIrChannelCount(this.channel, this._outputChannelCount);
             const assetChannels = this._assetChannelCount(result.payload);
             const topology = assetChannels > 1
@@ -1918,7 +1923,7 @@ class RoomEqPlugin extends PluginBase {
                 processingChannels: channels,
                 headBlock: Number(this.lt)
             });
-            const operationRevision = this.setWasmAsset(0, {
+            const descriptor = {
                 payload: result.payload,
                 formatTag: 1,
                 headBlock: Number(this.lt),
@@ -1928,24 +1933,34 @@ class RoomEqPlugin extends PluginBase {
                 processingChannels: channels,
                 footprintBytes,
                 externalAssetSignature: this._externalAssetSignature()
-            });
-            if (this._disposed || generation !== this._designGeneration || result !== this._lastDesign) {
-                return false;
-            }
-            this._candidateAssetRevision = operationRevision;
-            this._updatePowerGainBound(result.payload, channels);
-            this._renderStatus();
-            return true;
+            };
+            if (mutationOptions?.signature && descriptor.externalAssetSignature !== mutationOptions.signature) return false;
+            const commit = () => {
+                const warning = this._qualityWarningForDesign(result);
+                this._candidateWarning = warning ? this._qualityWarningMessage(warning) : null;
+                this._setStatus(this._t('roomEq.status.designing', 'Designing correction filters…'), 'preparing');
+                const operationRevision = this.setWasmAsset(0, descriptor);
+                if (!isCurrent()) return false;
+                this._candidateAssetRevision = operationRevision;
+                this._updatePowerGainBound(result.payload);
+                this._renderStatus();
+                return true;
+            };
+            const audioManager = window.audioManager;
+            return mutationOptions && audioManager?.withMutationOptions
+                ? await audioManager.withMutationOptions({ ...mutationOptions, isCurrent }, commit) : commit();
         } catch (error) {
-            if (this._disposed || generation !== this._designGeneration) return false;
+            if (!isCurrent()) return false;
             console.error('Room EQ asset staging failed:', error);
             this._designPending = false;
             this._designStaged = false;
             this._candidateAssetRevision = null;
-            this.updateParameters();
+            if (!mutationOptions?.nativeHydration) this.updateParameters();
             this._setStatus(this._t('roomEq.error.design',
                 'The Room EQ filters could not be designed. Try fewer taps or reselect the measurements.'), 'error');
             return false;
+        } finally {
+            this._notifyWasmAssetSnapshotChange();
         }
     }
 
@@ -1967,6 +1982,31 @@ class RoomEqPlugin extends PluginBase {
             1, this.measurementId, channelMeasurementIds,
             this._designConfig(sampleRate, outputChannelCount), this.lt, this.channel, outputChannelCount
         ]);
+    }
+
+    async hydrateExternalAsset(definition, mutationOptions) {
+        const signature = definition.externalAssetSignature;
+        const format = JSON.parse(signature);
+        if (!Array.isArray(format) || format.length !== 7 || format[0] !== 1) {
+            throw new Error('Invalid Room EQ asset definition');
+        }
+        if (mutationOptions?.isCurrent?.() === false || this._disposed) return false;
+        this._sampleRate = format[3].sampleRate;
+        this._outputChannelCount = format[6];
+        const generation = ++this._designGeneration;
+        this.measurementResolved = null;
+        this._designPending = true;
+        try {
+            // The native engine already owns the asset. Recreate the same descriptor
+            // locally so snapshots can use it without another native upload.
+            await this._resolveIrChannelCount();
+            return await this._designAndStage(generation, { ...mutationOptions, signature });
+        } finally {
+            if (generation === this._designGeneration && this._candidateAssetRevision === null) {
+                this._designPending = false;
+            }
+            this._notifyWasmAssetSnapshotChange();
+        }
     }
 
     // The payload describes its own frame count, so the per-channel offsets never
@@ -2004,7 +2044,7 @@ class RoomEqPlugin extends PluginBase {
         const ids = this._assignedMeasurementIds();
         if (!ids.length) return null;
         return {
-            missing: !this._designPending && !this.measurementResolved,
+            missing: !this._designPending && this.measurementResolved === false,
             pending: this._designPending,
             ids,
             names: ids.map(id => this._measurementNameFor(id)),
@@ -2025,7 +2065,25 @@ class RoomEqPlugin extends PluginBase {
     }
 
     isOfflineDspAssetRequired() {
-        return Boolean(this.measurementId) || this._hasChannelMeasurements();
+        return this.measurementResolved !== false;
+    }
+
+    waitForOfflineDspAssetStaging(timeoutMs) {
+        if (!this._designPending || this._candidateAssetRevision !== null) return null;
+        const generation = this._designGeneration;
+        return new Promise(resolve => {
+            const finish = ready => {
+                clearTimeout(timer);
+                unsubscribe();
+                resolve(ready);
+            };
+            const unsubscribe = this.addWasmAssetSnapshotChangeListener(() => {
+                if (this._disposed || generation !== this._designGeneration) finish(false);
+                else if (this._candidateAssetRevision !== null || this._designStaged) finish(true);
+                else if (!this._designPending) finish(this.measurementResolved === false);
+            });
+            const timer = setTimeout(() => finish(false), timeoutMs);
+        });
     }
 
     _offlineStaleError() {
@@ -2250,13 +2308,23 @@ class RoomEqPlugin extends PluginBase {
         return entry ? this._t(entry[0], entry[1]) : '';
     }
 
-    async _refreshMeasurements(scheduleDesign = false) {
+    _designInputSignature(store) {
+        const measurements = new Map((store?.listMeasurements?.() || []).map(item => [item.id, item]));
+        const sources = this._assignedMeasurementIds().map(id => {
+            const item = measurements.get(id);
+            return item && [item.timestamp, item.pointCount, item.hasFr, item.hasIr];
+        });
+        return JSON.stringify([this._designSignature(), sources]);
+    }
+
+    async _refreshMeasurements(scheduleDesign = false, { force = true } = {}) {
         if (this._disposed || this.hasLocalAudio === false) return;
         const store = await this._getMeasurementStore(true);
         if (this._disposed) return;
         await this._renderMeasurement();
         if (this._disposed) return;
-        if (store && scheduleDesign && (this.measurementId || this._hasChannelMeasurements())) {
+        if (store && scheduleDesign && (this.measurementId || this._hasChannelMeasurements()) &&
+            (force || (!this._designPending && this._designInputSignature(store) !== this._lastDesignInputSignature))) {
             this._scheduleDesign(0);
         }
     }
@@ -2328,15 +2396,17 @@ class RoomEqPlugin extends PluginBase {
         if (selected && !measurements.some(measurement => measurement.id === selected)) {
             const missing = document.createElement('option');
             missing.value = selected;
-            missing.textContent = this._t('roomEq.measurement.missing', 'Measurement not found: {name}', {
-                name: this.measurementName || selected
-            });
+            const name = this.measurementName || selected;
+            missing.textContent = this.measurementResolved === false && !this._designPending
+                ? this._t('roomEq.measurement.missing', 'Measurement not found: {name}', { name }) : name;
             row.select.appendChild(missing);
             row.select.value = selected;
         }
-        row.status.textContent = !selected ? '—' : this.measurementResolved ? 'OK' :
+        row.status.textContent = !selected || this.measurementResolved === null ? '—' :
+            this.measurementResolved ? 'OK' :
             this._t('roomEq.status.missing', 'Missing');
-        row.status.dataset.state = selected && !this.measurementResolved ? 'warning' : 'ready';
+        row.status.dataset.state = this.measurementResolved === null ? 'preparing' :
+            selected && this.measurementResolved === false ? 'warning' : 'ready';
         if (this._renderReferencePoints(selectedMeasurement)) {
             this.updateParameters();
             if (selected) this._scheduleDesign(0);
@@ -2426,9 +2496,9 @@ class RoomEqPlugin extends PluginBase {
         if (selected && !measurements.some(measurement => measurement.id === selected)) {
             const missing = document.createElement('option');
             missing.value = selected;
-            missing.textContent = this._t('roomEq.measurement.missing', 'Measurement not found: {name}', {
-                name: this.channelMeasurementNames[index] || selected
-            });
+            const name = this.channelMeasurementNames[index] || selected;
+            missing.textContent = this.measurementResolved === false && !this._designPending
+                ? this._t('roomEq.measurement.missing', 'Measurement not found: {name}', { name }) : name;
             select.appendChild(missing);
         }
         select.value = selected;
@@ -3328,9 +3398,11 @@ class RoomEqPlugin extends PluginBase {
         if (this._designTimer !== null) clearTimeout(this._designTimer);
         this._designTimer = null;
         this._designPending = false;
+        this._notifyWasmAssetSnapshotChange();
         this._designer?.close();
         this._measurementStore?.close();
         globalThis.document?.removeEventListener?.('visibilitychange', this._visibilityHandler);
+        globalThis.document?.removeEventListener?.('measurement-added', this._measurementAddedHandler);
         this._designer = null;
         this._measurementStore = null;
         this._measurementRow = null;

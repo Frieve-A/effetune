@@ -47,9 +47,12 @@ export class NativeAudioManager extends AudioManager {
     };
   }
   send(message) {
-    if (message.type === 'fadeOutput' && !message.branch) {
-      this.outputTarget = message.gain;
-      if (this.endpoints[1]) this.send({...message,branch:1});
+    if (message.type === 'fadeOutput') {
+      if (!message.branch) {
+        this.outputTarget = message.gain;
+        if (this.endpoints[1]) this.send({...message,branch:1});
+      }
+      if (this.capacityOutputHeld) message = {...message,gain:0};
     }
     if (message.type === 'setInputMix') {
       this.inputMixEnabled = message.enabled;
@@ -212,7 +215,10 @@ export class NativeAudioManager extends AudioManager {
       // The engine clock reports these only while the stream runs.
       latency:c && {outputLatencyFrames:c.outputLatencyFrames,inputLatencyFrames:c.inputLatencyFrames,
         outputConverterDelayFrames:c.outputConverterDelayFrames,captureTargetFrames:c.captureTargetFrames,
+        captureConverterDelayFrames:c.captureConverterDelayFrames,
         feedFrames:FEED_BATCH_FRAMES + (c.feedDelayFrames || 0)},
+      // Input frames consumed per pipeline frame; the input FIFO adjusts it to follow the output clock.
+      captureRatio:c?.captureRatio ?? null,
       openSettings:settings && {sampleRate:settings.sampleRate,outputChannels:settings.outputChannels,latency:settings.latency},
       counters:this.diagnosticCounters ?? {}
     };
@@ -308,6 +314,20 @@ export class NativeAudioManager extends AudioManager {
         });
       } else if (endpoint) this.restoreEndpoint(endpoint,data);
     } else if (data.type === 'inputState') {
+      if (this.session) {
+        // The sidecar reports the actual stream even if a newer selection already owns the UI.
+        const acquired = data.state === 'acquired';
+        const {inputChannels,captureRate,inputLatencyFrames} = this.session;
+        this.session = {...this.session,inputFailed:data.state === 'failed',
+          inputChannels:acquired ? data.inputChannels ?? inputChannels : 0,
+          captureRate:acquired ? data.captureRate ?? captureRate : 0,
+          inputLatencyFrames:acquired ? data.inputLatencyFrames ?? inputLatencyFrames : 0};
+        // Keep the shared output timeline while waiting for this input's first observation.
+        if (this.clock) {
+          for (const key of ['inputLatencyFrames','captureRatio','captureTargetFrames','captureConverterDelayFrames',
+            'captureFifoState','captureUnderruns']) delete this.clock[key];
+        }
+      }
       if (!data.requestId || data.requestId === this.inputRequest) {
         if (!this.ioManager.inputStream)
           this.ioManager.setInput(data.state,!data.requestId && !!this.tap,data.reopened);
@@ -445,8 +465,7 @@ export class NativeAudioManager extends AudioManager {
     this._dspCapabilitiesByNode.set(endpoint,data);
     this._nextDspReadyToken(endpoint);
     if (!endpoint.port.branch) window.dspCapabilities = this.dspCapabilities = data;
-    if (configure) {
-      endpoint.port.configure();
+    if (configure && endpoint.port.configure()) {
       const plugins = endpoint.port.branch ? this.pipelineB || [] : this.pipeline;
       this._syncWasmAssetMembership(endpoint,plugins,{replayNew:false});
       this._replayPipelineWasmAssets(endpoint,plugins,{trackState:!endpoint.port.branch});
@@ -468,11 +487,14 @@ export class NativeAudioManager extends AudioManager {
   }
   async restorePrimary(data) {
     const current = () => this.session.recoveryId === data.recoveryId && !this.failed;
+    const previousGraph = this.workletNode?.port.appliedGraph;
     for (const node of this.endpoints) node?.port.close();
     this.endpoints.length = 0;
     this._parallelWorkletB = null;
     this._parallelPreparing = this._parallelActive = false;
     const primary = this.makeEndpoint(0);
+    primary.port.recovering = true;
+    if (previousGraph?.playable) primary.port.recoveryGraph = previousGraph;
     this.contextManager.workletNode = window.workletNode = primary;
     this.updateExposedProperties();
     this._primaryWorkletEpoch++;
@@ -509,6 +531,10 @@ export class NativeAudioManager extends AudioManager {
     if (!await this._requestDspControl(primary,'awaitOutputReady','outputReady',{},DRIVER_RESPONSE_TIMEOUT_MS))
       throw new Error('Replacement audio output did not become ready');
     if (!current()) return;
+    if (primary.port.appliedGraph?.playable || primary.port.appliedGraph?.bypass || this._parallelActive)
+      this.capacityOutputHeld = false;
+    primary.port.recovering = false;
+    delete primary.port.recoveryGraph;
     this.send({type:'fadeOutput',gain:this.outputTarget ?? 0,duration:0});
     const result = await this.request({type:'releaseRecovery',recoveryId:data.recoveryId},'recoveryReleased',
       m => m.recoveryId === data.recoveryId);
@@ -520,14 +546,36 @@ export class NativeAudioManager extends AudioManager {
   async preparePrimary(primary) {
     const deadline = Date.now() + 15000;
     do {
-      const pipeline = this.pipeline;
-      const initial = this._createBlindBranchSnapshot(pipeline);
-      if (!await this._waitForPendingExternalAssetDescriptors(initial.assetReadinessPlugins,deadline)) return false;
       const snapshot = this._createBlindBranchSnapshot(this.pipeline);
-      if (!await this.prepareBranch(primary,snapshot,deadline) || primary !== this.workletNode) return false;
-      if (this._isBlindBranchSnapshotCurrent(snapshot,this.pipeline)) return true;
+      const bypass = this.masterBypass;
+      const stillRequested = () => this.masterBypass === bypass && this._isBlindBranchSnapshotCurrent(snapshot,this.pipeline);
+      let ready;
+      if (!primary.port.checkCapacity(primary.port.describePipeline(snapshot.pluginData,bypass).items)) {
+        ready = await this.prepareCapacityFallback(primary,deadline);
+      } else {
+        const assetsReady = await this._waitForPendingExternalAssetDescriptors(snapshot.assetReadinessPlugins,deadline);
+        if (primary !== this.workletNode) return false;
+        if (!stillRequested()) continue;
+        if (!assetsReady) return false;
+        ready = await this.prepareBranch(primary,snapshot,deadline);
+      }
+      if (primary !== this.workletNode) return false;
+      if (stillRequested()) return ready;
     } while (Date.now() < deadline);
     return false;
+  }
+  async prepareCapacityFallback(primary, deadline) {
+    const previous = primary.port.recoveryGraph;
+    if (previous) {
+      const snapshot = this._createBlindBranchSnapshot(previous.plugins,previous.pluginData);
+      if (await this.prepareBranch(primary,snapshot,deadline,previous)) return true;
+      if (primary !== this.workletNode) return false;
+    }
+    this.holdCapacityOutput();
+    const empty = {plugins:[],playable:false};
+    if (!await this.applyBranchPipeline(primary,[],empty)) return false;
+    this._syncWasmAssetMembership(primary,[],{replayNew:false});
+    return true;
   }
   initializeAudioWorklet() { return this.failed ? 'Audio Error: unavailable' : ''; }
   _syncRealtimeOutputKeepalive() {
@@ -545,6 +593,19 @@ export class NativeAudioManager extends AudioManager {
     const data = super._buildBlindPluginData(pipeline);
     for (const [index,item] of data.entries()) item.assetPending = pipeline[index].externalAssetInfo?.pending === true;
     return data;
+  }
+  _createBlindBranchSnapshot(pipeline, pluginData = null) {
+    const snapshot = super._createBlindBranchSnapshot(pipeline,pluginData);
+    const port = this.workletNode?.port;
+    if (!port) return snapshot;
+    const {items} = port.describePipeline(snapshot.pluginData,false);
+    const skipped = new Set(items.filter(item => item.skip).map(item => item.id));
+    // A skipped effect can replay assets for later use without waiting for a kernel to activate them.
+    snapshot.assetReadinessPlugins = snapshot.assetReadinessPlugins.filter(plugin => !skipped.has(plugin.id));
+    for (const record of snapshot.records) {
+      if (skipped.has(record.id)) record.requiresAssetReadiness = false;
+    }
+    return snapshot;
   }
   async waitForDspActivationBeforeOutput() {
     if (!this.control || this.failed) return false;
@@ -565,9 +626,23 @@ export class NativeAudioManager extends AudioManager {
       // During normal startup each effect already publishes its assets to this
       // endpoint. A missing measurement affects its effect, not the output device.
       const primary = this.workletNode;
-      await this.applyBranchPipeline(primary);
+      const configured = await this.applyBranchPipeline(primary);
+      if (!configured) {
+        const previous = primary.port.submittedGraph;
+        if (!previous?.playable && !this.masterBypass) this.holdCapacityOutput();
+        if (!previous?.playable || previous.bypass !== this.masterBypass) {
+          const fallback = previous?.playable ? previous : {pluginData:[],plugins:[],playable:false};
+          if (!await this.applyBranchPipeline(primary,fallback.pluginData,fallback))
+            throw new Error('The output fallback could not be configured');
+        }
+      }
       if (!await this._requestDspControl(primary,'awaitOutputReady','outputReady',{},DRIVER_RESPONSE_TIMEOUT_MS))
         throw new Error('The audio engine did not confirm the published output');
+      if (primary !== this.workletNode || this.failed) return;
+      this.outputStartupComplete = true;
+      if (configured && primary.port.appliedGraph) primary.port.appliedGraph.playable = true;
+      if (primary.port.appliedGraph?.playable || primary.port.appliedGraph?.bypass)
+        this.capacityOutputHeld = false;
       if (!this.failed) this._fadeInOutputIfOwned(owner);
     } catch (error) {
       if (!this.failed && this._isOutputOwnerCurrent(owner)) {
@@ -576,25 +651,62 @@ export class NativeAudioManager extends AudioManager {
       }
     }
   }
+  holdCapacityOutput() {
+    if (this.capacityOutputHeld) return;
+    this.capacityOutputHeld = true;
+    // The capacity hold is independent of the owner's requested fade target.
+    this._setAudioProcessingOverloadMonitoring(false);
+    this.send({type:'fadeOutput',gain:this.outputTarget ?? 0,duration:.05});
+  }
+  nativePipelineCapacityRejected(port, bypass) {
+    if (!this.outputStartupComplete || port.recovering) return;
+    const previous = port.submittedGraph;
+    if (!previous?.playable && !bypass) this.holdCapacityOutput();
+    if ((previous?.bypass ?? false) === bypass) return;
+    const fallback = previous?.playable ? previous : {pluginData:[],plugins:[],playable:false};
+    port.configure(fallback.pluginData,bypass,true,fallback);
+  }
+  nativePipelineApplied(port) {
+    if (port.recovering || !this.outputStartupComplete || !this.capacityOutputHeld) return;
+    const graph = port.appliedGraph;
+    if (!graph.playable && !graph.bypass) return;
+    const primary = this.workletNode;
+    if (primary?.port !== port) return;
+    void this._requestDspControl(primary,'awaitOutputReady','outputReady',{},DRIVER_RESPONSE_TIMEOUT_MS).then(ready => {
+      if (!ready || this.failed || primary !== this.workletNode || port.submittedGraph !== graph) return;
+      this.capacityOutputHeld = false;
+      if (this.outputTarget === 1) this.fadeInOutput();
+    });
+  }
   fadeInOutput(duration = .05) {
     this.ioManager.powerOutputStructurallyZero = false;
     this.send({type:'fadeOutput',gain:1,duration});
-    this._setAudioProcessingOverloadMonitoring(true,duration);
+    this._setAudioProcessingOverloadMonitoring(!this.capacityOutputHeld,duration);
   }
   fadeOutOutput(duration = .05) {
     this._setAudioProcessingOverloadMonitoring(false);
     this.send({type:'fadeOutput',gain:0,duration});
     return ++this._outputFadeToken;
   }
+  validatePresetPipeline(plugins) {
+    const port = this.workletNode?.port;
+    if (!port || port.closed) return true;
+    return port.checkCapacity(port.describePipeline(this._buildBlindPluginData(plugins),false).items);
+  }
   async rebuildPipeline(_isInitializing = false, {gate = false} = {}) {
-    if (!this.workletNode) return '';
+    if (!this.workletNode || this.workletNode.port.closed) return '';
     this.updateExposedProperties();
     this._configureOwnedPipelineWasmAssetResolvers();
-    this.workletNode.port.configure(undefined,undefined,gate);
+    if (!this.workletNode.port.configure(undefined,undefined,gate)) return 'error.pipelineTooLarge';
     if (gate) this._recordOutputGate(this.workletNode, 'unconfirmed');
     this.syncPrimaryWasmAssetMembership?.();
     this.powerPolicyController?.notifyTopologyChanged?.('pipeline-rebuild');
     return '';
+  }
+  syncPrimaryWasmAssetMembership(pipeline = this.pipeline) {
+    const graph = this.workletNode?.port.submittedGraph;
+    return super.syncPrimaryWasmAssetMembership(!this._parallelActive && !this._parallelPreparing && graph
+      ? graph.plugins : pipeline);
   }
   connectSourceToPipeline(node) {
     if (!node || !this.tap) return false;
@@ -666,16 +778,16 @@ export class NativeAudioManager extends AudioManager {
     } else await window.app.reloadWithPipelineState();
     return '';
   }
-  async applyBranchPipeline(endpoint,pluginData) {
+  async applyBranchPipeline(endpoint,pluginData,fallback) {
     const port = endpoint.port;
-    const revision = port.revision + 1;
-    const applied = this.waitFor('pipelineApplied',data => data.branch === port.branch && data.revision === revision);
-    port.configure(pluginData);
-    await applied;
+    if (!port.configure(pluginData,undefined,false,fallback)) return false;
+    const revision = port.revision;
+    await this.waitFor('pipelineApplied',data => data.branch === port.branch && data.revision === revision);
+    return true;
   }
-  async prepareBranch(endpoint,snapshot,deadline) {
+  async prepareBranch(endpoint,snapshot,deadline,fallback) {
     const port = endpoint.port;
-    await this.applyBranchPipeline(endpoint,snapshot.pluginData);
+    if (!await this.applyBranchPipeline(endpoint,snapshot.pluginData,fallback)) return false;
     const generation = this._audioGraphGeneration;
     this._syncWasmAssetMembership(endpoint,snapshot.plugins,{generation,replayNew:false});
     const target = await this._prepareWasmAssetMapsForTarget(endpoint,snapshot.plugins,

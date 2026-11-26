@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { __test, openUserDataBackupDialog } from '../../js/user-data-backup/dialog.js';
+import { ANDROID_ORIGIN, getAndroidBridge } from '../../js/android/bridge.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class Element {
@@ -173,6 +174,70 @@ test('backup dialog preserves filtered selections and removes parents with a cle
   });
 });
 
+test('Android backup status waits for the picker, write and share results', async t => {
+  const documentRef = { body: new Element('body'), createElement: tag => new Element(tag),
+    createTextNode: text => new Element('#text', text) };
+  const windowRef = { location: { origin: ANDROID_ORIGIN }, effetuneAndroid: { postMessage() {} } };
+  const item = { key: 'pipeline:A', name: 'A', kind: 'pipeline', available: true, dependencies: [] };
+  const service = {
+    listBackup: async () => ({ items: [item], maxBytes: 1024 }),
+    select: (_, keys) => new Set(keys),
+    createBackup: async () => ({ blob: new Blob([new Uint8Array(256 * 1024 + 1)]), fileName: 'test.effetune_backup' })
+  };
+  await withGlobals({ document: documentRef, window: windowRef }, async () => {
+    let pick, write, share;
+    const commands = [];
+    t.mock.method(getAndroidBridge(), 'request', command => {
+      commands.push(command);
+      return { 'documents.pick': pick, 'documents.write': write, 'documents.share': share }[command].promise;
+    });
+    const modal = openUserDataBackupDialog({ service });
+    await nextTurn();
+    const run = byClass(modal.element, 'backup-restore-primary')[0];
+    const status = byClass(modal.element, 'backup-restore-status')[0];
+    const progress = byClass(modal.element, 'backup-restore-progress')[0];
+    for (const outcome of ['cancel', 'partial', 'fail', 'save', 'share']) {
+      pick = deferred();
+      write = deferred();
+      share = deferred();
+      commands.length = 0;
+      await run.click();
+      await nextTurn();
+      assert.deepEqual(commands, ['documents.pick']);
+      assert.equal(run.disabled, true);
+      assert.equal(progress.hidden, true);
+      if (outcome === 'cancel') pick.reject(new DOMException('Cancelled', 'AbortError'));
+      else {
+        pick.resolve({ uri: 'content://backup', share: outcome === 'share' });
+        await nextTurn();
+        assert.equal(commands.at(-1), 'documents.write');
+        assert.equal(run.disabled, true);
+        assert.equal(progress.hidden, false);
+        assert.equal(status.textContent, 'Saving backup…');
+        if (outcome === 'partial') await progress.children.find(child => child.tagName === 'BUTTON').click();
+        if (outcome === 'fail') write.reject(new Error('Provider unavailable'));
+        else write.resolve({});
+        if (outcome === 'share') {
+          await nextTurn();
+          assert.equal(commands.at(-1), 'documents.share');
+          assert.equal(run.disabled, true);
+          share.resolve({});
+        }
+      }
+      await nextTurn();
+      assert.equal(status.textContent, {
+        cancel: 'Backup stopped. No backup file was created.',
+        partial: 'Saving stopped. An incomplete backup file may remain. Delete it and try again.',
+        fail: 'The backup could not be created. Check available storage and try again.',
+        save: 'Backup created with 1 items.',
+        share: 'The sharing screen was opened for your backup.'
+      }[outcome]);
+      if (outcome === 'partial') assert.deepEqual(commands, ['documents.pick', 'documents.write']);
+      assert.equal(run.disabled, false);
+    }
+  });
+});
+
 test('selection helpers keep required-parent behavior small and deterministic', () => {
   const items = [
     { key: 'parent', name: 'Parent', dependencies: [{ key: 'child', required: true }] },
@@ -274,6 +339,8 @@ test('restore waits for the latest selection plan and discards older plan result
     await nextTurn();
     const restoreTab = flatten(modal.element).find(node => node.textContent === 'Restore from file');
     await restoreTab.click();
+    assert.ok(flatten(modal.element).some(node => node.textContent === 'Choose backup file…'));
+    assert.equal(byClass(modal.element, 'backup-restore-empty').length, 0);
     const fileInput = flatten(modal.element).find(node => node.type === 'file');
     fileInput.files = [{ name: 'selection.effetune_backup' }];
     await fileInput.dispatch('change');

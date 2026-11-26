@@ -30,9 +30,15 @@ export { isPlayerPreferenceOnlyChange, loadAudioPreferences, saveAudioPreference
 export async function getAudioDevices(isElectron) {
   if (isAndroidHost()) {
     const devices = await getAndroidBridge().request('audio.devices');
-    return ['inputs', 'outputs'].flatMap(key => devices[key].map(device => ({
-      deviceId: String(device.id), label: device.label, kind: key === 'inputs' ? 'audioinput' : 'audiooutput'
-    })));
+    // Native id 0 is the system default route; the dialog adds the single None input itself.
+    const defaultLabel = window.uiManager?.t('dialog.audioConfig.driver.defaultDevice');
+    return ['inputs', 'outputs'].flatMap(key => {
+      const kind = key === 'inputs' ? 'audioinput' : 'audiooutput';
+      return [{ deviceId: 'default', label: defaultLabel, kind,
+        ...(key === 'outputs' && devices.defaultOutputChannelCounts && { channelCounts: devices.defaultOutputChannelCounts }) },
+        ...devices[key].map(device => ({ deviceId: String(device.id), label: device.label, kind,
+          ...(device.channelCounts && { channelCounts: device.channelCounts }) }))];
+    });
   }
   try {
     // First try to get devices from Electron's main process
@@ -248,7 +254,20 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     const currentSampleRate = audioPreferences?.sampleRate || 96000;
     const androidHost = isAndroidHost();
     const nativeAudio = androidHost ? await getAndroidBridge().request('snapshot.get') : null;
-    
+    if (nativeAudio) {
+      // The running native engine decides what the dialog shows; Android favors stable playback by default.
+      const nativeDeviceId = id => id > 0 ? String(id) : 'default';
+      audioPreferences = {
+        ...audioPreferences,
+        inputDeviceId: nativeAudio.inputDeviceId < 0 ? NO_AUDIO_INPUT_DEVICE_ID : nativeDeviceId(nativeAudio.inputDeviceId),
+        outputDeviceId: nativeDeviceId(nativeAudio.preferredOutputDeviceId),
+        outputChannels: nativeAudio.channelCount,
+        midiOutputDeviceKey: nativeAudio.midiOutputDeviceKey ?? '',
+        useInputWithPlayer: nativeAudio.useInputWithPlayer === true,
+        gaplessPlayback: nativeAudio.gaplessPlayback !== false
+      };
+    }
+
     // Get translation function from UIManager
     if (!window.uiManager) {
       console.error('UIManager not available for translations');
@@ -296,10 +315,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
             <div class="device-section">
               <label for="output-channels">${t('dialog.audioConfig.outputChannels')}</label>
               <select id="output-channels"></select>
-              <div class="checkbox-container">
+              ${!androidHost ? `<div class="checkbox-container">
                 <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
                 <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
-              </div>
+              </div>` : ''}
               <div class="checkbox-container">
                 <input type="checkbox" id="gapless-playback" ${audioPreferences?.gaplessPlayback !== false ? 'checked' : ''}>
                 <label for="gapless-playback">${t('dialog.audioConfig.gaplessPlayback')}</label>
@@ -314,7 +333,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
               <select id="latency"></select>
             </div>
           </div>
-          ${!androidHost ? `<div class="audio-config-column">
+          <div class="audio-config-column">
             <div class="device-section">
               <label for="midi-input-device">${t('dialog.audioConfig.midiInput')}</label>
               <select id="midi-input-device"></select>
@@ -339,11 +358,11 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
               <label for="replay-gain-ceiling">${t('dialog.audioConfig.replayGainPeakCeiling')}</label>
               <input type="number" id="replay-gain-ceiling" min="-15" max="0" step="0.5" value="${audioPreferences.replayGainPeakCeilingDb}">
             </div>
-          </div>` : ''}
+          </div>
         </div>
         <div class="dialog-buttons">
           <button id="cancel-button">${t('dialog.audioConfig.cancel')}</button>
-          <button id="apply-button">${t('dialog.audioConfig.apply')}</button>
+          <button id="apply-button" disabled>${t('dialog.audioConfig.apply')}</button>
         </div>
       </div>
     `;
@@ -479,6 +498,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         border-radius: 4px;
         cursor: pointer;
       }
+      .audio-config-dialog #apply-button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
     `;
     document.head.appendChild(styleElement);
     
@@ -494,38 +517,48 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       getSelectedInputDeviceId(inputDeviceOptions, audioPreferences?.inputDeviceId || 'default', inputDevices)
     );
     replaceOptions(outputSelect, outputDevices, audioPreferences?.outputDeviceId || 'default');
-    replaceValueOptions(
-      document.getElementById('output-channels'),
-      nativeAudio ? [nativeAudio.channelCount] : [2, 4, 6, 8, 10, 12, 14, 16],
-      audioPreferences?.outputChannels || 2,
-      value => value === 2 ? t('dialog.audioConfig.outputChannels.stereoDefault') : String(value)
-    );
+    const channelSelect = document.getElementById('output-channels');
+    let outputChannelsChanged = false;
+    const updateChannelOptions = requested => {
+      const counts = androidHost
+        ? outputDevices.find(device => device.deviceId === outputSelect.value)?.channelCounts ?? [2]
+        : [2, 4, 6, 8, 10, 12, 14, 16];
+      const selected = androidHost ? counts.filter(count => count <= requested).at(-1) ?? counts[0] : requested;
+      replaceValueOptions(channelSelect, counts, selected,
+        value => value === 2 ? t('dialog.audioConfig.outputChannels.stereoDefault') : String(value));
+    };
+    updateChannelOptions(nativeAudio?.channelCount || audioPreferences?.outputChannels || 2);
+    if (androidHost) {
+      channelSelect.addEventListener('change', () => { outputChannelsChanged = true; });
+      outputSelect.addEventListener('change', () => updateChannelOptions(outputChannelsChanged
+        ? Number(channelSelect.value) : nativeAudio.preferredOutputChannelCount ?? nativeAudio.channelCount));
+    }
     replaceValueOptions(
       document.getElementById('sample-rate'),
-      nativeAudio ? [nativeAudio.sampleRate] : [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000],
+      nativeAudio ? nativeAudio.supportedSampleRates ?? [nativeAudio.sampleRate] : [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000],
       nativeAudio?.sampleRate || currentSampleRate,
       value => ({
         44100: '44.1 kHz',
-        48000: '48 kHz',
+        48000: androidHost ? t('dialog.audioConfig.sampleRate.default', { rate: '48' }) : '48 kHz',
         88200: '88.2 kHz',
-        96000: t('dialog.audioConfig.sampleRate.default', { rate: '96' }),
+        96000: androidHost ? '96 kHz' : t('dialog.audioConfig.sampleRate.default', { rate: '96' }),
         176400: '176.4 kHz',
         192000: '192 kHz',
         352800: '352.8 kHz',
         384000: '384 kHz'
-      })[value]
+      })[value] ?? `${value / 1000} kHz`
     );
     replaceValueOptions(
       document.getElementById('latency'),
       ['interactive', 'balanced', 'playback'],
-      audioPreferences?.latencyHint || 'interactive',
+      (nativeAudio?.latencyHint ?? audioPreferences?.latencyHint) || 'interactive',
       value => ({
-        interactive: t('dialog.audioConfig.latency.low'),
-        balanced: t('dialog.audioConfig.latency.mid'),
+        interactive: t(androidHost ? 'dialog.audioConfig.latency.lowPlain' : 'dialog.audioConfig.latency.low'),
+        balanced: t(androidHost ? 'dialog.audioConfig.latency.midDefault' : 'dialog.audioConfig.latency.mid'),
         playback: t('dialog.audioConfig.latency.high')
       })[value]
     );
-    if (!androidHost) {
+    {
       const replayGainModeSelect = document.getElementById('replay-gain-mode');
       replaceValueOptions(
         replayGainModeSelect,
@@ -640,7 +673,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         console.warn('Audio driver device enumeration failed:',error);
         driverSelect.value = driver;
       } finally {
-        if (revision === refreshRevision) { loadingDriver = false; applyButton.disabled = false; }
+        if (revision === refreshRevision) {
+          loadingDriver = false;
+          applyButton.disabled = applyInProgress;
+        }
       }
     };
     driverSelect?.addEventListener?.('change', refreshDevices);
@@ -648,8 +684,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     let cleanupMidiSettings;
     cancelButton.addEventListener('click', closeDialog);
     document.addEventListener('keydown', handleKeydown);
-    if (!androidHost) {
-      const midiManager = await window.app?.ensureMidiControllerManager?.();
+    applyButton.addEventListener('click', applyPreferences);
+    try {
+      let midiManager;
+      try {
+        midiManager = await window.app?.ensureMidiControllerManager?.();
+      } catch (error) {
+        console.warn('MIDI device initialization failed:', error);
+      }
       if (dialogClosed) return;
       cleanupMidiSettings = bindMidiDeviceSettings({
         manager: midiManager,
@@ -660,8 +702,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         selectedInputKey: audioPreferences.midiInputDeviceKey || '',
         selectedOutputKey: audioPreferences.midiOutputDeviceKey || '', t
       });
+    } finally {
+      applyInProgress = false;
+      applyButton.disabled = loadingDriver;
     }
-    applyInProgress = false;
     function closeDialog() {
       if (dialogClosed) return;
       dialogClosed = true;
@@ -698,6 +742,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     async function applyPreferences() {
       if (dialogClosed || applyInProgress || loadingDriver) return;
       applyInProgress = true;
+      applyButton.disabled = true;
       try {
       // Get selected values
       const inputDeviceSelect = document.getElementById('input-device');
@@ -723,9 +768,9 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const selectedSampleRate = parseInt(sampleRateSelect.value, 10);
       const useInputWithPlayer = useInputWithPlayerCheckbox.checked;
       const outputChannels = parseInt(outputChannelsSelect.value, 10);
-      const useWasmDsp = useWasmDspCheckbox.checked;
+      const useWasmDsp = useWasmDspCheckbox ? useWasmDspCheckbox.checked : audioPreferences.useWasmDsp;
       const selectedLatency = latencySelect.value;
-      if (!isElectron &&
+      if (!isElectron && !androidHost &&
         selectedOutputDeviceId !== 'default' &&
         outputChannels > 2 &&
         !outputSupport.hasAudioContextSink
@@ -753,16 +798,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       // Save preferences
       const preferences = {
         ...(driverBridge && driver !== originalDriver ? { audioDriver: driver } : {}),
-        ...(!androidHost ? {
-          midiInputDeviceKey: document.getElementById('midi-input-device').value,
-          midiOutputDeviceKey: document.getElementById('midi-output-device').value,
-          replayGainMode: document.getElementById('replay-gain-mode').value,
-          replayGainTarget: document.getElementById('replay-gain-target').value,
-          replayGainPreampDb: parseFloat(document.getElementById('replay-gain-preamp').value),
-          replayGainAutoCoverage: parseFloat(document.getElementById('replay-gain-coverage').value),
-          replayGainPreventClipping: document.getElementById('replay-gain-prevent-clipping').checked,
-          replayGainPeakCeilingDb: parseFloat(document.getElementById('replay-gain-ceiling').value)
-        } : {}),
+        midiInputDeviceKey: document.getElementById('midi-input-device').value,
+        midiOutputDeviceKey: document.getElementById('midi-output-device').value,
+        replayGainMode: document.getElementById('replay-gain-mode').value,
+        replayGainTarget: document.getElementById('replay-gain-target').value,
+        replayGainPreampDb: parseFloat(document.getElementById('replay-gain-preamp').value),
+        replayGainAutoCoverage: parseFloat(document.getElementById('replay-gain-coverage').value),
+        replayGainPreventClipping: document.getElementById('replay-gain-prevent-clipping').checked,
+        replayGainPeakCeilingDb: parseFloat(document.getElementById('replay-gain-ceiling').value),
         inputDeviceId: inputDeviceSelect.value,
         outputDeviceId: selectedOutputDeviceId,
         inputDeviceLabel: inputDevice?.label || '',
@@ -777,7 +820,8 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       
       const effectivePreferences = mergeWebAudioPreferences(audioPreferences, preferences);
       const appliedPreferences = driverBridge ? effectivePreferences : preferences;
-      if (!androidHost && isMidiDeviceOnlyChange(audioPreferences, effectivePreferences)) {
+      const midiOnlyChange = isMidiDeviceOnlyChange(audioPreferences, effectivePreferences);
+      if (!androidHost && midiOnlyChange) {
         const saved = await saveAudioPreferences(isElectron, {
           midiInputDeviceKey: effectivePreferences.midiInputDeviceKey,
           midiOutputDeviceKey: effectivePreferences.midiOutputDeviceKey
@@ -794,7 +838,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         return;
       }
       const playerOnlyChange = isPlayerPreferenceOnlyChange(audioPreferences, effectivePreferences);
-      if (playerOnlyChange && typeof window.audioManager?.applyPlayerPreferences === 'function') {
+      if (!androidHost && playerOnlyChange && typeof window.audioManager?.applyPlayerPreferences === 'function') {
         closeDialog();
         let applyResult = '';
         try {
@@ -812,7 +856,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         if (!applyResult) callback?.(effectivePreferences);
         return;
       }
-      if (playerOnlyChange) {
+      if (!androidHost && playerOnlyChange) {
         // Persist only the player fields so the stored preferences never
         // absorb session-only runtime overrides or refreshed device labels.
         const saved = await saveAudioPreferences(isElectron, pickPlayerPreferences(effectivePreferences), {
@@ -833,13 +877,26 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         canApplySilentInputWithoutReload(audioPreferences, appliedPreferences);
       if (applyThroughAudioManager &&
           window.audioManager && typeof window.audioManager.reset === 'function') {
+        let settings = appliedPreferences;
+        if (androidHost) {
+          settings = playerOnlyChange ? pickPlayerPreferences(effectivePreferences)
+            : midiOnlyChange ? {} : { ...appliedPreferences };
+          if (!outputChannelsChanged) delete settings.outputChannels;
+          for (const key of ['midiInputDeviceKey', 'midiOutputDeviceKey']) {
+            if ((effectivePreferences[key] || '') !== (audioPreferences[key] || '')) {
+              settings[key] = effectivePreferences[key] || '';
+            } else {
+              delete settings[key];
+            }
+          }
+        }
         closeDialog();
         let resetResult = '';
         try {
           const manager = window.audioManager.contextManager;
           if (manager) manager.pendingDiagnosticOutput = replacedOutput;
           try {
-            resetResult = await window.audioManager.reset(appliedPreferences);
+            resetResult = await window.audioManager.reset(settings);
           } finally {
             if (manager && manager.pendingDiagnosticOutput === replacedOutput) manager.pendingDiagnosticOutput = null;
           }
@@ -850,13 +907,28 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
           console.error('Failed to apply audio preferences:', error);
           resetResult = error || true;
         }
+        if (androidHost && resetResult?.code === 'cancelled') return;
         if (resetResult && window.uiManager) {
-          window.uiManager.setError('error.audioResetFailed', true);
+          let errorKey = 'error.audioResetFailed';
+          if (androidHost && resetResult.code === 'unsupported-format') {
+            errorKey = 'dialog.audioConfig.driver.format';
+          } else if (androidHost && resetResult.code === 'permission-denied') {
+            errorKey = 'error.androidMicrophonePermissionDenied';
+          } else if (androidHost && resetResult.code === 'midi-unavailable') {
+            errorKey = 'dialog.audioConfig.midiDevices.unavailable';
+          } else if (androidHost && (playerOnlyChange || midiOnlyChange)) {
+            errorKey = 'error.audioSettingsSaveFailed';
+          }
+          window.uiManager.setError(errorKey, true);
         }
         if (callback) {
-          callback(appliedPreferences);
+          callback(androidHost ? window.audioPreferences : appliedPreferences);
         }
-        if (!resetResult && !androidHost) await applyMidiDevicePreferences(appliedPreferences);
+        if (!androidHost && !resetResult) await applyMidiDevicePreferences(appliedPreferences);
+        return;
+      }
+      if (androidHost) {
+        window.uiManager?.setError?.('error.audioSettingsSaveFailed', true);
         return;
       }
 
@@ -891,9 +963,9 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       if (isElectron) window.uiManager?.setError?.('dialog.audioConfig.updatedMessage');
       } finally {
         applyInProgress = false;
+        applyButton.disabled = loadingDriver;
       }
     }
-    applyButton.addEventListener('click', applyPreferences);
   } catch (error) {
     console.error('Failed to show audio config dialog:', error);
   }

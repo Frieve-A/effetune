@@ -140,6 +140,8 @@ export class WebCatalogRepositoryClient {
   async readContextPageAtOrdinal(options) { return this.request('readContextPageAtOrdinal', options); }
   async resolveEntityAnchor(options) { return this.request('resolveEntityAnchor', options); }
   async getTrack(trackUid) { return this.request('getTrack', trackUid); }
+  async getTrackStorageIdentity(trackUid) { return this.request('getTrackStorageIdentity', trackUid); }
+  async querySharedLibrary(request) { return this.request('querySharedLibrary', request); }
   async resolvePlaylistExportSource(trackUid) { return this.request('resolvePlaylistExportSource', trackUid); }
   async createPlaylist(options) { return this.request('createPlaylist', options); }
   async createPlaylistWithItems(options) { return this.request('createPlaylistWithItems', options); }
@@ -150,6 +152,9 @@ export class WebCatalogRepositoryClient {
   finalizeLoudness(request) { return this.request('finalizeLoudness', request); }
   getTrackLoudness(request) { return this.request('getTrackLoudness', request); }
   getLoudnessStats(request) { return this.request('getLoudnessStats', request); }
+  prepareLoudnessTagWrite(request) { return this.request('prepareLoudnessTagWrite', request); }
+  discardLoudnessTagSnapshot(snapshotId) { return this.request('discardLoudnessTagSnapshot', { snapshotId }); }
+  writeLoudnessTags(request) { return this.request('writeLoudnessTags', request); }
   async setTrackFavorite(options) { return this.request('setTrackFavorite', options); }
   async getFavoriteTrackUids(options = {}) { return this.request('getFavoriteTrackUids', options); }
   async getSystemPlaylists() { return this.request('getSystemPlaylists'); }

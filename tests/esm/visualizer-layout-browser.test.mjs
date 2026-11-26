@@ -1036,34 +1036,41 @@ test('Mobile Visualizer expansion hides the bottom tabs and leaves its restore b
     try {
         const page = await browser.newPage({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
         await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
-            <body class="layout-mobile view-visualizer"><section id="visualizerView">
-                <div class="visualizer-toolbar">Edit</div><div class="visualizer-workspace">
-                    <div class="visualizer-stage-host show-controls"><button class="visualizer-expand">Restore</button></div>
-                </div></section><button class="mobile-plugin-fab">+</button>
+            <body class="layout-mobile view-visualizer">
+            <header class="title-container" style="min-height: 144px">EffeTune</header><section id="visualizerView">
+                <div class="visualizer-toolbar"><button>Edit</button></div><div class="visualizer-workspace">
+                    <div class="visualizer-stage-host show-controls">
+                        <div class="visualizer-stage" style="height: 240px"></div>
+                        <button class="visualizer-expand" type="button">Expand</button>
+                    </div>
+                </div></section><button class="mobile-plugin-fab">+</button><div class="mobile-player-view"><div class="audio-player">Player</div></div>
                 <nav class="mobile-bottom-nav">Player Library Effects</nav></body>`);
         await page.addStyleTag({ content: css });
         await page.addScriptTag({ content: viewSource });
-        const result = await page.evaluate(() => {
+        await page.evaluate(() => {
             const root = document.querySelector('#visualizerView');
             const button = root.querySelector('.visualizer-expand');
-            const tabs = document.querySelector('.mobile-bottom-nav');
-            const fab = document.querySelector('.mobile-plugin-fab');
             const view = Object.assign(Object.create(window.VisualizerView.prototype), {
                 expanded: false, historyDepth: 1, expandButton: button,
                 uiManager: { t: key => key }, setEditing() {}, showControls() {}
             });
-            const visibleBefore = getComputedStyle(tabs).display !== 'none';
-            view.setExpanded(true, { fromHistory: true });
-            const bounds = button.getBoundingClientRect();
-            const exposed = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) === button;
-            const hiddenExpanded = getComputedStyle(tabs).display === 'none';
-            view.setExpanded(false, { fromHistory: true });
-            return { visibleBefore, hiddenExpanded, exposed,
-                fabHidden: getComputedStyle(fab).display === 'none',
-                visibleRestored: getComputedStyle(tabs).display !== 'none' };
+            button.addEventListener('click', () => view.setExpanded(!view.expanded, { fromHistory: true }));
         });
-        assert.deepEqual(result, { visibleBefore: true, hiddenExpanded: true, exposed: true,
-            fabHidden: true, visibleRestored: true });
+        const expand = page.locator('.visualizer-expand');
+        const tabs = page.locator('.mobile-bottom-nav');
+        for (const viewport of [{ width: 320, height: 568 }, { width: 721, height: 336 }]) {
+            await page.setViewportSize(viewport);
+            const bounds = await expand.boundingBox();
+            assert.ok(bounds.y + bounds.height <= (await tabs.boundingBox()).y);
+            await expand.click({ timeout: 2000 });
+            assert.equal(await expand.getAttribute('aria-pressed'), 'true');
+            for (const selector of ['.mobile-bottom-nav', '.mobile-player-view', '.mobile-plugin-fab', '.visualizer-toolbar']) {
+                assert.equal(await page.locator(selector).isVisible(), false, selector);
+            }
+            await expand.click({ timeout: 2000 });
+            assert.equal(await expand.getAttribute('aria-pressed'), 'false');
+            assert.equal(await tabs.isVisible(), true);
+        }
     } finally {
         await browser.close();
     }
@@ -2176,11 +2183,13 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
             const keypad = new MobileNumberKeypad(), mobileInput = number('Max Frequency');
             mobileInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
             mobileInput.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            mobileInput.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
             const inspectorKeypad = keypad.target === mobileInput;
             keypad.edit('clear'); keypad.edit('2'); keypad.edit('4'); keypad.commit();
             const scale = editor.navigation.querySelector('input[type=number]');
             scale.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
             scale.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            scale.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
             const navigationKeypad = keypad.target === scale;
             keypad.edit('clear'); keypad.edit('2'); keypad.commit();
             const mobile = [inspectorKeypad, mobileItem.params.mf, navigationKeypad, view.layout.graphScale,

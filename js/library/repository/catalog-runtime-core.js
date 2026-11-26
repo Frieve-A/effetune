@@ -50,6 +50,8 @@ const SYSTEM_PLAYLIST_IDS = Object.freeze({
   favorites: 'system_favorites'
 });
 
+const SYSTEM_PLAYLIST_SCOPES = Object.freeze(Object.values(SYSTEM_PLAYLIST_IDS).map(id => `playlist:${id}`));
+
 const SYSTEM_PLAYLIST_DEFINITIONS = Object.freeze({
   recentlyPlayed: Object.freeze({ id: SYSTEM_PLAYLIST_IDS.recentlyPlayed, name: 'Recently Played' }),
   favorites: Object.freeze({ id: SYSTEM_PLAYLIST_IDS.favorites, name: 'Favorites' })
@@ -230,7 +232,7 @@ function recoverInterruptedScans() {
       WHERE status IN ('enumerating', 'committing', 'reconciling', 'sweeping')
     `).all();
     for (const identity of interrupted) {
-      clearCueScanStageRows(identity);
+      clearScanStageRows(identity);
       if (isRecoverableScanSweep(identity)) {
         pendingScanSweepRecoveries.set(entityAggregationScanKey(identity), {
           scanId: identity.scanId,
@@ -676,6 +678,16 @@ function normalizeContextQuery(payload) {
     throw createCatalogError('invalidContext', 'System playlist visibility must be a boolean');
   }
   const includeSystemPlaylists = entityType === 'playlist' && payload.includeSystemPlaylists === true;
+  const scopeName = entityType === 'track' ? 'tracks' : definition.scope;
+  const relevantScopeNames = [scopeName];
+  if (entityType === 'track' && scope?.playlistId) {
+    relevantScopeNames.push('playlists');
+    if (isSystemPlaylistId(scope.playlistId)) relevantScopeNames.push(`playlist:${scope.playlistId}`);
+  } else if (entityType === 'track' && scope?.artistKey) {
+    relevantScopeNames.push('artists');
+  } else if (includeSystemPlaylists) {
+    relevantScopeNames.push(...SYSTEM_PLAYLIST_SCOPES);
+  }
   return {
     tokens,
     queryText: rawQuery,
@@ -685,12 +697,8 @@ function normalizeContextQuery(payload) {
     includeSystemPlaylists,
     entityType,
     endpoint: entityType === 'track' ? 'tracks' : `entities:${entityType}`,
-    scopeName: entityType === 'track' ? 'tracks' : definition.scope,
-    relevantScopeNames: entityType === 'track' && scope?.playlistId
-      ? ['tracks', 'playlists']
-      : entityType === 'track' && scope?.artistKey
-        ? ['tracks', 'artists']
-        : [entityType === 'track' ? 'tracks' : definition.scope]
+    scopeName,
+    relevantScopeNames
   };
 }
 
@@ -2347,7 +2355,7 @@ function recordRecentlyPlayed(payload) {
     if (first?.trackUid === trackUid) return { kind: 'noop' };
   }
   const updatedAt = Date.now();
-  return commitMutation(['playlists', `playlist:${playlistId}`], 'record-recently-played', () => {
+  return commitMutation([`playlist:${playlistId}`], 'record-recently-played', () => {
     const ensured = ensureSystemPlaylist('recentlyPlayed', updatedAt);
     if (ensured.busy) return { kind: 'busy', activeOperationId: ensured.activeOperationId };
     catalogState.database.prepare(`
@@ -2427,7 +2435,7 @@ function setTrackFavorite(payload) {
     if (favorite === Boolean(item)) return { kind: 'noop' };
   }
   const updatedAt = Date.now();
-  return commitMutation(['playlists', `playlist:${playlistId}`], 'set-track-favorite', () => {
+  return commitMutation([`playlist:${playlistId}`], 'set-track-favorite', () => {
     if (favorite) {
       const ensured = ensureSystemPlaylist('favorites', updatedAt);
       if (ensured.busy) return { kind: 'busy', activeOperationId: ensured.activeOperationId };
@@ -4670,6 +4678,59 @@ function commitScanSeenBatch(payload) {
   });
 }
 
+function scanTraversalQueue(payload) {
+  const identity = requireScanIdentity(payload);
+  const { status } = requireScanState(identity);
+  if (status !== 'enumerating' && status !== 'committing') {
+    throw createCatalogError('invalidScanTransition', 'Scan traversal is not active');
+  }
+  if (payload.action === 'append') {
+    const directories = validateBatch(payload.directories, 'directories');
+    return runDurableTransaction(() => {
+      const key = [identity.scanId, identity.folderId];
+      let { sequence } = catalogState.database.prepare(`
+        SELECT coalesce(max(sequence), 0) AS sequence FROM scan_traversal_queue
+        WHERE scan_id = ? AND folder_id = ?
+      `).get(...key);
+      const insert = catalogState.database.prepare(`
+        INSERT INTO scan_traversal_queue(scan_id, folder_id, sequence, relative_path) VALUES (?, ?, ?, ?)
+      `);
+      for (const directory of directories) {
+        const path = requireString(directory, 'relativePath', MAX_DIRECTORY_PATH_CHARACTERS);
+        if (path.startsWith('/') || path.includes('\\') || path.includes('\0') || path.split('/').includes('..')) {
+          throw createCatalogError('invalidScanPath', 'Scan traversal path is invalid');
+        }
+        insert.run(...key, ++sequence, path);
+      }
+      return { appended: directories.length };
+    });
+  }
+  if (payload.action === 'take') {
+    const limit = Math.min(requirePositiveInteger(payload.limit, 'limit'), 64);
+    return runDurableTransaction(() => {
+      const key = [identity.scanId, identity.folderId];
+      const rows = catalogState.database.prepare(`
+        SELECT sequence, relative_path AS relativePath FROM scan_traversal_queue
+        WHERE scan_id = ? AND folder_id = ? ORDER BY sequence LIMIT ?
+      `).all(...key, limit + 1);
+      const directories = [];
+      let bytes = 0;
+      for (const { relativePath } of rows.slice(0, limit)) {
+        bytes += measureBytes(relativePath, 'pageTooLarge') + 1;
+        if (bytes > MAX_RESPONSE_BYTES / 2) break;
+        directories.push(relativePath);
+      }
+      if (directories.length) {
+        catalogState.database.prepare(`
+          DELETE FROM scan_traversal_queue WHERE scan_id = ? AND folder_id = ? AND sequence <= ?
+        `).run(...key, rows[directories.length - 1].sequence);
+      }
+      return { directories, hasMore: rows.length > directories.length };
+    });
+  }
+  throw createCatalogError('invalidScanRequest', 'Unknown scan traversal queue action');
+}
+
 function cueDirectoryStage(payload) {
   const identity = requireScanIdentity(payload);
   const action = requireString(payload.action, 'action', 64);
@@ -4713,10 +4774,10 @@ function clearCueDirectoryStageRows(identity, directoryPath) {
   }
 }
 
-function clearCueScanStageRows(identity) {
+function clearScanStageRows(identity) {
   for (const table of [
     'scan_cue_stage_owners', 'scan_cue_stage_tracks',
-    'scan_cue_stage_sheets', 'scan_cue_stage_files'
+    'scan_cue_stage_sheets', 'scan_cue_stage_files', 'scan_traversal_queue'
   ]) {
     catalogState.database.prepare(`DELETE FROM ${table} WHERE scan_id = ? AND folder_id = ?`)
       .run(identity.scanId, identity.folderId);
@@ -5262,6 +5323,11 @@ function finalizeScanEnumeration(payload) {
   const identity = requireScanIdentity(payload);
   return runDurableTransaction(() => {
     const state = requireScanState(identity);
+    if (catalogState.database.prepare(`
+      SELECT 1 FROM scan_traversal_queue WHERE scan_id = ? AND folder_id = ? LIMIT 1
+    `).get(identity.scanId, identity.folderId)) {
+      throw createCatalogError('scanTraversalIncomplete', 'Scan still has directories to visit');
+    }
     const eligible = payload.rootToEnd === true && payload.continuityBroken === false &&
       Number(payload.enumerationErrorCount ?? 0) === 0 && Number(state.enumerationErrorCount) === 0;
     catalogState.database.prepare(`
@@ -5481,7 +5547,7 @@ function setScanTerminal(payload, status) {
         WHERE kind = 'scan-sweep' AND state = 'active' AND scan_id = ? AND folder_id = ?
       `).run(now, identity.scanId, identity.folderId);
     }
-    clearCueScanStageRows(identity);
+    clearScanStageRows(identity);
     if (status === 'completed' || status === 'completed-no-sweep') {
       playlistResolutionQueued = ensurePlaylistResolutionJob(identity);
     }
@@ -6065,6 +6131,7 @@ function runFolderDeletionChunkInTransaction(folderId, lifecycleVersion, deletio
 }
 
 function ensureFolderDeletionJob(folderId, lifecycleVersion) {
+  catalogState.database.prepare('DELETE FROM scan_traversal_queue WHERE folder_id = ?').run(folderId);
   const now = Date.now();
   catalogState.database.prepare(`
     INSERT OR IGNORE INTO deletion_jobs(
@@ -6945,6 +7012,7 @@ export {
   PLAYLIST_RESOLUTION_CANDIDATE_LIMIT,
   PLAYLIST_RECONCILIATION_BATCH_SIZE,
   SYSTEM_PLAYLIST_IDS,
+  SYSTEM_PLAYLIST_SCOPES,
   SYSTEM_PLAYLIST_DEFINITIONS,
   RECENTLY_PLAYED_LIMIT,
   FAVORITE_TRACK_UID_LIMIT,
@@ -7124,10 +7192,11 @@ export {
   completePendingScanSweepRecovery,
   preflightScanBatch,
   commitScanSeenBatch,
+  scanTraversalQueue,
   cueDirectoryStage,
   resetCueDirectoryStage,
   clearCueDirectoryStageRows,
-  clearCueScanStageRows,
+  clearScanStageRows,
   normalizeCueStageDirectory,
   cueStageParentPath,
   cueStageFileName,

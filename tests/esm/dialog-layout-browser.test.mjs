@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { buildSync } from 'esbuild';
 import { chromium } from 'playwright';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -119,7 +121,12 @@ test('anchored dialogs stay on screen after opening at the bottom right and resi
   }
 });
 
-const backupDialogUrl = moduleUrl(read('../../js/user-data-backup/dialog.js'));
+const backupDialogUrl = moduleUrl(buildSync({
+  entryPoints: [fileURLToPath(new URL('../../js/user-data-backup/dialog.js', import.meta.url))],
+  bundle: true,
+  format: 'esm',
+  write: false
+}).outputFiles[0].text);
 
 test('backup and restore stay inside the viewport as desktop CSS zoom increases', async () => {
   const browser = await chromium.launch({ headless: true });

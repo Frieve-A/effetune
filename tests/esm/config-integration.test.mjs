@@ -63,15 +63,15 @@ test('failed multiple-instance preference save restores the checkbox', async () 
   });
 });
 
-test('Android config omits musical MIDI registration and retains Controller Mapping', async () => {
+test('Android config offers score discovery and retains Controller Mapping', async () => {
   const harness = createConfigHarness({ config: { libraryIncludeMidi: true }, window: {
     location: { origin: 'https://appassets.androidplatform.net' },
     effetuneAndroid: { postMessage() {} }
   } });
   await withGlobals({ window: harness.window, document: harness.document }, async () => {
     await showConfigDialog(true, {});
-    assert.equal(harness.document.getElementById('library-include-midi'), null);
-    assert.equal(harness.document.getElementById('library-include-midi-archives'), null);
+    assert.equal(harness.document.getElementById('library-include-midi').checked, true);
+    assert.equal(harness.document.getElementById('library-include-midi-archives').disabled, false);
     assert.ok(harness.document.getElementById('library-include-video'));
     assert.ok(harness.document.getElementById('controller-mapping-btn'));
     await harness.document.getElementById('close-btn').dispatchEvent('click');
@@ -2132,6 +2132,43 @@ test('Network device name failure restores the saved name and reports a separate
   ]);
 });
 
+test('Android receiver settings explain how to allow local network access', async () => {
+  const harness = createConfigHarness({
+    window: {
+      location: { origin: 'https://appassets.androidplatform.net' },
+      effetuneAndroid: { postMessage(text) {
+        const { id } = JSON.parse(text);
+        this.onmessage({ data: JSON.stringify({ version: 1, id, ok: true, result: { enabled: false, targets: [] } }) });
+      } }
+    },
+    openHomeSetEnabledError: Object.assign(new Error(), { code: 'permission-denied' }),
+    upnpAvSetEnabledError: Object.assign(new Error(), { code: 'permission-required' })
+  });
+  harness.window.effetuneAndroidOpenHome = harness.window.electronAPI.openHomeV1;
+  harness.window.uiManager.networkMusic = { api: {
+    networkMusicGetState: harness.window.electronAPI.networkMusicGetState,
+    async networkMusicSetSharing() { throw Object.assign(new Error(), { code: 'permission-denied' }); }
+  } };
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(false, {});
+    for (const id of ['openhome', 'upnp-av']) {
+      const input = harness.document.getElementById(id + '-enabled');
+      input.checked = true;
+      await withMutedConsole('error', () => input.dispatchEvent('change'));
+      assert.equal(input.checked, false);
+      assert.equal(harness.document.getElementById(id + '-status').textContent,
+        'label:dialog.config.localNetworkPermission');
+    }
+    const sharing = harness.document.getElementById('library-sharing-enabled');
+    sharing.checked = true;
+    await withMutedConsole('error', () => harness.document.getElementById('library-sharing-save').dispatchEvent('click'));
+    assert.equal(sharing.checked, false);
+    assert.equal(harness.document.getElementById('library-sharing-status').textContent,
+      'label:dialog.config.localNetworkPermission');
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
+
 test('OpenHome setting failures roll back from getStatus and show a general-user error', async () => {
   const harness = createConfigHarness({
     config: { openHomeRemoteControl: false },
@@ -2424,6 +2461,24 @@ test('Network Remote Control restores the saved permission and shows a useful fa
     assert.equal(input.disabled, false);
     assert.equal(harness.document.getElementById('network-remote-control-status').textContent,
       'label:dialog.remoteControl.updateFailed');
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
+
+test('The open Network settings follow the selected language', async () => {
+  let language = 'en';
+  const harness = createConfigHarness({ config: { language }, uiManager: {
+    t: key => language + '/' + key, setLanguagePreference: async next => { language = next; }
+  } });
+  harness.window.electronAPI.remoteV1.settings.setConnection = async () => {};
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const panel = harness.document.getElementById('config-panel-network');
+    const heading = panel.children.find(section => section.children[0]?.textContent === 'en/networkMusic.settings.https').children[0];
+    const select = harness.document.getElementById('language-select');
+    select.value = 'ja';
+    await select.dispatchEvent('change');
+    assert.equal(heading.textContent, 'ja/networkMusic.settings.https');
     await harness.document.getElementById('close-btn').dispatchEvent('click');
   });
 });

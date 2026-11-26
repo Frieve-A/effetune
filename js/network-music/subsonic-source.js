@@ -29,7 +29,15 @@ export function subsonicToken(value) {
 }
 
 export class PwaSubsonicSource {
-  constructor({ name, url, user, password, fetchImpl = globalThis.fetch?.bind(globalThis), cryptoImpl = globalThis.crypto }) {
+  constructor({ name, url, user, password, fetchImpl = globalThis.fetch?.bind(globalThis), cryptoImpl = globalThis.crypto,
+    android, id }) {
+    this.pending = new Set();
+    this.media = new Set();
+    this.closed = false;
+    if (android) {
+      Object.assign(this, { android, id, name, endpoint: url, user });
+      return;
+    }
     let endpoint;
     try { endpoint = new URL(url); } catch { throw networkMusicError('subsonicConnection'); }
     if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
@@ -37,9 +45,6 @@ export class PwaSubsonicSource {
     this.endpoint = `${endpoint.origin}${endpoint.pathname.replace(/\/$/, '').replace(/\/rest$/, '')}/rest/`;
     Object.assign(this, { name: name || endpoint.hostname, user, password, fetchImpl, cryptoImpl });
     this.id = `subsonic:${cryptoImpl.randomUUID()}`;
-    this.pending = new Set();
-    this.media = new Set();
-    this.closed = false;
   }
 
   url(method, params = {}) {
@@ -52,6 +57,12 @@ export class PwaSubsonicSource {
   }
 
   async request(method, params) {
+    if (this.android) {
+      if (this.closed) throw networkMusicError('unavailable');
+      const result = await this.android.request(this.id, method, params);
+      if (this.closed) throw networkMusicError('unavailable');
+      return result;
+    }
     const networkPermission = ensureAndroidNetworkAccess();
     if (networkPermission) await networkPermission;
     const controller = new AbortController();
@@ -80,11 +91,17 @@ export class PwaSubsonicSource {
       browseViews: ['albums', 'tracks', 'playlists'].map(id => ({ id, objectId: id })), sortCaps: [] };
   }
 
+  artwork(id) {
+    if (!id) return '';
+    return this.android ? this.android.url(this.id, 'artwork', { id })
+      : this.url('getCoverArt', { id, size: '512' });
+  }
+
   track(song) {
     return { id: String(song.id), trackId: String(song.id), serverId: this.id, title: song.title || song.name || '',
       artist: song.artist || '', album: song.album || '', duration: Number(song.duration) || 0, durationSec: Number(song.duration) || 0,
       playable: true, requiresGateway: true,
-      artwork: song.coverArt ? this.url('getCoverArt', { id: song.coverArt, size: '512' }) : '',
+      artwork: this.artwork(song.coverArt),
       resources: song.contentType ? [{ protocolInfo: `http-get:*:${song.contentType}:*` }] : [],
       mimeType: song.contentType || '', bitrate: song.bitRate, sampleRate: song.samplingRate, bitDepth: song.bitDepth };
   }
@@ -112,7 +129,7 @@ export class PwaSubsonicSource {
       const result = await this.request('getAlbumList2', { type: 'alphabeticalByName', size: String(count), offset: String(start) });
       items = (result.albumList2?.album ?? []).map(item => ({ id: `album:${item.id}`, title: item.name || item.album,
         artist: item.artist, isContainer: true, upnpClass: 'object.container.album.musicAlbum', trackCount: item.songCount,
-        artwork: item.coverArt ? this.url('getCoverArt', { id: item.coverArt, size: '512' }) : '' }));
+        artwork: this.artwork(item.coverArt) }));
     }
     return { items, total, start, count, numberReturned: items.length };
   }
@@ -121,6 +138,10 @@ export class PwaSubsonicSource {
     const result = await this.request('getSong', { id: trackId });
     if (!result.song) throw networkMusicError('unavailable');
     const track = this.track(result.song);
+    if (this.android) {
+      if (track.trackId !== String(trackId)) throw networkMusicError('unavailable');
+      return { ...track, uri: this.android.url(this.id, 'stream', { id: trackId }), quality: 'original' };
+    }
     const uri = this.url('stream', { id: trackId, format: 'raw' });
     const revoke = registerPwaDirectMedia(uri);
     this.media.add(revoke);

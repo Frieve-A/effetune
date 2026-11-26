@@ -299,6 +299,7 @@ export class AudioPlayerUI {
       this.volumeSlider.max = String(state?.volumeMax ?? 100);
       this.volumeSlider.step = String(state?.volumeStep ?? 1);
       this.volumeSlider.value = String(state?.volume ?? 100);
+      updateRangeFill(this.volumeSlider);
       if (this.volumeValue) {
         this.volumeValue.hidden = this.volumeSlider.hidden;
         this.volumeValue.textContent = this.volumeSlider.value;
@@ -381,8 +382,10 @@ export class AudioPlayerUI {
   canRunPlayerUi() {
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const context = this.audioPlayer.audioContext;
+    // Remote and Android native players advance without a local AudioContext.
     return !this.isDisposed && this._powerUiEnabled && !this.documentRef?.hidden &&
-      state?.isPlaying === true && (this.audioPlayer.isRemote || context?.state === 'running');
+      state?.isPlaying === true && (this.audioPlayer.isRemote ||
+        this.audioPlayer.contextManager?.nativeQueueOwned === true || context?.state === 'running');
   }
 
   schedulePositionUpdate() {
@@ -656,24 +659,48 @@ export class AudioPlayerUI {
         }
       }
     };
+    let touchSeeking = false;
+    let touchChange = false;
     this.seekBar.addEventListener('pointerdown', event => {
+      touchChange = event.pointerType === 'touch';
+      if (event.pointerType === 'touch') {
+        touchSeeking = true;
+        this.isSeeking = true;
+        return;
+      }
       if (!this.audioPlayer.isRemote) return;
       this.isSeeking = true;
       this.seekBar.setPointerCapture?.(event.pointerId);
     });
     this.seekBar.addEventListener('input', () => {
-      if (this.audioPlayer.isRemote) {
+      if (touchSeeking || this.audioPlayer.isRemote) {
         this.isSeeking = true;
         this.updateTimeDisplay();
       } else seek();
     });
     this.seekBar.addEventListener('change', () => {
-      if (this.audioPlayer.isRemote) {
+      if (touchChange) {
+        touchChange = false;
+      } else if (this.audioPlayer.isRemote) {
         this.isSeeking = true;
         seek();
         this.isSeeking = false;
       }
     });
+    this.seekBar.addEventListener('pointerup', () => {
+      if (!touchSeeking) return;
+      touchSeeking = false;
+      seek();
+      this.isSeeking = false;
+    });
+    this.seekBar.addEventListener('pointercancel', () => {
+      if (!touchSeeking) return;
+      touchSeeking = false;
+      touchChange = false;
+      this.isSeeking = false;
+      this.updateTimeDisplay();
+    });
+    this.seekBar.addEventListener('keydown', () => { touchChange = false; });
     for (const event of ['pointerup', 'pointercancel', 'blur']) {
       this.seekBar.addEventListener(event, () => { this.isSeeking = false; });
     }
@@ -1769,8 +1796,10 @@ export class AudioPlayerUI {
     try {
       const manager = await this.getLibraryManager();
       if (!manager) return;
-      const sequenceDescriptor = this.audioPlayer.playbackManager?.getActiveSequenceDescriptor?.();
-      if (sequenceDescriptor?.kind === 'catalog' || sequenceDescriptor?.kind === 'composite') {
+      const playback = this.audioPlayer.playbackManager;
+      const queue = playback?.catalogSequence;
+      const sequenceDescriptor = playback?.getActiveSequenceDescriptor?.();
+      if (!queue?.getPlaylistTrackIds && (sequenceDescriptor?.kind === 'catalog' || sequenceDescriptor?.kind === 'composite')) {
         const name = await this.promptText('library.prompt.playlistName', this.t('library.prompt.queuePlaylistName'));
         if (name) {
           await window.uiManager?.libraryPlaybackBridge?.saveQueueAsPlaylist({
@@ -1782,9 +1811,10 @@ export class AudioPlayerUI {
         return;
       }
       const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
-      const items = manager.createPlaylistItemsFromQueueEntries
-        ? manager.createPlaylistItemsFromQueueEntries(Array.isArray(state?.playlist) ? state.playlist : [])
-        : (Array.isArray(state?.playlist) ? state.playlist : []).map(track => track?.libraryTrackId).filter(Boolean);
+      const entries = Array.isArray(state?.playlist) ? state.playlist : [];
+      const items = queue?.getPlaylistTrackIds ? await queue.getPlaylistTrackIds()
+        : manager.createPlaylistItemsFromQueueEntries ? manager.createPlaylistItemsFromQueueEntries(entries)
+        : entries.map(track => track?.libraryTrackId).filter(Boolean);
       if (!items.length) {
         window.uiManager?.setError?.(this.t('library.state.noResolvedTracks'), true);
         return;
@@ -1979,7 +2009,7 @@ export class AudioPlayerUI {
     // Ensure values are valid numbers
     currentTime = isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     duration = isFinite(duration) ? Math.max(0, duration) : 0;
-    const previewSeek = this.audioPlayer.isRemote && this.isSeeking;
+    const previewSeek = this.isSeeking;
     if (previewSeek) currentTime = Number(this.seekBar.value) / 100 * duration;
     
     // Format time display
@@ -2008,7 +2038,7 @@ export class AudioPlayerUI {
       this.seekBar.value = seekValue;
       this.lastSeekBarWrite = { bar: this.seekBar, step: settled ? step : null, text: this.seekBar.value };
     }
-    window.uiManager?.refreshRangeFillStyling?.(this.seekBar);
+    updateRangeFill(this.seekBar);
   }
 
   /**

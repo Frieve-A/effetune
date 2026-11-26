@@ -1849,6 +1849,20 @@ test('keyboard shortcuts ignore inactive contexts and control active playback', 
   });
 });
 
+test('A playback command failure the host already reported keeps its own message', async () => {
+  const shown = [];
+  await withGlobals({
+    console: { ...console, error() {} },
+    window: { uiManager: { setError: key => shown.push(key) } }
+  }, async () => {
+    const run = command => PlaybackManager.prototype.runPlaybackCommand.call({}, command);
+    assert.equal(await run(async () => { throw Object.assign(new Error('x'), { reported: true }); }), false);
+    assert.deepEqual(shown, []);
+    assert.equal(await run(() => { throw new Error('y'); }), false);
+    assert.deepEqual(shown, ['error.playbackCommandFailed']);
+  });
+});
+
 test('Space starts, pauses, and resumes playback with the page-scroll guard installed', async () => {
   await withPlaybackGlobals({}, async ({ documentRef }) => {
     const uninstallGuard = installSpaceKeyGuard(documentRef);

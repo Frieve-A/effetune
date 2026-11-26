@@ -844,3 +844,98 @@ test('Pipeline Analyzer measures a cold native pipeline with a WASM-only effect'
     finally { await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100}); }
   }
 });
+
+test('Native output recovers from an oversized saved pipeline and keeps its last playable graph on device reset', {
+  timeout:60000
+}, async t => {
+  const names = Object.values(executableNames(process.platform,process.arch)).filter(Boolean);
+  if (names.some(name => !existsSync(path.join(builtExecutableDirectory(),name)))) {
+    if (process.env[requireExecutableEnv] === '1') assert.fail('Build the native audio driver before running this test');
+    return t.skip('The native audio driver has not been built');
+  }
+  const {GRAPH_V1_CAPACITY} = await import('../../js/native/graph-capacity.generated.js');
+  const profile = await realpath(await mkdtemp(path.join(os.tmpdir(),'effetune-native-capacity-')));
+  let application;
+  try {
+    await writeFile(path.join(profile,'config.json'),JSON.stringify({
+      language:'en',onboardingTourShown:true,checkForUpdatesOnStartup:false
+    }));
+    await writeFile(path.join(profile,'audio-preferences.json'),JSON.stringify({
+      audioDriver:process.platform === 'win32' ? 'wasapi' : 'miniaudio',
+      inputDeviceId:'__effetune_no_audio_input__',outputDeviceId:'default',sampleRate:48000
+    }));
+    await writeFile(path.join(profile,'pipeline-state.json'),JSON.stringify(Array.from({
+      length:GRAPH_V1_CAPACITY.maxEffectiveInstances + 1
+    },() => ({name:'Volume',enabled:true,parameters:{vl:0}}))));
+    const main = fileURLToPath(new URL('../helpers/desktop-browser-electron-main.cjs',import.meta.url));
+    application = await electron.launch({args:[main,`--user-data-dir=${profile}`],
+      env:{...process.env,EFFETUNE_AUDIO_ENGINE_NULL:'1',EFFETUNE_BROWSER_TEST_NATIVE_INPUT:'0'}});
+    let page;
+    for (let i = 0; i < 300 && !page; ++i) {
+      page = application.windows().find(win => win.url().includes('effetune.html'));
+      if (!page) await new Promise(resolve => setTimeout(resolve,100));
+    }
+    assert.ok(page,'EffeTune main window must open');
+    await page.waitForFunction(() => window.app?.initialized && window.audioManager?.isDspReady?.());
+    assert.equal(await page.evaluate(() => window.audioManager.pipeline.length),GRAPH_V1_CAPACITY.maxEffectiveInstances + 1);
+    await page.evaluate(() => {
+      const m = window.audioManager;
+      const source = m.audioContext.createConstantSource();
+      source.offset.value = .25;
+      m.connectSourceToPipeline(source);
+      source.start();
+      window.capacityFixture = {oversized:m.pipeline,source};
+    });
+    const peakIn = async (min,max) => {
+      await page.evaluate(() => window.audioManager.request({type:'testReadOutput'},'testOutput'));
+      await page.waitForFunction(async ({min,max}) => {
+        const m = window.audioManager;
+        const sample = await m.request({type:'testReadOutput'},'testOutput');
+        return !m.failed && sample.frames > 0 && sample.peak >= min && sample.peak < max;
+      },{min,max},{polling:100,timeout:5000});
+    };
+    const setBypass = bypass => page.evaluate(bypass => window.audioManager.setMasterBypass(bypass),bypass);
+    const resetDevice = outputChannels => page.evaluate(async outputChannels => {
+      const m = window.audioManager;
+      const released = m.waitFor('recoveryReleased',event => event.accepted,10000);
+      m.send({type:'testDeviceReset',outputChannels});
+      await released;
+    },outputChannels);
+
+    await peakIn(0,.001);
+    await setBypass(true);
+    await peakIn(.24,.26);
+    await setBypass(false);
+    await peakIn(0,.001);
+    await resetDevice(1);
+    await peakIn(0,.001);
+
+    await page.evaluate(async () => {
+      const m = window.audioManager;
+      window.capacityFixture.owner = m.fadeOutOutput(0);
+      const volume = window.pluginManager.createPlugin('Volume');
+      volume.vl = -12;
+      m.updateCurrentPipeline([volume]);
+      const revision = m.workletNode.port.revision + 1;
+      const applied = m.waitFor('pipelineApplied',event => event.branch === 0 && event.revision === revision);
+      await m.rebuildPipeline();
+      await applied;
+    });
+    await page.waitForFunction(() => !window.audioManager.capacityOutputHeld);
+    await peakIn(0,.001);
+    await page.evaluate(() => window.audioManager.fadeInOutputForToken(window.capacityFixture.owner,0));
+    await peakIn(.06,.065);
+
+    assert.equal(await page.evaluate(() => {
+      const m = window.audioManager;
+      m.updateCurrentPipeline(window.capacityFixture.oversized);
+      return m.rebuildPipeline();
+    }),'error.pipelineTooLarge');
+    await peakIn(.06,.065);
+    await resetDevice(2);
+    await peakIn(.06,.065);
+  } finally {
+    try { await application?.close(); }
+    finally { await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100}); }
+  }
+});

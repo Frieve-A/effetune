@@ -44,6 +44,10 @@ function deferred() {
 test('Android remote request entry dispatches music and replies with its request ID and current public state', async () => {
     const networkCalls = [];
     const network = {
+        async networkMusicGetState() {
+            return { gatewayPermissions: { libraries: true, players: true },
+                libraries: [{ id: 'server', available: true }], players: [{ id: 'remote-player', available: true }] };
+        },
         async networkMusicResolveTrack(request) {
             networkCalls.push(request);
             return { uri: 'https://music.example/song', title: 'Song' };
@@ -54,7 +58,7 @@ test('Android remote request entry dispatches music and replies with its request
             assert.equal(request.action, 'insert');
             return { playerId: request.playerId, queue: [], transportState: 'Stopped' };
         },
-        async networkMusicBrowse() { throw Object.assign(new Error('Private provider failure'), { code: 'unavailable' }); }
+        async networkMusicBrowse() { throw Object.assign(new Error('The library is unavailable.'), { code: 'unavailable' }); }
     };
     await withGlobals({ window: { uiManager: { networkMusic: { api: network } } },
         console: createConsoleHarness({ debug() {} }) }, async () => {
@@ -94,7 +98,8 @@ test('Android remote request entry dispatches music and replies with its request
                     assert.equal(fixture.requests.some(item => item.command.startsWith('playback.')), false);
                 } else {
                     assert.deepEqual(response, { requestId, _remoteRequestId: requestId, ok: false,
-                        error: message.op === 'browseMusic' ? 'unavailable' : 'invalidSelection' });
+                        error: message.op === 'browseMusic' ? { code: 'unavailable', message: 'The library is unavailable.' }
+                            : { code: 'invalidSelection', message: 'Choose between 1 and 4096 tracks.' } });
                 }
                 assert.equal(fixture.count('remote-cancelled'), 0);
             } finally { off(); }
@@ -191,6 +196,7 @@ test('Android remote uses bounded catalog pages and projects no private source f
     const catalog = {
         init: async () => {}, createContext: async request => { assert.equal(request.query, 'Track'); return 'context'; },
         readContextPageAtOrdinal: async ({ ordinal, limit }) => { calls.push({ ordinal, limit }); const start = Math.floor(ordinal / limit) * limit; return { rows: rows.slice(start, start + limit), pageStartOrdinal: start, totalCount: rows.length }; },
+        getContextCount: async () => rows.length,
         releaseContext: async token => calls.push(token)
     };
     const service = createAndroidMusicService({}, { libraryManager: catalog, uiManager: {} });
@@ -201,9 +207,26 @@ test('Android remote uses bounded catalog pages and projects no private source f
     assert.equal(calls.at(-1), 'context'); assert.equal(result.result.items[0].uri, undefined); assert.equal(result.result.items[0].path, undefined);
 });
 
+test('Android remote browse of an empty library reads no page and releases the context', async () => {
+    const released = [];
+    const catalog = {
+        init: async () => {}, createContext: async () => 'context', getContextCount: async () => 0,
+        readContextPageAtOrdinal: async () => { throw new Error('no page expected'); },
+        releaseContext: async token => released.push(token)
+    };
+    const service = createAndroidMusicService({}, { libraryManager: catalog, uiManager: {} });
+    const result = await dispatchMusic(service, local, { op: 'browseMusic', query: '', start: 0, count: 5 }, () => true);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.result.items, []);
+    assert.equal(result.result.total, 0);
+    assert.deepEqual(released, ['context']);
+});
+
 test('Android remote gateway and Subsonic resolutions preserve auth only inside native queue chunks', async () => {
     const commands = [];
-    const api = { networkMusicResolveTrack: async ({ serverId, trackId, localPlayback }) => {
+    const api = { networkMusicGetState: async () => ({ gatewayPermissions: { libraries: true, players: false },
+        libraries: [{ id: 'subsonic', available: true }, { id: 'pwa:gateway', available: true }], players: [] }),
+    networkMusicResolveTrack: async ({ serverId, trackId, localPlayback }) => {
         assert.equal(localPlayback, true);
         return { uri: `https://music.example/${serverId}/${trackId}`, title: trackId, headers: { Authorization: 'Bearer private' } };
     } };
@@ -229,13 +252,14 @@ test('Android remote uses existing SAF source resolver for local CUE tracks', as
         client: { resolveSequenceEntrySource: async ({ trackUid }) => { assert.equal(trackUid, 'cue'); return { uri: 'content://library/audio', startFrame: 75, endFrame: 150 }; } } };
     const bridge = { request: async (name, payload) => {
         commands.push({ name, payload });
-        return name === 'snapshot.get' ? { playback: { index: 2, queueLength: 5 } } : { queue: [] };
+        return name === 'snapshot.get' ? { playback: { index: 2, ordinal: 0, queueLength: 5 } } : { queue: [] };
     } };
     const service = createAndroidMusicService(bridge, { uiManager: {}, libraryManager: catalog });
     const result = await dispatchMusic(service, local, { op: 'queueMusic', position: 'afterCurrent', items: [{ serverId: 'local', trackId: 'cue' }] }, () => true);
     assert.equal(result.ok, true);
     const insert = commands.find(item => item.name === 'playback.insert').payload;
-    assert.equal(insert.index, 3); assert.deepEqual(insert.items[0].region, { start: 1, end: 2, durationSec: 1 });
+    assert.equal(insert.index, 1); assert.equal(insert.transportOrder, true);
+    assert.deepEqual(insert.items[0].region, { start: 1, end: 2, durationSec: 1 });
     assert.equal(insert.items[0].libraryTrackId, 'cue');
 });
 
@@ -243,7 +267,9 @@ test('Revoked remote request cannot publish a queue after delayed provider resol
     let resolveTrack, entered, current = true;
     const waiting = new Promise(resolve => { entered = resolve; });
     const commands = [];
-    const api = { networkMusicResolveTrack: () => new Promise(resolve => { resolveTrack = resolve; entered(); }) };
+    const api = { networkMusicGetState: async () => ({ gatewayPermissions: { libraries: true, players: false },
+        libraries: [{ id: 'subsonic', available: true }], players: [] }),
+    networkMusicResolveTrack: () => new Promise(resolve => { resolveTrack = resolve; entered(); }) };
     const bridge = { request: async (name, payload) => { commands.push({ name, payload }); return {}; } };
     const service = createAndroidMusicService(bridge, { uiManager: { networkMusic: { api } } }, async () => current);
     const pending = dispatchMusic(service, local, { op: 'playMusic', items: [{ serverId: 'subsonic', trackId: 'delayed' }] }, () => current);
@@ -254,4 +280,116 @@ test('Revoked remote request cannot publish a queue after delayed provider resol
     assert.equal(result.ok, false);
     assert.equal(result.error.code, 'unauthorized');
     assert.deepEqual(commands.map(item => item.name), ['playback.queue.begin']);
+});
+
+test('Android remote IR transfers cross the bridge in 512 KiB parts and sync notices reach the Service', async () => {
+    const part = 512 * 1024, upload = Uint8Array.from({ length: part + 3 }, (_, i) => i & 255);
+    const { api, emit, requests } = remoteFixture((command, payload) => command === 'remote.irRead'
+        ? { data: Buffer.from(upload.subarray(payload.offset, payload.offset + part)).toString('base64') } : {});
+    let received;
+    api.onRequest(async request => { received = request.message; });
+    await emit('remote-request', { requestId: 'put-1', message: { op: 'putIR', id: 'x', bytes: upload.byteLength } });
+    assert.deepEqual(received.data, upload);
+    assert.deepEqual(requests.filter(item => item.command === 'remote.irRead').map(item => item.payload.offset), [0, part]);
+
+    requests.length = 0;
+    await api.respond({ requestId: 'get-1', ok: true, data: upload, name: 'hall.wav', ext: 'wav', snapshot: { pipeline: [] } });
+    const chunks = requests.filter(item => item.command === 'remote.irChunk').map(item => item.payload);
+    assert.deepEqual(chunks.map(item => [item.index, item.total, item.bytes, item.name, item.ext]), [[0, 2, part + 3, 'hall.wav', 'wav'], [1, 2, part + 3, 'hall.wav', 'wav']]);
+    assert.deepEqual(Buffer.concat(chunks.map(item => Buffer.from(item.data, 'base64'))), Buffer.from(upload));
+    assert.deepEqual(requests.at(-1), { command: 'remote.respond', payload: { requestId: 'get-1', ok: true, name: 'hall.wav', ext: 'wav', snapshot: { pipeline: [] } } });
+
+    requests.length = 0;
+    await api.notifyPresets();
+    await api.notifyIrs();
+    assert.deepEqual(requests.map(item => item.command), ['remote.presetsChanged', 'remote.irsChanged']);
+});
+
+test('Android remote playMusic prepares local SAF scores and keeps catalog queue metadata', async () => {
+    const { AndroidPlayerContext } = await import('../../js/android/player-context.js');
+    const midi = Uint8Array.of(77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96,
+        77, 84, 114, 107, 0, 0, 0, 12, 0, 144, 60, 100, 96, 128, 60, 0, 0, 255, 47, 0);
+    const xml = new TextEncoder().encode('<score-partwise version="3.1"><part-list><score-part id="P1">' +
+        '<part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1">' +
+        '<attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch>' +
+        '<duration>1</duration></note></measure></part></score-partwise>');
+    const uri = 'content://library/document/123', scoreUri = 'content://app.files/score.bin';
+    const tags = { title: 'Catalog title', artist: 'Catalog artist', album: 'Catalog album', duration: 12 };
+    await withGlobals({ window: {} }, async () => {
+        for (const [fileName, bytes] of [['song.mid', midi], ['song.musicxml', xml]]) {
+            const commands = [];
+            const bridge = { async request(name, payload) {
+                commands.push({ name, payload });
+                if (name === 'documents.createTemporary') return { uri: scoreUri };
+                if (name === 'playback.getPublic') return { queue: [] };
+                return {};
+            } };
+            const contextManager = Object.assign(Object.create(AndroidPlayerContext.prototype), {
+                bridge, sourceCache: new WeakMap(), audioPlayer: {},
+                audioManager: { getNativeSampleRate: () => 48000 },
+                documents: {
+                    async read(sourceUri) { assert.equal(sourceUri, uri); return bytes; },
+                    async write(preparedUri, packed) { assert.equal(preparedUri, scoreUri); assert.ok(packed.byteLength > 16); }
+                }
+            });
+            const catalog = { init: async () => {},
+                getTrack: async () => ({ fileName, ...tags, duration: undefined, durationSec: tags.duration }),
+                client: { resolveSequenceEntrySource: async () => ({ uri }) } };
+            const service = createAndroidMusicService(bridge, { uiManager: { audioPlayer: { contextManager } }, libraryManager: catalog });
+            const result = await dispatchMusic(service, local,
+                { op: 'playMusic', items: [{ serverId: 'local', trackId: 'score' }] }, () => true);
+            assert.equal(result.ok, true, JSON.stringify(result.error));
+            const [entry] = commands.find(({ name }) => name === 'playback.queue.append').payload.items;
+            assert.equal(entry.uri, uri);
+            assert.equal(entry.scoreUri, scoreUri);
+            assert.equal(entry.scoreName, fileName);
+            assert.equal(entry.libraryTrackId, 'score');
+            const { title, artist, album, duration } = entry;
+            assert.deepEqual({ title, artist, album, duration }, tags);
+        }
+    });
+});
+
+async function partialQueueInsert(queue, currentIndex) {
+    const catalog = { init: async () => {},
+        getTrack: async trackId => ({ title: trackId }),
+        client: { async resolveSequenceEntrySource({ trackUid }) {
+            if (trackUid === 'song-65') throw Object.assign(new Error('The track is unavailable.'), { code: 'trackUnavailable' });
+            return { uri: `content://library/${trackUid}` };
+        } } };
+    const { api, requests, emit } = remoteFixture((command, payload) => {
+        if (command === 'snapshot.get') return { playback: { index: currentIndex, queueLength: queue.length } };
+        if (command === 'playback.insert') {
+            for (const { title } of payload.items) queue.push({ id: queue.length + 1, title });
+        }
+        if (command === 'playback.getPublic') return { playerId: 'local', queue: queue.slice(0, 100), total: queue.length,
+            currentId: queue[currentIndex]?.id ?? 0, currentTrack: queue[currentIndex] ?? null };
+    });
+    const items = Array.from({ length: 66 }, (_, index) => ({ serverId: 'local', trackId: `song-${index}` }));
+    await withGlobals({ window: { uiManager: {}, libraryManager: catalog } }, async () => {
+        const off = api.onRequest(() => assert.fail('Music must use its dispatcher'));
+        try { await emit('remote-request', { requestId: 'partial-insert', message: { op: 'queueMusic', items } }); }
+        finally { off(); }
+    });
+    assert.deepEqual(requests.filter(({ command }) => command === 'playback.insert').map(({ payload }) => payload.items.length), [64]);
+    const { ok, error, outcome, playback } = requests.find(({ command }) => command === 'remote.respond').payload;
+    assert.equal(ok, false);
+    assert.deepEqual(error, { code: 'trackUnavailable', message: 'The track is unavailable.' });
+    assert.equal(outcome, 'unknown');
+    assert.equal(playback.playerId, 'local');
+    return playback;
+}
+
+test('Android remote bridges the public error and observed playback after a partial queue insert', async () => {
+    const playback = await partialQueueInsert([], -1);
+    assert.equal(playback.total, 64);
+    assert.equal(playback.queue.at(-1).title, 'song-63');
+});
+
+test('Android partial queue insert keeps the total and current track beyond the first public page', async () => {
+    const queue = Array.from({ length: 150 }, (_, i) => ({ id: i + 1, title: `Track ${i + 1}` }));
+    const playback = await partialQueueInsert(queue, 120);
+    assert.equal(playback.total, 214);
+    assert.equal(playback.queue.length, 100);
+    assert.deepEqual(playback.currentTrack, { id: 121, title: 'Track 121' });
 });

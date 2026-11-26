@@ -124,6 +124,14 @@ body {
     white-space: nowrap;
 }
 
+@media (hover: none) {
+    .measurement-item-name {
+        overflow: visible;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
 .measurement-item-date {
     font-size: 12px;
     color: var(--et-surface-61);
@@ -267,8 +275,8 @@ input[type="radio"] {
     gap: 8px;
 }
 
-.channel-checkbox-group label[hidden] {
-    display: none;
+[hidden] {
+    display: none !important;
 }
 
 .channel-checkbox-group label {
@@ -1325,6 +1333,13 @@ input[type="range"]::-moz-range-thumb,
 .measurement-storage-usage, .measurement-storage-notice { margin: 8px 0; color: var(--et-surface-51); font-size: 0.85rem; }
 .measurement-storage-notice { color: var(--et-warning); }
 .measurement-ir-badge { display: block; margin-top: 2px; color: var(--et-success); font-size: 0.78rem; }
+@media (hover: none), (any-pointer: coarse) {
+    .measurement-ir-badge[title]::after {
+        content: attr(title);
+        display: block;
+        color: var(--et-surface-61);
+    }
+}
 .measurement-ir-export-option { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 
 /* Analysis panels reuse the application controls and theme surfaces. */

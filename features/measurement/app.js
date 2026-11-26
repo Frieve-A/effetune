@@ -4,11 +4,12 @@
  */
 
 import audioUtils from './audio-utils/index.js';
-import { isAndroidHost } from '../../js/android/bridge.js';
+import { getAndroidBridge, isAndroidHost } from '../../js/android/bridge.js';
 import { installAndroidFileDownloads } from '../../js/android/file-downloads.js';
-import { ANDROID_MEASUREMENT_OUTPUT_CHANNELS } from '../../js/android/measurement.js';
 import dataStorage from './dataStorage.js';
-installAndroidFileDownloads();
+installAndroidFileDownloads(window, () =>
+    uiManager.showNotification(i18n.t('error:measurementExportFailed'), 'error'),
+    key => i18n.t(key) ?? undefined);
 import uiManager from './ui/ui-manager.js';
 import measurementController, {
     MeasurementSetupError
@@ -29,7 +30,8 @@ import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js
 import { getNativeMeasurementDriver, nativeMeasurementDevice } from './audio-utils/native-measurement.js';
 import { essFrequencyLimit } from './measurement-model.js';
 import { takePipelineHandoffOnce } from '../../js/pipeline-analyzer/pipeline-handoff-store.js';
-import { cancelSpeakerDistortionAudio, openSpeakerDistortionSetup } from './ui/speaker-distortion-setup.js';
+import { cancelSpeakerDistortionAudio, openSpeakerDistortionSetup, refreshSpeakerDistortionChannels }
+    from './ui/speaker-distortion-setup.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -39,7 +41,7 @@ const sweepBandChannelValues = new Map();
 
 function getOutputChannelCount() {
     const count = Number(document.getElementById('outputChannelCount').value);
-    if (audioUtils.nativeMeasurement && Number.isInteger(count) && count >= 1 && count <= 16) return count;
+    if ((audioUtils.nativeMeasurement || isAndroidHost()) && Number.isInteger(count) && count >= 1 && count <= 16) return count;
     return SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(count) ? count : 2;
 }
 
@@ -48,8 +50,7 @@ function getOutputChannelCount() {
 function getSweepBandEditorChannels(selection = getOutputChannelSelection()) {
     const speakerSetup = document.getElementById('sweepBandChannel').closest('#speakerDistortionSetupScreen');
     if (!speakerSetup && !selection.includes('all')) return selection;
-    const count = speakerSetup && isAndroidHost() ? ANDROID_MEASUREMENT_OUTPUT_CHANNELS : getOutputChannelCount();
-    return INDIVIDUAL_CHANNELS.slice(0, count);
+    return INDIVIDUAL_CHANNELS.slice(0, getOutputChannelCount());
 }
 
 function getOutputChannelSelection() {
@@ -70,6 +71,7 @@ function applyOutputChannelSelection(selection) {
         input.checked = selected.has(input.value);
     });
     syncMultichannelControls([...selected]);
+    refreshSpeakerDistortionChannels();
 }
 
 function syncMultichannelControls(selection = getOutputChannelSelection()) {
@@ -317,6 +319,12 @@ async function initializeAudio() {
     if (!audioInitializationPromise) {
         audioInitializationPromise = (async () => {
             try {
+                if (isAndroidHost()) {
+                    const options = await getAndroidBridge().request('measurement.options');
+                    measurementController.pipelineHandoff = { ...measurementController.pipelineHandoff,
+                        snapshot: options.pipeline, pluginNames: options.pluginNames };
+                    showAndroidMeasurementRates(options);
+                }
                 await measurementController.initialize();
                 isAudioInitialized = true;
             } catch (error) {
@@ -329,6 +337,17 @@ async function initializeAudio() {
     }
 
     return audioInitializationPromise;
+}
+
+function showAndroidMeasurementRates({ sampleRate, supportedSampleRates }) {
+    const select = document.getElementById('sampleRate');
+    const saved = Number(select.value);
+    for (const option of [...select.options]) {
+        if (!supportedSampleRates.includes(Number(option.value))) option.remove();
+    }
+    select.value = String(supportedSampleRates.includes(saved) ? saved : sampleRate);
+    // Refresh the sweep limits directly; the corrected rate is saved with the next settings save.
+    updateSweepFreqLimits();
 }
 
 /**
@@ -651,7 +670,7 @@ async function populateAudioDevices(refresh = false) {
         // Wait for audio to be initialized
         if (!audioUtils.initialized) {
             await audioUtils.initialize();
-        } else if (refresh && audioUtils.nativeMeasurement) {
+        } else if (refresh && (audioUtils.nativeMeasurement || isAndroidHost())) {
             await audioUtils.enumerateDevices();
         }
         
@@ -681,7 +700,11 @@ async function populateAudioDevices(refresh = false) {
             option.text = device.label;
             outputSelect.appendChild(option);
         });
-        if (audioUtils.nativeMeasurement) {
+        if (isAndroidHost()) {
+            for (const [select, previous] of [[inputSelect, previousInput], [outputSelect, previousOutput]])
+                if ([...select.options].some(option => option.value === previous)) select.value = previous;
+            syncNativeMeasurementChannels();
+        } else if (audioUtils.nativeMeasurement) {
             // Keep the previous selection when it still exists; otherwise start
             // from the system default device instead of the first enumerated one.
             for (const [select, list, previous] of [[inputSelect, devices.inputs, previousInput],
@@ -697,6 +720,17 @@ async function populateAudioDevices(refresh = false) {
 }
 
 function syncNativeMeasurementChannels(settings = {}) {
+    if (isAndroidHost()) {
+        const id = document.getElementById('audioOutput').value;
+        const device = audioUtils.devices.outputs.find(output => String(output.id) === id);
+        const counts = device?.channelCounts ?? audioUtils.devices.defaultOutputChannelCounts ?? [2];
+        const select = document.getElementById('outputChannelCount');
+        const requested = Number(settings.outputChannelCount ?? select.value) || 2;
+        select.replaceChildren(...counts.map(count => new Option(String(count), String(count))));
+        select.value = String(counts.filter(count => count <= requested).at(-1) ?? counts[0]);
+        applyOutputChannelSelection(settings.outputChannels || settings.outputChannel || getOutputChannelSelection());
+        return;
+    }
     if (!audioUtils.nativeMeasurement) return;
     const input = nativeMeasurementDevice(audioUtils.devices.inputs, document.getElementById('audioInput').value);
     const inputSelect = document.getElementById('inputChannel');
@@ -829,7 +863,7 @@ function loadUserSettings() {
         // Measurement config settings
         if (settings.sampleRate) document.getElementById('sampleRate').value = settings.sampleRate;
         if (settings.inputChannel) document.getElementById('inputChannel').value = settings.inputChannel;
-        if (SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(settings.outputChannelCount)) {
+        if (!isAndroidHost() && SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(settings.outputChannelCount)) {
             document.getElementById('outputChannelCount').value = settings.outputChannelCount;
         }
         applyOutputChannelSelection(settings.outputChannels || settings.outputChannel || 'all');
@@ -1016,6 +1050,10 @@ function updateSweepBandLimitControls() {
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     installRangePrecisionControl(document);
+    if (isAndroidHost()) {
+        getAndroidBridge();
+        syncNativeMeasurementChannels();
+    }
     initializeApp();
 
     // Load user settings when app starts
@@ -1067,7 +1105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     navigator.mediaDevices?.addEventListener('devicechange', () => {
-        if (audioUtils.nativeMeasurement) void populateAudioDevices(true);
+        if (audioUtils.nativeMeasurement || isAndroidHost()) void populateAudioDevices(true);
     });
     
     // Save PEQ settings when values change

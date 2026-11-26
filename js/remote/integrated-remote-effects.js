@@ -207,6 +207,7 @@ export class IntegratedRemoteEffects {
     acceptFrame(event) {
         if (event.source !== this.frame?.contentWindow || event.origin !== this.frameOrigin ||
             event.data?.type !== 'effetune-remote-ready' || this.port) return;
+        this.api.prepareEditorFrame?.(this.frame);
         const channel = new this.window.MessageChannel();
         const generation = this.generation;
         const port = channel.port1;
@@ -214,10 +215,15 @@ export class IntegratedRemoteEffects {
         let attempt = 0;
         let buffered = [];
         let connecting = false;
+        const forward = message => {
+            if (message.connectionId !== this.connectionId) return;
+            if (this.api.reauthorizeOnClose && message.type === 'close' && message.code === 4401) this.changeConnection();
+            else port.postMessage(message);
+        };
         this.unsubscribe = this.api.onEvent(message => {
             if (generation !== this.generation) return;
             if (connecting) buffered.push(message);
-            else if (message.connectionId === this.connectionId) port.postMessage(message);
+            else forward(message);
         });
         port.onmessage = async ({ data }) => {
             if (generation !== this.generation) return;
@@ -240,9 +246,13 @@ export class IntegratedRemoteEffects {
                         return;
                     }
                     connecting = false;
-                    if (!result.ok) { port.postMessage({ type: 'close', code: 4401 }); return; }
+                    if (!result.ok) {
+                        if (this.api.reauthorizeOnClose) this.changeConnection();
+                        else port.postMessage({ type: 'close', code: 4401 });
+                        return;
+                    }
                     this.connectionId = result.connectionId;
-                    for (const message of buffered) if (message.connectionId === result.connectionId) port.postMessage(message);
+                    for (const message of buffered) forward(message);
                     buffered = [];
                 } catch (error) {
                     if (generation !== this.generation || currentAttempt !== attempt) return;

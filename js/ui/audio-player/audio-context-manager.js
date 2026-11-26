@@ -4113,10 +4113,6 @@ export class AudioContextManager {
   }
 
   reportPlaybackSourceFailure(error) {
-    if (error?.code === 'MIDI_NATIVE_UNSUPPORTED') {
-      window.uiManager?.setError?.('midi.error.nativeUnsupported', true);
-      return;
-    }
     if (error?.code?.startsWith('musicxml-')) {
       window.uiManager?.setError?.(error.code === 'musicxml-unsupported' ? 'musicxml.error.unsupported'
         : error.code === 'musicxml-too-large' ? 'musicxml.error.tooLarge' : 'musicxml.error.corrupt', true);

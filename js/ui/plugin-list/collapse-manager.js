@@ -107,7 +107,8 @@ export class CollapseManager {
         this.pluginList.classList.toggle('collapsed', this.isCollapsed);
         this.pullTab.classList.toggle('collapsed', this.isCollapsed);
         this.mainContainer.classList.toggle('plugin-list-collapsed', this.isCollapsed);
-        this.pullTab.textContent = this.isCollapsed ? '▶' : '◀';
+        const rtl = document.documentElement.dir === 'rtl';
+        this.pullTab.textContent = this.isCollapsed !== rtl ? '▶' : '◀';
         this.pullTab.setAttribute('aria-expanded', String(!this.isCollapsed));
         this.sidebarButton?.setAttribute('aria-expanded', String(!this.isCollapsed));
         this.updatePositions();
@@ -117,13 +118,14 @@ export class CollapseManager {
     updatePositions() {
         if (!this.pluginList || !this.pullTab || !this.mainContainer) return;
         const pipeline = document.getElementById('pipeline');
+        this.pullTab.textContent = this.isCollapsed !== (document.documentElement.dir === 'rtl') ? '▶' : '◀';
         if (this.isMobileLayout()) {
             this.isCollapsed = false;
             this.pluginList.classList.remove('collapsed');
             this.pullTab.classList.remove('collapsed');
             this.mainContainer?.classList?.remove('plugin-list-collapsed');
             this.pullTab.style.left = '';
-            this.pullTab.textContent = '◀';
+            this.pullTab.textContent = document.documentElement.dir === 'rtl' ? '▶' : '◀';
             this.pullTab.setAttribute('aria-expanded', 'true');
             this.sidebarButton?.setAttribute('aria-expanded', 'true');
             if (pipeline) {
@@ -143,7 +145,7 @@ export class CollapseManager {
 
     setupPullTabFunctionality() {
         if (!this.pullTab) return;
-        this.pullTab.textContent = '◀';
+        this.pullTab.textContent = document.documentElement.dir === 'rtl' ? '▶' : '◀';
         const adjustLayout = () => {
             this.updatePositions();
             this.checkWindowWidthAndAdjust();
@@ -227,7 +229,8 @@ export class CollapseManager {
 
         const windowWidth = window.innerWidth;
         const pipelineRect = pipeline.getBoundingClientRect();
-        const pipelineRightEdge = pipelineRect.right;
+        const rtl = document.documentElement.dir === 'rtl';
+        const pipelineRightEdge = rtl ? windowWidth - pipelineRect.left : pipelineRect.right;
         const threshold = windowWidth - 20; // 20px margin from the right edge
 
         // If plugin list is expanded and pipeline is too close to the edge, collapse it

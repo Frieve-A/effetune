@@ -2,11 +2,17 @@
 // the audio worklet: forwards the PCM MessagePort that main hands over, keeps
 // the local L0 delay in step with the main-side status, and asks main for a
 // fresh port whenever the primary worklet is rebuilt.
+import { attachAndroidNetworkOutput, getNetworkOutputBridge } from '../android/network-output.js';
+
 export class NetworkOutputIntegration {
-  constructor(audioManager, { windowRef = globalThis.window, bridge = windowRef?.electronAPI?.networkOutputV1 } = {}) {
+  constructor(audioManager, { windowRef = globalThis.window, bridge = getNetworkOutputBridge(windowRef) } = {}) {
     this.audioManager = audioManager;
     this.window = windowRef;
     this.bridge = bridge;
+    if (audioManager?.isAndroid && bridge?.onReport) {
+      this.detachAndroid = attachAndroidNetworkOutput(audioManager, bridge);
+      return;
+    }
     this.portListener = null;
     this.removeStatusListener = null;
     this.routeListener = () => {
@@ -78,6 +84,7 @@ export class NetworkOutputIntegration {
   }
 
   dispose() {
+    if (this.detachAndroid) { this.detachAndroid(); return; }
     clearInterval(this.routeTimer);
     this.audioManager.removeEventListener?.('networkRoute', this.routeListener);
     this.audioManager.removeEventListener?.('networkPaths', this.routeListener);

@@ -4,7 +4,7 @@ export const TRANSLATED_LANGUAGE_CODES = ['ar', 'es', 'fr', 'hi', 'ja', 'ko', 'p
 export const SELECTABLE_LANGUAGE_CODES = ['en', ...TRANSLATED_LANGUAGE_CODES];
 
 export const LANGUAGE_OPTIONS = [
-  { value: AUTO_LANGUAGE_PREFERENCE, label: 'Auto (Browser)' },
+  { value: AUTO_LANGUAGE_PREFERENCE, label: 'Auto' },
   { value: 'en', label: 'English' },
   { value: 'ar', label: 'العربية' },
   { value: 'es', label: 'Español' },
@@ -40,7 +40,7 @@ export function resolveLanguagePreference(languagePreference, browserLanguage) {
 
 export function getLanguageOptionLabel(value, translate) {
   if (value === AUTO_LANGUAGE_PREFERENCE) {
-    return translate ? translate('dialog.config.language.auto') : 'Auto (Browser)';
+    return translate ? translate('dialog.config.language.auto') : 'Auto';
   }
 
   return LANGUAGE_OPTIONS.find(option => option.value === value)?.label || value;

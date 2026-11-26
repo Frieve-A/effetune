@@ -28,7 +28,6 @@ Le test compare les deux pipelines décrits dans [Utilisation des fonctions Pipe
 
 - **Application web :** dans l’en-tête Effect Pipeline, cliquez sur le bouton **▼** situé juste à droite du bouton de basculement A/B, celui qui affiche "A" ou "B" selon le pipeline actuel, puis choisissez **Test en double aveugle** dans le menu qui apparaît.
 - **Application de bureau :** en plus du même menu **▼**, vous pouvez aussi ouvrir le test depuis le menu **Fichier**.
-
 Pendant que le test est ouvert, l’affichage de l’Effect Pipeline est masqué afin que vous ne puissiez pas voir quels effets sont actifs et que l’écoute reste aveugle. Vous pouvez fermer le test à tout moment avec le bouton **×** pour revenir à l’affichage normal.
 
 ## Configurer le test

@@ -28,7 +28,7 @@ export function createUserDataBackupAdapter(options = {}) {
                 try { items.push(...await operation()); }
                 catch (error) {
                     console.error(`User data backup ${kind} read failed:`, error);
-                    unavailable.push({ kind, reason: 'Saved data could not be read. Check your storage and try again.' });
+                    unavailable.push({ kind, reason: 'unreadable' });
                 }
             };
             await read('pipeline', async () => {
@@ -61,21 +61,24 @@ export function createUserDataBackupAdapter(options = {}) {
         },
 
         validateItem(item) {
-            if (typeof item.name !== 'string' || !item.name.trim()) return 'Enter a name for this item.';
-            if (item.kind === 'visualizer' && !visualizerPresets) return 'Visualizer presets are unavailable in this environment.';
+            if (typeof item.name !== 'string' || !item.name.trim()) return 'invalidName';
+            if (item.kind === 'visualizer' && !visualizerPresets) return 'storageUnavailable';
             if ((item.kind === 'pipeline' || item.kind === 'plugin' || item.kind === 'visualizer') && RESERVED_NAMES.has(item.name)) {
-                return 'This preset name cannot be used. Rename it before creating a backup.';
+                return 'invalidName';
             }
             if (item.kind === 'visualizer' && !validateLayout(item.data)) {
-                return 'The visualizer preset is incomplete. Create a new backup from the original data.';
+                return 'invalidData';
             }
             if (item.kind === 'plugin' && (typeof item.pluginName !== 'string' || !item.pluginName.trim() || RESERVED_NAMES.has(item.pluginName))) {
-                return 'This effect name cannot be used.';
+                return 'invalidData';
             }
-            if (client && item.kind === 'pipeline' && item.name.length > 160) return 'Preset names can contain up to 160 characters in the extension.';
+            if (client && item.kind === 'pipeline' && item.name.length > 160) return 'nameTooLong';
             if (item.kind === 'measurement' && item.data) {
                 try { validateMeasurementBackup(item.data.measurement, item.data.impulseResponses); }
-                catch { return 'The measurement or its impulse responses are incomplete. Create a new backup from the original data.'; }
+                catch (error) {
+                    console.error('Backup measurement validation failed:', error);
+                    return 'invalidData';
+                }
             }
             return null;
         },
@@ -83,7 +86,7 @@ export function createUserDataBackupAdapter(options = {}) {
         canApplyPreset(item) {
             if (options.canApplyPreset) return options.canApplyPreset(item);
             if (item.kind === 'pipeline' && presets?.isPresetLoadable && !presets.isPresetLoadable(item.data)) {
-                return 'Some effects are unavailable on this device. The preset can still be saved.';
+                return 'unsupportedEffects';
             }
             return true;
         },

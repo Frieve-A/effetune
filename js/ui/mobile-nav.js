@@ -1,9 +1,13 @@
 import { cancelExitMotion, runExitMotion } from './motion.js';
+import { featureReturnTab } from '../../features/measurement/return-to-effetune.js';
+import { isAndroidHost } from '../android/bridge.js';
+
+const ANDROID_TAB_KEY = 'effetune_android_mobile_tab';
 
 const MOBILE_ICONS = {
     play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M8 5.14a1 1 0 0 1 1.52-.85l10.5 6.86a1 1 0 0 1 0 1.7L9.52 19.71A1 1 0 0 1 8 18.86z"/></svg>',
     pause: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" draggable="false"><rect x="7" y="5" width="3.6" height="14" rx="1.4"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.4"/></svg>',
-    next: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M13 7.15a.8.8 0 0 0-1.25-.66l-7.2 5.05a.9.9 0 0 0 0 1.48l7.2 5.05A.8.8 0 0 0 13 17.4z"/><path d="M20 7.15a.8.8 0 0 0-1.25-.66l-6.2 4.45a.9.9 0 0 0 0 1.48l6.2 4.45A.8.8 0 0 0 20 17.4z"/></svg>',
+    next: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M11 6.6a.8.8 0 0 1 1.25-.66l7.2 5.05a.9.9 0 0 1 0 1.48l-7.2 5.05A.8.8 0 0 1 11 16.85z"/><path d="M4 6.6a.8.8 0 0 1 1.25-.66l6.2 4.45a.9.9 0 0 1 0 1.48l-6.2 4.45A.8.8 0 0 1 4 16.85z"/></svg>',
     plus: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M12 5v14M5 12h14"/></svg>',
     close: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" draggable="false"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     player: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" draggable="false"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
@@ -34,6 +38,8 @@ export class MobileNav {
         this.resumePromptListeners = [];
         this.resumePromptAudioContext = null;
         this.resumePromptAudioStateHandler = null;
+        this.desktopResumeAction = null;
+        this.desktopResumeRefresh = null;
         this.restoreUpdateUITexts = null;
         this.installUpdateUITextsHook();
         this.unsubscribe = this.uiManager.layoutMode?.onChange(mode => this.applyMode(mode)) || null;
@@ -42,12 +48,17 @@ export class MobileNav {
 
     applyMode(mode) {
         if (mode === 'mobile') {
+            this.removeDesktopResumeAction();
+            const savedTab = !this.nav && isAndroidHost() ? window.localStorage.getItem(ANDROID_TAB_KEY) : null;
             this.ensureElements();
             this.mountAudioPlayer('mobile');
-            const hasSharedPipeline = new URLSearchParams(window.location.search).has('p');
+            const params = new URLSearchParams(window.location.search);
+            const returnTab = featureReturnTab() || (params.get('restorePipeline') === 'transient' ? 'effects' : null);
             const currentView = this.getCurrentView();
-            if (currentView === 'visualizer') this.applyViewState('visualizer', { fromLibraryView: true });
-            else this.setView(currentView === 'library' ? 'library' : (currentView === 'effects' || hasSharedPipeline ? 'effects' : 'player'));
+            if (returnTab) this.setView(returnTab);
+            else if (currentView === 'visualizer') this.applyViewState('visualizer', { fromLibraryView: true });
+            else if (currentView === 'player' && params.has('p')) this.setView('effects');
+            else this.setView(Object.hasOwn(MOBILE_NAV_LABELS, savedTab) ? savedTab : currentView);
             this.attachPlayerState();
             this.updateMiniPlayer();
             this.updatePlayerPlaceholder();
@@ -60,6 +71,32 @@ export class MobileNav {
         this.closePluginList({ immediate: true });
         document.body.classList.remove('view-player', 'view-effects');
         this.removeMobileElements();
+        if (this.uiManager.audioManager?.isAndroid) this.ensureDesktopResumeAction();
+    }
+
+    ensureDesktopResumeAction() {
+        if (this.desktopResumeAction) return;
+        const existingAction = document.querySelector('.settings-menu [data-power-resume-action]');
+        if (!existingAction?.parentNode) return;
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'settings-menu-item';
+        action.addEventListener('click', () => this.resumeAudioContext());
+        existingAction.parentNode.insertBefore(action, existingAction);
+        this.desktopResumeAction = action;
+        this.desktopResumeRefresh = () => this.updateAudioResumePrompt();
+        this.uiManager.audioManager.addEventListener('nativeSnapshot', this.desktopResumeRefresh);
+        this.updateLabels();
+        this.updateAudioResumePrompt();
+    }
+
+    removeDesktopResumeAction() {
+        if (this.desktopResumeRefresh) {
+            this.uiManager.audioManager?.removeEventListener('nativeSnapshot', this.desktopResumeRefresh);
+        }
+        this.desktopResumeAction?.remove();
+        this.desktopResumeAction = null;
+        this.desktopResumeRefresh = null;
     }
 
     ensureElements() {
@@ -183,6 +220,11 @@ export class MobileNav {
 
         if (this.resumePromptListeners.length === 0) {
             const refresh = () => this.updateAudioResumePrompt();
+            const manager = this.uiManager.audioManager;
+            if (manager?.isAndroid) {
+                manager.addEventListener('nativeSnapshot', refresh);
+                this.resumePromptListeners.push(() => manager.removeEventListener('nativeSnapshot', refresh));
+            }
             document.addEventListener('pointerdown', refresh, { passive: true });
             document.addEventListener('keydown', refresh);
             document.addEventListener('visibilitychange', refresh);
@@ -244,6 +286,7 @@ export class MobileNav {
     applyViewState(nextView, options = {}) {
         const visualizer = nextView === 'visualizer';
         if (visualizer) nextView = 'player';
+        else if (this.nav && isAndroidHost()) window.localStorage.setItem(ANDROID_TAB_KEY, nextView);
         document.body.classList.toggle('view-player', nextView === 'player' && !visualizer);
         document.body.classList.toggle('view-effects', nextView === 'effects');
         document.body.classList.toggle('view-library', nextView === 'library');
@@ -315,6 +358,10 @@ export class MobileNav {
         if (this.resumePrompt) {
             this.resumePrompt.textContent = resumePlaybackLabel;
             this.resumePrompt.setAttribute('aria-label', resumePlaybackLabel);
+        }
+        if (this.desktopResumeAction) {
+            this.desktopResumeAction.textContent = resumePlaybackLabel;
+            this.desktopResumeAction.setAttribute('aria-label', resumePlaybackLabel);
         }
         const miniTrack = this.miniPlayer?.querySelector?.('.mobile-mini-track');
         const openMusic = this.miniPlayer?.querySelector?.('.mobile-mini-open-music');
@@ -487,6 +534,9 @@ export class MobileNav {
     }
 
     resumeAudioContext() {
+        if (this.uiManager.audioManager?.isAndroid) {
+            return this.uiManager.audioManager.resumeStoppedOutput();
+        }
         const controller = this.uiManager.audioManager?.powerPolicyController;
         if (controller?.enabled) {
             Promise.resolve(controller.requestResumeFromUserGesture?.('dedicated-input'))
@@ -506,6 +556,9 @@ export class MobileNav {
     }
 
     updateAudioResumePrompt() {
+        if (this.desktopResumeAction) {
+            this.desktopResumeAction.hidden = !this.uiManager.audioManager?.snapshot?.outputStopReason;
+        }
         if (!this.resumePrompt) return;
         this.observeAudioContextState();
         const isMobilePlayer = this.uiManager.layoutMode?.isMobile &&
@@ -514,7 +567,8 @@ export class MobileNav {
             this.resumePrompt.hidden = true;
             return;
         }
-        const isSuspended = this.uiManager.audioManager?.audioContext?.state === 'suspended';
+        const manager = this.uiManager.audioManager;
+        const isSuspended = manager?.isAndroid ? !!manager.snapshot?.outputStopReason : manager?.audioContext?.state === 'suspended';
         this.resumePrompt.hidden = !(isMobilePlayer && isSuspended);
     }
 
@@ -543,6 +597,7 @@ export class MobileNav {
     }
 
     dispose() {
+        this.removeDesktopResumeAction();
         this.restoreUpdateUITexts?.();
         this.restoreUpdateUITexts = null;
         this.unsubscribe?.();

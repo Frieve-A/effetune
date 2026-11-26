@@ -22,7 +22,7 @@ const AUDIO_MIME_TYPES = Object.freeze({
   '3gp': 'video/3gpp'
 });
 
-export function getAudioMimeType(fileName) {
+export function getAudioMimeType(fileName, fallback = 'audio/mpeg') {
   const extension = String(fileName || '').split('.').pop().toLowerCase();
-  return AUDIO_MIME_TYPES[extension] || 'audio/mpeg';
+  return Object.hasOwn(AUDIO_MIME_TYPES, extension) ? AUDIO_MIME_TYPES[extension] : fallback;
 }

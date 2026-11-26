@@ -24,6 +24,7 @@ public:
   void prepare() {
     db_.resize(kDbSize);
     gain_.resize(kGainSize);
+    inverse_gain_.resize(kGainSize);
     for (std::uint32_t index = 0u; index < kDbSize; ++index) {
       const double value = static_cast<double>(index) / kDbScale;
       db_[index] =
@@ -32,6 +33,7 @@ public:
     for (std::uint32_t index = 0u; index < kGainSize; ++index) {
       const double decibels = static_cast<double>(index) / kGainScale;
       gain_[index] = static_cast<float>(std::exp(-decibels * kGainFactor));
+      inverse_gain_[index] = 1.0 / static_cast<double>(gain_[index]);
     }
   }
 
@@ -45,16 +47,17 @@ public:
     return static_cast<double>(db_[index]);
   }
 
-  [[nodiscard]] double reductionGain(double decibels) const noexcept {
+  // Returns the gain that applies a decibels-sized reduction, or its reciprocal for a boost.
+  [[nodiscard]] double gain(double decibels, bool boost) const noexcept {
     if (decibels <= 0.0)
       return 1.0;
-    if (decibels >= 60.0)
-      return static_cast<double>(gain_[kGainSize - 1u]);
-    const double scaled = decibels * kGainScale;
-    const std::uint32_t index = scaled > static_cast<double>(kGainSize - 1u)
-                                    ? kGainSize - 1u
-                                    : static_cast<std::uint32_t>(scaled);
-    return static_cast<double>(gain_[index]);
+    std::uint32_t index = kGainSize - 1u;
+    if (decibels < 60.0) {
+      const double scaled = decibels * kGainScale;
+      if (scaled <= static_cast<double>(kGainSize - 1u))
+        index = static_cast<std::uint32_t>(scaled);
+    }
+    return boost ? inverse_gain_[index] : static_cast<double>(gain_[index]);
   }
 
 private:
@@ -65,6 +68,7 @@ private:
 
   std::vector<float> db_;
   std::vector<float> gain_;
+  std::vector<double> inverse_gain_;
 };
 
 } // namespace
@@ -80,8 +84,6 @@ public:
     crossover_.prepare(info);
     envelopes_.resize(static_cast<std::size_t>(info.maxChannels) *
                       multiband_detail::kFiveBandCount);
-    output_.resize(info.maxFrames);
-    envelope_work_.resize(info.maxFrames);
     lookup_.prepare();
     ramp_frames_ = std::max(1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.005)));
     reset();
@@ -91,10 +93,6 @@ public:
     crossover_.reset();
     for (float &envelope : envelopes_)
       envelope = 0.0F;
-    for (float &sample : output_)
-      sample = 0.0F;
-    for (float &sample : envelope_work_)
-      sample = 0.0F;
     latest_values_.fill(0.0F);
     has_measurement_ = false;
     fade_counter_ = 0u;
@@ -124,109 +122,42 @@ public:
     crossover_.split(audio, channel_count, frame_count);
     retargetControls();
 
-    std::array<float, multiband_detail::kFiveBandCount * 2u> time_constants{};
-    const bool controls_ramping = control_ramp_remaining_ != 0u;
-    std::array<double, multiband_detail::kFiveBandCount> stable_makeup{};
+    std::array<double, multiband_detail::kFiveBandCount * 2u> time_constants{};
     const double sample_rate_ms = sample_rate_ / 1000.0;
     for (std::uint32_t band = 0u; band < multiband_detail::kFiveBandCount; ++band) {
-      if (!controls_ramping)
-        stable_makeup[band] = std::exp(controlAt(band * 4u + 3u, 0u) * kGainFactor);
       double attack_samples = static_cast<double>(params_.attack[band]) * sample_rate_ms;
       if (attack_samples < 1.0)
         attack_samples = 1.0;
       double release_samples = static_cast<double>(params_.release[band]) * sample_rate_ms;
       if (release_samples < 1.0)
         release_samples = 1.0;
-      time_constants[band * 2u] = static_cast<float>(std::exp(-kLog2 / attack_samples));
-      time_constants[band * 2u + 1u] = static_cast<float>(std::exp(-kLog2 / release_samples));
+      time_constants[band * 2u] =
+          static_cast<double>(static_cast<float>(std::exp(-kLog2 / attack_samples)));
+      time_constants[band * 2u + 1u] =
+          static_cast<double>(static_cast<float>(std::exp(-kLog2 / release_samples)));
     }
 
-    const bool fade_active = fade_counter_ < fade_length_;
-    const std::uint32_t fade_start = fade_counter_;
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-      for (std::uint32_t frame = 0u; frame < frame_count; ++frame)
-        output_[frame] = 0.0F;
-      const std::size_t envelope_offset =
-          static_cast<std::size_t>(channel) * multiband_detail::kFiveBandCount;
-
-      for (std::uint32_t band = 0u; band < multiband_detail::kFiveBandCount; ++band) {
-        const float *band_signal = crossover_.band(channel, band);
-        const double attack = static_cast<double>(time_constants[band * 2u]);
-        const double release = static_cast<double>(time_constants[band * 2u + 1u]);
-        double envelope = static_cast<double>(envelopes_[envelope_offset + band]);
-        double maximum_envelope = envelope;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const double input = static_cast<double>(band_signal[frame]);
-          const double magnitude = input >= 0.0 ? input : -input;
-          const double coefficient = magnitude > envelope ? attack : release;
-          envelope = envelope * coefficient + magnitude * (1.0 - coefficient);
-          if (envelope < kMinimumEnvelope)
-            envelope = kMinimumEnvelope;
-          envelope_work_[frame] = static_cast<float>(envelope);
-          if (envelope > maximum_envelope)
-            maximum_envelope = envelope;
-        }
-        envelopes_[envelope_offset + band] = static_cast<float>(envelope);
-
-        static_cast<void>(maximum_envelope);
-        latest_values_[band] = 0.0F;
-
-        double last_gain_reduction = 0.0;
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const std::size_t base = static_cast<std::size_t>(band) * 4u;
-          const double threshold = controlAt(base, frame);
-          const double ratio = std::clamp(controlAt(base + 1u, frame), 0.5, 20.0);
-          double knee = controlAt(base + 2u, frame);
-          if (knee < 0.0)
-            knee = 0.0;
-          const double half_knee = knee * 0.5;
-          const double slope = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
-          const double makeup = controls_ramping
-                                    ? std::exp(controlAt(base + 3u, frame) * kGainFactor)
-                                    : stable_makeup[band];
-          const double difference =
-              lookup_.decibels(static_cast<double>(envelope_work_[frame])) - threshold;
-          double gain_change = 0.0;
-          if (difference <= -half_knee) {
-            gain_change = 0.0;
-          } else if (difference >= half_knee) {
-            gain_change = difference * slope;
-          } else {
-            const double position = knee > 0.0 ? (difference + half_knee) / knee : 1.0;
-            gain_change = slope * knee * position * position * 0.5;
-          }
-          const double magnitude = gain_change >= 0.0 ? gain_change : -gain_change;
-          const double reduction = lookup_.reductionGain(magnitude);
-          const double multiplier = gain_change >= 0.0 ? reduction : 1.0 / reduction;
-          const double sum = static_cast<double>(output_[frame]) +
-                             static_cast<double>(band_signal[frame]) * makeup * multiplier;
-          output_[frame] = static_cast<float>(sum);
-          if (frame + 1u == frame_count)
-            last_gain_reduction = magnitude;
-        }
-        latest_values_[band] = static_cast<float>(last_gain_reduction);
-      }
-
-      float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
-      if (fade_active) {
-        std::uint32_t frame = 0u;
-        for (; frame < frame_count && fade_start + frame < fade_length_; ++frame) {
-          const double fade =
-              static_cast<double>(fade_start + frame) / static_cast<double>(fade_length_);
-          channel_audio[frame] = static_cast<float>(static_cast<double>(output_[frame]) * fade);
-        }
-        for (; frame < frame_count; ++frame)
-          channel_audio[frame] = output_[frame];
-      } else {
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          channel_audio[frame] = output_[frame];
-        }
-      }
+    // Without a pending ramp every control equals its current value, so each band's derived
+    // controls are computed once per block.
+    if (control_ramp_remaining_ == 0u) {
+      BandControls stable{};
+      for (std::uint32_t band = 0u; band < multiband_detail::kFiveBandCount; ++band)
+        stable[band] = bandControl(band, 0u);
+      processChannels(audio, channel_count, frame_count, time_constants,
+                      [&stable](std::uint32_t) noexcept -> const BandControls & { return stable; });
+    } else {
+      processChannels(
+          audio, channel_count, frame_count, time_constants, [this](std::uint32_t frame) noexcept {
+            BandControls controls{};
+            for (std::uint32_t band = 0u; band < multiband_detail::kFiveBandCount; ++band)
+              controls[band] = bandControl(band, frame);
+            return controls;
+          });
     }
     advanceControls(frame_count);
 
-    if (fade_active) {
-      const std::uint32_t next = fade_start + frame_count;
+    if (fade_counter_ < fade_length_) {
+      const std::uint32_t next = fade_counter_ + frame_count;
       fade_counter_ = next >= fade_length_ ? fade_length_ : next;
     }
     has_measurement_ = true;
@@ -240,6 +171,90 @@ public:
   }
 
 private:
+  struct BandControl {
+    double threshold;
+    double knee;
+    double half_knee;
+    double slope;
+    double makeup;
+  };
+  using BandControls = std::array<BandControl, multiband_detail::kFiveBandCount>;
+
+  [[nodiscard]] BandControl bandControl(std::uint32_t band, std::uint32_t frame) const noexcept {
+    const std::size_t base = static_cast<std::size_t>(band) * 4u;
+    const double ratio = std::clamp(controlAt(base + 1u, frame), 0.5, 20.0);
+    double knee = controlAt(base + 2u, frame);
+    if (knee < 0.0)
+      knee = 0.0;
+    return {controlAt(base, frame), knee, knee * 0.5, ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio,
+            std::exp(controlAt(base + 3u, frame) * kGainFactor)};
+  }
+
+  // Runs the five independent band envelopes and gain computers of each channel in one frame
+  // loop so their recursions overlap. Bands are summed in ascending order as single floats.
+  template <typename ControlsAt>
+  void
+  processChannels(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
+                  const std::array<double, multiband_detail::kFiveBandCount * 2u> &time_constants,
+                  ControlsAt controls_at) noexcept {
+    constexpr std::uint32_t kBands = multiband_detail::kFiveBandCount;
+    const std::uint32_t fade_start = fade_counter_;
+    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+      float *const envelopes = envelopes_.data() + static_cast<std::size_t>(channel) * kBands;
+      const float *band_signals[kBands];
+      double envelope[kBands];
+      double last_reduction[kBands];
+      for (std::uint32_t band = 0u; band < kBands; ++band) {
+        band_signals[band] = crossover_.band(channel, band);
+        envelope[band] = static_cast<double>(envelopes[band]);
+        last_reduction[band] = 0.0;
+      }
+      float *channel_audio = audio + static_cast<std::size_t>(channel) * frame_count;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const BandControls &controls = controls_at(frame);
+        float output = 0.0F;
+        for (std::uint32_t band = 0u; band < kBands; ++band) {
+          const BandControl &control = controls[band];
+          const double input = static_cast<double>(band_signals[band][frame]);
+          const double magnitude = input >= 0.0 ? input : -input;
+          const double coefficient = magnitude > envelope[band] ? time_constants[band * 2u]
+                                                                : time_constants[band * 2u + 1u];
+          double next = envelope[band] * coefficient + magnitude * (1.0 - coefficient);
+          if (next < kMinimumEnvelope)
+            next = kMinimumEnvelope;
+          envelope[band] = next;
+          const double difference =
+              lookup_.decibels(static_cast<double>(static_cast<float>(next))) - control.threshold;
+          double gain_change = 0.0;
+          if (difference <= -control.half_knee) {
+            gain_change = 0.0;
+          } else if (difference >= control.half_knee) {
+            gain_change = difference * control.slope;
+          } else {
+            const double position =
+                control.knee > 0.0 ? (difference + control.half_knee) / control.knee : 1.0;
+            gain_change = control.slope * control.knee * position * position * 0.5;
+          }
+          const double reduction = gain_change >= 0.0 ? gain_change : -gain_change;
+          const double multiplier = lookup_.gain(reduction, gain_change < 0.0);
+          output =
+              static_cast<float>(static_cast<double>(output) + input * control.makeup * multiplier);
+          last_reduction[band] = reduction;
+        }
+        if (fade_start + frame < fade_length_) {
+          const double fade =
+              static_cast<double>(fade_start + frame) / static_cast<double>(fade_length_);
+          output = static_cast<float>(static_cast<double>(output) * fade);
+        }
+        channel_audio[frame] = output;
+      }
+      for (std::uint32_t band = 0u; band < kBands; ++band) {
+        envelopes[band] = static_cast<float>(envelope[band]);
+        latest_values_[band] = static_cast<float>(last_reduction[band]);
+      }
+    }
+  }
+
   void retargetControls() noexcept {
     std::array<double, multiband_detail::kFiveBandCount * 4u> targets{};
     for (std::size_t band = 0u; band < multiband_detail::kFiveBandCount; ++band) {
@@ -290,8 +305,6 @@ private:
   multiband_detail::FiveBandCrossover crossover_;
   CompressorLookup lookup_;
   std::vector<float> envelopes_;
-  std::vector<float> output_;
-  std::vector<float> envelope_work_;
   std::array<float, multiband_detail::kFiveBandCount> latest_values_{};
   double sample_rate_ = 0.0;
   std::uint32_t max_channels_ = 0u;

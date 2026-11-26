@@ -36,7 +36,7 @@ export class NetworkMusicController {
   async initialize() {
     this.unsubscribe = this.api.onNetworkMusicState?.(state => this.applyState(state));
     this.applyState(await this.api.networkMusicGetState());
-    await this.discover();
+    await this.discover(false);
     this.timer = setInterval(() => { void this.refreshPlayer(); }, 2000);
     this.timer.unref?.();
   }
@@ -47,8 +47,8 @@ export class NetworkMusicController {
     this.emit();
   }
 
-  async discover() {
-    this.applyState(await this.api.networkMusicDiscover());
+  async discover(requestPermission = true) {
+    this.applyState(await this.api.networkMusicDiscover(requestPermission));
     await this.refreshPlayer();
   }
 
@@ -139,7 +139,7 @@ export class NetworkMusicController {
       return false;
     }
     try {
-      const filePaths = files.map(file => typeof file === 'string' ? file : file.path);
+      const filePaths = files.map(file => typeof file === 'string' ? file : file.path ?? file.androidUri);
       await this.api.networkMusicPlayFiles({ playerId, filePaths, operationKind: 'play' });
       if (playerId === this.selectedPlayerId) {
         await this.refreshPlayer();
@@ -163,6 +163,7 @@ export class NetworkMusicController {
       connectionFailed: 'networkMusic.pwa.connectionFailed',
       gatewayRequired: 'networkMusic.settings.gatewayRequired', subsonicConnection: 'networkMusic.settings.subsonicConnection',
       subsonicAuthentication: 'networkMusic.settings.subsonicAuthentication',
+      unreachable: 'networkMusic.settings.unreachable',
       forbidden: 'networkMusic.permissionDenied'
     }[error?.code] ?? 'networkMusic.error';
   }

@@ -110,6 +110,22 @@
       "min": 0,
       "max": 65535,
       "default": 0
+    },
+    {
+      "name": "tuning",
+      "key": "tu",
+      "kind": "int",
+      "min": 0,
+      "max": 2,
+      "default": 0
+    },
+    {
+      "name": "tuningKey",
+      "key": "tk",
+      "kind": "int",
+      "min": 0,
+      "max": 23,
+      "default": 0
     }
   ]
 }

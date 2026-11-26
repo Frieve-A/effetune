@@ -1013,7 +1013,7 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
       ));
       
       const modeOrder = ["1", "2A", "2B", "3A", "3B", "4", "5A", "5B", "5C", "6A", "6B", "8", "9", "10", "10A"];
-      container.appendChild(this.createSelectControl(
+      const modeRow = this.createSelectControl(
         'Mode',
         modeOrder.map(modeId => ({
           value: modeId,
@@ -1021,7 +1021,16 @@ class DigitalErrorEmulatorPlugin extends PluginBase {
         })),
         this.md,
         value => this.setMode(value), 'md'
-      ));
+      );
+      const modeText = document.createElement('span');
+      modeText.className = 'digital-error-mode-text';
+      modeText.setAttribute('aria-hidden', 'true');
+      const updateModeText = value => { modeText.textContent = this.MODE_DEFINITIONS[value].name; };
+      updateModeText(this.md);
+      modeRow.querySelector('select').addEventListener('change', event => updateModeText(event.target.value));
+      this._registerUIControl('md', [modeText], updateModeText);
+      modeRow.appendChild(modeText);
+      container.appendChild(modeRow);
 
       container.appendChild(this.createRadioGroup(
         'Fs (kHz)',

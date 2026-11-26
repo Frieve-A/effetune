@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { withGlobals, createConsoleHarness } from '../helpers/global-test-utils.mjs';
 import { AndroidAudioManager } from '../../js/android/audio-manager.js';
+import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
 import { AndroidPlayerContext } from '../../js/android/player-context.js';
 import { bytesToBase64, base64ToBytes } from '../../js/android/bridge.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
@@ -73,6 +74,99 @@ function playerFixture(handle) {
     return { context: new AndroidPlayerContext(player, manager), player, manager, listeners, requests };
 }
 
+test('Android applies startup settings once and restores the chain on renderer reconnection', async () => {
+    const { App } = await withGlobals({
+        window: { __EFFECTUNE_DISABLE_APP_AUTO_START__: true },
+        document: { addEventListener() {} }
+    }, () => import('../../js/app.js'));
+    class LevelMeterPlugin extends VolumePlugin {
+        constructor() { super(); this.name = 'Level Meter'; }
+    }
+    const cases = [
+        ['uninitialized', 'last', ['Volume', 'Level Meter'], -6, 1],
+        ['startup', 'default', ['Volume', 'Level Meter'], -6, 1],
+        ['startup', 'preset', ['Volume'], -3, 1],
+        ['startup', 'last', ['Volume'], -12, 0],
+        ['running', 'preset', ['Volume'], -12, 0]
+    ];
+    for (const [phase, mode, names, gain, writes] of cases) {
+        const config = { pipelineStartup: mode, startupPreset: 'Quiet' };
+        await withGlobals({ window: { location: { search: '' }, appConfig: config, electronIntegration: {} } }, async () => {
+            const commands = [];
+            let native = { ...snapshot(2, -12), pipelineStartup: phase };
+            if (phase === 'uninitialized') native.pipelines = { A: [], B: null };
+            else native.pipelines.B = null;
+            if (mode === 'default') {
+                native.slot = 'B';
+                native.pipelines.B = snapshot(2, -15).pipelines.A;
+            }
+            native.pipeline = native.pipelines[native.slot];
+            const pluginManager = {
+                pluginClasses: { Volume: VolumePlugin, 'Level Meter': LevelMeterPlugin },
+                nextPluginId: 1,
+                createPlugin(name) {
+                    const plugin = new this.pluginClasses[name]();
+                    plugin.id = this.nextPluginId++;
+                    plugin.setVl = value => { plugin.vl = value; };
+                    return plugin;
+                }
+            };
+            const manager = new AndroidAudioManager(null, { bridge: { on() {}, async request(command, payload) {
+                if (command === 'pipeline.catalog') assert.equal(payload.applyStartupConfig, mode !== 'last');
+                if (command === 'pipeline.slot' || command === 'pipeline.set') commands.push({ command, payload });
+                if (command === 'pipeline.set') {
+                    native = { ...native, revision: native.revision + 1, pipelineStartup: 'running', slot: payload.slot,
+                        pipeline: payload.plugins, pipelines: { ...native.pipelines, [payload.slot]: payload.plugins } };
+                }
+                return native;
+            } } });
+            await manager.initAudio();
+            const presetManager = {
+                getPresets: async () => ({ Quiet: {} }),
+                async loadPreset() {
+                    const plugin = pluginManager.createPlugin('Volume');
+                    plugin.setVl(-3);
+                    manager.updateCurrentPipeline([plugin]);
+                    manager.commitPowerTopologyMutation();
+                    manager.setMasterBypass(false);
+                }
+            };
+            const built = await App.prototype.initializeAndBuildPipeline.call({
+                audioManager: manager, pluginManager, startupConfig: config,
+                restoreDoubleBlindTestFromUrl() {},
+                uiManager: { expandedPlugins: new Set(), updatePipelineUI() {}, updateURL() {},
+                    updatePipelineToggleButton() {}, parsePipelineState: () => null, pipelineManager: { presetManager } }
+            });
+            assert.equal(built, true, `${phase} / ${mode}`);
+            assert.deepEqual(manager.pipeline.map(plugin => plugin.name), names);
+            assert.equal(manager.pipeline[0].vl, gain);
+            assert.deepEqual(commands.map(({ command }) => command), writes ? ['pipeline.set'] : []);
+            if (writes) {
+                assert.equal(commands[0].payload.slot, 'A');
+                assert.deepEqual(commands[0].payload.plugins.map(({ name }) => name), names);
+                assert.equal(commands[0].payload.plugins[0].parameters.vl, gain);
+            }
+            if (mode === 'default') assert.equal(manager.pipelineB[0].vl, -15);
+        });
+    }
+});
+
+test('a replacement Android pipeline receives its own execution notices', async () => {
+    class TubeSimulatorPlugin extends VolumePlugin {
+        static executionCapabilities = { requiresWasm: true, supportedChannelModes: ['stereo-pair'] };
+        constructor() { super(); this.name = 'Tube Simulator'; this.id = 2; this.channel = 'L'; }
+    }
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const { manager } = await audioFixture();
+        const tube = new TubeSimulatorPlugin();
+        manager.pipeline.length = 0;
+        manager.updateCurrentPipeline([tube]);
+        await manager.rebuildPipeline();
+        assert.deepEqual(manager.getDspExecutionStateSnapshot().states.map(({ pluginId, state, reason }) =>
+            [pluginId, state, reason]), [[tube.id, 'bypassed', 'unsupportedChannelMode']]);
+    });
+});
+
 test('external pipeline snapshots hydrate the UI and revision-filter native telemetry and runtime events', async () => {
     await withGlobals({ window: { electronAPI: {} } }, async () => {
         const { manager, listeners, updates } = await audioFixture();
@@ -107,9 +201,67 @@ test('external pipeline snapshots hydrate the UI and revision-filter native tele
     });
 });
 
+test('rapid native history and slot commands take turns with display saves', async () => {
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const started = deferred(), release = deferred();
+        const { manager, requests } = await audioFixture(async (command, payload, revision) => {
+            if (command === 'pipeline.undo' && revision === 1) { started.resolve(); await release.promise; }
+            if (command === 'pipeline.slot') {
+                if (payload.slot === 'A') await new Promise(resolve => setImmediate(resolve));
+                return { ...snapshot(revision + 1), slot: payload.slot, pipelineRateMismatch: payload.slot === 'B' };
+            }
+            if (revision !== undefined) return snapshot(revision + 1);
+        });
+        const first = manager.nativePipelineCommand('undo');
+        const second = manager.nativePipelineCommand('undo');
+        const third = manager.nativePipelineCommand('redo');
+        const switchSlot = manager.nativePipelineCommand('slot', { slot: 'B' });
+        const switchBack = manager.nativePipelineCommand('slot', { slot: 'A' });
+        await started.promise;
+        manager.pipeline[0].vl = -31;
+        await manager.rebuildPipeline();
+        manager.savePipelineUIState();
+        assert.equal(requests.filter(r => r.command === 'pipeline.undo').length, 1);
+        release.resolve();
+        await Promise.all([first, second, third, switchSlot, switchBack]);
+        Object.assign(manager.pipeline[0], { _uiCollapsed: true, _uiLocked: true });
+        manager.savePipelineUIState();
+        await manager.pendingMutation;
+        assert.deepEqual(requests.filter(r => r.revision !== undefined).map(r => [r.command, r.revision]), [
+            ['pipeline.undo', 1], ['pipeline.undo', 2], ['pipeline.redo', 3],
+            ['pipeline.slot', 4], ['pipeline.set', 5], ['pipeline.slot', 6], ['pipeline.ui', 7]
+        ]);
+        assert.deepEqual(requests.at(-1).payload.plugins, [{ id: 1, _uiLocked: true, _uiCollapsed: true }]);
+    });
+});
+
+test('native parameter writes keep the gesture identity and send only the completed preset', async () => {
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const { manager, requests } = await audioFixture();
+        const plugin = manager.pipeline[0];
+        let token = {};
+        manager.pipelineManager.uiEventHandler = { parameterOperation: { plugin }, getParameterOperationToken: () => token };
+        const edit = value => { plugin.vl = value; manager.commitPowerTopologyMutation({ plugin }); };
+        edit(-1); edit(-2);
+        token = {};
+        edit(-3);
+        manager.pipelineManager.audioManager = manager;
+        const history = manager.pipelineManager.historyManager = new HistoryManager(manager.pipelineManager);
+        await manager.withMutationOptions({}, () => history.withHistorySuppressed(() => { edit(-4); edit(-5); }));
+        const writes = requests.filter(r => r.command === 'pipeline.set').map(r => r.payload);
+        assert.deepEqual(writes.map(write => write.plugins[0].parameters.vl), [-1, -2, -3, -5]);
+        assert.equal(typeof writes[0].operationToken, 'string');
+        assert.equal(writes[0].operationToken, writes[1].operationToken);
+        assert.notEqual(writes[0].operationToken, writes[2].operationToken);
+        assert.equal(writes[3].operationToken, undefined);
+    });
+});
+
 test('a rejected native revision restores the authoritative pipeline and leaves later edits usable', async () => {
     const diagnostics = [];
-    await withGlobals({ window: { electronAPI: {} }, console: createConsoleHarness({ error: (...args) => diagnostics.push(args) }) }, async () => {
+    const errors = [];
+    await withGlobals({ window: { electronAPI: {}, uiManager: { setError: (...args) => errors.push(args) } },
+        console: createConsoleHarness({ error: (...args) => diagnostics.push(args) }) }, async () => {
         let conflict = true;
         const { manager, requests, updates } = await audioFixture(command => {
             if (command === 'pipeline.set' && conflict) {
@@ -127,12 +279,102 @@ test('a rejected native revision restores the authoritative pipeline and leaves 
         assert.equal(manager.pipeline[0].vl, -3);
         assert.equal(manager.snapshot.revision, 7);
         assert.deepEqual(failures, [{ operation: 'pipeline' }]);
+        assert.deepEqual(errors, [['error.pipelineEditFailed', true]]);
         assert.deepEqual(updates, [true]);
         manager.pipeline[0].vl = -9;
         await manager.rebuildPipeline();
         assert.deepEqual(requests.filter(item => item.command === 'pipeline.set').map(item => item.revision), [1, 7]);
         assert.equal(manager.snapshot.revision, 8);
         assert.equal(diagnostics.length, 1);
+    });
+});
+
+test('Android DBT restore waits for the service and restored asset errors use the asset notice', async () => {
+    const errors = [];
+    const gate = deferred(), requested = deferred();
+    await withGlobals({ window: { electronAPI: {}, uiManager: { setError: (...args) => errors.push(args) } },
+        console: createConsoleHarness() }, async () => {
+        const { manager, listeners } = await audioFixture(async (command, payload) => {
+            if (command === 'dbt.restore') {
+                requested.resolve();
+                await gate.promise;
+                return { ...snapshot(2), pipelines: { A: payload.a.plugins, B: payload.b.plugins } };
+            }
+        });
+        const previous = manager.pipelineA;
+        const primary = [new VolumePlugin()];
+        const secondary = [new VolumePlugin()];
+        const restore = manager.restoreBlindTestPipelines(primary, secondary);
+        await requested.promise;
+        assert.equal(manager.pipelineA, previous);
+        gate.resolve();
+        await restore;
+        assert.equal(manager.pipelineA, primary);
+        assert.equal(manager.pipelineB, secondary);
+        listeners.get('error')({ code: 'asset-restore-failed' });
+        assert.deepEqual(errors, [['externalAsset.missing.one', true]]);
+    });
+});
+
+test('an oversized edit restores the confirmed chain before accepting new edits', async () => {
+    const messages = [];
+    await withGlobals({ window: { electronAPI: {}, uiManager: { setError: key => messages.push(key) } } }, async () => {
+        const { manager, requests } = await audioFixture(command => {
+            if (command === 'pipeline.set') throw Object.assign(new Error('too many effects'), { code: 'pipeline-too-large' });
+            if (command === 'snapshot.get') return snapshot(5, -12);
+        });
+        manager.pipeline.push(Object.assign(new VolumePlugin(), { id: 2 }));
+        const rejected = manager.rebuildPipeline();
+        const stale = manager.rebuildPipeline();
+        await assert.rejects(rejected, { code: 'pipeline-too-large' });
+        await stale;
+        assert.deepEqual(messages, ['error.pipelineTooLarge']);
+        assert.deepEqual(manager.pipeline.map(plugin => plugin.vl), [-12]);
+        assert.equal(requests.filter(item => item.command === 'pipeline.set').length, 1);
+        for (let id = 2; id <= 129; id++) manager.pipeline.push(Object.assign(new VolumePlugin(), { id }));
+        await assert.rejects(manager.rebuildPipeline(), { code: 'pipeline-too-large' });
+        assert.deepEqual(manager.pipeline.map(plugin => plugin.vl), [-12]);
+        assert.equal(requests.filter(item => item.command === 'pipeline.set').length, 1);
+    });
+});
+
+test('inactive files with the same effect ID are delivered only to the stored slot', async () => {
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const { manager, requests } = await audioFixture(command => {
+            if (command.startsWith('pipeline.asset.')) return { revision: 1, state: 'stored' };
+        });
+        const active = manager.pipelineA[0], inactive = new VolumePlugin();
+        manager.pipelineB = [inactive];
+        manager.bindInactiveSlot();
+        inactive.assets.set(0, { payload: new ArrayBuffer(32), operationRevision: 7 });
+        for (const notify of inactive.listeners) notify();
+        await manager.pendingMutation;
+        const writes = requests.filter(item => item.command.startsWith('pipeline.asset.'));
+        assert.deepEqual(writes.map(item => item.command), ['pipeline.asset.begin', 'pipeline.asset.chunk', 'pipeline.asset.commit']);
+        assert.ok(writes.every(item => item.payload.inactiveSlot === 'B'));
+        assert.deepEqual(inactive.assetStates, [[0, 3, 7]]);
+        assert.deepEqual(active.assetStates, []);
+        inactive.clearWasmAsset(0);
+        for (const notify of inactive.listeners) notify();
+        await manager.pendingMutation;
+        assert.equal(requests.at(-1).command, 'pipeline.asset.clear');
+        assert.equal(requests.at(-1).payload.inactiveSlot, 'B');
+    });
+});
+
+test('large Android snapshots read both slots in pages at the original revision', async () => {
+    await withGlobals({ window: { electronAPI: {} } }, async () => {
+        const { manager, requests } = await audioFixture((command, payload) => {
+            if (command !== 'pipeline.readSlot') return;
+            if (payload.slot === 'B') return { records: null };
+            return { records: [{ ...snapshot(5).pipelines.A[0], id: payload.offset + 1 }], more: payload.offset === 0 };
+        });
+        manager.acceptSnapshot({ ...snapshot(5), pipelines: undefined });
+        await manager.restoreNativePipeline();
+        assert.deepEqual(manager.pipelineA.map(plugin => plugin.id), [1, 2]);
+        assert.equal(manager.pipelineB, null);
+        assert.deepEqual(requests.filter(item => item.command === 'pipeline.readSlot').map(
+            ({ payload, revision }) => [payload.slot, payload.offset, revision]), [['A', 0, 5], ['A', 1, 5], ['B', 0, 5]]);
     });
 });
 
@@ -314,7 +556,8 @@ test('loading a Blob awaits native import and retains its sidecar while reusing 
         attachLyricsFiles([file], [{ androidUri: 'content://lyrics/song', name: 'song.lrc', size: 12, type: 'text/plain' }]);
         const track = { file, name: 'Song', meta: { title: 'Song' } };
         player.playbackManager.playlist = [track];
-        const loading = context.loadTrack(track, 0);
+        const options = { signal: new AbortController().signal, bulkPlayId: 'library-play' };
+        const loading = context.seamlessTransition(track, 0, true, options);
         await writing.promise;
         assert.equal(requests.some(item => item.command.startsWith('playback.')), false);
         release.resolve();
@@ -325,14 +568,26 @@ test('loading a Blob awaits native import and retains its sidecar while reusing 
         assert.deepEqual(chunks, [10, 20, 30]);
         assert.equal(requests.filter(item => item.command === 'documents.createTemporary').length, 1);
         assert.deepEqual(requests.filter(item => item.command.startsWith('playback.')).map(item => item.command),
-            ['playback.queue.begin', 'playback.queue.append', 'playback.queue.commit']);
-        assert.deepEqual(requests.find(item => item.command === 'playback.queue.append').payload.items, [source]);
+            ['playback.queue.begin', 'playback.queue.append', 'playback.queue.commit', 'playback.play']);
+        assert.equal(requests.find(item => item.command === 'playback.queue.begin').payload.bulkPlayId, options.bulkPlayId);
+        assert.deepEqual(requests.find(item => item.command === 'playback.queue.append').payload.items, [{ ...source, replayGainFactor: 1 }]);
         assert.equal(player.stateManager.getStateSnapshot().currentTrack, track);
         context.disconnect();
     });
 });
 
-test('Android native playback rejects DSD before handing a source to the platform decoder', async () => {
+test('native queue selection accepts shared load arguments and respects cancellation', async () => {
+    await withGlobals({ window: {} }, async () => {
+        const { context, requests } = playerFixture();
+        const track = { nativeQueueIndex: 7 };
+        await context.loadTrack(track, 1, null, {});
+        await assert.rejects(context.seamlessTransition(track, 1, true, { signal: AbortSignal.abort() }), { name: 'AbortError' });
+        assert.deepEqual(requests.map(({ command, payload }) => [command, payload]), [['playback.select', { index: 7 }]]);
+        context.disconnect();
+    });
+});
+
+test('Android resolves local and network DSD sources with their original URI and tags', async () => {
     await withGlobals({ window: {} }, async () => {
         const { context, requests } = playerFixture();
         for (const track of [
@@ -341,53 +596,148 @@ test('Android native playback rejects DSD before handing a source to the platfor
             { name: 'Album title', uri: 'https://example.test/music/song.dsf?token=abc' },
             { name: 'Album title', url: 'https://example.test/music/song.DFF?token=abc' }
         ]) {
-            await assert.rejects(context.resolveNativeSource(track),
-                error => error?.code === 'DSD_NATIVE_UNSUPPORTED' && error.localPlaybackSourceFailure === true);
+            const metadata = { title: 'Tagged title', artist: 'Artist', album: 'Album' };
+            const item = await context.resolveNativeSource({ ...track, meta: metadata });
+            assert.equal(item.uri, track.uri || track.url);
+            assert.deepEqual(item.metadata, metadata);
         }
         assert.deepEqual(requests, []);
         context.disconnect();
     });
 });
 
-test('Android native playback rejects scores before platform delivery and reports the supported players', async () => {
-    const errors = [];
-    await withGlobals({ window: { uiManager: { setError: (...args) => errors.push(args) } } }, async () => {
-        const { context, requests } = playerFixture();
-        for (const extension of ['mid', 'MIDI', 'kar', 'musicxml', 'xml', 'mxl']) {
-            for (const track of [
-                { name: `song.${extension}`, uri: 'content://music/123' },
-                { name: 'Album title', uri: `https://example.test/song.${extension}?token=abc` },
-                { name: 'Album title', url: `https://example.test/song.${extension}` },
-                { file: { name: `song.${extension}` } }
-            ]) {
-                await assert.rejects(context.resolveNativeSource(track), error => {
-                    assert.equal(error.code, 'MIDI_NATIVE_UNSUPPORTED');
-                    assert.equal(error.localPlaybackSourceFailure, true);
-                    context.reportPlaybackSourceFailure(error);
-                    return true;
-                });
+test('Android prepares MIDI and MusicXML scores for the native queue and physical output', async () => {
+    const midi = Uint8Array.of(77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96,
+        77, 84, 114, 107, 0, 0, 0, 12, 0, 144, 60, 100, 96, 128, 60, 0, 0, 255, 47, 0);
+    const xml = new TextEncoder().encode('<score-partwise version="3.1"><part-list><score-part id="P1">' +
+        '<part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1">' +
+        '<attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch>' +
+        '<duration>1</duration></note></measure></part></score-partwise>');
+    await withGlobals({ window: {} }, async () => {
+        for (const [name, bytes] of [['song.mid', midi], ['song.musicxml', xml]]) {
+            const { context, manager } = playerFixture(command => {
+                if (command === 'playback.close') return {};
+                assert.equal(command, 'documents.createTemporary');
+                return { uri: 'content://test/score.bin' };
+            });
+            manager.getNativeSampleRate = () => 48000;
+            context.documents.read = async () => bytes;
+            let packed;
+            context.documents.write = async (uri, buffer) => { packed = new DataView(buffer); };
+            const track = { name, uri: 'content://test/original' };
+            const source = await context.resolveNativeSource(track);
+            assert.equal(source.scoreUri, 'content://test/score.bin');
+            assert.equal(source.scoreName, name);
+            assert.equal(source.metadata.duration, packed.getFloat64(8, true));
+            const events = packed.getUint32(0, true), points = packed.getUint32(4, true);
+            assert.ok(events >= 2 && points >= 1);
+            const wire = 16 + 20 * events + 40 * points;
+            assert.ok(packed.byteLength > wire);
+            if (name === 'song.mid') {
+                assert.equal(packed.getFloat64(wire, true), 0);
+                assert.equal(packed.getUint32(wire + 8, true), 3);
+                assert.deepEqual([...new Uint8Array(packed.buffer, wire + 12, 3)], [144, 60, 100]);
             }
+            assert.equal(await context.resolveNativeSource(track), source);
+            context.disconnect();
         }
-        assert.deepEqual(requests, []);
-        assert.equal(errors.length, 24);
-        assert.ok(errors.every(args => args[0] === 'midi.error.nativeUnsupported' && args[1] === true));
-        context.disconnect();
     });
 });
 
 test('native insertion resolves a lazy sequence in bounded pages at the requested ordinals', async () => {
     await withGlobals({ window: {} }, async () => {
         const { context, requests } = playerFixture();
+        context.nativeQueue.accept({ queueLength: 3, shuffle: true, shuffleSeed: 0 });
         const ordinals = [];
         const sequence = { itemCount: 65,
             async getEntry(ordinal) { ordinals.push(ordinal); return { ordinal, title: `Song ${ordinal}` }; },
             async resolveEntrySource(entry) { return { uri: `content://music/${entry.ordinal}` }; } };
-        assert.deepEqual(await context.insertNativeQueue({ sequence, index: 7 }), { accepted: true, preserved: true });
+        assert.deepEqual(await context.insertNativeQueue({ sequence, index: 1 }), { accepted: true, preserved: true });
         assert.deepEqual(ordinals, Array.from({ length: 65 }, (_, index) => index));
-        assert.deepEqual(requests.map(item => [item.command, item.payload.index, item.payload.items.length]),
-            [['playback.insert', 7, 64], ['playback.insert', 71, 1]]);
+        assert.deepEqual(requests.map(({ command, payload }) => [command, payload.index, payload.items.length, payload.transportOrder]),
+            [['playback.insert', 1, 64, true], ['playback.insert', 65, 1, true]]);
         assert.equal(requests[1].payload.items[0].title, 'Song 64');
         context.disconnect();
+    });
+});
+
+test('Android commits the catalog shuffle even when provisional playback is preserved', async () => {
+    await withGlobals({ window: {} }, async () => {
+        const { context, requests } = playerFixture();
+        const sequence = { kind: 'catalog', itemCount: 3, shuffleEnabled: true, permutation: { seed: 0 },
+            toCanonicalOrdinal: ordinal => [1, 0, 2][ordinal],
+            toTransportOrdinal: ordinal => [1, 0, 2][ordinal],
+            async getEntry(ordinal) { return { ordinal, title: String(ordinal) }; },
+            async resolveEntrySource({ ordinal }) { return { uri: `content://music/${ordinal}` }; } };
+        try {
+            await context.replaceNativeQueue({ sequence, preservePlayback: true, bulkPlayId: 'shuffle' });
+            const [begin, append, commit] = requests;
+            assert.equal(begin.payload.bulkPlayId, 'shuffle');
+            assert.equal(begin.payload.index, 1);
+            assert.equal(begin.payload.startOrdinal, 0);
+            assert.equal(begin.payload.shuffle, true);
+            assert.equal(begin.payload.shuffleSeed, 0);
+            assert.deepEqual(append.payload.items.map(item => item.title), ['1', '0', '2']);
+            assert.equal(commit.payload.preservePlayback, true);
+            assert.equal(requests.some(item => item.command === 'playback.play'), false);
+            await context.restoreNativeQueue('shuffle');
+            assert.deepEqual(requests.at(-1), { command: 'playback.queue.restore', payload: { operationId: 'shuffle' } });
+        } finally { context.disconnect(); }
+    });
+});
+
+test('Android stages only available catalog tracks and remaps the selected ordinal', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const messages = [];
+    await withGlobals({ window: { uiManager: { showTransientMessage: (...args) => messages.push(args) } } }, async () => {
+        const { context, requests } = playerFixture();
+        const sequence = { kind: 'catalog', itemCount: 4,
+            async getEntry(ordinal) { return { ordinal, title: `Song ${ordinal}`, durationSec: 5 }; },
+            async resolveEntrySource({ ordinal }) {
+                if (ordinal % 2 === 0) throw Object.assign(new Error('Missing file'), { code: 'document-not-found' });
+                return { uri: `content://music/${ordinal}` };
+            } };
+        try {
+            await context.replaceNativeQueue({ sequence, index: 2, play: true });
+            const [, append, commit, play] = requests;
+            assert.deepEqual(append.payload.items.map(item => item.uri), ['content://music/1', 'content://music/3']);
+            assert.deepEqual(append.payload.items[1].metadata, { title: 'Song 3', duration: 5 });
+            assert.equal(commit.payload.index, 1);
+            assert.equal(play.command, 'playback.play');
+            assert.deepEqual(messages, [['status.libraryTracksSkippedMissing', false, { count: 2 }]]);
+        } finally { context.disconnect(); }
+    });
+});
+
+test('catalog insertion skips missing documents across empty pages and keeps surviving tracks together', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const messages = [];
+    await withGlobals({ window: { uiManager: { showTransientMessage: (...args) => messages.push(args) } } }, async () => {
+        const { context, requests } = playerFixture();
+        const sequence = { kind: 'catalog', itemCount: 130,
+            getEntry: async ordinal => ({ ordinal, title: String(ordinal) }),
+            async resolveEntrySource({ ordinal }) {
+                if (!ordinal || (ordinal >= 63 && ordinal < 128)) {
+                    throw Object.assign(new Error('Missing file'), { code: 'document-not-found' });
+                }
+                return { uri: `content://music/${ordinal}` };
+            } };
+        try {
+            await context.insertNativeQueue({ sequence, index: 3 });
+            assert.deepEqual(requests.map(({ command, payload }) => [command, payload.index, payload.items.length]),
+                [['playback.insert', 3, 62], ['playback.insert', 65, 2]]);
+            assert.deepEqual(requests.flatMap(({ payload }) => payload.items.map(item => Number(item.title))),
+                [...Array.from({ length: 62 }, (_, index) => index + 1), 128, 129]);
+            assert.deepEqual(messages, [['status.libraryTracksSkippedMissing', false, { count: 66 }]]);
+            await assert.rejects(context.insertNativeQueue({ sequence: { ...sequence, itemCount: 1 }, index: 3 }),
+                { code: 'library-files-missing' });
+            assert.deepEqual(messages[1], ['status.libraryTracksSkippedMissing', false, { count: 1 }]);
+            const denied = Object.assign(new Error('Access denied'), { code: 'permission-denied' });
+            await assert.rejects(context.insertNativeQueue({ sequence: { ...sequence,
+                resolveEntrySource: async () => { throw denied; } }, index: 3 }), error => error === denied);
+            assert.equal(requests.length, 2);
+            assert.equal(messages.length, 2);
+        } finally { context.disconnect(); }
     });
 });
 
@@ -498,6 +848,7 @@ test('a delayed native track presentation cannot replace a newer selection', asy
     await withGlobals({ window: {} }, async () => {
         const oldMetadata = deferred(), presented = deferred(), metadata = [];
         const { context, manager, listeners, player } = playerFixture((command, payload) => {
+            if (command === 'playback.close') return {};
             assert.equal(command, 'documents.stat');
             return payload.uri === 'content://music/old' ? oldMetadata.promise : { name: 'New.wav', size: 3 };
         });
@@ -516,13 +867,33 @@ test('a delayed native track presentation cannot replace a newer selection', asy
         assert.deepEqual(metadata, ['New']);
         assert.equal(context.presentedTrack.name, 'New');
         assert.equal(player.stateManager.getStateSnapshot().currentTrack.name, 'New');
+        player.stateManager.updateState({ currentTrackName: 'Old' });
+        await context.rebindCurrentPlayback();
+        assert.equal(player.stateManager.getStateSnapshot().currentTrackName, 'New');
         context.disconnect();
+    });
+});
+
+test('closing the native player revokes artwork and prevents late metadata from replacing it', async () => {
+    await withGlobals({ window: {} }, async () => {
+        const stat = deferred();
+        const { context, listeners } = playerFixture(command => command === 'documents.stat' ? stat.promise : {});
+        const url = URL.createObjectURL(new Blob(['artwork']));
+        context.currentArtworkURL = url;
+        context.loadMetadata = () => assert.fail('Closed player must ignore late metadata');
+        listeners.get('snapshot')({ revision: 2, playback: { index: 0, queueLength: 1,
+            source: { uri: 'content://music/track', title: 'Song', metadata: { title: 'Song' } } } });
+        context.disconnect();
+        stat.resolve({ name: 'Song.wav', size: 3 });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(context.currentArtworkURL, null);
+        await assert.rejects(fetch(url), TypeError);
     });
 });
 
 test('Android remote renderer lifecycle preserves publication payloads and releases status subscriptions', async () => {
     const listeners = new Map(), requests = [], notifications = [];
-    const status = { running: true, clientCount: 2, port: 47319 };
+    const status = { running: true, clients: 2, port: 47319 };
     const api = createAndroidRemoteApi({
         on(name, listener) { listeners.set(name, listener); return () => listeners.delete(name); },
         async request(command, payload) {
@@ -534,12 +905,11 @@ test('Android remote renderer lifecycle preserves publication payloads and relea
     assert.deepEqual(await api.rendererReady(), { accepted: true });
     assert.equal(await api.getStatus(), status);
     listeners.get('remote-status')(status);
-    assert.deepEqual(notifications, [{ ...status, clients: 2 }]);
+    assert.deepEqual(notifications, [status]);
     const state = { revision: 4, pipeline: [{ nm: 'Volume', vl: -6 }] };
     const response = { requestId: 'request-4', ok: true, data: { revision: 4 } };
     await api.publishState(state);
     await api.respond(response);
-    await api.openPanel();
     await api.rendererUnavailable();
     detach();
     assert.equal(listeners.size, 0);
@@ -548,7 +918,6 @@ test('Android remote renderer lifecycle preserves publication payloads and relea
         { command: 'remote.getStatus', payload: undefined },
         { command: 'remote.publishState', payload: state },
         { command: 'remote.respond', payload: response },
-        { command: 'remote.openPanel', payload: undefined },
         { command: 'remote.rendererUnavailable', payload: undefined }
     ]);
     assert.equal(requests[2].payload, state);
@@ -556,8 +925,8 @@ test('Android remote renderer lifecycle preserves publication payloads and relea
 });
 
 
-test('Android instrument transfers preserve configured native memory budgets and execution channels', async () => {
-    await withGlobals({ window: { appConfig: { sfzMaxSizeMiB: 64 } } }, async () => {
+test('Android instrument transfers send descriptor footprints and execution channels', async () => {
+    await withGlobals({ window: {} }, async () => {
         class SFZNotePlayerPlugin extends VolumePlugin {}
         class SoundFontPlayerPlugin extends VolumePlugin {}
         const requests = [];
@@ -574,8 +943,7 @@ test('Android instrument transfers preserve configured native memory budgets and
         await assets.transfer(plugins);
         const begin = requests.filter(item => item.command === 'pipeline.asset.begin').map(item => item.payload);
         assert.deepEqual(begin.map(item => [item.footprintBytes, item.processingChannels]),
-            [[64 * 1024 * 1024, 1], [64 * 1024 * 1024, 2], [4, 1]]);
-        assert.equal(plugins[1].assets.get(0).footprintBytes, 4, 'Native admission must not mutate the renderer descriptor');
+            [[4, 1], [4, 2], [4, 1]]);
         assert.ok(plugins.every(plugin => plugin.assetStates.length === 1));
     });
 });

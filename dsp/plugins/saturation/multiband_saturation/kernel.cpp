@@ -139,12 +139,8 @@ public:
       float *low = bandBuffer(channel, 0u);
       float *mid = bandBuffer(channel, 1u);
       float *high = bandBuffer(channel, 2u);
-      filterBlock(input, low, coefficients_[0].lowpass, lowpassState(0u, channel), frame_count);
-      filterBlock(input, highpass1, coefficients_[0].highpass, highpassState(0u, channel),
-                  frame_count);
-      filterBlock(highpass1, mid, coefficients_[1].lowpass, lowpassState(1u, channel), frame_count);
-      filterBlock(highpass1, high, coefficients_[1].highpass, highpassState(1u, channel),
-                  frame_count);
+      splitBlock(input, low, highpass1, 0u, channel, frame_count);
+      splitBlock(highpass1, mid, high, 1u, channel, frame_count);
 
       for (std::uint32_t band = 0u; band < 3u; ++band) {
         float *signal = bandBuffer(channel, band);
@@ -259,12 +255,22 @@ private:
     return highpass_states_[static_cast<std::size_t>(crossover) * max_channels_ + channel];
   }
 
-  void filterBlock(const float *input, float *output, const dsp::BiquadCoefficients &coefficients,
-                   dsp::LinkwitzRiley24State &state, std::uint32_t frame_count) noexcept {
+  // Runs one crossover's low-pass and high-pass in a shared loop so their recursions overlap.
+  void splitBlock(const float *input, float *low, float *high, std::uint32_t crossover,
+                  std::uint32_t channel, std::uint32_t frame_count) noexcept {
+    const dsp::LinkwitzRiley24Coefficients coefficients = coefficients_[crossover];
+    dsp::LinkwitzRiley24State low_state = lowpassState(crossover, channel);
+    dsp::LinkwitzRiley24State high_state = highpassState(crossover, channel);
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-      output[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
-          static_cast<double>(input[frame]), coefficients, state, denormal_noise_.sample(frame)));
+      const double sample = static_cast<double>(input[frame]);
+      const double noise = denormal_noise_.sample(frame);
+      low[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+          sample, coefficients.lowpass, low_state, noise));
+      high[frame] = static_cast<float>(dsp::processLinkwitzRiley24SampleWithDenormalNoise(
+          sample, coefficients.highpass, high_state, noise));
     }
+    lowpassState(crossover, channel) = low_state;
+    highpassState(crossover, channel) = high_state;
   }
 
   void resetFilterStates() noexcept {

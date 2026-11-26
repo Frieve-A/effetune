@@ -1,4 +1,5 @@
 import { getSettingsStorage } from '../settings-storage.js';
+import { isAndroidHost } from '../android/bridge.js';
 import {
   mergePowerSavingSettings,
   normalizePowerSettings
@@ -534,6 +535,8 @@ export function normalizeWebAudioPreferences(preferences) {
   for (const [key, fallback] of Object.entries(WEB_AUDIO_PREFERENCE_DEFAULTS)) {
     normalized[key] = normalized[key] ?? fallback;
   }
+  // Android favors stable playback unless the user chose a latency.
+  if (isAndroidHost() && preferences.latencyHint == null) normalized.latencyHint = 'balanced';
   normalizeReplayGainPreferences(normalized);
   return normalized;
 }

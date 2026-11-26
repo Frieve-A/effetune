@@ -3,6 +3,7 @@ import { buildDspPipelineNodes, encodeDspPipelineDescriptor } from '../audio/dsp
 import { DISPLAY_DSP_PLUGIN_TYPES } from '../audio/power-topology.js';
 import { getPluginExecutionChannelMode, getPluginExecutionUnsupportedReason } from '../audio/plugin-execution-capabilities.js';
 import { packInstrumentMessage, packLiveMidi } from './instrument-transport.js';
+import { GRAPH_V1_CAPACITY } from './graph-capacity.generated.js';
 
 // Every AudioWorklet port command has one disposition at the native endpoint.
 export const ENGINE_PORT_ROUTES = new Map(Object.entries({
@@ -41,12 +42,22 @@ export function packed(plugin, rate, channels, useWasm) {
     assetPending:plugin.assetPending };
 }
 
-function isDisplayOnly(plugin) {
+export function isDisplayOnly(plugin) {
   return DISPLAY_DSP_PLUGIN_TYPES.has(plugin.type) &&
     !(plugin.type === 'RhythmAnalyzerPlugin' && plugin.parameters?.ck === true);
 }
 
-function noteAnalysisSources(active) {
+export function fitsNativeInstanceLimit(records) {
+  let instances = 0;
+  for (const record of records) {
+    if (record.type === 'SectionPlugin') continue;
+    // Skipped effects use only a passthrough. Display effects keep one alongside their kernel.
+    instances += !record.skip && record.displayOnly ? 2 : 1;
+  }
+  return instances <= GRAPH_V1_CAPACITY.maxEffectiveInstances;
+}
+
+export function noteAnalysisSources(active) {
   const sources = new Map();
   for (const [index,consumer] of active.entries()) {
     if (consumer.type !== 'SFZNotePlayerPlugin' || consumer.skip) continue;
@@ -103,6 +114,7 @@ export class EnginePort extends EventTarget {
     this.manager = manager;
     this.branch = branch;
     this.revision = 0;
+    this.pendingGraphs = new Map();
     this.midiInputSerial = 0;
     this.directSampleSupply = false;
     // Each sample page is acknowledged only after an audio callback stages it.
@@ -112,9 +124,17 @@ export class EnginePort extends EventTarget {
     this.samplePublishWindow = 16;
   }
   start() {}
-  close() { this.closed = true; this.onmessage = null; }
+  close() { this.closed = true; this.onmessage = null; this.pendingGraphs.clear(); }
   receive(message) {
     if (this.closed) return;
+    if (message.type === 'pipelineApplied') {
+      const graph = this.pendingGraphs.get(message.revision);
+      if (graph) {
+        this.pendingGraphs.delete(message.revision);
+        this.appliedGraph = graph;
+        this.manager.nativePipelineApplied?.(this);
+      }
+    }
     const event = new MessageEvent('message', {data:message});
     this.onmessage?.(event);
     this.dispatchEvent(event);
@@ -130,6 +150,9 @@ export class EnginePort extends EventTarget {
       const item = packed(message.plugin,m.audioContext.sampleRate,m.getOutputChannelCount(),m.preferences.useWasmDsp);
       if (!item.skip && this.types?.get(item.id) === item.type &&
           this.routing?.get(item.id) === this.routeKey(message.plugin)) {
+        const graph = this.submittedGraph;
+        const index = graph?.pluginData.findIndex(plugin => plugin.id === item.id && plugin.type === item.type);
+        if (index >= 0) graph.pluginData[index] = {...graph.pluginData[index],...message.plugin};
         const { records, attachment } = packRecords([item]);
         m.send({...records[0],type:'updateParameters',pluginType:item.type,branch:this.branch,attachment});
         return;
@@ -170,39 +193,67 @@ export class EnginePort extends EventTarget {
       p.parameters?.channel ?? p.channel,p.parameters?.ck,p.parameters?.mn,p.parameters?.mx,
       ...(isSampler(p.type) ? [p.parameters?.sf || '',p.parameters?.mco || 0] : [])]);
   }
-  configure(plugins, masterBypass, gate = false) {
-    if (this.closed) return;
+  describePipeline(plugins, bypass) {
     const m = this.manager;
-    const parallel = m._parallelActive || m._parallelPreparing;
-    plugins ??= m._buildBlindPluginData(this.branch ? m.pipelineB : parallel ? m.pipelineA : m.pipeline);
-    const bypass = this.branch || parallel ? false : (masterBypass ?? m.masterBypass);
     const nodes = buildDspPipelineNodes(plugins,{getInstanceId:p => p.id,getParameters:p => p.parameters});
     const items = [], active = [];
-    this.types = new Map();
-    this.routing = new Map();
-    const revision = ++this.revision;
+    const types = new Map(), routing = new Map();
     for (const plugin of plugins) {
       if (plugin.type === 'SectionPlugin') continue;
       const item = packed(plugin,m.audioContext.sampleRate,m.getOutputChannelCount(),m.preferences.useWasmDsp);
       const node = nodes[items.length];
       item.displayOnly = isDisplayOnly(plugin);
       items.push(item);
-      this.types.set(item.id,item.type);
-      this.routing.set(item.id,this.routeKey(plugin));
+      types.set(item.id,item.type);
+      routing.set(item.id,this.routeKey(plugin));
       if (node.enabled && node.sectionGate) {
-        active.push({...plugin,...node,skip:item.skip});
-        this.receive({pluginId:item.id,sampleRate:m.audioContext.sampleRate});
-        this.receive({type:'dspExecutionState',pluginId:item.id,pluginType:item.type,generation:revision,
-          sampleRate:m.audioContext.sampleRate,state:item.reason ? 'bypassed':'active',reason:item.reason});
+        active.push({...plugin,...node,skip:item.skip,reason:item.reason});
       }
     }
-    const sources = noteAnalysisSources(bypass ? [] : active);
+    // Master bypass disconnects analysis consumers and plays dry audio. Keep the
+    // producer allocation stable so bypass cannot require an extra passthrough.
+    const sources = noteAnalysisSources(active);
     const producers = new Set(sources.values());
     for (const item of items) {
       if (producers.has(item.id)) item.displayOnly = false;
-      if (item.type === 'SFZNotePlayerPlugin') item.noteAnalysisSource = sources.get(item.id) ?? 0;
+      if (item.type === 'SFZNotePlayerPlugin') item.noteAnalysisSource = bypass ? 0 : sources.get(item.id) ?? 0;
+    }
+    return {items,active,nodes,types,routing};
+  }
+  checkCapacity(items) {
+    if (fitsNativeInstanceLimit(items)) return true;
+    globalThis.window?.uiManager?.setError('error.pipelineTooLarge',true);
+    return false;
+  }
+  configure(plugins, masterBypass, gate = false, fallback) {
+    if (this.closed) return;
+    const m = this.manager;
+    const parallel = m._parallelActive || m._parallelPreparing;
+    const primary = !this.branch && !parallel;
+    plugins ??= m._buildBlindPluginData(this.branch ? m.pipelineB : parallel ? m.pipelineA : m.pipeline);
+    const bypass = primary ? Boolean(masterBypass ?? m.masterBypass) : false;
+    const {items,active,nodes,types,routing} = this.describePipeline(plugins,bypass);
+    if (!this.checkCapacity(items)) {
+      if (primary && !fallback) m.nativePipelineCapacityRejected?.(this,bypass);
+      return false;
     }
     const {records, ...binary} = packRecords(items,encodeDspPipelineDescriptor(nodes,m.getOutputChannelCount()));
+    this.types = types;
+    this.routing = routing;
+    const revision = ++this.revision;
+    if (primary) {
+      // A rejected edit can leave the renderer and the playing pipeline on different revisions.
+      const graph = {pluginData:[...plugins],plugins:fallback?.plugins ?? [...(m.pipeline || [])],bypass,
+        playable:fallback?.playable ?? (m.outputStartupComplete === true || items.length > 0)};
+      this.submittedGraph = graph;
+      this.pendingGraphs.set(revision,graph);
+    }
+    for (const item of active) {
+      this.receive({pluginId:item.id,sampleRate:m.audioContext.sampleRate});
+      this.receive({type:'dspExecutionState',pluginId:item.id,pluginType:item.type,generation:revision,
+        sampleRate:m.audioContext.sampleRate,state:item.reason ? 'bypassed':'active',reason:item.reason});
+    }
     m.send({type:'configurePipeline',branch:this.branch,revision,plugins:records,gate,masterBypass:bypass,...binary});
+    return true;
   }
 }

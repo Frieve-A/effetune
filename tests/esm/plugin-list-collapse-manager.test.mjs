@@ -336,6 +336,17 @@ test('collapse toggling sets matching classes and transition destinations', asyn
   });
 });
 
+test('RTL collapse arrows follow the document direction', async () => {
+  await withCollapseGlobals({ windowOptions: { appInitializedListener: true } }, async ({ dom }) => {
+    dom.documentRef.documentElement.dir = 'rtl';
+    const manager = new CollapseManager({ pluginList: dom.pluginList });
+    manager.togglePluginListCollapse();
+    assert.equal(dom.pullTab.textContent, '◀');
+    manager.togglePluginListCollapse();
+    assert.equal(dom.pullTab.textContent, '▶');
+  });
+});
+
 test('updatePositions updates layout width without positioning the pull tab', async () => {
   await withCollapseGlobals({
     windowOptions: { appInitializedListener: true }

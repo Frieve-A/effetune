@@ -13,6 +13,7 @@ import org.json.JSONObject;
 /** The only JavaScript entry point. Never expose Java objects with addJavascriptInterface. */
 final class WebHostBridge {
     static final String ORIGIN = "https://appassets.androidplatform.net";
+    private static final int MESSAGE_LIMIT_BYTES = 1024 * 1024;
     private final MainActivity activity;
     private JavaScriptReplyProxy reply;
     private boolean detached;
@@ -42,17 +43,52 @@ final class WebHostBridge {
             return;
         }
         reply = proxy;
-        activity.dispatch(request, (result, error) -> {
-            try {
-                JSONObject response = new JSONObject().put("version", 1).put("id", request.getString("id"))
-                        .put("ok", error == null);
-                if (error == null) response.put("result", result == null ? JSONObject.NULL : result);
-                else response.put("error", new JSONObject().put("code", error.code).put("message", error.getMessage()));
-                activity.runOnUiThread(() -> {
-                    if (!detached) proxy.postMessage(response.toString());
-                });
-            } catch (Exception failure) { Log.e("EffeTuneBridge", "Unable to send reply", failure); }
+        String id = request.optString("id");
+        activity.dispatch(request, new AudioService.Reply() {
+            @Override public void permissionWaiting(boolean waiting) {
+                postReply(proxy, AudioService.object("version", 1, "id", id, "permissionWaiting", waiting));
+            }
+
+            @Override public void complete(JSONObject result, AudioService.HostError error) {
+                if (error == null) postReply(proxy, AudioService.object("version", 1, "id", id, "ok", true,
+                        "result", result == null ? JSONObject.NULL : result));
+                else postReply(proxy, AudioService.object("version", 1, "id", id, "ok", false,
+                        "error", AudioService.object("code", error.code, "message", error.getMessage())));
+            }
         });
+    }
+
+    private void postReply(JavaScriptReplyProxy proxy, JSONObject response) {
+        activity.runOnUiThread(() -> {
+            if (detached) return;
+            try {
+                String encoded = response.toString();
+                if (exceedsMessageLimit(encoded)) {
+                    encoded = AudioService.object("version", 1, "id", response.optString("id"), "ok", false,
+                            "error", AudioService.object("code", "response-too-large",
+                                    "message", "The response is too large. Select fewer files and try again.")).toString();
+                }
+                proxy.postMessage(encoded);
+            }
+            catch (RuntimeException failure) { Log.w("EffeTuneBridge", "Unable to send reply", failure); }
+        });
+    }
+
+    private static boolean exceedsMessageLimit(String message) {
+        int bytes = 0;
+        for (int i = 0; i < message.length(); i++) {
+            char value = message.charAt(i);
+            if (value < 0x80) bytes++;
+            else if (value < 0x800) bytes += 2;
+            else if (Character.isHighSurrogate(value) && i + 1 < message.length()
+                    && Character.isLowSurrogate(message.charAt(i + 1))) {
+                bytes += 4;
+                i++;
+            } else if (Character.isSurrogate(value)) bytes++;
+            else bytes += 3;
+            if (bytes > MESSAGE_LIMIT_BYTES) return true;
+        }
+        return false;
     }
 
     void event(String name, JSONObject data) {

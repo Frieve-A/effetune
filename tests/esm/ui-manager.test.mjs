@@ -1362,6 +1362,34 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
   });
 });
 
+test('applies the document language and direction at startup and when switching languages', async () => {
+  await withUIHarness({
+    appConfig: { language: 'auto' },
+    language: 'ar-EG',
+    defaultFetch: { text: JSON.stringify({ 'ui.whatsThisApp': 'ما هذا؟' }) }
+  }, async ({ document, manager }) => {
+    await manager.localizationReady;
+    const root = document.documentElement;
+    assert.equal(root.lang, 'ar');
+    assert.equal(root.dir, 'rtl');
+
+    await manager.setLanguagePreference('ja', { persist: false });
+    assert.equal(root.lang, 'ja');
+    assert.equal(root.dir, 'ltr');
+  });
+
+  await withUIHarness({}, async ({ document, manager }) => {
+    await manager.localizationReady;
+    const root = document.documentElement;
+    assert.equal(root.lang, 'en');
+    assert.equal(root.dir, 'ltr');
+
+    await manager.setLanguagePreference('ar', { persist: false });
+    assert.equal(root.lang, 'en');
+    assert.equal(root.dir, 'ltr');
+  });
+});
+
 test('language changes refresh the existing Visualizer after loading translations', async () => {
   await withUIHarness({
     englishTranslations: { 'visualizer.quality': 'Quality' },
@@ -1376,6 +1404,25 @@ test('language changes refresh the existing Visualizer after loading translation
 
     assert.deepEqual(labels, ['画質', 'Quality']);
     assert.equal(manager.visualizerView, visualizer);
+  });
+});
+
+test('initAudio serves native hosts that have no AudioContext', async () => {
+  await withUIHarness({}, async ({ manager }) => {
+    let rangeFillInstalls = 0;
+    manager.initRangeFillStyling = () => rangeFillInstalls++;
+    let nativeRate = 48000;
+    manager.audioManager.audioContext = null;
+    manager.audioManager.getReportedSampleRate = () => nativeRate;
+    manager.audioManager.getOutputChannelCount = () => 2;
+
+    manager.initAudio();
+    assert.equal(rangeFillInstalls, 1);
+    assert.equal(manager.sampleRate.textContent, '48000 Hz');
+
+    nativeRate = 96000;
+    manager.audioManager.listeners.get('nativeSnapshot')?.();
+    assert.equal(manager.sampleRate.textContent, '96000 Hz');
   });
 });
 
@@ -1659,6 +1706,17 @@ test('a background player load retains every selected filename until the load se
   assert.equal(diagnosticDictionary().get(files.at(-1).name), '<track>');
 });
 
+test('a caller can await a player load and receive its failure', async () => {
+  let rejectLoad;
+  const player = { loadFiles: () => new Promise((resolve, reject) => { rejectLoad = reject; }) };
+  const manager = Object.assign(Object.create(UIManager.prototype), { audioPlayer: player });
+  const pending = manager.createAudioPlayer(['shared.wav'], false, { waitForLoad: true });
+  await Promise.resolve();
+  const error = Object.assign(new Error('blocked'), { code: 'visible-start-required' });
+  rejectLoad(error);
+  await assert.rejects(pending, failure => failure === error);
+});
+
 test('web selection survives network initialization but cancels real target changes across both waits', async () => {
   for (const stage of ['resolve', 'create']) {
     for (const playerGeneration of [0, 1]) {
@@ -1680,23 +1738,6 @@ test('web selection survives network initialization but cancels real target chan
       assert.deepEqual(loaded, playerGeneration === 0 ? [[file]] : []);
     }
   }
-});
-
-test('Android Open Music explains that DSD requires the web or desktop player', async () => {
-  const errors = [];
-  const file = { name: 'song.dsf' };
-  const manager = Object.assign(Object.create(UIManager.prototype), {
-    playbackSelectionGeneration: 0,
-    playbackSelectionResolver: async () => ({ tracks: [file] }),
-    createAudioPlayer: async () => ({ async loadFiles() {
-      throw Object.assign(new Error('Unsupported Android DSD'), {
-        code: 'DSD_NATIVE_UNSUPPORTED', localPlaybackSourceFailure: true
-      });
-    } }),
-    setError: key => errors.push(key)
-  });
-  assert.equal(await manager.openWebPlaybackSelection([file], true), false);
-  assert.deepEqual(errors, ['dsd.error.nativeUnsupported']);
 });
 
 test('opening a web music file keeps Visualizer open and still selects Player from other views', async () => {

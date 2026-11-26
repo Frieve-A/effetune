@@ -55,7 +55,8 @@ function pluginType(plugin, prepared) {
 
 export function getAnalyzerAudioFormat(audioManager) {
     const context = audioManager?.contextManager?.audioContext || audioManager?.audioContext;
-    const sampleRate = context?.sampleRate;
+    // Hosts without an AudioContext (Android) report the rate once their engine has sent it.
+    const sampleRate = context?.sampleRate ?? audioManager?.getReportedSampleRate?.();
     const channelCount = audioManager?.getOutputChannelCount?.() ??
         context?.destination?.channelCount;
     if (!(Number.isFinite(sampleRate) && sampleRate > 0) ||
@@ -308,6 +309,20 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
     const enabledDspTypes = new Set(audioManager?.getEnabledDspTypes?.(null, moduleInfo) || []);
 
     for (const entry of effectiveEntries) {
+        const staging = entry.plugin?.waitForOfflineDspAssetStaging?.(assetTimeoutMs);
+        const pendingAsset = staging || (entry.plugin?.waitForOfflineDspAssetStaging &&
+            entry.plugin.externalAssetInfo?.pending);
+        if (staging) {
+            const ready = await staging;
+            guardCurrent(isCurrent);
+            if (!ready) {
+                throw new PipelineSnapshotError('asset-unavailable', {
+                    name: pluginType(entry.plugin, entry.data),
+                    effectName: entry.plugin.name,
+                    missingSlots: [0]
+                });
+            }
+        }
         const requirements = normalizeRequirements(
             resolveRequirements?.(entry.plugin, entry.data)
         );
@@ -357,7 +372,9 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
             ...entry,
             requirements,
             type,
-            offlineDspAssetRequired
+            offlineDspAssetRequired,
+            stagedAssetSignature: pendingAsset && offlineDspAssetRequired
+                ? entry.plugin.externalAssetInfo?.assetSignature : null
         });
     }
 
@@ -397,9 +414,11 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
             { timeoutMs: assetTimeoutMs }
         );
         guardCurrent(isCurrent);
-        if (!effective?.ready) {
+        if (!effective?.ready || (entry.stagedAssetSignature &&
+            effective.assets.get(0)?.externalAssetSignature !== entry.stagedAssetSignature)) {
             throw new PipelineSnapshotError('asset-unavailable', {
                 name: entry.type,
+                effectName: entry.plugin.name,
                 missingSlots: effective?.missingSlots || requiredSlots,
                 timedOut: effective?.timedOut === true
             });
@@ -422,6 +441,7 @@ async function collectProcessingSnapshot(options, format, isAnalysis = false) {
             if (typeof descriptor.sampleProviderFactory === 'function') {
                 throw new PipelineSnapshotError('asset-unavailable', {
                     name: entry.type,
+                    effectName: entry.plugin.name,
                     missingSlots: [slot],
                     timedOut: false
                 });

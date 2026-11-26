@@ -23,6 +23,7 @@ let catalogState,
   PROTOCOL_VERSION,
   RECENT_TRACK_LIMIT,
   SEARCH_FIELDS,
+  SYSTEM_PLAYLIST_SCOPES,
   TERMINAL_OPERATION_PHASES,
   advanceScanMetadataCursor,
   appendOperationSnapshotItems,
@@ -39,9 +40,10 @@ let catalogState,
   claimMetadataParse,
   claimMetadataParseBatch,
   cleanupPlaylistItems,
-  clearCueScanStageRows,
+  clearScanStageRows,
   closeDatabase,
   commitScanSeenBatch,
+  scanTraversalQueue,
   completeMetadataParseBatch,
   completeMetadataParseFailure,
   completeMetadataParseSuccess,
@@ -540,6 +542,7 @@ async function initialize() {
     PROTOCOL_VERSION,
     RECENT_TRACK_LIMIT,
     SEARCH_FIELDS,
+    SYSTEM_PLAYLIST_SCOPES,
     TERMINAL_OPERATION_PHASES,
     advanceScanMetadataCursor,
     appendOperationSnapshotItems,
@@ -556,9 +559,10 @@ async function initialize() {
     claimMetadataParse,
     claimMetadataParseBatch,
     cleanupPlaylistItems,
-    clearCueScanStageRows,
+    clearScanStageRows,
     closeDatabase,
     commitScanSeenBatch,
+    scanTraversalQueue,
     completeMetadataParseBatch,
     completeMetadataParseFailure,
     completeMetadataParseSuccess,
@@ -814,7 +818,7 @@ function initializeMetadata(expectedSchemaVersion, expectedCollationVersion) {
   if (!Number.isSafeInteger(catalogState.catalogVersion) || catalogState.catalogVersion < 0) {
     throw createCatalogError('catalogCorrupt', 'Catalog version metadata is invalid');
   }
-  for (const scope of ['artwork', 'tracks', 'folders', 'subfolders', 'albums', 'artists', 'genres', 'playlists']) {
+  for (const scope of ['artwork', 'tracks', 'folders', 'subfolders', 'albums', 'artists', 'genres', 'playlists', ...SYSTEM_PLAYLIST_SCOPES]) {
     const key = `scope_version:${scope}`;
     insertMeta.run(key, '0');
     const value = Number(getMeta.get(key).value);
@@ -964,6 +968,7 @@ function dispatchCommand(command, payload) {
     case 'beginScanFolder': return beginScanFolder(payload);
     case 'preflightScanBatch': return preflightScanBatch(payload);
     case 'commitScanSeenBatch': return commitScanSeenBatch(payload);
+    case 'scanTraversalQueue': return scanTraversalQueue(payload);
     case 'cueDirectoryStage': return cueDirectoryStage(payload);
     case 'listMetadataCandidates': return listMetadataCandidates(payload);
     case 'advanceScanMetadataCursor': return advanceScanMetadataCursor(payload);
@@ -2254,7 +2259,7 @@ function beginScanFolder(payload) {
       Number(existing?.enumerationErrorCount ?? 0), Number(existing?.visitedFiles ?? 0),
       Number(existing?.committedBatches ?? 0), now
     );
-    clearCueScanStageRows({ scanId, folderId });
+    clearScanStageRows({ scanId, folderId });
     return {
       scanId,
       folderId,

@@ -16,6 +16,7 @@ const labelGeometry = () => [...document.querySelectorAll('.plugin-parameter-ui 
         return { text: label.textContent, title: label.title, rowWidth: label.parentElement.getBoundingClientRect().width,
             width: rect.width, height: rect.height, textHeight: textRect.height,
             numeric: controls.some(el => el.type === 'range') && controls.some(el => el.type === 'number'),
+            stacked: label.parentElement.matches(':has(> input[type="range"]:not(.vertical-slider), > select)'),
             style: Object.fromEntries(['font', 'lineHeight', 'display', 'alignItems', 'whiteSpace'].map(key => [key, css[key]])),
             clamp: getComputedStyle(text).webkitLineClamp,
             controls: controls.map(el => { const r = el.getBoundingClientRect(); return {
@@ -132,6 +133,8 @@ test('measurement shared layout keeps actions, history and analysis selectors st
                 const host = document.getElementById('label-reference'); host.replaceChildren();
                 return actual.map(item => {
                     const row = window.labelPlugin.createParameterControl('Reference', 0, 100, 1, 50, () => {});
+                    // Mobile Effect labels stack only above range and select controls; other labels stay centered beside a field.
+                    if (!item.stacked) row.querySelector('input[type="range"]').remove();
                     row.style.width = `${item.rowWidth}px`; host.append(row);
                     const label = row.querySelector('label'); label.textContent = item.text;
                     const css = getComputedStyle(label);

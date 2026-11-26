@@ -1298,6 +1298,43 @@ test('bulk Play restores its previous queue on cancel and publishes without posi
   });
 });
 
+test('Android bulk Play cancellation and Undo restore the service checkpoint', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, calls, manager }) => {
+    Object.assign(audioPlayer.contextManager, {
+      nativeQueueOwned: true,
+      async seamlessTransition(_track, _ordinal, _play, options) {
+        calls.push(['provisional', options.bulkPlayId]);
+        return true;
+      },
+      async replaceNativeQueue({ bulkPlayId, preservePlayback, play }) {
+        calls.push(['publish', bulkPlayId, preservePlayback, play]);
+        return { accepted: true };
+      },
+      async restoreNativeQueue(operationId) { calls.push(['restore', operationId]); return true; }
+    });
+    const provisionalEntry = { entryInstanceId: 'selected', trackUid: 'selected', name: 'Selected' };
+    const install = (operationId, provisionalUnavailable = false) => manager.installBulkPlayProvisional({
+      receipt: { operationId, provisionalEntry }, provisionalUnavailable,
+      resolveSource: async () => ({ uri: 'content://music/selected' })
+    });
+    assert.equal((await install('cancel')).accepted, true);
+    assert.equal((await manager.cancelBulkPlay('cancel')).accepted, true);
+
+    for (const [operationId, missing] of [['publish', false], ['missing-first-document', true]]) {
+      assert.equal((await install(operationId, missing)).accepted, true);
+      const sequence = new CatalogSequence(catalogDescriptor({ itemCount: 4, firstEntryInstanceId: 'selected' }));
+      assert.equal((await manager.publishBulkPlaySequence({ operationId, sequence })).accepted, true);
+      await manager.finishBulkPlayTerminal(operationId, { succeeded: true });
+      assert.deepEqual(await manager.undoSessionTransport(), { kind: 'published' });
+    }
+    assert.deepEqual(calls, [
+      ['provisional', 'cancel'], ['restore', 'cancel'],
+      ['provisional', 'publish'], ['publish', 'publish', true, false], ['restore', 'publish'],
+      ['publish', 'missing-first-document', false, true], ['restore', 'missing-first-document']
+    ]);
+  });
+});
+
 test('manual queue replacement and clear invalidate Library Play undo while append preserves it', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
     const undo = { kind: 'catalog' };

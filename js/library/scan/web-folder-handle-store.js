@@ -93,6 +93,7 @@ export class WebFolderHandleStore {
     this.indexedDB = indexedDB;
     this.now = now;
     this.database = null;
+    this.liveHandles = new Map();
   }
 
   async open() {
@@ -105,6 +106,7 @@ export class WebFolderHandleStore {
   close() {
     this.database?.close();
     this.database = null;
+    this.liveHandles.clear();
   }
 
   async put({ folderId, handle }) {
@@ -115,10 +117,14 @@ export class WebFolderHandleStore {
       handle,
       updatedAt: this.now()
     })));
+    // Keep the working handle for this session, without deserializing it again.
+    this.liveHandles.set(folderId, handle);
   }
 
   async get(folderId) {
     await this.open();
+    const live = this.liveHandles.get(folderId);
+    if (live) return live;
     const row = await runTransaction(this.database, 'readonly', store => requestResult(store.get(nonEmptyString(folderId, 'folderId'))));
     return row?.handle ?? null;
   }
@@ -136,7 +142,8 @@ export class WebFolderHandleStore {
           resolve();
           return;
         }
-        rows.push({ folderId: cursor.value.folderId, handle: cursor.value.handle });
+        const { folderId, handle } = cursor.value;
+        rows.push({ folderId, handle: this.liveHandles.get(folderId) ?? handle });
         cursor.continue();
       };
     }));
@@ -146,6 +153,7 @@ export class WebFolderHandleStore {
   async delete(folderId) {
     await this.open();
     await runTransaction(this.database, 'readwrite', store => requestResult(store.delete(nonEmptyString(folderId, 'folderId'))));
+    this.liveHandles.delete(folderId);
   }
 }
 

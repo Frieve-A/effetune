@@ -23,21 +23,32 @@ public:
     seed((static_cast<std::uint64_t>(seed_high) << 32U) | seed_low);
   }
 
-  [[nodiscard]] constexpr std::uint64_t nextU64() noexcept {
-    std::uint64_t value = state_;
+  // One generator step. The map is linear over GF(2), so steps of an XOR of states are the XOR
+  // of the stepped states.
+  [[nodiscard]] static constexpr std::uint64_t step(std::uint64_t value) noexcept {
     value ^= value << 13U;
     value ^= value >> 7U;
     value ^= value << 17U;
-    state_ = value;
     return value;
   }
 
-  [[nodiscard]] double nextFloat01() noexcept {
+  [[nodiscard]] static double toFloat01(std::uint64_t value) noexcept {
     constexpr double scale = 1.0 / 9007199254740992.0;
-    return static_cast<double>(nextU64() >> 11U) * scale;
+    return static_cast<double>(value >> 11U) * scale;
   }
 
-  [[nodiscard]] double nextFloatSigned() noexcept { return nextFloat01() * 2.0 - 1.0; }
+  [[nodiscard]] static double toFloatSigned(std::uint64_t value) noexcept {
+    return toFloat01(value) * 2.0 - 1.0;
+  }
+
+  [[nodiscard]] constexpr std::uint64_t nextU64() noexcept {
+    state_ = step(state_);
+    return state_;
+  }
+
+  [[nodiscard]] double nextFloat01() noexcept { return toFloat01(nextU64()); }
+
+  [[nodiscard]] double nextFloatSigned() noexcept { return toFloatSigned(nextU64()); }
   [[nodiscard]] constexpr std::uint64_t state() const noexcept { return state_; }
 
 private:

@@ -256,9 +256,11 @@ bool Session::renderDevice(std::span<float> output, unsigned frames,
 }
 
 bool Session::render(std::span<float> planar, std::uint32_t frames,
-                     std::optional<FeedTime> feedTime, bool sourceActive) noexcept {
+                     std::optional<FeedTime> feedTime, bool sourceActive,
+                     RenderRoute route) noexcept {
   if (!engine_ || frames == 0 || planar.size() != std::size_t(frames) * format_.width())
     return false;
+  const bool measuring = route == RenderRoute::Measurement;
 #if defined(__x86_64__) || defined(_M_X64)
   _mm_setcsr(_mm_getcsr() | 0x8040u);
 #elif defined(__aarch64__)
@@ -283,9 +285,9 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
     // Publish the borrowed pointer before dereferencing it. The control thread
     // retains a detached branch until this audio callback releases it.
     do {
-      parallel = published_.load();
+      parallel = measuring ? nullptr : published_.load();
       inUse_.store(parallel);
-    } while (parallel != published_.load());
+    } while (!measuring && parallel != published_.load());
     boundaries_.shareFileBoundaries(parallel ? &parallel->b->boundaries_ : nullptr);
     const auto block = boundaries_.slice(
         position(), quantum, clock, *telemetry_, io_->routeRevision, stage,
@@ -312,7 +314,7 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
     float *bus = engine_->combined();
     for (std::uint32_t ch = 0; ch < format_.width(); ++ch)
       std::copy_n(planar.data() + std::size_t(ch) * frames + offset, block, bus + ch * block);
-    if (!pipeline_->receiveId() && feed_)
+    if (!measuring && !pipeline_->receiveId() && feed_)
       preview_.mix(bus, format_.width(), block, format_.sampleRate);
     if (parallel) {
       const auto count = std::size_t(format_.width()) * block;
@@ -331,7 +333,7 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
       std::copy_n(bus, std::size_t(format_.width()) * block, dry_.data());
     // Master bypass removes every instrument from the MIDI targets, but the song
     // transport still advances, as in the worklet, so it prepares and ends.
-    const bool midi = run || bypass_;
+    const bool midi = !measuring && (run || bypass_);
     if (midi)
       pipeline_->renderMidi(position_, block, format_.sampleRate);
     if (run)
@@ -371,7 +373,8 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
     if (stage == VisualizerStage::pipeline)
       visualize(bus, format_.width());
     power_->finish(*pipeline_, bus, format_.width(), block, run);
-    output_.process(bus, io_->capturedMarker(), block, run, dryOutput ? dry_.data() : nullptr);
+    if (!measuring)
+      output_.process(bus, io_->capturedMarker(), block, run, dryOutput ? dry_.data() : nullptr);
     if (!output_.topologyReady()) {
       const bool held = pipeline_->holdsInsertedAsset() ||
                         (parallel && parallel->b->pipeline()->holdsInsertedAsset());
@@ -386,7 +389,10 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
     else if (stage == VisualizerStage::send && io_->capturedMarker() && !io_->paused && !parallel &&
              feed_)
       visualize(io_->capturedMarker(), 2);
-    io_->networkStage(bus, format_.width(), block, position_, parallel || !feed_);
+    if (measuring)
+      io_->clearCapturedMarker();
+    else
+      io_->networkStage(bus, format_.width(), block, position_, parallel || !feed_);
     if (stage == VisualizerStage::local)
       visualize(bus, format_.width());
     if (parallel) {
@@ -413,7 +419,7 @@ bool Session::render(std::span<float> planar, std::uint32_t frames,
         }
       }
     }
-    if (feed_)
+    if (!measuring && feed_)
       io_->applyLocalGain(bus, format_.width(), block);
     inUse_.store(nullptr);
     for (std::uint32_t ch = 0; ch < format_.width(); ++ch)

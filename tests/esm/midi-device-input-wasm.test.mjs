@@ -52,6 +52,7 @@ async function setup(variant, source = '<region> sample=tone.wav key=60 loop_mod
     catch (error) { await h.close(); throw error; }
     const playback = createNativeMidiPlaybackOwner(h);
     const manager = Object.assign(h.manager, audioManagerLiveMidiMethods);
+    manager.eventManager = new EventManager({ runtimeOptions: { externalInput: true } });
     let receive, leases = 0, powerChange, wake = null;
     const port = { state: 'connected' };
     const power = { started: true, player: null,

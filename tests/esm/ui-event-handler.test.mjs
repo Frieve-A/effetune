@@ -144,6 +144,10 @@ class FakeElement {
   getBoundingClientRect() {
     return this.rect;
   }
+
+  getClientRects() {
+    return this.style.display === 'none' ? [] : [this.rect];
+  }
 }
 
 function createDocument() {
@@ -313,7 +317,10 @@ function createHarness(options = {}) {
       calls.push(['findInsertionIndex', ...args]);
       return options.targetIndex ?? 1;
     },
-    updateInsertionIndicator: (x, y) => calls.push(['updateInsertionIndicator', x, y]),
+    updateInsertionIndicator: (x, y) => {
+      indicator.style.top = '100px';
+      calls.push(['updateInsertionIndicator', x, y]);
+    },
     checkWindowWidthAndAdjust: () => calls.push(['checkWindowWidthAndAdjust']),
     addUserPresetToPipeline: async (name, index) => calls.push(['addUserPresetToPipeline', name, index]),
     initPresetManager: async () => calls.push(['initPresetManager']),
@@ -832,6 +839,53 @@ test('setupDragEvents handles mouse, touch, cancellation, and unavailable pipeli
   });
 });
 
+test('touch reordering scrolls at both visible edges until the drag ends', async () => {
+  await withUIEventGlobals({}, async harness => {
+    const handler = createHandler(harness);
+    const handle = harness.documentRef.createElement('div');
+    handler.setupDragEvents(handle, harness.documentRef.createElement('div'), harness.plugins[0]);
+    const miniPlayer = harness.documentRef.createElement('div');
+    miniPlayer.className = 'mobile-mini-player';
+    miniPlayer.rect = { top: 490 };
+    harness.documentRef.body.appendChild(miniPlayer);
+    harness.windowRef.innerHeight = 600;
+    const scrolls = [];
+    harness.windowRef.scrollBy = ({ top }) => scrolls.push(top);
+
+    const touchAt = clientY => ({ touches: [{ clientX: 30, clientY }] });
+    handle.dispatch('touchstart', touchAt(250));
+    harness.indicator.rect = { top: -30, bottom: -28, height: 2 };
+    harness.raf.runNextFrame();
+    assert.equal(harness.indicator.style.top, '100px');
+    harness.indicator.rect = { top: 510, bottom: 512, height: 2 };
+    harness.raf.runNextFrame();
+    assert.equal(harness.indicator.style.top, '100px');
+    assert.deepEqual(scrolls, [-14, 14]);
+    scrolls.length = 0;
+    harness.indicator.rect = { top: 250, bottom: 252, height: 2 };
+
+    handle.dispatch('touchmove', touchAt(470));
+    harness.raf.runNextFrame();
+    harness.raf.runNextFrame();
+    assert.equal(scrolls.length, 2);
+    assert.ok(scrolls.every(step => step > 0));
+    assert.deepEqual(harness.calls.at(-1), ['updateInsertionIndicator', 30, 470]);
+
+    handle.dispatch('touchmove', touchAt(20));
+    harness.raf.runNextFrame();
+    assert.ok(scrolls.at(-1) < 0);
+    handle.dispatch('touchcancel');
+    harness.raf.runNextFrame();
+    assert.equal(scrolls.length, 3);
+
+    handler.isDraggingOver = true;
+    handler.updateIndicatorLoop();
+    assert.equal(scrolls.length, 3);
+    handler.isDraggingOver = false;
+    harness.raf.runNextFrame();
+  });
+});
+
 test('handlePluginReordering handles guards, no-op moves, bounds, and successful reorder', async () => {
   await withUIEventGlobals({}, async harness => {
     const handler = createHandler(harness);
@@ -952,7 +1006,7 @@ test('UIEventHandler defensive paths recover through direct guards and rAF fallb
 
 test('fallback plugin-list manager supports touch cancellation and preset drops', async () => {
   const fallbackManager = {
-    indicator: { style: { display: 'none' } },
+    indicator: { style: { display: 'none', top: '0px' }, getBoundingClientRect: () => ({ top: 0, height: 2 }) },
     getInsertionIndicator() {
       return this.indicator;
     },

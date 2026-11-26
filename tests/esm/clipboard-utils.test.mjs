@@ -408,6 +408,28 @@ test('readTextFromClipboard returns empty text when no clipboard API is availabl
   });
 });
 
+test('readTextFromClipboard reads through the Android host because WebView denies clipboard reads', async () => {
+  const requests = [];
+  const transport = {
+    onmessage: null,
+    postMessage(text) {
+      const request = JSON.parse(text);
+      requests.push(request.command);
+      queueMicrotask(() => transport.onmessage({
+        data: JSON.stringify({ version: 1, id: request.id, ok: true, result: { text: 'android text' } })
+      }));
+    }
+  };
+
+  await withGlobals({
+    window: { location: { origin: 'https://appassets.androidplatform.net' }, effetuneAndroid: transport },
+    navigator: { clipboard: { readText: async () => { throw new Error('should not use web clipboard'); } } }
+  }, async () => {
+    assert.equal(await readTextFromClipboard(), 'android text');
+    assert.deepEqual(requests, ['clipboard.readText']);
+  });
+});
+
 test('readTextFromClipboard returns empty text when navigator is unavailable', async () => {
   await withGlobals({
     window: {},

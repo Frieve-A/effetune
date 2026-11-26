@@ -20,10 +20,15 @@ subprocess.run([str(build_tools / ("zipalign.exe" if os.name == "nt" else "zipal
                 "-c", "-P", "16", "4", str(args.apk)], check=True)
 subprocess.run([java, "-jar", str(build_tools / "lib" / "apksigner.jar"),
                 "verify", "--verbose", str(args.apk)], check=True)
+required_abis = ("arm64-v8a", "x86_64")
+required_libraries = [
+    f"lib/{abi}/{name}" for abi in required_abis
+    for name in ("libeffetune_openhome.so", "libeffetune_android_dsd.so")
+]
 libraries = []
 with zipfile.ZipFile(args.apk) as package, args.apk.open("rb") as raw:
     required_notices = {
-        "libcxx-LICENSE.txt", "oboe-LICENSE.txt", "pffft-LICENSE.txt",
+        "libcxx-LICENSE.txt", "oboe-LICENSE.txt", "pffft-LICENSE.txt", "openhome-NOTICE.txt",
         "sonic-LICENSE.txt", "sonic-NOTICE.txt", "netty-LICENSE.txt", "netty-NOTICE.txt",
         *("netty/" + name for name in ["LICENSE.slf4j.txt", "LICENSE.webbit.txt",
           "LICENSE.libdivsufsort.txt", "LICENSE.jbzip2.txt", "LICENSE.jctools.txt",
@@ -47,13 +52,18 @@ with zipfile.ZipFile(args.apk) as package, args.apk.open("rb") as raw:
         assert entry.compress_type == zipfile.ZIP_STORED, entry.filename
         assert (entry.header_offset + 30 + name_length + extra_length) % 16384 == 0, entry.filename
         libraries.append(entry.filename)
-    assert {name.split("/")[1] for name in libraries} == {"arm64-v8a", "x86_64"}
+    assert {name.split("/")[1] for name in libraries} == set(required_abis)
+    for library in required_libraries:
+        assert library in libraries, library
 if args.bundle:
     if not args.bundletool:
         parser.error("--bundle requires --bundletool")
     with zipfile.ZipFile(args.bundle) as bundle, zipfile.ZipFile(args.apk) as package:
         for notice in required_notices:
             assert bundle.read("base/assets/licenses/" + notice) == package.read("assets/licenses/" + notice), notice
+        bundle_entries = set(bundle.namelist())
+        for library in required_libraries:
+            assert "base/" + library in bundle_entries, "base/" + library
     subprocess.run([java, "-jar", str(args.bundletool), "validate", "--bundle=" + str(args.bundle)],
                    check=True, stdout=subprocess.DEVNULL)
 print(f"Verified notices, signatures, ZIP and ELF 16 KiB alignment for {len(libraries)} libraries in {args.apk}.")

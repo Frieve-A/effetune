@@ -707,7 +707,7 @@ export class VisualizerView {
         const rect = this.stageHost.getBoundingClientRect();
         const zoom = parseFloat(document.body.style.zoom) || 1;
         const [aw, ah] = this.layout.aspect.split(':').map(Number), aspect = aw / ah;
-        const cover = this.expanded || document.body.classList.contains('layout-mini-player');
+        const cover = (this.expanded && !document.body.classList.contains('layout-mobile')) || document.body.classList.contains('layout-mini-player');
         let stageRect = rect;
         const hasGutters = this.stageHost.classList.contains('scroll-gutters');
         // The entire editing viewport handles touch gestures; page scrolling needs space outside it.

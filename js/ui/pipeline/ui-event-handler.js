@@ -690,14 +690,13 @@ export class UIEventHandler {
             this.isDraggingOver = true; // Use the same flag as mouse drag
             this.prevClientX = -1;
             this.prevClientY = -1;
-            if (!this.rafId) {
-                this.updateIndicatorLoop();
-            }
-            
-            // Update initial position for the loop
+
             if (e.touches[0]) {
                 this.lastClientX = e.touches[0].clientX;
                 this.lastClientY = e.touches[0].clientY;
+            }
+            if (!this.rafId) {
+                this.updateIndicatorLoop();
             }
 
         }, { passive: false }); // IMPORTANT: passive: false to allow preventDefault
@@ -1223,8 +1222,20 @@ export class UIEventHandler {
             // Pass raw client coordinates directly
             const rawClientX = this.lastClientX;
             const rawClientY = this.lastClientY;
-            
+
             pluginListManager.updateInsertionIndicator(rawClientX, rawClientY);
+            if (this.draggingPluginInfo && window.innerHeight > 0) {
+                const indicator = pluginListManager.getInsertionIndicator();
+                if (indicator.style.display !== 'none') {
+                    const rect = indicator.getBoundingClientRect();
+                    const bottom = this.touchDragBottom();
+                    if (rect.top < 0 || rect.bottom > bottom) {
+                        window.scrollBy({ top: rect.top < 0 ? -14 : 14, behavior: 'instant' });
+                    } else {
+                        this.scrollTouchDragAtEdge(rawClientY);
+                    }
+                }
+            }
             
             // Store current coordinates as previous for next frame check
             this.prevClientX = this.lastClientX;
@@ -1233,5 +1244,29 @@ export class UIEventHandler {
 
         // Schedule the next frame
         this.rafId = requestAnimationFrame(() => this.updateIndicatorLoop());
+    }
+
+    scrollTouchDragAtEdge(clientY) {
+        const edgeSize = 48;
+        const maxStep = 14;
+        const bottom = this.touchDragBottom();
+        const distanceToBottom = bottom - clientY;
+        const edgeOffset = clientY < edgeSize ? clientY - edgeSize
+            : distanceToBottom < edgeSize ? edgeSize - distanceToBottom : 0;
+        if (edgeOffset) {
+            const step = Math.max(-maxStep, Math.min(maxStep, maxStep * edgeOffset / edgeSize));
+            window.scrollBy({ top: step, behavior: 'instant' });
+        }
+    }
+
+    touchDragBottom() {
+        let bottom = window.innerHeight;
+        for (const selector of ['.mobile-mini-player', '.mobile-bottom-nav']) {
+            const element = document.querySelector(selector);
+            if (element && element.getClientRects().length) {
+                bottom = Math.min(bottom, element.getBoundingClientRect().top);
+            }
+        }
+        return bottom;
     }
 }

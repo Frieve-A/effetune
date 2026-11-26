@@ -22,6 +22,7 @@ import {
   PROTOCOL_VERSION,
   RECENT_TRACK_LIMIT,
   SEARCH_FIELDS,
+  SYSTEM_PLAYLIST_SCOPES,
   TERMINAL_OPERATION_PHASES,
   advanceScanMetadataCursor,
   appendOperationSnapshotItems,
@@ -38,9 +39,10 @@ import {
   claimMetadataParse,
   claimMetadataParseBatch,
   cleanupPlaylistItems,
-  clearCueScanStageRows,
+  clearScanStageRows,
   closeDatabase,
   commitScanSeenBatch,
+  scanTraversalQueue,
   completeMetadataParseBatch,
   completeMetadataParseFailure,
   completeMetadataParseSuccess,
@@ -52,6 +54,7 @@ import {
   countEntityContextRows,
   createCatalogError,
   createDirectoryAncestors,
+  createEntityContextFilter,
   createKeysetSql,
   createNoChangeResult,
   createOperationSnapshot,
@@ -176,6 +179,7 @@ import * as transportShuffle from './transport-shuffle.js';
 import * as searchNormalizer from '../search-normalizer.js';
 import { isTrackCoverRelativePath } from '../metadata/cue-cover.js';
 import { sha256Hex } from './sha256.js';
+import { querySharedLibrary } from '../../network-music/upnp/shared-query.js';
 
 const textEncoder = new TextEncoder();
 const threadId = 'web';
@@ -685,7 +689,7 @@ function initializeMetadata(expectedSchemaVersion, expectedCollationVersion) {
   if (!Number.isSafeInteger(catalogState.catalogVersion) || catalogState.catalogVersion < 0) {
     throw createCatalogError('catalogCorrupt', 'Catalog version metadata is invalid');
   }
-  for (const scope of ['artwork', 'tracks', 'folders', 'subfolders', 'albums', 'artists', 'genres', 'playlists']) {
+  for (const scope of ['artwork', 'tracks', 'folders', 'subfolders', 'albums', 'artists', 'genres', 'playlists', ...SYSTEM_PLAYLIST_SCOPES]) {
     const key = `scope_version:${scope}`;
     insertMeta.run(key, '0');
     const value = Number(getMeta.get(key).value);
@@ -778,6 +782,11 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'cleanupExpiredContextItems': return cleanupExpiredContextItems(payload);
     case 'getTrack': return getTrack(payload);
     case 'getTrackStorageIdentity': return getTrackStorageIdentity(payload);
+    case 'querySharedLibrary': return querySharedLibrary(catalogState.database, payload, {
+      createContextFilter, createEntityContextFilter, normalizeContextQuery, createOrder,
+      trackFieldExpression, createSortKey, searchNormalizer: catalogState.modules.searchNormalizer,
+      entityDefinitions: ENTITY_DEFINITIONS, recentLimit: RECENT_TRACK_LIMIT
+    });
     case 'resolvePlaylistExportSource': return resolvePlaylistExportSource(payload);
     case 'getCachedArtwork': return getCachedArtwork(payload);
     case 'beginArtworkUtilitySession': return beginArtworkUtilitySession(payload);
@@ -795,6 +804,7 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'beginScanFolder': return beginScanFolder(payload);
     case 'preflightScanBatch': return preflightScanBatch(payload);
     case 'commitScanSeenBatch': return commitScanSeenBatch(payload);
+    case 'scanTraversalQueue': return scanTraversalQueue(payload);
     case 'cueDirectoryStage': return cueDirectoryStage(payload);
     case 'listMetadataCandidates': return listMetadataCandidates(payload);
     case 'advanceScanMetadataCursor': return advanceScanMetadataCursor(payload);
@@ -838,7 +848,9 @@ export function dispatchWebSqliteCommand(command, payload) {
     case 'saveTrackLoudness':
     case 'finalizeLoudness':
     case 'getTrackLoudness':
-    case 'getLoudnessStats': return loudnessCatalog[command](payload);
+    case 'getLoudnessStats':
+    case 'listLoudnessTagCandidates':
+    case 'updateLoudnessTagSignatures': return loudnessCatalog[command](payload);
     case 'playbackSession': return playbackSession(payload);
     case 'setTrackFavorite': return setTrackFavorite(payload);
     case 'getFavoriteTrackUids': return getFavoriteTrackUids(payload);
@@ -2320,7 +2332,7 @@ function beginScanFolder(payload) {
       Number(existing?.enumerationErrorCount ?? 0), Number(existing?.visitedFiles ?? 0),
       Number(existing?.committedBatches ?? 0), now
     );
-    clearCueScanStageRows({ scanId, folderId });
+    clearScanStageRows({ scanId, folderId });
     return {
       scanId,
       folderId,

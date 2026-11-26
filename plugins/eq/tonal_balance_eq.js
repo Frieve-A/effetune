@@ -354,11 +354,9 @@ class TonalBalanceEQPlugin extends PluginBase {
         this.dbBottom = -TONAL_BALANCE_EQ_DEFAULT_DB_RANGE;
     }
 
-    // Sends the worklet-side reset over the same port that carries parameter updates.
+    // Resets this instance's processing state in the live audio host.
     resetMeasurement() {
-        if (this.audioHostActive !== false) {
-            window.workletNode?.port?.postMessage({ type: 'resetPluginState', pluginId: this.id });
-        }
+        if (this.audioHostActive !== false) window.audioManager?.resetPluginState?.(this.id);
         this.clearReading();
         this.syncControlStates();
         this.drawGraph();

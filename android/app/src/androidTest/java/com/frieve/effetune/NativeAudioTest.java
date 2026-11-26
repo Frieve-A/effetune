@@ -140,6 +140,52 @@ public final class NativeAudioTest {
         return null;
     }
 
+    @Test public void blindSelectionRendersBothGainsAndRestoresPrimaryOutput() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject volume = new JSONObject().put("type", "VolumePlugin").put("parameters", new JSONObject().put("vl", -6));
+        new NativeParameterPacker(context).packRecord(volume);
+        byte[] descriptor = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
+                .putInt(1).putInt(1).putInt(1).put(new byte[]{1, 0, 0, (byte) 255, 1, 0, 0, 0}).array();
+        try (NativeEngine engine = new NativeEngine(48000, 128)) {
+            engine.configurePipeline(new String[]{"VolumePlugin"}, new float[][]{{-6}},
+                    new int[]{(int) volume.getLong("layoutHash")}, new int[]{1}, descriptor, new byte[][]{new byte[0]});
+            assertEquals(0, engine.startParallel());
+            engine.configurePipeline(new String[0], new float[0][], new int[0], new int[0],
+                    new byte[]{1, 0, 0, 0, 0, 0, 0, 0}, new byte[0][], new byte[0], 1);
+            assertTrue(engine.setOutputDelay(1, Integer.MAX_VALUE) < 0);
+            assertEquals(0, engine.setOutputDelay(0, 128));
+            assertEquals(128, (int) engine.readPipelineStats(0)[2]);
+            assertEquals(0, (int) engine.readPipelineStats(1)[2]);
+            float[] tone = new float[4096 * 2];
+            for (int i = 0; i < tone.length / 2; i++)
+                tone[2 * i] = tone[2 * i + 1] = (float) Math.sin(2 * Math.PI * i / 32);
+            long generation = engine.beginSource();
+            engine.setPlaying(true);
+            assertEquals(0, engine.start());
+            assertBlindPeak(engine, tone, generation, .501f);
+            assertEquals(0, engine.selectParallel(1, .02));
+            assertBlindPeak(engine, tone, generation, 1);
+            for (int branch = 0; branch <= 1; branch++) assertEquals(0, engine.fadeOutput(branch, 0, .02));
+            assertBlindPeak(engine, tone, generation, 0);
+            engine.stopParallel();
+            assertEquals(0, engine.setOutputDelay(0, 0));
+            assertEquals(0, engine.fadeOutput(0, 1, .05));
+            assertBlindPeak(engine, tone, generation, .501f);
+            assertEquals(0, (int) engine.readPipelineStats(0)[2]);
+        }
+    }
+
+    private static void assertBlindPeak(NativeEngine engine, float[] tone, long generation, float expected) {
+        long deadline = SystemClock.elapsedRealtime() + 5000;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (engine.getQueuedFrames() < 8192) engine.writePcm(tone, tone.length / 2, generation);
+            float[] levels = engine.getPowerObservation();
+            if (levels[1] > .99f && Math.abs(levels[2] - expected) < .005f) return;
+            SystemClock.sleep(10);
+        }
+        fail("The selected branch did not produce the expected output peak " + expected);
+    }
+
     @Test public void irAssetHandoffPreservesPausedSourceAndRestoresOutputAfterFailure() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         NativeParameterPacker packer = new NativeParameterPacker(context);
@@ -174,6 +220,16 @@ public final class NativeAudioTest {
             assertEquals(1024, engine.getRenderedFrames());
         }
     }
+    @Test public void multichannelPcmReadsOnlyTheRequestedFrames() {
+        int channels = 8, frames = 16385;
+        float[] block = new float[frames * channels + 1];
+        block[frames * channels] = Float.NaN;
+        try (NativeEngine engine = new NativeEngine(48000, 256, channels)) {
+            assertEquals(frames, engine.writePcm(block, frames, engine.beginSource()));
+            assertEquals(frames, engine.getQueuedFrames());
+        }
+    }
+
     @Test public void outputRouteReopensWithoutDiscardingPausedPcm() {
         try (NativeEngine engine = new NativeEngine(48000, 256)) {
             long generation = engine.beginSource();
@@ -206,7 +262,7 @@ public final class NativeAudioTest {
                  ParcelFileDescriptor output = ParcelFileDescriptor.open(recording, ParcelFileDescriptor.MODE_READ_WRITE)) {
                 assertEquals(0, engine.start());
                 assertEquals(0, engine.setInputDevice(0));
-                engine.beginMeasurementFiles(input.getFd(), output.getFd(), 4800, 48000);
+                engine.beginMeasurementFiles(input.getFd(), output.getFd(), 4800, 48000, 0, 0, 0);
                 long deadline = SystemClock.elapsedRealtime() + 5000;
                 int[] state;
                 do { SystemClock.sleep(10); state = engine.getMeasurementState(); }
@@ -222,7 +278,7 @@ public final class NativeAudioTest {
                 while (recorded.hasRemaining()) assertTrue(Float.isFinite(recorded.getFloat()));
                 engine.cancelMeasurement();
                 assertEquals(0, engine.getMeasurementState()[0]);
-                engine.beginMeasurementFiles(input.getFd(), output.getFd(), 4800, 48000);
+                engine.beginMeasurementFiles(input.getFd(), output.getFd(), 4800, 48000, 0, 0, 0);
                 assertEquals(0, engine.setInputDevice(-1));
                 assertEquals("Input release invalidates recording", 3, engine.getMeasurementState()[0]);
                 engine.cancelMeasurement();

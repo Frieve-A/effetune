@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseBuffer } from 'music-metadata';
 
+import { createTrackFromMetadata } from '../../js/library/metadata/metadata-mapper.js';
 import { WebMetadataParser } from '../../js/library/scan/web-metadata-parser.js';
 import { createDffFixture, createDsfFixture } from '../helpers/dsd-fixture.mjs';
 
@@ -111,6 +112,32 @@ test('Web catalog metadata parsing separates semicolon-delimited album artists',
   const pluralResult = await plural.parser.parse({ relativePath: plural.relativePath, skipCovers: true });
   assert.equal(pluralResult.albumArtist, 'Artist A & Artist B');
   assert.deepEqual(pluralResult.albumArtists, ['Artist A', 'Artist B']);
+});
+
+test('Metadata mapping reads music-metadata 13 common fields when native tags are absent', () => {
+  const result = createTrackFromMetadata({ fileName: 'track.flac' }, {
+    common: {
+      artist: 'Track Artist',
+      albumArtist: 'Artist A & Artist B',
+      albumArtists: ['Artist A', 'Artist B'],
+      genres: ['Jazz', 'Blues'],
+      trackNumber: 3,
+      trackTotal: 10,
+      discNumber: 2,
+      discTotal: 3,
+      replayGainTrackGain: { dB: -4 },
+      replayGainTrackPeak: { ratio: 0.8 },
+      replayGainAlbumGain: { dB: -3 },
+      replayGainAlbumPeak: { ratio: 0.9 }
+    },
+    format: {}
+  });
+
+  assert.equal(result.albumArtist, 'Artist A & Artist B');
+  assert.deepEqual(result.albumArtists, ['Artist A', 'Artist B']);
+  assert.equal(result.genre, 'Jazz');
+  assert.deepEqual([result.trackNo, result.trackOf, result.discNo, result.discOf], [3, 10, 2, 3]);
+  assert.deepEqual(result.replayGain, { trackGainDb: -4, trackPeak: 0.8, albumGainDb: -3, albumPeak: 0.9 });
 });
 
 test('Web catalog metadata parsing preserves common text over ID3v1 and numeric genre codes', async () => {

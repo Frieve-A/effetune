@@ -11,6 +11,7 @@ import { assertDirectoryHandle, WebFolderHandleStore } from './web-folder-handle
 import { WebMetadataParser } from './web-metadata-parser.js';
 import { WebSessionFileSource } from './web-session-file-source.js';
 import { findLyricsFileName } from '../metadata/lyrics.js';
+import { normalizeMtimeMs } from './file-signature.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import {
   AutomaticPlaylistCollector,
@@ -108,6 +109,18 @@ export class WebCatalogScanRuntime {
     }
     const contained = [];
     for (const existing of existingHandles) {
+      if (typeof existing.handle.queryPermission === 'function' &&
+          await queryFolderPermission(existing.handle) === 'unresponsive') {
+        const { id: folderId, status } = existing.folder;
+        if (handle.name === existing.handle.name && await this.#matchesSavedFolderFiles(folderId, handle) === true) {
+          const folder = await this.#restoreFolderAccess(folderId, handle);
+          return { folder, scan: null };
+        }
+        if (status !== 'needs-permission') {
+          await this.repository.setFolderAvailability({ folderId, status: 'needs-permission' });
+        }
+        continue;
+      }
       const relation = await compareFolderRoots(handle, existing.handle);
       if (relation === 'same' || relation === 'descendant') {
         return {
@@ -305,17 +318,48 @@ export class WebCatalogScanRuntime {
       .find(row => row.id === folderId);
     assertRepositoryContract(folder, 'unknownFolder', 'Folder does not exist');
     const previous = await this.handleStore.get(folderId);
-    if (previous) {
+    if (previous && previous !== handle) {
+      const unresponsive = typeof previous.queryPermission === 'function' &&
+        await queryFolderPermission(previous) === 'unresponsive';
+      const matches = unresponsive
+        ? handle.name === previous.name && await this.#matchesSavedFolderFiles(folderId, handle) !== false
+        : await isSameFolderRoot(handle, previous);
       assertRepositoryContract(
-        await isSameFolderRoot(handle, previous),
+        matches,
         'folderRebindMismatch',
         'Selected folder is not the original Library root'
       );
     }
+    return { folder: await this.#restoreFolderAccess(folderId, handle) };
+  }
+
+  async #restoreFolderAccess(folderId, handle) {
     assertRepositoryContract(await queryFolderPermission(handle) === 'granted', 'folderPermissionRequired', 'Folder read permission was not granted');
     await this.handleStore.put({ folderId, handle });
-    const updated = await this.repository.setFolderAvailability({ folderId, status: 'active' });
-    return { folder: updated };
+    return this.repository.setFolderAvailability({ folderId, status: 'active' });
+  }
+
+  async #matchesSavedFolderFiles(folderId, handle) {
+    // An unresponsive handle cannot prove identity through isSameEntry().
+    const page = await this.repository.queryTracks({ scope: { folderKey: folderId }, limit: 5 });
+    try {
+      // An empty catalog folder supplies no file signatures.
+      if (!page.rows.length) return null;
+      const filesystem = this.filesystemFactory(handle);
+      for (const row of page.rows) {
+        const track = await this.repository.getTrackStorageIdentity(row.trackUid);
+        if (!track) continue;
+        try {
+          const file = await filesystem.getFile(track.relativePath);
+          if (file.size === track.size && normalizeMtimeMs(file.lastModified) === track.mtimeMs) return true;
+        } catch (error) {
+          if (error?.code !== 'handle-expired') throw error;
+        }
+      }
+      return false;
+    } finally {
+      await this.repository.releaseContext(page.contextToken);
+    }
   }
 
   async removeFolder({ folderId } = {}) {
@@ -445,12 +489,17 @@ export class WebCatalogScanRuntime {
     const sessionSource = this.sessionSources.get(track.folderId);
     if (sessionSource) return sessionSource.getFile(track.relativePath);
     const handle = await this.handleStore.get(track.folderId);
-    if (!handle || await queryFolderPermission(handle) !== 'granted') {
+    const permission = handle ? await queryFolderPermission(handle) : 'needs-permission';
+    if (permission !== 'granted') {
       await this.repository.setFolderAvailability({ folderId: track.folderId, status: 'needs-permission' });
       throw createRepositoryError(
         'folderPermissionRequired',
         'Playback folder access must be restored',
-        { folderId: track.folderId, lifecycleVersion: track.lifecycleVersion }
+        {
+          folderId: track.folderId,
+          lifecycleVersion: track.lifecycleVersion,
+          ...(permission === 'unresponsive' && { reselectFolder: true })
+        }
       );
     }
     try {

@@ -23,7 +23,7 @@ const PAGED_KEYS = [
   'library.paged.previous', 'library.paged.next',
   'library.browse.folders', 'library.browse.tracksInFolder',
   'library.browse.viewTree', 'library.browse.viewFlat', 'library.state.emptyFolder',
-  'library.search.showAll',
+  'library.search.playlistsPlaceholder', 'library.search.showAll',
   'library.status.unresolved',
   'library.properties.sourceType', 'library.properties.cueTrack',
   'library.properties.cuePath', 'library.properties.sourcePath',

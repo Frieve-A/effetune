@@ -84,8 +84,8 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
   const textHints = addRepairReferenceTexts(baseTextHints, [title]);
   const commonArtist = joinedArtists(common, textHints);
   const artist = getMetadataText(mappedMetadata, ARTIST_NATIVE_IDS, commonArtist, textHints, { join: true });
-  const commonAlbumArtists = textValues(common.albumartists, textHints);
-  const commonAlbumArtist = stringOrEmpty(common.albumartist, textHints) || joinTextValues(commonAlbumArtists);
+  const commonAlbumArtists = textValues(common.albumArtists ?? common.albumartists, textHints);
+  const commonAlbumArtist = stringOrEmpty(common.albumArtist ?? common.albumartist, textHints) || joinTextValues(commonAlbumArtists);
   const albumArtistSelection = selectMetadataText(
     mappedMetadata,
     ALBUM_ARTIST_NATIVE_IDS,
@@ -97,13 +97,16 @@ export function createTrackFromMetadata(candidate, metadata, now = Date.now(), {
   const albumArtists = splitArtistValues(
     albumArtistSelection.values.length > 0 ? albumArtistSelection.values : [albumArtist]
   );
-  const commonGenre = firstArrayString(common.genre, textHints) || stringOrEmpty(common.genre, textHints);
+  const genres = common.genres ?? common.genre;
+  const commonGenre = firstArrayString(genres, textHints) || stringOrEmpty(genres, textHints);
   const genre = getMetadataText(mappedMetadata, GENRE_NATIVE_IDS, commonGenre, textHints, { rejectNative: looksLikeId3GenreCode });
   const lowerAlbumArtist = albumArtist.toLowerCase();
   const picture = selectPicture(common.picture);
   const pictureBytes = toArrayBuffer(picture?.data);
-  const trackNumber = getMetadataNumberPair(mappedMetadata, 'track', TRACK_NATIVE_IDS, textHints);
-  const discNumber = getMetadataNumberPair(mappedMetadata, 'disk', DISC_NATIVE_IDS, textHints);
+  const track = common.track ?? { no: common.trackNumber, of: common.trackTotal };
+  const disc = common.disk ?? { no: common.discNumber, of: common.discTotal };
+  const trackNumber = getMetadataNumberPair(mappedMetadata, track, TRACK_NATIVE_IDS, textHints);
+  const discNumber = getMetadataNumberPair(mappedMetadata, disc, DISC_NATIVE_IDS, textHints);
   const compilation = getMetadataBoolean(mappedMetadata, COMPILATION_NATIVE_IDS, common.compilation) === true ||
     lowerAlbumArtist === 'various artists';
 
@@ -432,9 +435,8 @@ function booleanOrNull(value) {
   return null;
 }
 
-function getMetadataNumberPair(metadata, commonKey, nativeIds, languageHints = null) {
-  const common = metadata?.common || {};
-  const commonPair = parseNumberPair(common[commonKey], languageHints);
+function getMetadataNumberPair(metadata, commonValue, nativeIds, languageHints = null) {
+  const commonPair = parseNumberPair(commonValue, languageHints);
   const nativePair = getNativeNumberPair(metadata, nativeIds, languageHints);
   if (nativePair.value !== null) {
     return {
@@ -469,13 +471,13 @@ export function getReplayGain(metadata) {
   const common = metadata?.common || {};
   return {
     trackGainDb: getNativeNumber(metadata, REPLAY_GAIN_TRACK_GAIN_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
-      numberOrNull(common.replaygain_track_gain?.dB) ?? getR128GainDb(metadata, R128_TRACK_GAIN_NATIVE_IDS),
+      numberOrNull((common.replayGainTrackGain ?? common.replaygain_track_gain)?.dB) ?? getR128GainDb(metadata, R128_TRACK_GAIN_NATIVE_IDS),
     trackPeak: getNativeNumber(metadata, REPLAY_GAIN_TRACK_PEAK_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
-      numberOrNull(common.replaygain_track_peak?.ratio),
+      numberOrNull((common.replayGainTrackPeak ?? common.replaygain_track_peak)?.ratio),
     albumGainDb: getNativeNumber(metadata, REPLAY_GAIN_ALBUM_GAIN_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
-      numberOrNull(common.replaygain_album_gain?.dB) ?? getR128GainDb(metadata, R128_ALBUM_GAIN_NATIVE_IDS),
+      numberOrNull((common.replayGainAlbumGain ?? common.replaygain_album_gain)?.dB) ?? getR128GainDb(metadata, R128_ALBUM_GAIN_NATIVE_IDS),
     albumPeak: getNativeNumber(metadata, REPLAY_GAIN_ALBUM_PEAK_NATIVE_IDS, REPLAY_GAIN_NUMBER_PATTERN) ??
-      numberOrNull(common.replaygain_album_peak?.ratio)
+      numberOrNull((common.replayGainAlbumPeak ?? common.replaygain_album_peak)?.ratio)
   };
 }
 

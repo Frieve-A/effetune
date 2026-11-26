@@ -491,45 +491,47 @@ test('chooser Back returns to the original results after leaving setup or a canc
     });
 });
 
-test('Android speaker setup uses the native rate and saved output before preparing capture', async t => {
+test('Android speaker setup opens the saved devices at the selected measurement rate', async t => {
     const transport = { postMessage(serialized) {
         const { id, command, payload } = JSON.parse(serialized);
         requests.push({ command, payload });
-        const result = command === 'audio.devices' ? { unprocessed: true } : { channelCount: 2 };
+        const result = command === 'audio.devices' ? { unprocessed: true } : { channelCount: 6 };
         queueMicrotask(() => transport.onmessage({ data: JSON.stringify({ id, version: 1, ok: true, result }) }));
     } };
     const requests = [];
     t.mock.property(audioUtils, 'audioContext', { sampleRate: 48000 });
     t.mock.method(audioUtils, 'ensureAudioContextRunning', async () => true);
-    const reinitialize = t.mock.method(audioUtils, 'reinitialize', async () => assert.fail('native format is fixed'));
+    const reinitialize = t.mock.method(audioUtils, 'reinitialize', async rate => { audioUtils.audioContext.sampleRate = rate; });
     t.mock.method(measurementController, 'startLevelMeter', () => {});
     t.mock.method(dataStorage, 'loadUserSettings', () => ({
         audioInputId: '3', inputChannel: 'right', audioOutputId: '12', outputChannelCount: 8, sweepLength: 65536
     }));
     const { byId, manager, document, window } = createSpeakerScreenHarness();
     byId('sampleRate').value = '44100';
+    byId('outputChannelCount').value = '6';
     window.location = { origin: ANDROID_ORIGIN };
     window.effetuneAndroid = transport;
 
     await withGlobals({ window, document }, async () => {
-        await assert.rejects(speakerDistortionAudio.prepare(48000, { channels: [0, 2] }), /limited to channels 1 and 2/);
-        await assert.rejects(speakerDistortionAudio.prepare(44100, { channels: [1] }), /48000 Hz, not 44100 Hz/);
+        await assert.rejects(speakerDistortionAudio.prepare(48000, { channels: [0, 6] }), /available output channel/);
         assert.deepEqual(requests, []);
         assert.equal(reinitialize.mock.callCount(), 0);
 
         initializeSpeakerDistortionScreens(manager);
         showNewMeasurementScreen();
         await byId('measureSpeakerDistortionBtn').click();
-        assert.ok(!byId('speakerDistortionDevices').children.includes(byId('sampleRate')));
+        assert.ok(byId('speakerDistortionDevices').children.includes(byId('sampleRate')));
         byId('speakerDistortionSetupNext').click();
         await setImmediate();
         assert.deepEqual(requests.slice(0, 2), [
-            { command: 'audio.configure', payload: { outputDeviceId: 12, channelCount: 2 } },
-            { command: 'audio.input', payload: { deviceId: 3 } }
+            { command: 'measurement.output', payload: { outputDeviceId: 12, channelCount: 6 } },
+            { command: 'measurement.input', payload: { deviceId: 3, inputChannel: 1, sampleRate: 44100, outputDeviceId: 12, outputChannelCount: 6 } }
         ]);
-        assert.equal(measurementController.measurementConfig.outputChannelCount, 2);
+        assert.deepEqual(reinitialize.mock.calls[0].arguments, [44100]);
+        assert.equal(measurementController.measurementConfig.outputChannelCount, 6);
         byId('speakerDistortionCheckBack').click();
         byId('speakerDistortionSetupBack').click();
         await setImmediate();
+        assert.ok(requests.some(({ command, payload }) => command === 'measurement.input' && payload.deviceId === -1));
     });
 });

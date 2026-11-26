@@ -1,3 +1,6 @@
+import { isAndroidHost } from '../android/bridge.js';
+import { exportAndroidFile } from '../android/file-downloads.js';
+
 const KIND_ORDER = ['pipeline', 'plugin', 'visualizer', 'ir', 'measurement'];
 const RESTORE_BLOCKING_STATUSES = new Set(['missing', 'unavailable']);
 
@@ -48,6 +51,22 @@ function statusLabel(t, item) {
   };
   const [key, fallback] = labels[item.status] || ['', item.status];
   return key ? t(key, fallback, { name: item.targetName || item.name }) : fallback;
+}
+
+function reasonLabel(t, reason) {
+  const messages = {
+    unreadable: 'Saved data could not be read. Check your storage and try again.',
+    invalidName: 'This name cannot be used. Rename the original item and create a new backup.',
+    nameTooLong: 'Use a preset name with 160 characters or fewer.',
+    invalidData: 'This item is incomplete or damaged. Check the original data and create a new backup.',
+    missingData: 'Choose a backup that includes the required data, or import the original data and try again.',
+    storageUnavailable: 'This storage is unavailable. Restore access and try again.',
+    unsupportedEffects: 'Some effects are unavailable on this device. You can still save the preset.',
+    saveFailed: 'This item could not be saved. Check available storage and try again.'
+  };
+  return Object.hasOwn(messages, reason)
+    ? t(`backupRestore.reason.${reason}`, messages[reason])
+    : t('backupRestore.reason.unknown', 'Could not be read');
 }
 
 function downloadable(blob, fileName) {
@@ -248,7 +267,7 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
     for (const entry of catalog?.unavailable || []) {
       const message = element('p');
       message.textContent = t('backupRestore.unavailable', '{type}: {reason}', {
-        type: kindLabel(t, entry.kind), reason: entry.reason || t('backupRestore.reason.unknown', 'Could not be read')
+        type: kindLabel(t, entry.kind), reason: reasonLabel(t, entry.reason)
       });
       unavailable.appendChild(message);
     }
@@ -405,8 +424,8 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
         }));
         const restoreStatus = statusLabel(t, item);
         if (restoreStatus) metadata.push(restoreStatus);
-        if (item.applicable === false && item.applyReason) metadata.push(item.applyReason);
-        if (item.reason) metadata.push(item.reason);
+        if (item.applicable === false && item.applyReason) metadata.push(reasonLabel(t, item.applyReason));
+        if (item.reason) metadata.push(reasonLabel(t, item.reason));
         if (metadata.length) detail.appendChild(element('span', 'backup-restore-row-meta', metadata.join(' · ')));
         row.append(checkbox, detail);
         section.appendChild(row);
@@ -416,7 +435,7 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
       )));
       list.appendChild(section);
     }
-    if (!items.length) list.appendChild(element('p', 'backup-restore-empty', t(
+    if (!items.length && (mode === 'backup' || catalog)) list.appendChild(element('p', 'backup-restore-empty', t(
       'backupRestore.empty', 'No saved data is available.'
     )));
     renderReferenceWarning();
@@ -447,11 +466,9 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
       block.appendChild(element('strong', '', `${t(labelKey, fallback)}: ${entries.length}`));
       const names = entries.map(entry => {
         const target = entry.targetName && entry.targetName !== entry.name ? ` → ${entry.targetName}` : '';
-        const reason = entry.reason ? ` (${entry.reason})` : '';
+        const reason = entry.reason ? ` (${reasonLabel(t, entry.reason)})` : '';
         const mirror = entry.mirrorWarning
-          ? ` (${typeof entry.mirrorWarning === 'string'
-            ? entry.mirrorWarning
-            : t('backupRestore.result.mirrorWarning', 'Saved, but its automatic desktop mirror could not be updated.')})`
+          ? ` (${t('backupRestore.result.mirrorWarning', 'Saved, but its automatic desktop mirror could not be updated.')})`
           : '';
         return `${entry.name || entry.key}${target}${reason}${mirror}`;
       });
@@ -555,6 +572,7 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
     if (!catalog || !selectedKeys.size || busy || selectionPending || !selectionValid ||
         (mode === 'restore' && !restorePlan)) return;
     controller = new AbortController();
+    let destinationSelected = false;
     resultArea.hidden = true;
     setBusy(true);
     status.textContent = mode === 'backup'
@@ -569,7 +587,28 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
           signal: controller.signal,
           onProgress: updateProgress
         });
-        downloadable(output.blob, output.fileName);
+        if (isAndroidHost()) {
+          progressArea.hidden = true;
+          const result = await exportAndroidFile(output.blob, output.fileName, t, {
+            signal: controller.signal,
+            onWriteProgress: ({ written, total, share }) => {
+              if (progressArea.hidden) {
+                destinationSelected = !share;
+                progressArea.hidden = false;
+                status.textContent = t('backupRestore.status.writing', 'Saving backup…');
+              }
+              progress.max = total || 1;
+              progress.value = written;
+              progressText.textContent = `${total ? Math.floor(100 * written / total) : 100}%`;
+            }
+          });
+          if (result === 'shareOpened') {
+            status.textContent = t('backupRestore.status.shareOpened', 'The sharing screen was opened for your backup.');
+            return;
+          }
+        } else {
+          downloadable(output.blob, output.fileName);
+        }
         const count = output.result?.count ?? selectedKeys.size;
         status.textContent = t('backupRestore.success.created', 'Backup created with {count} items.', { count });
       } else {
@@ -587,7 +626,9 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
       const cancelled = controller.signal.aborted || error?.name === 'AbortError';
       if (cancelled) {
         status.textContent = mode === 'backup'
-          ? t('backupRestore.status.backupCancelled', 'Backup stopped. No backup file was created.')
+          ? (destinationSelected
+            ? t('backupRestore.status.writeCancelled', 'Saving stopped. An incomplete backup file may remain. Delete it and try again.')
+            : t('backupRestore.status.backupCancelled', 'Backup stopped. No backup file was created.'))
           : t('backupRestore.status.cancelled', 'Restore stopped. Items already completed were kept.');
       } else {
         reportError(mode === 'backup'

@@ -58,9 +58,11 @@ public final class AndroidWebHostTest {
                 scenario.recreate(); awaitReady(scenario);
                 execute(scenario, "import('https://appassets.androidplatform.net/assets/web/js/android/bridge.js').then(m=>m.getAndroidBridge().request('snapshot.get'))");
                 JSONObject restored = result(scenario);
-                assertEquals(1, restored.getJSONArray("pipeline").length());
-                assertEquals(-9, restored.getJSONArray("pipeline").getJSONObject(0).getJSONObject("parameters").getDouble("vl"), 0);
-                assertEquals("SUSPENDED", restored.getString("powerState"));
+                org.json.JSONArray selected = restored.getJSONObject("pipelines").getJSONArray(restored.getString("slot"));
+                assertEquals(1, selected.length());
+                assertEquals(-9, selected.getJSONObject(0).getJSONObject("parameters").getDouble("vl"), 0);
+                // A new Service starts output once when the UI is ready.
+                assertEquals("ACTIVE", restored.getString("powerState"));
             } finally {
                 execute(scenario, "import('https://appassets.androidplatform.net/assets/web/js/android/bridge.js').then(m=>m.getAndroidBridge().request('pipeline.set'," + first.getJSONObject("saved").toString() + "))"); result(scenario);
             }

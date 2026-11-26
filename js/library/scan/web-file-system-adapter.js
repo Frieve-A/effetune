@@ -10,9 +10,11 @@ import { assertDirectoryHandle } from './web-folder-handle-store.js';
 import { isAndroidDirectory, requestAndroidDocument } from '../../android/library-io.js';
 import { AndroidLibraryFilesystem } from '../../android/library-filesystem.js';
 
+const FOLDER_PERMISSION_QUERY_TIMEOUT_MS = 1_500;
+
 export class WebFileSystemScanAdapter {
   constructor({ rootHandle, onPlaylistFile = () => {}, includeVideo = false, includeMidi = false, includeMidiArchives = false }) {
-    if (isAndroidDirectory(rootHandle)) return new AndroidLibraryFilesystem({ rootHandle, onPlaylistFile, includeVideo, includeMidi });
+    if (isAndroidDirectory(rootHandle)) return new AndroidLibraryFilesystem({ rootHandle, onPlaylistFile, includeVideo, includeMidi, includeMidiArchives });
     this.rootHandle = assertDirectoryHandle(rootHandle);
     if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
     this.onPlaylistFile = onPlaylistFile;
@@ -119,8 +121,17 @@ export async function queryFolderPermission(handle) {
       return result.granted ? 'granted' : 'needs-permission';
     }
     if (typeof handle.queryPermission !== 'function') return 'granted';
-    const permission = await handle.queryPermission({ mode: 'read' });
-    return permission === 'granted' ? 'granted' : 'needs-permission';
+    // Chromium can deserialize a saved handle whose permission query never settles.
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve(handle.queryPermission({ mode: 'read' }))
+          .then(permission => permission === 'granted' ? 'granted' : 'needs-permission'),
+        new Promise(resolve => { timer = setTimeout(() => resolve('unresponsive'), FOLDER_PERMISSION_QUERY_TIMEOUT_MS); })
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
     return 'needs-permission';
   }
@@ -145,31 +156,29 @@ export async function compareFolderRoots(candidateHandle, existingHandle) {
   }
   if (candidateHandle === existingHandle) return 'same';
   try {
-    if (typeof candidateHandle.isSameEntry === 'function' &&
-        await candidateHandle.isSameEntry(existingHandle) === true) {
-      return 'same';
-    }
-    assertRepositoryContract(
-      typeof candidateHandle.resolve === 'function' && typeof existingHandle.resolve === 'function',
-      'folderContainmentUnavailable',
-      'Folder containment could not be checked'
-    );
-    const candidateToExisting = await candidateHandle.resolve(existingHandle);
-    const existingToCandidate = await existingHandle.resolve(candidateHandle);
-    if (Array.isArray(candidateToExisting)) {
-      return candidateToExisting.length === 0 ? 'same' : 'ancestor';
-    }
-    if (Array.isArray(existingToCandidate)) {
-      return existingToCandidate.length === 0 ? 'same' : 'descendant';
-    }
-    return 'unrelated';
-  } catch (error) {
-    if (error?.code === 'folderContainmentUnavailable') throw error;
-    throw createRepositoryError(
-      'folderContainmentUnavailable',
-      'Folder containment could not be checked'
-    );
+    if (await candidateHandle.isSameEntry?.(existingHandle) === true) return 'same';
+  } catch {
+    // A relative path can still establish the relationship.
   }
+  let unrelatedDirections = 0;
+  for (const [root, other, relation] of [
+    [candidateHandle, existingHandle, 'ancestor'],
+    [existingHandle, candidateHandle, 'descendant']
+  ]) {
+    try {
+      const path = await root.resolve?.(other);
+      if (Array.isArray(path)) return path.length === 0 ? 'same' : relation;
+      if (path === null) unrelatedDirections += 1;
+    } catch {
+      // The opposite direction can still establish the relationship.
+    }
+  }
+  assertRepositoryContract(
+    unrelatedDirections === 2,
+    'folderContainmentUnavailable',
+    'Folder containment could not be checked'
+  );
+  return 'unrelated';
 }
 
 async function getDirectoryAtPath(root, relativeDirectory) {

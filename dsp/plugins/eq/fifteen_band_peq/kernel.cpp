@@ -1,4 +1,5 @@
 #include "effetune/kernel.h"
+#include "../biquad_band_chain.h"
 #include "../five_band_peq/peq_coefficients.h"
 #include "FifteenBandPEQPluginParams.h"
 #include "effetune/dsp/biquad.h"
@@ -72,31 +73,19 @@ public:
     }
     const bool apply_master = master_remaining_ != 0u || master_current_ != 1.0;
 
-    for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+    detail::processBandChain(audio, channel_count, frame_count, ramps_, states_.data(),
+                             kMaxChannels);
+    for (std::uint32_t channel = 0u; apply_master && channel < channel_count; ++channel) {
       float *channel_audio = audio + channel * frame_count;
-      for (std::uint32_t band = 0u; band < kBands; ++band) {
-        if (!ramps_[band].processingRequired()) {
-          continue;
-        }
-        dsp::BiquadDf1State &state = states_[band * kMaxChannels + channel];
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const dsp::BiquadCoefficients coefficients = ramps_[band].value(frame);
-          channel_audio[frame] = static_cast<float>(dsp::processBiquadDf1Sample(
-              static_cast<double>(channel_audio[frame]), coefficients, state));
-        }
-      }
-      if (apply_master) {
-        for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
-          const std::uint32_t elapsed = frame + 1u;
-          const double gain = elapsed >= master_remaining_
-                                  ? master_target_
-                                  : master_current_ + master_step_ * static_cast<double>(elapsed);
-          channel_audio[frame] =
-              static_cast<float>(static_cast<double>(channel_audio[frame]) * gain);
-        }
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const std::uint32_t elapsed = frame + 1u;
+        const double gain = elapsed >= master_remaining_
+                                ? master_target_
+                                : master_current_ + master_step_ * static_cast<double>(elapsed);
+        channel_audio[frame] = static_cast<float>(static_cast<double>(channel_audio[frame]) * gain);
       }
     }
-    for (CoefficientRamp &ramp : ramps_)
+    for (detail::CoefficientRamp &ramp : ramps_)
       ramp.advance(frame_count);
     if (frame_count >= master_remaining_) {
       master_current_ = master_target_;
@@ -109,55 +98,6 @@ public:
   }
 
 private:
-  struct CoefficientRamp {
-    dsp::BiquadCoefficients current{};
-    dsp::BiquadCoefficients target{};
-    dsp::BiquadCoefficients step{0.0, 0.0, 0.0, 0.0, 0.0};
-    std::uint32_t remaining = 0u;
-    static bool identity(const dsp::BiquadCoefficients &value) noexcept {
-      return value.b0 == 1.0 && value.b1 == 0.0 && value.b2 == 0.0 && value.a1 == 0.0 &&
-             value.a2 == 0.0;
-    }
-    void snap(const dsp::BiquadCoefficients &value) noexcept {
-      current = target = value;
-      step = {0.0, 0.0, 0.0, 0.0, 0.0};
-      remaining = 0u;
-    }
-    void retarget(const dsp::BiquadCoefficients &value, std::uint32_t frames) noexcept {
-      target = value;
-      const double denominator = static_cast<double>(frames);
-      step = {(target.b0 - current.b0) / denominator, (target.b1 - current.b1) / denominator,
-              (target.b2 - current.b2) / denominator, (target.a1 - current.a1) / denominator,
-              (target.a2 - current.a2) / denominator};
-      remaining = frames;
-    }
-    [[nodiscard]] bool processingRequired() const noexcept {
-      return remaining != 0u || !identity(current);
-    }
-    [[nodiscard]] dsp::BiquadCoefficients value(std::uint32_t frame) const noexcept {
-      const std::uint32_t elapsed = frame + 1u;
-      if (elapsed >= remaining)
-        return target;
-      const double offset = static_cast<double>(elapsed);
-      return {current.b0 + step.b0 * offset, current.b1 + step.b1 * offset,
-              current.b2 + step.b2 * offset, current.a1 + step.a1 * offset,
-              current.a2 + step.a2 * offset};
-    }
-    void advance(std::uint32_t frames) noexcept {
-      if (frames >= remaining) {
-        current = target;
-        step = {0.0, 0.0, 0.0, 0.0, 0.0};
-        remaining = 0u;
-      } else {
-        const double offset = static_cast<double>(frames);
-        current = {current.b0 + step.b0 * offset, current.b1 + step.b1 * offset,
-                   current.b2 + step.b2 * offset, current.a1 + step.a1 * offset,
-                   current.a2 + step.a2 * offset};
-        remaining -= frames;
-      }
-    }
-  };
-
   void updateCoefficients() noexcept {
     std::uint32_t changed_mask = 0u;
     std::uint32_t topology_mask = 0u;
@@ -194,7 +134,7 @@ private:
     coefficients_initialized_ = true;
   }
 
-  std::array<CoefficientRamp, kBands> ramps_{};
+  std::array<detail::CoefficientRamp, kBands> ramps_{};
   std::array<dsp::BiquadDf1State, kBands * kMaxChannels> states_{};
   std::array<float, kBands> previous_frequency_{};
   std::array<float, kBands> previous_gain_{};
