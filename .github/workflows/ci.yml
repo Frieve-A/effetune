@@ -458,6 +458,9 @@ jobs:
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=effetune
           pactl set-default-sink effetune
+          # Chromium lists a remapped input as a microphone, but excludes sink monitors.
+          pactl load-module module-remap-source master=effetune.monitor source_name=effetune_input
+          pactl set-default-source effetune_input
       - name: Verify native driver in the Electron application
         env:
           EFFETUNE_AUDIO_ENGINE_REQUIRED: '1'

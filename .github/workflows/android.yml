@@ -105,7 +105,7 @@ jobs:
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell pm grant com.frieve.effetune.development android.permission.RECORD_AUDIO
-            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --record-webview out/android/acceptance/webview-api37.json
             ANDROID_SERIAL=emulator-5554 node tools/test-android-remote.mjs --instrument
             ANDROID_SERIAL=emulator-5554 node tools/android/test-lan.mjs
             ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=seed
@@ -127,7 +127,7 @@ jobs:
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell pm grant com.frieve.effetune.development android.permission.RECORD_AUDIO
-            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --match-webview out/android/acceptance/webview-api37.json
             ANDROID_SERIAL=emulator-5554 node tools/test-android-remote.mjs --instrument
             ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=seed
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk

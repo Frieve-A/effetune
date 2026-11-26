@@ -284,7 +284,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-Command cmake, ninja, clang-cl -ErrorAction Stop
+          Get-Command cmake, ninja -ErrorAction Stop
           $bash = Join-Path $env:ProgramFiles 'Git/bin/bash.exe'
           if (-not (Test-Path -LiteralPath $bash)) { throw 'Git for Windows Bash is required.' }
 

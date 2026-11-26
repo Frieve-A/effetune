@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -9,17 +9,18 @@ const architecture = process.arch;
 const source = join(root, 'native', 'audio-engine');
 const output = join(root, 'out', 'native', 'audio-engine', `${platform}-${architecture}`);
 
-function run(command, args, { cwd = root, env = process.env, encoding } = {}) {
+function run(command, args, { cwd = root, env = process.env, encoding, input } = {}) {
+  const stdio = encoding ? ['ignore', 'pipe', 'inherit'] : ['inherit', 'inherit', 'inherit'];
+  if (input !== undefined) stdio[0] = 'pipe';
   const result = spawnSync(command, args, {
-    cwd, env, encoding, windowsHide: true,
-    stdio: encoding ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    cwd, env, encoding, input, stdio, windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status ?? result.signal}).`);
   return result.stdout;
 }
 
-function visualStudioEnvironment() {
+function visualStudioToolchain() {
   const vswhere = join(process.env['ProgramFiles(x86)'] || '',
     'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
   const installation = process.env.VSINSTALLDIR || (existsSync(vswhere) && run(vswhere, [
@@ -40,11 +41,27 @@ function visualStudioEnvironment() {
     if (separator > 0) env[line.slice(0, separator).toUpperCase()] = line.slice(separator + 1);
   }
   if (!env.VCTOOLSINSTALLDIR) throw new Error('Visual Studio did not configure the C++ tools directory.');
-  return env;
+  const bundledCompiler = join(installation, 'VC', 'Tools', 'Llvm', 'x64', 'bin', 'clang-cl.exe');
+  const pathCompilers = (env.PATH ?? '').split(';').filter(Boolean)
+    .map(directory => resolve(directory.replace(/^"|"$/g, ''), 'clang-cl.exe'));
+  const clangCl = [bundledCompiler, ...pathCompilers].find(existsSync);
+  if (!clangCl) throw new Error('clang-cl.exe was not found in Visual Studio or on PATH.');
+  // Compile a standard-library header since compiler identification alone accepts incompatible pairs.
+  run(clangCl, ['/nologo', '/std:c++20', '/Zs', '/TP', '-'], { env, input: '#include <version>\n' });
+  return { env, compiler: [clangCl, clangCl] };
+}
+
+function windowsCompilerChanged(buildDirectory, compiler) {
+  const cachePath = join(buildDirectory, 'CMakeCache.txt');
+  if (!existsSync(cachePath)) return false;
+  const cache = readFileSync(cachePath, 'utf8');
+  const compilerPath = resolve(compiler).toLowerCase();
+  return [...cache.matchAll(/^CMAKE_(?:C|CXX)_COMPILER:[^=]*=(.+)$/gm)]
+    .some(([, cached]) => resolve(cached).toLowerCase() !== compilerPath);
 }
 
 function build({ compiler, env, configuration, variant, test }) {
-  const buildName = `${compiler[0]}-${variant}-${configuration}${test ? '-tests' : ''}`;
+  const buildName = `${basename(compiler[0], '.exe')}-${variant}-${configuration}${test ? '-tests' : ''}`;
   const buildDirectory = join(output, 'cmake', buildName);
   const runtimeDirectory = test ? join(output, 'tests', buildName) : output;
   const definitions = [
@@ -59,7 +76,9 @@ function build({ compiler, env, configuration, variant, test }) {
     definitions.push(`-DCMAKE_OSX_ARCHITECTURES=${architecture === 'x64' ? 'x86_64' : 'arm64'}`);
   }
 
-  run('cmake', ['-S', source, '-B', buildDirectory, '-G', 'Ninja', ...definitions], { env });
+  // Starting fresh keeps the requested definitions when CMake changes compilers.
+  const fresh = platform === 'win32' && windowsCompilerChanged(buildDirectory, compiler[0]) ? ['--fresh'] : [];
+  run('cmake', [...fresh, '-S', source, '-B', buildDirectory, '-G', 'Ninja', ...definitions], { env });
   run('cmake', ['--build', buildDirectory], { env });
   if (test) {
     run('ctest', ['--test-dir', buildDirectory, '--output-on-failure', '--no-tests=error'], { env });
@@ -89,12 +108,10 @@ function main(args) {
     throw new Error('--gcc requires --native-tests on Linux.');
   }
 
-  const env = platform === 'win32' ? visualStudioEnvironment() : process.env;
-  let compiler = ['clang', 'clang++'];
+  let env = process.env;
+  let compiler = gcc ? ['gcc', 'g++'] : ['clang', 'clang++'];
   if (platform === 'win32') {
-    compiler = ['clang-cl', 'clang-cl'];
-  } else if (gcc) {
-    compiler = ['gcc', 'g++'];
+    ({ env, compiler } = visualStudioToolchain());
   }
   const configurations = gcc ? ['Debug'] : ['Debug', 'Release'];
   const variants = architecture === 'x64' && !gcc ? ['baseline', 'v3'] : ['baseline'];

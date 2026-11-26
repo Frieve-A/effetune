@@ -909,7 +909,7 @@ the optional authoring tools with
 
 ### Native Audio Engine
 
-The desktop native audio engine requires Node.js, Python 3.10 or newer, CMake 3.24 or newer, and Ninja. Use clang-cl with the Visual Studio C++ tools on Windows x64, Xcode clang on macOS, or clang on Linux x64. Build each architecture on a matching host. Add the LLVM `bin` directory to `PATH` if Visual Studio provides the C++ tools separately from clang-cl.
+The desktop native audio engine requires Node.js, Python 3.10 or newer, CMake 3.24 or newer, and Ninja. Use Visual Studio C++ tools on Windows x64, Xcode clang on macOS, or clang on Linux x64. Build each architecture on a matching host. On Windows, install Visual Studio's C++ Clang Compiler for Windows component. If your Visual Studio installation has no bundled clang-cl, add the `bin` directory of an LLVM version compatible with its Microsoft C++ standard library to `PATH`.
 
 ```bash
 npm run build:audio-engine

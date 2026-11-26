@@ -49,11 +49,12 @@ public:
       return DeviceError::Unavailable;
     if (worker_.joinable())
       return DeviceError::None;
-    worker_ = std::jthread([this](std::stop_token stop) {
+    stopRequested_.store(false);
+    worker_ = std::thread([this] {
       using Clock = std::chrono::steady_clock;
       auto deadline = Clock::now();
       const auto period = std::chrono::nanoseconds(std::uint64_t(frames_) * 1000000000 / rate_);
-      while (!stop.stop_requested()) {
+      while (!stopRequested_.load()) {
         const auto now = Clock::now();
         const auto ns =
             std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
@@ -84,7 +85,7 @@ public:
   }
   void stop() noexcept override {
     if (worker_.joinable()) {
-      worker_.request_stop();
+      stopRequested_.store(true);
       worker_.join();
     }
   }
@@ -129,7 +130,8 @@ private:
   std::string outputId_ = "null-out";
   bool inputUnavailable_ = false;
   unsigned nextRate_ = 0, availableChannels_ = 16;
-  std::jthread worker_;
+  std::thread worker_;
+  std::atomic<bool> stopRequested_{false};
   unsigned rate_ = 0, channels_ = 0, frames_ = 0;
   std::uint64_t position_ = 0;
   std::vector<float> buffer_, captureBuffer_;

@@ -198,7 +198,11 @@
             const player = window.uiManager.audioPlayer;
             await player.loadFiles([track], false);
             await player.contextManager.pause();
-            await player.contextManager.seek(0.1);
+            const seekPosition = 0.1;
+            await player.contextManager.seek(seekPosition);
+            const { playback: paused } = await bridge.request('snapshot.get');
+            check(paused.source?.uri === uri && !paused.playing && Math.abs(paused.position - seekPosition) < 0.001,
+                'Native video soundtrack did not reach the requested paused position');
             player.ui.updateVideoPresentation();
             const deadline = performance.now() + 8000;
             while ((!player.ui.video.ready || !player.ui.video.element?.videoWidth) && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -206,17 +210,32 @@
             check(video?.videoWidth === 128 && video.videoHeight === 96, 'SAF video frames did not decode');
             check(video.muted && video.src.startsWith('https://appassets.androidplatform.net/media?uri='), 'Video must use the muted granted URI display path');
             player.ui.refreshVideoPlayback();
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const nativePosition = window.audioManager.getAudiblePlaybackPosition(99);
-            check(Math.abs(video.currentTime - nativePosition) < 0.03, 'Paused video did not follow native seek position');
+            const aligned = () => !video.seeking && Math.abs(video.currentTime - window.audioManager.getAudiblePlaybackPosition(99)) < 0.03;
+            while (!aligned() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+            check(aligned(), 'Paused video did not follow native seek position');
             check(!player.audioElement || (player.audioElement.paused && !player.audioElement.currentSrc), 'A second browser audio source was started');
-            await player.contextManager.play();
-            await new Promise(resolve => setTimeout(resolve, 80));
-            await player.contextManager.pause();
-            const advanced = window.audioManager.snapshot.playback.position > nativePosition;
-            await player.contextManager.stop();
-            check(advanced, 'Native video soundtrack clock did not advance');
-            return { width: video.videoWidth, height: video.videoHeight, muted: video.muted, advanced };
+            try {
+                await player.contextManager.play();
+                const playDeadline = performance.now() + 5000;
+                let playback, advanced;
+                // Use consumed PCM frames from the service. EOF resets both position and generation.
+                do {
+                    ({ playback } = await bridge.request('snapshot.get'));
+                    if (playback.source?.uri !== uri || playback.generation !== paused.generation || !playback.playing) break;
+                    advanced = playback.position > paused.position;
+                    if (advanced) break;
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                } while (performance.now() < playDeadline);
+                check(advanced, 'Native video soundtrack clock did not advance: ' + JSON.stringify({
+                    start: paused.position, position: playback.position, generation: playback.generation,
+                    expectedGeneration: paused.generation, sameSource: playback.source?.uri === uri,
+                    playing: playback.playing, stalled: playback.pcmStalled, stopped: playback.stopped
+                }));
+                await player.contextManager.pause();
+                return { width: video.videoWidth, height: video.videoHeight, muted: video.muted, advanced };
+            } finally {
+                await player.contextManager.stop();
+            }
         }
     };
     return { ready: true };

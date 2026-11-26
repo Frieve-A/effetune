@@ -41,12 +41,17 @@
             await player.contextManager.command('volume', { volume: 0.42, muted: true });
             await player.contextManager.command('speed', { speed: 1.5, preservePitch: true });
             player.applyPreservePitch(false);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const before = await bridge.request('snapshot.get');
+            const deadline = performance.now() + 5000;
+            let before = await bridge.request('snapshot.get');
+            while (before.playback.preservePitch && performance.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 25));
+                before = await bridge.request('snapshot.get');
+            }
+            check(before.playback.preservePitch === false && before.playback.speed === 1.5, 'Pitch toggle did not reach native playback');
             await player.playbackManager.loadFiles([{ uri: record.uri, name: 'Inserted' }], true, 8);
             const after = await bridge.request('snapshot.get');
             check(after.playback.queueLength === 9 && after.playback.index === 7 && after.playback.generation === before.playback.generation, 'Queue insert restarted or lost native playhead');
-            check(after.playback.preservePitch === false && after.playback.speed === 1.5, 'Pitch toggle did not reach native playback');
+            check(after.playback.preservePitch === false && after.playback.speed === 1.5, 'Queue insert changed native playback settings');
             return { length: after.playback.queueLength, uri: record.uri,
                 settings: { volume: previous.volume, muted: previous.muted, speed: previous.speed, preservePitch: previous.preservePitch } };
         },

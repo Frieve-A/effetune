@@ -43,7 +43,7 @@ public final class AndroidIntegrationRegressionTest {
             awaitReady(scenario);
             JSONObject active = AndroidHostTest.call(lease.service, "audio.start", new JSONObject(), null, null);
             assertEquals("ACTIVE", active.getString("powerState"));
-            evaluate(scenario, "window.app.openFeaturePage('features/effetune_bench.html');void 0");
+            postEvaluation(scenario, "window.app.openFeaturePage('features/effetune_bench.html')", null);
             waitFor(scenario, "location.pathname.endsWith('/effetune_bench.html')", 15000);
             for (String command : new String[]{"audio.start", "playback.play", "playback.previous", "playback.next"}) {
                 java.util.concurrent.atomic.AtomicReference<AudioService.HostError> error = new java.util.concurrent.atomic.AtomicReference<>();
@@ -52,7 +52,7 @@ public final class AndroidIntegrationRegressionTest {
                 assertEquals(command, "visible-start-required", error.get().code);
             }
             assertEquals("SUSPENDED", AndroidHostTest.call(lease.service, "snapshot.get", new JSONObject(), null, null).getString("powerState"));
-            evaluate(scenario, "history.back();void 0");
+            postEvaluation(scenario, "history.back()", null);
             awaitReady(scenario);
             JSONObject stopped = AndroidHostTest.call(lease.service, "snapshot.get", new JSONObject(), null, null);
             assertEquals("SUSPENDED", stopped.getString("powerState"));
@@ -79,8 +79,7 @@ public final class AndroidIntegrationRegressionTest {
             waitFor(scenario, "Boolean(window.app?.measurementController && document.body.style.visibility!=='hidden')", 15000);
             loadScript(scenario);
             execute(scenario, "window.__integration.measurement()");
-            waitFor(scenario, "window.__hostTestResult!==null", 45000);
-            JSONObject result = result(scenario);
+            JSONObject result = result(scenario, 45000);
             assertTrue(result.getInt("capturedFrames") > 16384); assertTrue(result.getBoolean("saved"));
         }
     }
@@ -102,8 +101,9 @@ public final class AndroidIntegrationRegressionTest {
 
     static void waitFor(ActivityScenario<MainActivity> scenario, String condition, long milliseconds) throws Exception {
         long deadline = android.os.SystemClock.elapsedRealtime() + milliseconds;
-        while (android.os.SystemClock.elapsedRealtime() < deadline) {
-            if ("true".equals(evaluate(scenario, condition))) return;
+        long remaining;
+        while ((remaining = deadline - android.os.SystemClock.elapsedRealtime()) > 0) {
+            if ("true".equals(evaluate(scenario, condition, remaining, "waiting for " + condition))) return;
             Thread.sleep(50);
         }
         fail("UI condition did not complete: " + condition);
