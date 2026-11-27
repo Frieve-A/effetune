@@ -74,7 +74,8 @@ public final class AndroidDocumentWorkflowTest {
             DocumentStore documents = new DocumentStore(app.getContentResolver());
             checkTagReplacement(documents, root);
             JSONObject video = documents.create(new JSONObject().put("uri", root.toString()).put("name", "tone.mp4").put("mimeType", "video/mp4"));
-            try (InputStream input = test.getAssets().open("audio/tone.mp4"); java.io.OutputStream output = app.getContentResolver().openOutputStream(Uri.parse(video.getString("uri")), "wt")) {
+            // Keep enough audio after the seek to observe the native clock throughout the WebView request.
+            try (InputStream input = test.getAssets().open("audio/soundtrack.mp4"); java.io.OutputStream output = app.getContentResolver().openOutputStream(Uri.parse(video.getString("uri")), "wt")) {
                 byte[] buffer = new byte[8192]; int count; while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
             }
             execute(scenario, "window.__workflow.video(" + JSONObject.quote(video.getString("uri")) + ")"); assertTrue(result(scenario).getBoolean("advanced"));

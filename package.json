@@ -78,7 +78,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^45.5.0",
-    "electron-builder": "^26.18.0",
+    "electron-builder": "^26.18.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
     "playwright": "^1.65.0",
@@ -417,7 +417,7 @@
     "ws": "^8.22.1"
   },
   "overrides": {
-    "minimatch@9 || 10": "11.0.4",
+    "minimatch@9 || 10": "11.0.9",
     "@electron/get": {
       "global-agent": "4.1.3"
     }
