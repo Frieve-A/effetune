@@ -68,7 +68,10 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
       {name:'Room EQ',enabled:true,parameters:{ms:'unavailable-measurement'}}
     ]));
     application = await electron.launch({args:[path.join(root,'tests/helpers/desktop-browser-electron-main.cjs'),
-      `--user-data-dir=${profile}`],env:{...process.env,EFFETUNE_AUDIO_ENGINE_NULL:'1',
+      `--user-data-dir=${profile}`,
+      // Hosted VMs may have no microphone. Supply Standard's default capture device without using host hardware.
+      '--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'],
+      env:{...process.env,EFFETUNE_AUDIO_ENGINE_NULL:'1',
         EFFETUNE_BROWSER_TEST_MANUAL_AUDIO_CLOCK:'1',EFFETUNE_BROWSER_TEST_NATIVE_INPUT:'0'}});
     const deadline = Date.now() + 30000;
     let page;

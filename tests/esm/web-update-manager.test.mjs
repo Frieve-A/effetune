@@ -207,21 +207,34 @@ test('applying saves and fades before activation, waits for the target controlle
   assert.deepEqual(f.calls.filter(call => typeof call === 'string'), ['prepare', 'activate', 'reload']);
 });
 
-test('activation without a controllerchange event is verified at the timeout before reloading', async () => {
+test('activation without a controllerchange event is verified at the timeout before reloading', { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture(5);
+  const activated = Promise.withResolvers();
   f.registration.waiting = new Worker('new', () => {
     f.serviceWorker.controller = f.registration.waiting;
+    activated.resolve();
   });
-  await f.manager.apply();
+  const applying = f.manager.apply();
+  await activated.promise;
+  assert.equal(f.calls.includes('reload'), false);
+  t.mock.timers.tick(f.manager.timeoutMs);
+  await applying;
   assert.equal(f.calls.filter(call => call === 'reload').length, 1);
 });
 
-test('activation failure restores playback even if clearing update state fails', async () => {
+test('activation failure restores playback even if clearing update state fails', { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture(5);
   await f.manager.onApplicationReady();
-  f.registration.waiting = new Worker('new');
+  const activated = Promise.withResolvers();
+  f.registration.waiting = new Worker('new', activated.resolve);
   f.window.sessionStorage.removeItem = () => { throw new Error('storage unavailable'); };
-  await f.manager.apply();
+  const applying = f.manager.apply();
+  await activated.promise;
+  assert.equal(f.calls.includes('restore'), false);
+  t.mock.timers.tick(f.manager.timeoutMs);
+  await applying;
   assert.equal(f.calls.includes('restore'), true);
   assert.equal(f.calls.includes('reload'), false);
   assert.equal(f.calls.some(call => call[0] === 'error.updateApplyFailed'), true);

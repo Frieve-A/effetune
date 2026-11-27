@@ -89,6 +89,51 @@ async function delayInitialScoreForecast(page) {
   });
 }
 
+async function armScoreOutput(page, sustainMs) {
+  await page.evaluate(sustainMs => {
+    const m = window.audioManager, msPerFrame = 1000 / m.session.deviceRate;
+    window.fileOutput = (async () => {
+      const samples = [];
+      let deadline;
+      let beforeOnset = 0, onsetBucketMs = 0, rendered = 0;
+      while (onsetBucketMs ? rendered < sustainMs : beforeOnset < 150) {
+        // Read commands and midiStart share a FIFO. The first
+        // post-start read conservatively includes any frames since the previous drain.
+        const started = Number.isFinite(window.fileNoteStart);
+        if (started) {
+          deadline ??= window.fileNoteStart + 8000;
+          if (performance.now() >= deadline) break;
+        }
+        const {peak,frames} = await m.request({type:'testReadOutput'},'testOutput');
+        if (started && frames > 0) {
+          deadline = performance.now() + 8000;
+          const duration = frames * msPerFrame;
+          if (onsetBucketMs) {
+            const start = rendered;
+            rendered += duration;
+            samples.push({start,end:rendered,peak});
+          } else {
+            beforeOnset += duration;
+            if (peak > .001) onsetBucketMs = duration;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve,12));
+      }
+      const report = window.uiManager.audioPlayer.contextManager.midiPositionReport;
+      return {beforeOnset,onsetBucketMs,rendered,samples,clock:m.clock?.pipelineFrame,
+        position:report?.position,power:m.powerPolicyController.getSnapshot().effectiveState,
+        forecast:{polled:!!window.fileForecastDelay?.held,started:window.fileForecastDelay?.started}};
+    })();
+  },sustainMs);
+}
+
+function assertScoreOutput({beforeOnset,onsetBucketMs,rendered,clock,position,power}, sustainMs) {
+  const state = `native frame ${clock}, MIDI position ${position}, power ${power}`;
+  assert.ok(onsetBucketMs > 0 && beforeOnset <= 150,
+    `No audible opening within 150 ms of rendered output (${beforeOnset} ms observed; ${state})`);
+  assert.ok(rendered >= sustainMs,`Native output stalled after ${rendered} of ${sustainMs} ms (${state})`);
+}
+
 test('a cold SF2 bank plays the first file note and streams every sustained note', {timeout:75000}, async t => {
   const fixture = await launchNativeAudioFixture(t);
   if (!fixture) return;
@@ -108,42 +153,19 @@ test('a cold SF2 bank plays the first file note and streams every sustained note
   });
   await page.waitForFunction(() => !!window.uiManager.audioPlayer.contextManager.midiTimeline);
   await new Promise(resolve => setTimeout(resolve,500));
+  await armScoreOutput(page,3050);
   const advanced = await page.evaluate(() => {
     const started = Number.isFinite(window.fileNoteStart);
-    const m = window.audioManager;
-    const msPerFrame = 1000 / m.session.deviceRate;
-    window.fileOutput = (async () => {
-      const samples = [], armedAt = performance.now();
-      let onset = null, onsetBucketMs = 0, renderedFrames = 0;
-      while (renderedFrames * msPerFrame < 3050) {
-        const now = performance.now(), sinceStart = now - window.fileNoteStart;
-        if (Number.isFinite(sinceStart) ? sinceStart >= (onset === null ? 150 : 8000) : now - armedAt >= 12000) break;
-        const {peak,frames} = await m.request({type:'testReadOutput'},'testOutput');
-        if (frames && onset !== null) {
-          const start = renderedFrames * msPerFrame;
-          renderedFrames += frames;
-          samples.push({start,end:renderedFrames * msPerFrame,peak});
-        } else if (frames && peak > .001 && Number.isFinite(window.fileNoteStart)) {
-          onset = performance.now() - window.fileNoteStart;
-          onsetBucketMs = frames * msPerFrame;
-        }
-        await new Promise(resolve => setTimeout(resolve,12));
-      }
-      return {onset,onsetBucketMs,samples};
-    })();
     window.releaseImport();
     return started;
   });
   assert.equal(advanced,false,'The first note must wait while the selected SoundFont is loading');
   await page.evaluate(() => window.bankPublished);
   await page.waitForFunction(() => Number.isFinite(window.fileNoteStart),null,{timeout:12000});
-  const {onset,onsetBucketMs,samples} = await page.evaluate(() => window.fileOutput);
-  const forecast = await page.evaluate(() => ({
-    polled:!!window.fileForecastDelay?.held,started:window.fileForecastDelay?.started
-  }));
+  const output = await page.evaluate(() => window.fileOutput);
+  const {onsetBucketMs,samples,forecast} = output;
   assert.deepEqual(forecast,{polled:true,started:false},'The transport must prepare the new score before starting its clock');
-  assert.ok(Number.isFinite(onset) && onset < 150,`First SF2 note onset was ${onset} ms`);
-  assert.ok(samples.at(-1)?.end >= 3050,'Native output did not render the full observation window');
+  assertScoreOutput(output,3050);
   // The first audible frame can be anywhere in its meter interval. Later windows must hold for that whole uncertainty.
   for (const [begin,end] of [[0,1450],[1850,2220],[2600,2970]]) {
     const sustained = samples.filter(sample => sample.start >= begin && sample.end + onsetBucketMs <= end);
@@ -215,44 +237,46 @@ test('a ready SoundFont wakes for a new score and Stop silences its pedalled not
   await suspendSilentAudio(fixture);
   await delayInitialScoreForecast(page);
   await chooseFile(application,[score,nextScore]);
+  await armScoreOutput(page,900);
   await page.evaluate(async () => {
     const {openMusicFile} = await import('./js/electron/presetIntegration.js');
     void openMusicFile(true);
   });
   await page.waitForFunction(() => Number.isFinite(window.fileNoteStart),null,{polling:20,timeout:15000});
-  const opening = await page.evaluate(async () => {
-    const m = window.audioManager, peaks = [];
-    while (performance.now() - window.fileNoteStart < 900) {
-      const {peak,frames} = await m.request({type:'testReadOutput'},'testOutput');
-      if (frames) peaks.push([performance.now()-window.fileNoteStart,peak]);
-      await new Promise(resolve => setTimeout(resolve,12));
-    }
-    return {peaks,pollHeld:!!window.fileForecastDelay.held,startedEarly:window.fileForecastDelay.started};
-  });
-  assert.ok(opening.pollHeld && !opening.startedEarly,'The new preset needs its own ready sample forecast');
-  const firstAudible = opening.peaks.findIndex(([,peak]) => peak > .001);
-  assert.ok(firstAudible >= 0 && opening.peaks[firstAudible][0] < 150,'Opening note must sound on time');
-  const sustained = opening.peaks.slice(firstAudible);
-  assert.ok(sustained.length >= 5,'No sustained sampling after the opening note');
-  assert.deepEqual(sustained.filter(([,peak]) => peak < .001),[],'The opening note dropped out after onset');
+  const opening = await page.evaluate(() => window.fileOutput);
+  assert.deepEqual(opening.forecast,{polled:true,started:false},'The new preset needs its own ready sample forecast');
+  assertScoreOutput(opening,900);
+  assert.ok(opening.samples.length >= 5,'No sustained sampling after the opening note');
+  assert.deepEqual(opening.samples.filter(({peak}) => peak < .001),[],'The opening note dropped out after onset');
   await page.locator('.stop-button').evaluate(button => button.click());
   await page.waitForFunction(() => window.uiManager.audioPlayer.stateManager.getStateSnapshot().isStopped);
   await waitForOutput(page,0,.0001);
   await waitForOutput(page,0,.0001);
   await page.evaluate(() => {
-    const port = window.audioManager.workletNode.port;
-    const replay = window.replayMidi = {generation:null,ended:false};
-    port.addEventListener('message', function onReplayEnd({data}) {
-      if (data.type !== 'midiEnded' || data.generation !== replay.generation) return;
-      replay.ended = true;
-      port.removeEventListener('message',onReplayEnd);
+    const port = window.audioManager.workletNode.port, context = window.uiManager.audioPlayer.contextManager;
+    const replay = window.replayMidi = {generation:null,ended:false,position:0,duration:context.midiTimeline.duration,
+      lastProgressAt:performance.now()};
+    port.addEventListener('message', function observeReplay({data}) {
+      if (data.generation !== replay.generation) return;
+      if (data.type === 'midiPosition' && data.position > replay.position) {
+        replay.position = data.position;
+        replay.lastProgressAt = performance.now();
+      } else if (data.type === 'midiEnded') {
+        replay.ended = true;
+      }
+      if (replay.ended && replay.position === replay.duration) port.removeEventListener('message',observeReplay);
     });
   });
   await page.locator('.play-pause-button').evaluate(button => button.click());
   await waitForOutput(page,.001);
   let phase = 'native end of the replayed score';
   try {
-    await page.waitForFunction(() => window.replayMidi.ended,null,{polling:50,timeout:8000});
+    await page.waitForFunction(() => {
+      const replay = window.replayMidi;
+      if (replay.ended && replay.position === replay.duration) return true;
+      if (performance.now() - replay.lastProgressAt >= 8000) throw new Error('Replayed MIDI made no native progress for 8 seconds');
+      return false;
+    },null,{polling:50,timeout:0});
     phase = 'automatic start of the next score';
     await page.waitForFunction(() => {
       const player = window.uiManager.audioPlayer, context = player.contextManager;
@@ -262,11 +286,12 @@ test('a ready SoundFont wakes for a new score and Stop silences its pedalled not
     },null,{polling:50,timeout:18000});
   } catch (error) {
     const playback = await page.evaluate(() => {
-      const player = window.uiManager.audioPlayer, context = player.contextManager;
+      const m = window.audioManager, player = window.uiManager.audioPlayer, context = player.contextManager;
       const {currentTrackIndex,currentTrack,isPlaying,isStopped,isPaused,isTransitioning} = player.stateManager.getStateSnapshot();
       return {track:currentTrack?.name,currentTrackIndex,isPlaying,isStopped,isPaused,isTransitioning,
         replay:window.replayMidi,generation:context.midiGeneration,
         position:context.getCurrentMidiTime(),duration:context.midiTimeline?.duration,
+        nativeFrame:m.clock?.pipelineFrame,power:m.powerPolicyController.getSnapshot().effectiveState,
         preparing:context.midiPreparation?.generation};
     }).catch(() => null);
     t.diagnostic(`Waiting for ${phase}: ${JSON.stringify(playback)}`);
