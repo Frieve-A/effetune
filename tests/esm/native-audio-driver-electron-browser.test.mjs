@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { builtExecutableDirectory, executableNames, requireExecutableEnv } from '../../tools/audio-engine-session.mjs';
 import { AudioEncoder } from '../../js/audio/audio-encoder.js';
 import { createDsfFixture, encodeDsdSignal } from '../helpers/dsd-fixture.mjs';
+import { waitForNativeObservation } from '../helpers/native-audio-electron.mjs';
 
 function flacCrc(bytes, bits, polynomial) {
   let crc = 0;
@@ -221,9 +222,36 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
       const player = await window.uiManager.createAudioPlayer([], false);
       await player.contextManager.applyGaplessPlaybackPreference(false);
     });
+    const waitForPlayerFeed = async ({width = null, rate = null, timeout = 30000} = {}) => {
+      let firstFrame = null;
+      await waitForNativeObservation(
+        () => page.evaluate(async ({width,rate}) => {
+          const m = window.audioManager, player = window.uiManager.audioPlayer;
+          const state = player.stateManager.getStateSnapshot();
+          const observation = {
+            playing:state.isPlaying, mode:state.playbackMode,
+            directFile:!!player.contextManager.rollingTransport?.nativeFile,
+            width:m.session?.width, rate:m.session?.deviceRate,
+            engineFailed:m.failed, frame:m.clock?.pipelineFrame, feedDelayFrames:m.clock?.feedDelayFrames
+          };
+          if (observation.playing && !observation.directFile && !observation.engineFailed &&
+              (width === null || (observation.width === width && observation.rate === rate))) {
+            observation.output = await m.request({type:'testReadOutput'},'testOutput');
+          }
+          return observation;
+        },{width,rate}),
+        ({output,frame,feedDelayFrames}) => {
+          const hasClock = Number.isFinite(frame) && Number.isFinite(feedDelayFrames) && feedDelayFrames >= 0;
+          const fresh = output && hasClock && firstFrame !== null && frame > firstFrame;
+          // Drain the first eligible read, then require the restored feed clock to advance.
+          if (!fresh) firstFrame = output && hasClock ? frame : null;
+          // The 0.15 WAV remains above 0.04 through -6 dB. The preset oscillator alone peaks below it.
+          return fresh && output?.frames > 0 && output.peak > 0.04;
+        },{polling:100,timeout,description:'Web Audio WAV did not reach native output'}
+      ).catch(cause => { throw new Error(`${cause.message}\n${errors.join('\n')}`,{cause}); });
+    };
     await openTrack(track);
-    await page.waitForFunction(() => window.uiManager.audioPlayer?.stateManager.getStateSnapshot().isPlaying &&
-      window.audioManager.clock?.feedDelayFrames > 0);
+    await waitForPlayerFeed();
 
     const presetPath = path.join(profile,'native-visualizer.effetune_preset');
     await writeFile(presetPath,JSON.stringify({pipeline:[
@@ -307,6 +335,10 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
         }
       },settings);
     const readOutput = () => page.evaluate(() => window.audioManager.request({type:'testReadOutput'},'testOutput'));
+    const readPlaybackOutput = () => page.evaluate(async () => {
+      const output = await window.audioManager.request({type:'testReadOutput'},'testOutput');
+      return {...output,playing:window.uiManager.audioPlayer.stateManager.getStateSnapshot().isPlaying};
+    });
     const requireNetwork = async previous => {
       for (let attempt = 0; attempt < 60; ++attempt) {
         const counts = await application.evaluate(() => globalThis.fixtureAudioNetwork);
@@ -340,14 +372,11 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
       }
       await reset;
       if (!settings.deviceRate) await requireNetwork(previous);
-      await page.waitForFunction(({width,rate}) => window.audioManager.session.width === width &&
-        window.audioManager.session.deviceRate === rate && window.audioManager.clock?.feedDelayFrames > 0 &&
-        window.uiManager.audioPlayer?.stateManager.getStateSnapshot().isPlaying,
-        {width,rate},{timeout:10000});
-      await page.waitForFunction(async () => {
-        const observation = await window.audioManager.powerPolicyController._requestFreshWorkletObservation();
-        return observation?.outputActive;
-      },null,{polling:150,timeout:8000});
+      await waitForPlayerFeed({width,rate,timeout:10000});
+      await waitForNativeObservation(
+        () => page.evaluate(() => window.audioManager.powerPolicyController._requestFreshWorkletObservation()),
+        observation => observation?.outputActive,
+        {polling:150,timeout:8000,description:'Native output stayed inactive after device reset'});
       return page.evaluate(() => ({
         persistedContext:window.fixtureFeedContext === window.audioManager.audioContext,
         ready:window.fixtureFormatReady,rate:window.audioManager.audioContext.sampleRate,
@@ -368,11 +397,10 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
     if (!await volumeValue.isVisible()) await volumeItem.locator('.plugin-name').click();
     const waitForPlaybackPeak = async ([min,max]) => {
       await readOutput();
-      await page.waitForFunction(async ({min,max}) => {
-        const output = await window.audioManager.request({type:'testReadOutput'},'testOutput');
-        return output.frames > 0 && output.peak > min && output.peak < max &&
-          window.uiManager.audioPlayer.stateManager.getStateSnapshot().isPlaying;
-      },{min,max},{polling:100,timeout:5000});
+      await waitForNativeObservation(
+        readPlaybackOutput,
+        output => output.frames > 0 && output.peak > min && output.peak < max && output.playing,
+        {polling:100,timeout:5000,description:`Native playback peak did not reach (${min}, ${max})`});
     };
     const setVolume = async value => {
       await volumeValue.fill(String(value));
@@ -417,13 +445,41 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
     await routing.locator('.routing-dialog-close').click();
 
     const meter = pipelineItems.filter({has:page.getByText('Level Meter',{exact:true})});
+    const meterCanvas = meter.locator('canvas.meter-foreground');
     if (await page.locator('#pluginList.collapsed').count()) await page.locator('#sidebarButton').click();
+    await page.locator('#pluginList:not(.collapsed)').waitFor({state:'attached'});
     await page.locator('#effectSearchButton').click();
     const effectSearch = page.locator('#effectSearchInput');
     await effectSearch.fill('Level Meter');
-    await page.locator('#pluginList .plugin-item').filter({hasText:/^Level Meter/}).dblclick();
+    const catalogMeter = page.locator('#pluginList .plugin-item').filter({hasText:/^Level Meter/});
+    await catalogMeter.waitFor();
+    const meterErrorStart = errors.length;
+    await catalogMeter.evaluate(item => {
+      const controller = new AbortController();
+      const events = [];
+      window.fixtureMeterInteraction = {events,stop:() => controller.abort()};
+      for (const type of ['pointerdown','pointerup','click','dblclick']) {
+        document.addEventListener(type, event => {
+          events.push({type,detail:event.detail,onCatalogItem:item.contains(event.target)});
+        }, {capture:true,signal:controller.signal});
+      }
+    });
+    try {
+      await catalogMeter.dblclick();
+      await meterCanvas.waitFor();
+    } catch (error) {
+      const state = await page.evaluate(() => ({
+        events:window.fixtureMeterInteraction?.events,
+        pipeline:window.audioManager.pipeline.map(plugin => ({id:plugin.id,name:plugin.name})),
+        rendered:[...document.querySelectorAll('#pipelineList .pipeline-item')].map(row => row.dataset.pluginId)
+      })).catch(() => null);
+      throw new Error(`Catalog interaction did not render the Level Meter. ${JSON.stringify(state)}\n${errors.slice(meterErrorStart).join('\n')}`, {cause:error});
+    } finally {
+      await page.evaluate(() => window.fixtureMeterInteraction?.stop()).catch(() => {});
+    }
     await effectSearch.press('Escape');
-    await meter.locator('canvas.meter-foreground').waitFor();
+    await effectSearch.waitFor({state:'hidden'});
+    await meterCanvas.waitFor();
     const waitForMeter = ([min,max]) => page.waitForFunction(({min,max}) => {
       const plugin = window.audioManager.pipeline.find(item => item.constructor.name === 'LevelMeterPlugin');
       return plugin?.raw[0] > min && plugin.raw[0] < max;
@@ -618,12 +674,8 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
       await m.request({type:'testSetInput',level:.25},'testInputSet');
       m.connectSourceToPipeline(m.ioManager.deviceSource);
     });
-    const loudCapture = async () => {
-      await page.waitForFunction(async () => {
-        const m = window.audioManager, sample = await m.request({type:'testReadOutput'},'testOutput');
-        return sample.peak > .2;
-      },null,{polling:100,timeout:5000});
-    };
+    const loudCapture = () => waitForNativeObservation(readOutput, sample => sample.peak > .2,
+      {polling:100,timeout:5000,description:'Native capture did not reach the output'});
     await loudCapture();
     await page.evaluate(() => {
       const m = window.audioManager;
@@ -654,10 +706,10 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
       return [m.session.inputChannels,m.ioManager.inputRouteConnected,m.inputMixEnabled,m.failed];
     }),[0,false,false,false]);
     await readOutput();
-    await page.waitForFunction(async () => {
-      const sample = await window.audioManager.request({type:'testReadOutput'},'testOutput');
-      return sample.peak > .001 && window.uiManager.audioPlayer.stateManager.getStateSnapshot().isPlaying;
-    },null,{polling:100,timeout:5000});
+    await waitForNativeObservation(
+      readPlaybackOutput,
+      sample => sample.peak > .001 && sample.playing,
+      {polling:100,timeout:5000,description:'Playback did not continue after native input was removed'});
     const flac = path.join(profile,'issue-72-32-bit-side.flac');
     await writeFile(flac,create32BitSideChannelFlac());
     await page.evaluate(async () => {
@@ -765,9 +817,8 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
     assert.equal(dsdDirect.speed,1);
     assert.equal(dsdDirect.nativeRate,dsdDirect.rate);
     assert.ok(dsdDirect.rate < sourceRate);
-    await page.waitForFunction(async () =>
-      (await window.audioManager.request({type:'testReadOutput'},'testOutput')).peak > .01,
-    null,{polling:100,timeout:5000});
+    await waitForNativeObservation(readOutput, sample => sample.peak > .01,
+      {polling:100,timeout:5000,description:'DSD playback did not reach the native output'});
     await page.evaluate(() => window.uiManager.audioPlayer.playbackManager.setPlaybackSpeed(1.5));
     await page.waitForFunction(() => {
       const transport = window.uiManager.audioPlayer.contextManager.rollingTransport;
@@ -888,11 +939,13 @@ test('Native output recovers from an oversized saved pipeline and keeps its last
     });
     const peakIn = async (min,max) => {
       await page.evaluate(() => window.audioManager.request({type:'testReadOutput'},'testOutput'));
-      await page.waitForFunction(async ({min,max}) => {
-        const m = window.audioManager;
-        const sample = await m.request({type:'testReadOutput'},'testOutput');
-        return !m.failed && sample.frames > 0 && sample.peak >= min && sample.peak < max;
-      },{min,max},{polling:100,timeout:5000});
+      await waitForNativeObservation(
+        () => page.evaluate(async () => {
+          const m = window.audioManager;
+          return {...await m.request({type:'testReadOutput'},'testOutput'),failed:m.failed};
+        }),
+        sample => !sample.failed && sample.frames > 0 && sample.peak >= min && sample.peak < max,
+        {polling:100,timeout:5000,description:`Recovery output peak did not reach [${min}, ${max})`});
     };
     const setBypass = bypass => page.evaluate(bypass => window.audioManager.setMasterBypass(bypass),bypass);
     const resetDevice = outputChannels => page.evaluate(async outputChannels => {

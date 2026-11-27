@@ -3,7 +3,7 @@ import {writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import {createMultisampleSf2,createSf2Fixture} from '../helpers/sf2-fixture.mjs';
-import {launchNativeAudioFixture} from '../helpers/native-audio-electron.mjs';
+import {launchNativeAudioFixture,waitForNativeObservation} from '../helpers/native-audio-electron.mjs';
 
 function soundFont() {
   const sampleFrames = 131072;
@@ -82,6 +82,7 @@ async function delayInitialScoreForecast(page) {
       if (message.type === 'midiStart') {
         window.fileNoteStart = performance.now();
         if (window.fileForecastDelay) window.fileForecastDelay.started = window.fileForecastDelay.waiting;
+        if (window.replayMidi && window.replayMidi.generation === null) window.replayMidi.generation = message.generation;
       }
       return send.call(this,message);
     };
@@ -109,35 +110,50 @@ test('a cold SF2 bank plays the first file note and streams every sustained note
   await new Promise(resolve => setTimeout(resolve,500));
   const advanced = await page.evaluate(() => {
     const started = Number.isFinite(window.fileNoteStart);
+    const m = window.audioManager;
+    const msPerFrame = 1000 / m.session.deviceRate;
+    window.fileOutput = (async () => {
+      const samples = [], armedAt = performance.now();
+      let onset = null, onsetBucketMs = 0, renderedFrames = 0;
+      while (renderedFrames * msPerFrame < 3050) {
+        const now = performance.now(), sinceStart = now - window.fileNoteStart;
+        if (Number.isFinite(sinceStart) ? sinceStart >= (onset === null ? 150 : 8000) : now - armedAt >= 12000) break;
+        const {peak,frames} = await m.request({type:'testReadOutput'},'testOutput');
+        if (frames && onset !== null) {
+          const start = renderedFrames * msPerFrame;
+          renderedFrames += frames;
+          samples.push({start,end:renderedFrames * msPerFrame,peak});
+        } else if (frames && peak > .001 && Number.isFinite(window.fileNoteStart)) {
+          onset = performance.now() - window.fileNoteStart;
+          onsetBucketMs = frames * msPerFrame;
+        }
+        await new Promise(resolve => setTimeout(resolve,12));
+      }
+      return {onset,onsetBucketMs,samples};
+    })();
     window.releaseImport();
     return started;
   });
   assert.equal(advanced,false,'The first note must wait while the selected SoundFont is loading');
   await page.evaluate(() => window.bankPublished);
   await page.waitForFunction(() => Number.isFinite(window.fileNoteStart),null,{timeout:12000});
-  const samples = await page.evaluate(async () => {
-    const m = window.audioManager, readings = [];
-    while (performance.now() - window.fileNoteStart < 3180) {
-      const {peak,frames} = await m.request({type:'testReadOutput'},'testOutput');
-      if (frames) readings.push([Math.round(performance.now() - window.fileNoteStart),peak]);
-      await new Promise(resolve => setTimeout(resolve,12));
-    }
-    return readings;
-  });
-  const onset = samples.find(([,peak]) => peak > .001)?.[0];
+  const {onset,onsetBucketMs,samples} = await page.evaluate(() => window.fileOutput);
   const forecast = await page.evaluate(() => ({
     polled:!!window.fileForecastDelay?.held,started:window.fileForecastDelay?.started
   }));
   assert.deepEqual(forecast,{polled:true,started:false},'The transport must prepare the new score before starting its clock');
   assert.ok(Number.isFinite(onset) && onset < 150,`First SF2 note onset was ${onset} ms`);
-  for (const [begin,end] of [[100,1450],[1850,2220],[2600,2970]]) {
-    const audible = samples.filter(([time]) => time >= begin && time <= end);
-    assert.ok(audible.length >= 5,`No sustained sampling in ${begin}–${end} ms`);
-    assert.deepEqual(audible.filter(([,peak]) => peak < .001),[],`Unexpected silence within ${begin}–${end} ms`);
+  assert.ok(samples.at(-1)?.end >= 3050,'Native output did not render the full observation window');
+  // The first audible frame can be anywhere in its meter interval. Later windows must hold for that whole uncertainty.
+  for (const [begin,end] of [[0,1450],[1850,2220],[2600,2970]]) {
+    const sustained = samples.filter(sample => sample.start >= begin && sample.end + onsetBucketMs <= end);
+    assert.ok(sustained.length >= 5,`No sustained sampling in ${begin}–${end} ms`);
+    assert.deepEqual(sustained.filter(({peak}) => peak < .001),[],`Unexpected silence within ${begin}–${end} ms`);
   }
-  for (const [begin,end] of [[1600,1730],[2360,2480]]) {
-    assert.ok(samples.some(([time,peak]) => time >= begin && time <= end && peak < .001),
-      `No note release observed between ${begin} and ${end} ms`);
+  // Allow 50 ms for each note to release, and leave 20 ms before the next attack.
+  for (const [begin,end] of [[1550,1730],[2300,2480]]) {
+    assert.ok(samples.some(sample => sample.start + onsetBucketMs < end && sample.end > begin && sample.peak < .001),
+      `No note release observed between ${begin} and ${end} ms with a ${onsetBucketMs} ms onset interval`);
   }
   // Reattack a held note when seeking midway through the streamed sample.
   await page.evaluate(() => window.uiManager.audioPlayer.contextManager.seekMidi(.75));
@@ -148,10 +164,11 @@ test('a cold SF2 bank plays the first file note and streams every sustained note
 });
 
 async function waitForOutput(page, minimum, maximum = 2) {
-  await page.waitForFunction(async ([lower,upper]) => {
-    const sample = await window.audioManager.request({type:'testReadOutput'},'testOutput');
-    return sample.frames > 0 && sample.peak >= lower && sample.peak <= upper;
-  },[minimum,maximum],{polling:80,timeout:8000});
+  await waitForNativeObservation(
+    () => page.evaluate(() => window.audioManager.request({type:'testReadOutput'},'testOutput')),
+    ({frames,peak}) => frames > 0 && peak >= minimum && peak <= maximum,
+    {description:`Expected native peak in [${minimum}, ${maximum}]`}
+  );
 }
 
 async function suspendSilentAudio(fixture) {
@@ -213,18 +230,48 @@ test('a ready SoundFont wakes for a new score and Stop silences its pedalled not
     return {peaks,pollHeld:!!window.fileForecastDelay.held,startedEarly:window.fileForecastDelay.started};
   });
   assert.ok(opening.pollHeld && !opening.startedEarly,'The new preset needs its own ready sample forecast');
-  assert.ok(opening.peaks.find(([,peak]) => peak > .001)?.[0] < 150,'Opening note must sound on time');
-  assert.ok(opening.peaks.filter(([time]) => time >= 100).every(([,peak]) => peak > .001));
+  const firstAudible = opening.peaks.findIndex(([,peak]) => peak > .001);
+  assert.ok(firstAudible >= 0 && opening.peaks[firstAudible][0] < 150,'Opening note must sound on time');
+  const sustained = opening.peaks.slice(firstAudible);
+  assert.ok(sustained.length >= 5,'No sustained sampling after the opening note');
+  assert.deepEqual(sustained.filter(([,peak]) => peak < .001),[],'The opening note dropped out after onset');
   await page.locator('.stop-button').evaluate(button => button.click());
   await page.waitForFunction(() => window.uiManager.audioPlayer.stateManager.getStateSnapshot().isStopped);
   await waitForOutput(page,0,.0001);
   await waitForOutput(page,0,.0001);
+  await page.evaluate(() => {
+    const port = window.audioManager.workletNode.port;
+    const replay = window.replayMidi = {generation:null,ended:false};
+    port.addEventListener('message', function onReplayEnd({data}) {
+      if (data.type !== 'midiEnded' || data.generation !== replay.generation) return;
+      replay.ended = true;
+      port.removeEventListener('message',onReplayEnd);
+    });
+  });
   await page.locator('.play-pause-button').evaluate(button => button.click());
   await waitForOutput(page,.001);
-  await page.waitForFunction(() => {
-    const state = window.uiManager.audioPlayer.stateManager.getStateSnapshot();
-    return state.currentTrackIndex === 1 && state.isPlaying && state.currentTrack.name === 'second-program-change.mid';
-  },null,{polling:50,timeout:18000});
+  let phase = 'native end of the replayed score';
+  try {
+    await page.waitForFunction(() => window.replayMidi.ended,null,{polling:50,timeout:8000});
+    phase = 'automatic start of the next score';
+    await page.waitForFunction(() => {
+      const player = window.uiManager.audioPlayer, context = player.contextManager;
+      const state = player.stateManager.getStateSnapshot(), report = context.midiPositionReport;
+      return state.currentTrackIndex === 1 && state.isPlaying && state.currentTrack?.name === 'second-program-change.mid' &&
+        report?.generation === context.midiGeneration && report.generation > window.replayMidi.generation && report.position > 0;
+    },null,{polling:50,timeout:18000});
+  } catch (error) {
+    const playback = await page.evaluate(() => {
+      const player = window.uiManager.audioPlayer, context = player.contextManager;
+      const {currentTrackIndex,currentTrack,isPlaying,isStopped,isPaused,isTransitioning} = player.stateManager.getStateSnapshot();
+      return {track:currentTrack?.name,currentTrackIndex,isPlaying,isStopped,isPaused,isTransitioning,
+        replay:window.replayMidi,generation:context.midiGeneration,
+        position:context.getCurrentMidiTime(),duration:context.midiTimeline?.duration,
+        preparing:context.midiPreparation?.generation};
+    }).catch(() => null);
+    t.diagnostic(`Waiting for ${phase}: ${JSON.stringify(playback)}`);
+    throw error;
+  }
   await page.evaluate(() => window.audioManager.request({type:'testReadOutput'},'testOutput'));
   await waitForOutput(page,.001);
 });
@@ -235,6 +282,8 @@ test('Browser capture, AirPlay and mid-pipeline network PCM reach the native out
   const {application,page} = fixture;
   await page.evaluate(async () => {
     const m = window.audioManager;
+    m.updateCurrentPipeline([]);
+    await m.rebuildPipeline();
     const {BrowserInputController} = await import('./js/audio/browser-input-controller.js');
     const context = m.audioContext;
     const input = context.createMediaStreamDestination();

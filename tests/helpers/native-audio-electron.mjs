@@ -3,9 +3,26 @@ import {existsSync} from 'node:fs';
 import {mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {_electron as electron} from 'playwright';
 import {builtExecutableDirectory, executableNames, requireExecutableEnv} from '../../tools/audio-engine-session.mjs';
+
+export async function waitForNativeObservation(read, matches, {
+  timeout = 8000, polling = 80, description = 'Native audio observation'
+} = {}) {
+  const deadline = performance.now() + timeout;
+  let observation;
+  // Playwright's waitForFunction checks the predicate result before awaiting it.
+  do {
+    observation = await read();
+    if (matches(observation)) return observation;
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) break;
+    await delay(Math.min(polling,remaining));
+  } while (performance.now() < deadline);
+  assert.fail(`${description} timed out. Last observation: ${JSON.stringify(observation)}`);
+}
 
 export async function launchNativeAudioFixture(t, {pipeline = [], config = {}, preferences = {}} = {}) {
   const binaries = Object.values(executableNames(process.platform,process.arch)).filter(Boolean);
