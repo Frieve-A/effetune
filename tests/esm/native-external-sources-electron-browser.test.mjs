@@ -197,7 +197,7 @@ async function suspendSilentAudio(fixture) {
   const {page} = fixture;
   await page.evaluate(() => {
     const policy = window.audioManager.powerPolicyController;
-    void policy.updateSettings({...policy.settings,mode:'maximum',fullSuspendDelaySeconds:60});
+    return policy.updateSettings({...policy.settings,mode:'maximum',fullSuspendDelaySeconds:60});
   });
   await fixture.application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().find(w =>
     w.webContents.getURL().includes('effetune.html')).hide());
