@@ -451,6 +451,9 @@ test('Audio Configuration switches drivers, renders the player feed and carries 
     const meterCanvas = meter.locator('canvas.meter-foreground');
     if (await page.locator('#pluginList.collapsed').count()) await page.locator('#sidebarButton').click();
     await page.locator('#pluginList:not(.collapsed)').waitFor({state:'attached'});
+    // The sidebar keeps sliding after its collapsed class is removed.
+    await page.locator('.plugin-list-shell').evaluate(shell =>
+      Promise.allSettled(shell.getAnimations().map(animation => animation.finished)));
     await page.locator('#effectSearchButton').click();
     const effectSearch = page.locator('#effectSearchInput');
     await effectSearch.fill('Level Meter');

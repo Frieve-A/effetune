@@ -186,7 +186,8 @@ test('measurement shared layout keeps actions, history and analysis selectors st
                     channel, irId: i + 1, ir: { stored: true, sampleRate: 8000, length: 4096, onsetIndex: 16 },
                     frequencyResponse: f.measurement.averageFrequencyResponse
                 })) }];
-                f.ui.measurementDisplay.updateMeasurementList();
+                // The storage usage line changes the height of the stacked history pane.
+                await f.ui.measurementDisplay.updateMeasurementList();
                 f.ui.measurementDisplay.displayMeasurementDetails(f.measurement.id, true);
                 await f.ui.analysisController.refresh();
             }, { language, width });
