@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.20.0-ad1f6ab0ae9b6ada";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.20.1-a0d619998f065a5e";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -869,7 +869,7 @@ self.EFFECTUNE_PRECACHE_INTEGRITY = {
   "./js/android/subsonic.js": "sha256-R7BPvAArkhXN+h+ljiy5gFXx5Gzi7TKZVEnGKl5VdMU=",
   "./js/android/window-ui.js": "sha256-wxqhZtHSF3vvTqgTp/H338vNhMmiTZY0I8Pev6cmh5Q=",
   "./js/app-bootstrap.js": "sha256-7aJkMylXlNRABAzIjPax7olCtdYBGK4tohb4BAY9dc0=",
-  "./js/app.js": "sha256-3nwt3O/4hkAYsta1RfTQ9iz17PHog/b5moPwN794bNg=",
+  "./js/app.js": "sha256-NrvYGPkRm86fZck3Cr0hhlJO8LUFCdILNDHQTbSYQyo=",
   "./js/audio-manager.js": "sha256-VTrlIRN4ep0MpnbWE0nnbjmScToQAywwQr2RIpipynQ=",
   "./js/audio/audio-activation-coordinator.js": "sha256-IGZbo3qnlalwMxfL+3okfX+Pe3tOaNoO1A7fPK6anuY=",
   "./js/audio/audio-context-manager.js": "sha256-KHxHzocCi93rzQqet5bOto/DItdvs6Ng8UYZXKEYmE8=",
@@ -1360,7 +1360,7 @@ self.EFFECTUNE_PRECACHE_INTEGRITY = {
   "./js/visualizer/visualizer-view.js": "sha256-4KvYNAIQ4+jRKawb+oboNmoloU0M0IrJufoMFqv4RmI=",
   "./js/web-update-manager.js": "sha256-OTJflHuHnD52gzfl54jBN93hunPXZ9qkQBuzjH2DmPQ=",
   "./manifest.json": "sha256-ceLA8yRRfMIeOFkQDXpHg/b0AKDQW2+g8i0c+3ymIdc=",
-  "./package.json": "sha256-rluvZ0uHWfdG13pkBbWaNV2T08LsHlYquvWzepUfwhw=",
+  "./package.json": "sha256-WgBdzL/sFeU43UiICmqdTqGp6mmSMrBcyxWX+Lwl3DA=",
   "./plugins/analyzer/analog_meter.js": "sha256-kVPgSLJp0KTnTqmcGNRApaS4jMP/OzAUqYlHlhY2phc=",
   "./plugins/analyzer/chroma_spiral.js": "sha256-GPenMPyGccNMN9e2yPrkaK13VH2LTb1MssyAi12xlAc=",
   "./plugins/analyzer/level_meter.css": "sha256-/L/9zILf85HdQjg4PqZ3miYkWl1xzNAzdpOgdBM0Ljg=",

@@ -1898,9 +1898,6 @@ class App {
                 return;
             }
             await this.uiManager.createAudioPlayer(playbackDescriptors, false);
-            setTimeout(() => {
-                if (this.uiManager.audioPlayer) this.uiManager.audioPlayer.play();
-            }, 1000);
         } catch (error) {
             console.error('Initial music playback setup diagnostic:', error);
         }

@@ -1006,7 +1006,8 @@ test('startup admits ordinary music as before and presents the window before an 
       if (result === 'error') assert.ok(order.includes('selectionError'));
       if (result === 'replace') deps.uiManager.audioPlayer = { play() { calls.push(['playedReplacement']); } };
       await runTimers(timers);
-      assert.equal(calls.some(([step]) => step === 'played'), ordinary);
+      assert.equal(calls.some(([step]) => step === 'played'), false,
+        'A delayed startup Play must not undo a Pause after automatic file loading');
       assert.ok(!calls.some(([step]) => step === 'playedReplacement'));
       const preservesInput = result === 'cancel' || result === 'error';
       assert.equal(audioPreferences.useInputWithPlayer, preservesInput);

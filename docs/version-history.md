@@ -6,6 +6,8 @@ lang: en
 
 # Version History
 
+### Version 2.20.1 (TBD, 2026)
+
 ### Version 2.20.0 (Nov 27, 2026)
 - Supports native audio device output and native high-speed DSP processing (desktop version)
 - Added loudness analysis for Music Library, automatic playback level matching, and ReplayGain tag writing in the desktop app
